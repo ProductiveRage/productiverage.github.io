@@ -1,0 +1,385 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - NeoCities</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">30 July 2013</h3><h2><a id="Post60"></a><a href="javascript-compression-putting-my-json-search-indexes-on-a-diet.html">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></h2>
+
+<p>When I wrote a couple of weeks ago about writing a way to consume <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer</a> data entirely on the client (so that I could recreate my blog's search functionality at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a> - see <a href="the-neocities-challenge-aka-the-full-text-indexer-goes-clientside.html">The Full Text Indexer goes client-side!</a>), I said that</p>
+
+<blockquote>
+  <p>Yes, the search index files are bigger than I would have liked..</p>
+</blockquote>
+
+<p>This may have been somewhat of an understatement.</p>
+
+<p>As a little refresher; there is one JSON file responsible for matching posts to search terms (<em>"oh, I see you seached for '<a href="Search.html?term=cats">cats</a>'! The posts that you want are, in descending order of match quality: 26, 28, 58, 36, 27, 53, 24"</em>). Then there is a JSON file <em>per-post</em> for all of the source location mappings. These describe precisely <em>where</em> in the posts that tokens may be matched. There's quite a lot of data to consider and it's in a fairly naive JSON structure (I used single letter property names but that was the only real attempt at size-constraining*). On top of this, there's a plain-text representation of each post so that the source location mappings can be used to generate a best match "content excerpt" for each result (à la Google's results, which highlight matched terms). And finally a JSON file for all of the titles of the posts so that the titles can be displayed when the search logic knows which posts match the query but the content exceprts generation is still being worked on in the background.</p>
+
+<p>This results in 5.8MB of JSON and plain text data.</p>
+
+<p>Now, in fairness, this is all gzip'd when it comes down the wire and this sort of data compresses really well. And the detail files for the posts are only requested when the corresponding posts are identified as being results for the current search. So in terms of what the user has to download, it's no big deal.</p>
+
+<p>However, the hosting at <a href="http://neocities.org">neocities.org</a> only offers 10MB at the moment so 5.8MB solely for searching seems a little excessive. To put it into perspective, this is several times more than the html required to render all of the actual posts!</p>
+
+<p>I hadn't actually realised just how much of a problem it was until I published my last post. When I came to re-generate the flattened content to upload to NeoCities, that last post (being <a href="autoreleasing-event-listeners.html">something of a beast</a>) pushed the storage requirements past the magic 10MB mark!</p>
+
+<p>* <em>(Very minor diversion: There was actually one potential optimisation that I did consider when first serialising the index data for use on the client. Instead of a simple associative array, I wondered if using a Ternary Search Tree would reduce the space requirements if a lot of the keys had similarities. I used a TST internally in the C# project for performance reasons and talked about it in <a href="the-net-dictionary-is-fast.html">The .Net Dictionary is FAST!</a>. Alas, when I tried it as a structure for my data, it resulted in slightly larger files).</em></p>
+
+<h3>So. Compression, yeah? In JavaScript??</h3>
+
+<p>The biggest contributors to size are the per-post search index files that contain the source locations data. Each is JSON data describing an associative array matching a "normalised" search term (to take into account plurality, case-insensitivity, etc) to a post key, weight and array of source locations. Each source location has the fields FieldIndex, TokenIndex, ContentIndex and ContentLength (read all about it at <a href="the-full-text-indexer-source-locations.html">The Full Text Indexer: Source Locations</a>).</p>
+
+<p>I know that this data <em>can</em> be compressed since, not only does textual or JSON data frequently lend itself to being effectively compressed, but I can <em>see</em> the compression that gzip achieves when the data is delivered to the browser.</p>
+
+<p>My first thought when it comes to compression is that we're dealing with binary data. Certainly, when I see gzip'd responses in <a href="http://fiddler2.com/">Fiddler</a> (before using the <em>"Response is encoded.. Click here to transform"</em> link) it looks like gobbledygook, not like any text I know!</p>
+
+<p>This reminded me of something I read some time ago about a guy creating a PNG file where the pixels are generated from bytes extracted from textual content. This PNG can be read by javascript and the pixels extracted again, and from the pixel values the textual source content can be recreated. The real benefit with PNG here is that it incorporates a lossless compression scheme. Lossless compression is really important here, it means that the decompressed content will be <em>identical</em> to the source content. JPEG is a <em>lossy</em> scheme and can achieve higher compression rates if the quality is reduced sufficiently. But it loses information when it does this. The idea is that the resulting image is either acceptably close visually to the source image or that the discrepancy is evident but thought to be a worthwhile trade-off considering the file size benefits. If we're trying to extract text data that represents javascript than "close-ish, maybe" is not going to cut it!</p>
+
+<p>The original article that I'd remembered was this: <a href="http://blog.nihilogic.dk/2008/05/compression-using-canvas-and-png.html">Compression using Canvas and PNG-embedded data</a>. The results sound impressive, he got an older version of jQuery (1.2.3) compressed down from 53kb to 17kb. Bear in mind that this is already the minified version of the code! It's quite a short article and interesting, so give it a visit (and while you're there notice that the Mario background is interactive and can be played using the cursor keys! :)</p>
+
+<p>The summary of the article, though, is that it's not suitable for mainstream use. Browser support is restricted (all modern browsers now would work, I'm sure, but I don't know how many versions of IE it would work in). And it concludes with <em>"this is meant only as thing of interest and is not something you should use in most any real life applications, where something like gzip will outperform this"</em>.</p>
+
+<p>Ok.</p>
+
+<p>Glad I looked it up again, though, since it was interesting stuff.</p>
+
+<p>On the same blog, there's also an article <a href="http://blog.nihilogic.dk/2008/05/reading-exif-data-with-javascript.html">Read EXIF data with Javascript</a>, which talks about retrieving binary data from a file and extracting the data from it. In this case, the content would have to be compressed when written and then decompressed by the javascript loading it. Unlike, the PNG approach, compression doesn't come for free. From the article, he's written the file <a href="http://www.nihilogic.dk/labs/binaryajax/binaryajax.js">binaryajax.js</a>. Unfortunately, browser support apparently is still incomplete. The original plan outlined works for Chrome and Firefox but then some dirty hacks (including rendering VBScript script tags and executing those functions) are required for IE and, at the time at least, Opera wouldn't work at all.</p>
+
+<p>Again, interesting stuff! But not quite what I want.</p>
+
+<h3>Help, Google!</h3>
+
+<p>So I had to fall back to asking google about javascript compression and trying not to end up in article after article about how to minify scripts.</p>
+
+<p>In fairness, it didn't take too long at all until a pattern was emerging where a lot of people were talking about LZ compression (info available at the <a href="http://en.wikipedia.org/wiki/LZ77_and_LZ78">Wikipedia</a> page). And I finally ended up here <a href="http://pieroxy.net/blog/pages/lz-string/index.html">lz-string: JavaScript compression, fast!</a></p>
+
+<p>From that page -</p>
+
+<blockquote>
+  <p>lz-string was designed to fulfill the need of storing large amounts of data in localStorage, specifically on mobile devices. localStorage being usually limited to 5MB, all you can compress is that much more data you can store.</p>
+  
+  <p>What about other libraries?</p>
+  
+  <p>All I could find was:</p>
+  
+  <p>- some LZW implementations which gives you back arrays of numbers (terribly inefficient to store as tokens take 64bits) and don't support any character above 255.</p>
+  
+  <p>- some other LZW implementations which gives you back a string (less terribly inefficient to store but still, all tokens take 16 bits) and don't support any character above 255.</p>
+  
+  <p>- an LZMA implementation that is asynchronous and very slow - but hey, it's LZMA, not the implementation that is slow.</p>
+  
+  <p>- a GZip implementation not really meant for browsers but meant for node.js, which weighted 70kb (with deflate.js and crc32.js on which it depends).</p>
+</blockquote>
+
+<p>This is sounding really good (and his view of the state of the other libraries available reflects my own experiences when Googling around). And he goes on to say</p>
+
+<blockquote>
+  <p>localStorage can only contain JavaScript strings. Strings in JavaScript are stored internally in UTF-16, meaning every character weight 16 bits. I modified the implementation to work with a 16bit-wide token space.</p>
+</blockquote>
+
+<p>Now, I'm not going to be using it with localStorage but it's gratifying to see that this guy has really understood the environment in which it's going to be used and how best to use that to his advantage.</p>
+
+<p>Preliminary tests went well; I was compressing this, decompressing that, testing this, testing that. It was all going swimmingly! The only problem now was that this was a clearly a custom (and clever) implementation of the algorithm so I wouldn't be able to use anything standard on the C# side to compress the data if I wanted the javascript to be able to decompress it again. And the whole point of all of this is to "flatten" my primary blog and serialise the search index in one process, such that it can be hosted on <a href="http://necities.org">NeoCities</a>.</p>
+
+<p>The javscript code is fairly concise, so I translated it into C#. When I'd translated C# classes from my Full Text Indexer into javascript equivalents, it had gone surprisingly painlessly. I'd basically just copied the C# code into an empty file and then removed types and tweaked things to work as javascript. So I thought I'd take a punt and try the opposite - just copy the javascript into an empty C# class and then try to fix it up. Adding appropriate types and replacing javascript methods with C# equivalents. This too seemed to go well, I was compressing some strings to text files, pulling them with ajax requests in javascript, decompressing them and viewing them. Success!</p>
+
+<p>Until..</p>
+
+<p>I gave it a string that didn't work. The decompress method returned null. Fail.</p>
+
+<h3>Troubleshooting</h3>
+
+<p>I figured that there's only so much that could be going wrong. If I compressed the same string with the javascript code then the javascript code could <em>decompress</em> it just fine. The data compressed with the C# version refused to be decompressed by the javascript, though. Chance are I made a mistake in the translation.</p>
+
+<p>I got the shortest reproduce string I could (it's from the titles-of-all-posts JSON that the search facility uses) -</p>
+
+<blockquote>
+  <p>{"1":"I lo</p>
+</blockquote>
+
+<p>and got both the C# and javascript code to print out a list of character codes that were generated when that string was compressed.</p>
+
+<p>These were identical. So maybe my translation <em>wasn't</em> at fault.</p>
+
+<p>Well something must be getting lost somewhere!</p>
+
+<p>This led me on to wondering if it was somehow the encoding. The compressed content is being served up as UTF8 (basically the standard on the web) but the compression algorithm is intended to compress to UTF16. Now, surely this won't make a difference? It means that the bits sent over the wire (in UTF8) will not be the exact same bits as the javascript string (UTF16) is represented by when it's received, but these encoded bits should be describing the same character codes.</p>
+
+<p>So the next step was to intercept the ajax request that the javascript client was making for the data (compressed by C# code, delivered over the wire with UTF8 encoding) and to write out the character codes at that point.</p>
+
+<p>And there was a discrepancy! The character codes received were not the same that I'd generated by the C# code and that I thought I was transmitting!</p>
+
+<p>Thinking still that this must <em>somehow</em> be encoding-related, I started playing around with the encoding options when writing the data to disk. And noticed, innocently hidden away in an alternate constructor signature, the <strong>System.Text.UTF8Encoding</strong> class has an option to "throwOnInvalidBytes". What <em>is</em> this?</p>
+
+<p>I knew how UTF8 worked, that it uses a variable number of bytes and uses the most-signicant-bits to describe how many bytes are required for the current character (the <a href="http://en.wikipedia.org/wiki/Utf8">Wikipedia</a> article explains it nicely) and thought that that was pretty much all there was to it. So how could a byte be invalid?? Well, with this constructor argument set to true, I was getting the error</p>
+
+<blockquote>
+  <p>Unable to translate Unicode character \uD900 at index 6 to specified code page.</p>
+</blockquote>
+
+<p>so clearly particular bytes <em>can</em> be invalid somehow..</p>
+
+<h3>UTF Limitations</h3>
+
+<p>With this error, it didn't actually take much searching. There's a link on www.unicode.com; <a href="http://www.unicode.org/faq/utf_bom.html#utf16-7">Are there any 16-bit valuese that are invalid?</a> that states that</p>
+
+<blockquote>
+  <p>Unpaired surrogates are invalid in UTFs. These include any value in the range D80016 to DBFF16 not followed by a value in the range DC0016 to DFFF16, or any value in the range DC0016 to DFFF16 not preceded by a value in the range D80016 to DBFF16</p>
+</blockquote>
+
+<p>I spent a little while wandering through various searches on the internet trying to decide what the best way would be to try to address this. I didn't want to have to try to find another compressor for all of the reasons that the author of the one I'm using outlined! Which made me think, maybe there's more information about this on his site.</p>
+
+<p>Lo and behold, in the <a href="http://pieroxy.net/blog/pages/lz-string/index.html">changelog</a> (at the bottom of that page), there's mention that there's a v1.3.0 available that has additional methods <em>compressToUTF16</em> and <em>decompressToUTF16</em> (<em>"version 1.3.0 now stable"</em>) that <em>"allow lz-string to produce something that you can store in localStorage on IE and Firefox"</em>.</p>
+
+<p>These new methods wrap the methods "compress" and "decompress". But the "compress" and "decompress" methods in this new version of the code look different to those in the code that I had been using (and had translated). But it's no big deal to translate the newer version (and the new methods).</p>
+
+<p>And now it works! I wish that this version had been the file you see when you go to the main <a href="https://github.com/pieroxy/lz-string">lz-string GitHub page</a> rather than being hidden in the "libs" folder. But considering how happy I am that the solution to my problem has been provided to me with little-to-no-effort, I'm really not going to complain! :)</p>
+
+<h3>Incorporating it into the solution</h3>
+
+<p>Step 1 was to alter my <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer">Blog-to-NeoCities Transformer</a> to write compressed versions of the per-post source location mappings data, along with compressed versions of the plain text post data and the JSON that has the titles for each post.</p>
+
+<p>The C# translation of the LZString code can be seen at: <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer/src/84be5b0af68305a912b4184ae579f03a548292a4/NeoCitiesTransformer/Misc/LZStringCompress.cs?at=default">LZStringCompress.cs</a>.</p>
+
+<p>Step 2 was to alter the javascript search code to handle the compressed content. Having included the 1.3.0 version of LZString.js, I needed to replace some of the $.ajax requests with calls to one of</p>
+
+<pre><code>function LoadCompressedData(strUrl, fncSuccess, fncFailure) {
+  // Note: I've seen this fail when requesting files with extension ".js" but work when the exact
+  // same file is renamed to ".txt", I'm not sure if this is in IIS that it's failing or if jQuery
+  // is requesting the data in a slightly different manner (despite the explicit dataType option),
+  // so best just ensuring that all LZ-compressed data is stored in a file with a ".txt" extension.
+  $.ajax({
+    url: strUrl,
+    dataType: "text",
+    success: function(strCompressedContent) {
+      var strContent;
+      try {
+        strContent = LZString.DecompressFromUTF16(strCompressedContent);
+      }
+      catch(e) {
+        if (fncFailure) {
+          fncFailure(e);
+        }
+        return;
+      }
+      fncSuccess(strContent);
+    }
+  });
+}
+
+function LoadCompressedJsonData(strUrl, fncSuccess, fncFailure) {
+  LoadCompressedData(
+    strUrl,
+    function(strContent) {
+      var objData;
+      try {
+        eval("objData = " + strContent);
+      }
+      catch(e) {
+        if (fncFailure) {
+          fncFailure(e);
+        }
+        return;
+      }
+      fncSuccess(objData);
+    },
+    function() {
+      if (fncFailure) {
+        fncFailure(arguments);
+      }
+    }
+  );
+}
+</code></pre>
+
+<p>Step 3 is.. there <em>is</em> no step 3! Everything was now working but taking up less space on the hosting.</p>
+
+<p>When compressed, the detailed source location mappings data is reduced from a combined 4.7MB to 1.5MB. The plain text content was reduced from 664kb to 490kb (not as much of a saving as I'd expected, to be honest). The titles JSON shrank marginally from 2.58kb to 2.36kb. The summary data JSON wasn't compressed so that the first stage of the search could be performed as quickly as possible and <em>one</em> non-compressed file on the server was no problem (it's still gzip'd when passed to the client, though, so there's no bandwidth cost). In total, 5.3MB of data was condensed into requiring less than 2MB on the server. Which I am happily marking down as a win :)</p>
+
+<p>So here's to me hopefully fitting <em>many</em> more posts (along with all of the related javascript searching data) into the NeoCities hosting limitations! I'm sure that if I ever start pushing that 10MB point again, by then the 10MB limit will have been raised - 20MB is already on the way!</p>
+<p class="PostTime">Posted at 23:22</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li><li><a href="Archive/Tag/NeoCities.html" title="2 Posts">NeoCities</a></li></ul></div>
+						<p class="Comments">
+							<a href="javascript-compression-putting-my-json-search-indexes-on-a-diet.html#disqus_thread" data-disqus-identifier="60">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">10 July 2013</h3><h2><a id="Post58"></a><a href="the-neocities-challenge-aka-the-full-text-indexer-goes-clientside.html">The NeoCities Challenge! aka The Full Text Indexer goes client-side!</a></h2>
+
+<p>When I heard about <a href="http://neocities.org/">NeoCities</a> last week, I thought it was a cool idea - offering some back-to-basics hosting for an outlay of absolutely zero. Yeah, the first thing that came to mind was those geocities sites that seemed to want to combine pink text, lime green backgrounds and javascript star effects that chase the cursor.. but that's just nostalgia! :)</p>
+
+<p>The more I thought about it, the more I sort of wondered whether I couldn't host this blog there. I'm happy with my hosting, it's cheap and fast, but I just liked the idea of creating something simple with the raw ingredients of html, css and javascript alone. I mean, it should be easy enough to flatten the site so that all of the pages are single html files, with a different file per month, per Post, per tag.. the biggest stumbling blog was the site search which is powered by my <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer</a> project. Obviously that won't work when everything is on the client, when there <em>is</em> no server backend to power it. Unless..</p>
+
+<p>.. a <em>client-side</em> Full Text Indexer Search Service.. ??</p>
+
+<p><strong>Challenge accepted!!</strong> :D</p>
+
+<h3>NeoCities Hosting</h3>
+
+<p>Before I get carried away, I'll breeze through the NeoCities basics and how I got most of my site running atNeoCities. I initially thought about changing the code that runs my site server-side to emit a flattened version for upload. But that started to seem more and more complicated the more I thought about it, and seemed like maintaining it could be a headache if I changed the blog over time.</p>
+
+<p>So instead, I figured why not treat the published blog (published at <a href="http://www.productiverage.com">www.productiverage.com</a>) as a generic site and crawl it, grab content, generate new urls for a flattened structure, replace urls in the existing content with the new urls and publish it like that. How hard could it be??</p>
+
+<p>Since my site is almost entirely html and css (well, <a href="noncascading-css-a-revolution.html">LESS with some rules and structure</a>, but it compiles down to css so why be fussy) with only a smattering of javascript, this should be easy. I can use the <a href="http://htmlagilitypack.codeplex.com/">Html Agility Pack</a> to parse and alter html and I very conveniently have a <a href="parsing-css.html">CSS Parser</a> that can be used to update urls (like backgrounds) in the stylesheets.</p>
+
+<p>And, in a nutshell, that's what I've done. The first version of this NeoCities-hosted blog hid the site search functionality and ran from pure html and css. I had all of the files ready to go in a local IIS site as a proof of concept. Then I went to upload them.. With the Posts and the Archive and Tags pages, there were 120-something files. I'd only used the uploader on the NeoCities page to upload a single test file up to this point and so hadn't realised that that's all it would let you do; upload a single file at a time. Even if I was willing to upload all of the files individually now (which, I must admit, I did; I was feeling overexcitable about getting the first version public! :) this wouldn't scale, I couldn't (wouldn't) do it every time I changed something - a single new Post could invalidate many Pages, considering the links between Posts, the Montly Archive pages, the Tags pages, etc..</p>
+
+<p>I spent a few minutes googling to see if anyone else could offer a sensible solution and came up empty.</p>
+
+<p>So Plan B was to have a look with <a href="http://fiddler2.com/">Fiddler</a> to see what the upload traffic looked like. It seemed fairly straight-forward, an authorisation cookie (to identify who I was logged in as) and a "csrf_token" form value, along with the uploaded file's content. I was familiar with the phrase "Cross Site Request Forgery" (from "csrf_token") but didn't really know what it meant in this context. I thought I'd take a punt and try manipulating the request to see if that token had to vary between uploads and it didn't seem to (Fiddler lets you take a request, edit it and broadcast it - so uploading a text file provided an easy to mess-with request, I could change one character of the file and leave everything else, content-length included, the same and refresh the browser to see if the new content had arrived).</p>
+
+<p>This was enough to use the .net <strong>WebRequest</strong> class and upload files individually. I wrote something to loop over the files in my local version of the site and upload them all.. and it worked! There were some stumbling blocks with getting the cookie sent and specifying the form value <em>and</em> the file to upload but StackOverflow came to the rescue each time. There is one outstanding issue that each upload requests received a 500 Server Error response even though it was successful, but I chose to ignore that for now - yes, this approach is rough around the edges but it's functional for now!</p>
+
+<p>In case this is useful to anyone else, I've made the code available at Bitbucket: <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer">The BlogToNeocitiesTransformer</a>.</p>
+
+<p>If you plug in the auth cookie and csrf token values into the (C#) console application (obtaining those values by looking at a manual upload request in Fiddler still seems like the only way right now) then you can use it yourself, should you have need to. That app actually does the whole thing; downloads a site's content, generates a flattened version (rewriting the html and css, ensuring the urls follow NeoCities' filename restrictions) and then uploads it all to a NeoCities account.</p>
+
+<h3>Temporary Measures</h3>
+
+<p>Thankfully, this file upload situation looks to only be temporary. <a href="https://twitter.com/kyledrake">Kyle Drake</a> (NeoCities' proud father) has updated the blog today with <a href="http://neocities.org/blog/neocities-can-now-handle-two-million-web-sites">NeoCities can now handle two million web sites. Here's what we're working on next.</a> In there he says that the file upload process is going to be improved with "things like drag-and-drop file uploading, and then with an API to allow developers to write tools to upload files", which is excellent news! He also addresses the limits on file types that may be uploaded. At the moment "ico" is not in the white list of allowed extensions and so I can't have a favicon for my blog at NeoCities. But this is soon to be replaced with a "black list" (to block executables and the like) so my favicon should soon be possible* :)</p>
+
+<p>* <em>(I half-contemplated, before this announcement, a favicon in another format - such as gif or png - but it seems that this counts out IE and I wanted a solution for all browsers).</em></p>
+
+<p>Hopefully this black listing approach will allow me to have an RSS feed here as well - essentially that's just an xml file with an xslt to transform the content into a nice-to-view format. And since xslt is just xml I thought that it might work to have an xslt reference in the xml file that has an xml extension itself. But alas, I couldn't get it working, I just kept getting a blank screen in Chrome although "view source" showed the content was present. I'll revisit this when the file restrictions have been changed.</p>
+
+<p><strong>Update (25th July 2013):</strong> The NeoCities interface has been updated so that multiple files can be uploaded by dragging-and-dropping! I still can't upload my favicon yet though..</p>
+
+<p><strong>Update (12th August 2014):</strong> I'm not sure when, exactly, but favicons <em>are</em> now support (any .ico file is, in fact). It's a little thing but I do think it adds something to the identity of a site so I'm glad they changed this policy.</p>
+
+<h3>Site Search!</h3>
+
+<p>This was all well and good, but at this point the site search was missing from the site. This functionality is enabled by server-side code that takes a search string, tries to find matching Posts and then shows the results with Post titles and content excerpts with the matching term(s) highlighted. The matching is done against an index of tokens (possible words) so that the results retrieval can be very fast. The index records <em>where</em> in the source content it matches the token, which enables the except-highlighting. It has support for plurality matching (so it knows that "cat" and "cats" can be considered to be the same word) and has some other flexibility with ignoring letter case, ignoring accents on characters, ignoring certain characters (so "book's" is considered the same as "books") and search term splitting (so "cat posts" matches Posts with "cat" <em>and</em> "posts" in, rather than requiring that a Post contain the exact phrase "cat posts").</p>
+
+<p>But the index is essentially a string-key dictionary onto the match data (the C# code stores it as a <a href="http://en.wikipedia.org/wiki/Ternary_search_tree">ternary search tree</a> for performance but it's still basically just a dictionary). Javascript loves itself some associative arrays (all objects are associated arrays, basically bags of string-named properties) and associative arrays are basically string-key dictionaries. It seemed like the start of an idea!</p>
+
+<p>If the index was still generated server-side (as it has to be for my "primary" blog hosting) then I should be able to represent this data as something that javascript could interpret and then perform the searching itself on the client..</p>
+
+<p>The plan:</p>
+
+<ol>
+<li>Get the generated <a href="https://bitbucket.org/DanRoberts/full-text-indexer/src/1839c7c61ab41fc0aad93fc5ea10f7f5e43b869d/Core/Indexes/IIndexData.cs?at=default">IIndexData&lt;int&gt;</a> from my server-side blog (it's an int since the Posts all have a unique int "Id" property)</li>
+<li>Use the <strong>GetAllTokens</strong> and <strong>GetMatches</strong> methods to loop through each token in the data and generate JSON to represent the index, storing at this point only the Post Keys and their match Weight so that searching is possible</li>
+<li>Do something similar to get tokens, Keys, Weights <em>and</em> Source Locations (<em>where</em> in the source content the matches were identified) for each Post, resulting in detailed match data for each individual Post</li>
+<li>Get plain text content for each Post from the server-side data (the Posts are stored as <a href="http://daringfireball.net/projects/markdown/">Markdown</a> in my source and translated into html for rendering and plain text for searching)</li>
+<li>Write javascript classes that can use this data to perform a search and then render the results with matched terms highlighted, just like the server-side code can do</li>
+<li>Profit!</li>
+</ol>
+
+<p>(This is actually a slightly amended plan from the original, I tried first to generate a single JSON file with the detailed content for <em>all</em> Posts but it was over 4 meg uncompressed and still bigger than I wanted when delivered from NeoCities gzip'd. So I went for the file-with-summary-data-for-all-Posts and then separate files for detailed data for individual Posts).</p>
+
+<p>I used <a href="http://james.newtonking.com/pages/json-net.aspx">JSON.Net</a> for the serialisation (it's just the go-to for this sort of thing!) and used intermediary C# classes where each property was only a single character long to try to keep the size of the serialised data down. (There's nothing complicated about this, if more detail is of interest then the code can be found in the <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer/src/c00e31be4b34e1f3587df3815643b6565dbc1a4a/NeoCitiesTransformer/SearchIndexDataStorage/JsonSearchIndexDataRecorder.cs?at=default">JsonSearchIndexDataRecorder</a> class available on Bitbucket).</p>
+
+<h3>C# -> Javascript</h3>
+
+<p>So now I had a single JSON file for performing a search across all Posts, multiple JSON files for term-highlighting individual Posts and text files containing the content that the source locations mapped onto (also for term-highlighting). I needed to write a javascript <strong>ITokenBreaker</strong> (to use the parlance of the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer</a> project) to reduce a search term into individual words (eg. "Cat posts" into "Cat" and "posts"), then an <strong>IStringNormaliser</strong> that will deal with letter casing, pluralisation and all that guff (eg. "Cat" and "posts" into "cat~" and "post~"). Then a way to take each of these words and identify Posts which contain <em>all</em> of the words. And finally a way to use ajax to pull in the detailed match data and plain text content to display the Post excerpts with highlighted search term matches.</p>
+
+<p>To make things as snappy-feeling as possible, I wanted to display the title of matched Posts first while waiting for the ajax requests to deliver the match highlighting information - and for the content excerpts to be added in later.</p>
+
+<p>The file <a href="http://productiverage.neocities.org/IndexSearchGenerator.js">IndexSearchGenerator.js</a> takes a JSON index file and a search term, breaks the search term into words, "normalises" those words, identifies Posts that contain all of the normalised words and returns an array of Key, Weight and (if it was present in the data) Source Locations. It's only 264 lines of non-minified javascript and a lot of that is the mapping of accented characters to non-accented representations. (The Source Locations will not be present in the all-Posts summary JSON but <em>will</em> be in the per-Post detail JSON).</p>
+
+<p><a href="http://productiverage.neocities.org/SearchTermHighlighter.js">SearchTermHighlighter.js</a> takes the plain text content of a Post, a maximum length for a content-excerpt to show and a set of Source Locations for matched terms and returns a string of html that shows the excerpt that best matches the terms, with those terms highlighted. And that's only 232 lines of non-minified, commented code. What I found particularly interesting with this file was that I was largely able to copy-and-paste the C# code and fudge it into javascript. There were some issues with LINQ's absence. At the start of the <strong>GetPlainTextContentAsHighlightedHtml</strong> method, for example, I need to get the max "EndIndex" of any of the highlighted terms - I did this by sorting the Source Locations data by the EndIndex property and then taking the EndIndex value of the last element of the array. Easy! The algorithm for highlighting (determining the best excerpt to take and then highlighting any terms, taking care that any overlapped terms don't cause problems) wasn't particularly complicated but it was fairly pleasant to translate it "by rote" and have it work at the end.</p>
+
+<p>Finally, <a href="http://productiverage.neocities.org/SearchPage.js">SearchPage.js</a> fills in the gaps by determining whether you're on the search page and extracting (and url-decoding) the terms from the Query String if so, performing the initial search against the summary data (displaying the matched titles) and then making the ajax requests for the detailed data and rendering the match excerpts as they become available. Looping through the results, making ajax requests for detail data and handling the results for each Post when it is delivered is a bit like using a complicated asynchronous model in .net but in javascript this sort of async callback madness is parr for the course :) If this script decides that you're not on the search page then it makes an ajax request for the the summary regardless so that it can be browser-cached and improve the performance of the first search you make (the entirety of the summary data is only 77k gzip'd so it's no big deal if you don't end up actually performing a search).</p>
+
+<p>This last file is only 165 lines of commented, white-spaced javascript so the entire client-side implementation of the search facility is still fairly approachable and maintainable. It's effective (so long as you have javascript enabled!) and - now, bear with me if I'm just being overly impressed with my own creation - it looks cool performing the complicated search mechanics so quickly and fading in the matched excerpts! :)</p>
+
+<h3>Signing off</h3>
+
+<p>I'm really proud of this and had a lot of fun within the "NeoCities boundaries"! Yes, the source-site-grabbing-and-rewriting could be tidied up a bit. Yes, the file upload is currently a bit of a dodgy workaround. Yes, I still have a handful of TODOs about handling ajax failures in SearchPage.js. Yes, the search index files are bigger than I would have liked (significantly larger than not only the plain text content but also their full page html representations), which I may address by trying out a more complicated format rather than naive JSON (which was very easy). But it all works! And it works well. And the bits that are a bit untidy are only a <em>bit</em> untidy, on the whole they're robust and I'm sufficiently unashamed of them all that the code is all public!</p>
+
+<p>Speaking of which, my blog is primarily hosted at <a href="http://www.productiverage.com">www.productiverage.com</a>*  and I write about various projects which are hosted on my <a href="https://bitbucket.org/DanRoberts">Bitbucket account</a>. Among them, the source code for the <a href="https://bitbucket.org/DanRoberts/blog">Blog</a> itself, for the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer</a> which powers the server-hosted blog and which generates the source index data which I've JSON-ified, the <a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser</a> which I use in the rewriting / site-flattening process, the <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer">BlogToNeocitiesTransformer</a> which performs the site-flattening and a few other things that I've blogged about at various times. Ok, self-promotion over! :)</p>
+
+<p>* <em>(If you're reading this at my primary blog address, the NeoCities version with the client-side search can be found at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a>).</em></p>
+<p class="PostTime">Posted at 20:21</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li><li><a href="Archive/Tag/NeoCities.html" title="2 Posts">NeoCities</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-neocities-challenge-aka-the-full-text-indexer-goes-clientside.html#disqus_thread" data-disqus-identifier="58">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

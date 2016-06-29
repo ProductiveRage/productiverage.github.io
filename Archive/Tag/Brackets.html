@@ -1,0 +1,979 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Brackets</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">5 May 2015</h3><h2><a id="Post84"></a><a href="writing-a-brackets-extension-in-typescript-in-brackets.html">Writing a Brackets extension in TypeScript, in Brackets</a></h2>
+
+<p>For a while now, I've been meaning to try writing a TypeScript extension for <a href="http://brackets.io/">Adobe Brackets</a> - I like the editor, I like the fact that extensions are written in JavaScript, I like TypeScript; it seemed like an ideal combination!</p>
+
+<p>But to really crank it up, I wanted to see if I could put Visual Studio aside for a while (my preferred editor for writing TypeScript) and trying writing the extension for Brackets <em>with</em> Brackets. I'd written an <a href="https://bitbucket.org/DanRoberts/bracketsstyleformatterextension">extension</a> before and I was sure that I'd heard about some sort of extension for Brackets to support TypeScript, so I got stuck in..</p>
+
+<h3>Teaching Brackets about TypeScript</h3>
+
+<p>The short answer is that this <em>is</em> possible. The slightly longer answer is that it's possible but with a bit of work and the process is a bit rough around the edges.</p>
+
+<p>What I'm using for editing is the extension <a href="https://github.com/fdecampredon/brackets-typescript">brackets-typescript</a>, which appears as "Brackets TypeScript" when you search for "TypeScript" in the Extension Manager. It's written by <a href="https://github.com/fdecampredon">fdecampredon</a> (whose work I also relied upon last year for "<a href="writing-react-components-in-typescript.html">Writing React components in TypeScript</a>" - a busy guy!).</p>
+
+<p>This is the best extension for TypeScript but the TypeScript version is out of date in the released version of the extension - it doesn't yet use 1.4 and so some nice features such as union types and const enums are not available. The <a href="https://github.com/fdecampredon/brackets-typescript">GitHub code</a> <em>has</em> been updated to use 1.4.1, but that version of the extension has not been released yet. I contacted the author and he said that he intends to continue work on the extension soon but he's been sidelined with a pull request for the TypeScript Team to handle React's JSX format (see <a href="https://github.com/Microsoft/TypeScript/pull/2673">JSX Support #2673</a> - like I said, he's a busy guy :)</p>
+
+<p>I tried cloning the repo and building it myself, but one of the npm dependencies ("typescript-project-services") is not available and I gave up.</p>
+
+<p>So, for now, I'm having to live with an old version of the TypeScript compiler for editing purposes. I've been unable to determine precisely what version <em>is</em> being used, I tried looking through the source code but couldn't track it down. I suspect it's 0.9 or 1.0 since it supports generics but not the changes listed for 1.1 in the <a href="https://github.com/Microsoft/TypeScript/wiki/Breaking-Changes">TypeScript Breaking Changes</a> documentation.</p>
+
+<p>Another gotcha with this extension is that it does <em>not</em> appear to work correctly if you directly open a single TypeScript file. Occasionally it will appear to work but the majority of the time you will not get any intellisense or other features, even if you have the expected ".brackets.json" file (see below) alongside the file or in a parent folder. The way that you <em>can</em> get this to work is to decide where the base folder for your work is going to be, to put the ".brackets.json" file in there and then to open that folder in Brackets. <em>Then</em> you can add / open individual files within that folder as required and the TypeScript integration will work. I couldn't find this documented or described anywhere, and came to this conclusion through trial-and-error*.</p>
+
+<p>* <em>Maybe this is the common workflow for people who use Brackets a lot; maybe I'm the strange one that goes around opening individual files ad hoc all the time..?</em></p>
+
+<p>The other thing you need is a ".brackets.json" file alongside your source to specify some configuration for the extension.</p>
+
+<p>If you're creating an extension of your own, I would recommend a basic folder structure of</p>
+
+<blockquote>
+  <p>/build</p>
+  
+  <p>/src</p>
+</blockquote>
+
+<p>where the TypeScript files live within "src". And so "src" is the folder that would be opened within Brackets while writing the extension, and is also the folder in which to place the following ".brackets.json" file:</p>
+
+<pre><code>{
+    "typescript": {
+        "target": "ES5",
+        "module": "amd",
+        "noImplicitAny": true,
+        "sources" : [
+            "**/*.d.ts",
+            "**/*.ts"
+        ]
+    }
+}
+</code></pre>
+
+<p>For a Brackets extension, supporting ES5 (rather than ES3) and using the "AMD" module loading mechanism make sense (and are consistent with the environment that Brackets extensions operate in). Setting "noImplicitAny" to "true" is a matter of taste, but I think that the "any" concept in TypeScript should always be explicitly opted <em>into</em> since you're sacrificing compiler safety, which you should only do intentionally.</p>
+
+<p>So now we can start writing TypeScript in Brackets! But we are far from done..</p>
+
+<h3>Teaching TypeScript about Brackets</h3>
+
+<p>The next problem is that there don't appear to be any TypeScript defintions available for writing Brackets extensions.</p>
+
+<p>What I particularly want to do with my extension is write a linter for <a href="http://lesscss.org/">less stylesheets</a>. In order to do this, I need to do something such as:</p>
+
+<pre><code>var AppInit = brackets.getModule("utils/AppInit"),
+    CodeInspection = brackets.getModule("language/CodeInspection");
+
+function getBrokenRuleDetails(text: string, fullPath: string) {
+    var errors = [{
+        pos: { line: 4, ch: 0 },
+        message: "Example error on line 5",
+        type: CodeInspection.Type.ERROR
+    }];
+    return { errors: errors }
+}
+
+AppInit.appReady(() =&gt; {
+    CodeInspection.register(
+        "less",
+        { name: "Example Linting Results", scanFile: getBrokenRuleDetails }
+    );
+});
+</code></pre>
+
+<p>This means that TypeScript needs to know that there is a module "brackets" available at runtime and that it has a module-loading mechanism based upon strings identifiers (such as "utils/AppInit" and "language/CodeInspection"). For this, a "brackets.d.ts" needs to be created in the "src" folder (for more details than I'm going to cover here, see my post from earlier in year: <a href="simple-typescript-type-definitions-for-amd-modules.html">Simple TypeScript type definitions for AMD modules</a>).</p>
+
+<p>Conveniently, TypeScript has the ability to "<a href="http://blogs.msdn.com/b/typescript/archive/2013/03/25/working-on-typescript-0-9-generics-overload-on-constants-and-compiler-performance.aspx">Overload on Constants</a>", which means that a method can be specified with different return types for known constants for argument(s). This is an unusual feature (I can't immediately think of another statically-typed language that supports this; C# definitely doesn't, for example). The reason that it exists in TypeScript is interoperability with JavaScript. The example from the linked article is:</p>
+
+<pre><code>interface Document {
+    createElement(tagName: string): HTMLElement;
+    createElement(tagName: 'canvas'): HTMLCanvasElement;
+    createElement(tagName: 'div'): HTMLDivElement;
+    createElement(tagName: 'span'): HTMLSpanElement;
+    // + 100 more
+}
+</code></pre>
+
+<p>This means that "Document.createElement" is known to return different types based upon the "tagName" value. It's clear how it is useful for "createElement" (since different node types are returned, based upon the tagName) and it should be clear how it will be helpful here - the "brackets.getModule" function will return different types based upon the provided module identifier.</p>
+
+<p>I'm a long way from having a comprehensive type definition for Brackets' API, I've written just enough to integrate with it's linting facilities. The type definition required for that is as follows:</p>
+
+<pre><code>declare module brackets {
+    function getModule(name: "utils/AppInit"): AppInit;
+    function getModule(name: "language/CodeInspection"): CodeInspection;
+    function getModule(name: string): void;
+
+    interface AppInit {
+        appReady: (callback: () =&gt; void) =&gt; void;
+    }
+
+    interface CodeInspection {
+        register: (extension: string, lintOptions: LintOptions) =&gt; void;
+        Type: CodeInspectionTypeOptions
+    }
+
+    interface LintOptions {
+        name: string;
+        scanFile: (text: string, fullPath: string) =&gt; LintErrorSet
+    }
+
+    interface LintErrorSet { errors: LintErrorDetails[] }
+
+    interface LintErrorDetails {
+        pos: { line: number; ch: number };
+        message: string;
+        type: string
+    }
+
+    interface CodeInspectionTypeOptions {
+        WARNING: string;
+        ERROR: string
+    }
+}
+</code></pre>
+
+<p>The "Overload on Constants" functionality has a limitation in that a method signature is required that does <em>not</em> rely upon a constant value, so above there is a "getModule" method that handles any unsupported module name and returns void. It would be nice if there was a way to avoid this and to <em>only</em> define "getModule" methods for known constants, but that is not the case and so a void-returning "catch all" variation must be provided.</p>
+
+<p>There is another limitation that is unfortunate. The <strong>LintErrorDetails</strong> interface has had to be defined with a <strong>string</strong> "type" property, it would have been better if this could have been an enum. However, the constants within Brackets are within the "CodeInspection" module - eg.</p>
+
+<pre><code>CodeInspection.Type.ERROR
+</code></pre>
+
+<p>The "CodeInspection" reference is returned from a "getModule" call and so must be an interface or class, and an enum may not be nested within an interface or class definition. If "CodeInspection" was identified as a module then an enum <em>could</em> be nested in it, but then the getModule function definition would complain that</p>
+
+<blockquote>
+  <p>Type reference cannot refer to container 'brackets.CodeInspector'</p>
+</blockquote>
+
+<p>.. which is a pity. So the workaround is to have <strong>LintErrorDetails</strong> take a <strong>string</strong> "type" property but for a non-nested enum to be exposed from "CodeInspection" that may be used for those values. So it's valid to define error instances with the following:</p>
+
+<pre><code>var errors = [{
+    pos: { line: 4, ch: 0 },
+    message: "Example error on line 5",
+    type: CodeInspection.Type.ERROR
+}];
+</code></pre>
+
+<p>but unfortunately it's also valid to use nonsense string "type" values, such as:</p>
+
+<pre><code>var errors = [{
+    pos: { line: 4, ch: 0 },
+    message: "Example error on line 5",
+    type: "BlahBlahBlah"
+}];
+</code></pre>
+
+<h3>Compile-on-save</h3>
+
+<p>So, at this point, we can actually start writing a linter extension in TypeScript. However, the Brackets TypeScript extension doesn't support compiling this to JavaScript. So we can write as much as we like, it's not going to be very useful!</p>
+
+<p>This is another to-do item for the Brackets TypeScript extension (according to a <a href="https://typescript.codeplex.com/discussions/473914">discussion on CodePlex</a>) and so hopefully the following will not be required forever. However, right now, some extra work <em>is</em> needed..</p>
+
+<p>The go-to solution for compiling TypeScript seems to be to use <a href="http://gruntjs.com/">Grunt</a> and <a href="https://github.com/TypeStrong/grunt-ts">grunt-ts</a>.</p>
+
+<p>If you have npm installed then this is fairly easy. However there are - again - some gotchas. In the "grunt-ts" readme, it says you can install it using</p>
+
+<blockquote>
+  <p>npm install grunt-ts</p>
+</blockquote>
+
+<p>"in your project directory". I would recommend that this "project directory" be the root where the "src" and "build" folders that I suggested live. However, when I tried this, it created the "grunt-ts" folder in a "node_modules" folder in a parent a couple of levels up from the current directory! Probably I'd done something silly with npm. But a way to avoid this is to <em>not</em> specify npm packages individually at the command line and to instead create a "package.json" file in your project root (again, I'm referring to the folder that <em>contains</em> the "src" and "build" folders) - eg.</p>
+
+<pre><code>{
+    "name": "example.less-linter",
+    "title": "Example LESS Linter",
+    "description": "Extension for linting LESS stylesheets",
+    "version": "0.1.0",
+    "engines": {
+        "brackets": "&gt;=0.40.0"
+    },
+    "devDependencies": {
+        "grunt-ts": "&gt;= 4.0.1",
+        "grunt-contrib-watch": "&gt;= 0.6.1",
+        "grunt-contrib-copy": "&gt;= 0.8.0"
+    }
+}
+</code></pre>
+
+<p>This will allow you to run</p>
+
+<blockquote>
+  <p>npm install</p>
+</blockquote>
+
+<p>from the project folder and have it pull in everything you'll need into the appropriate locations.</p>
+
+<p>The plan is to configure things such that any TypeScript (or TypeScript definition) file change will result in them all being re-compiled and then the JavaScript files copied into the "build" folder, along with this package.json file. That way, the "build" folder can be zipped up and distributed (or dropped into Bracket's "extensions" folder for immediate testing).</p>
+
+<p>Here's the "gruntfile.js" that I use (this needs to be present in the project root, alongside the "package.json" file and "src" / "build" folders) -</p>
+
+<pre><code>/*global module */
+module.exports = function (grunt) {
+    "use strict";
+    grunt.initConfig({
+        ts: {
+            "default": {
+                src: ["src/**/*.d.ts", "src/**/*.ts"]
+            },
+            options: {
+                module: "amd",
+                target: "es5",
+                sourceMap: true,
+                noImplicitAny: true,
+                fast: "never"
+            }
+        },
+        copy: {
+            main: {
+                files: [
+                    { expand: true, cwd: "src/", src: ["**.js"], dest: "build/" },
+                    { src: ["package.json"], dest: "build/" }
+                ]
+            }
+        },
+        watch: {
+            scripts: {
+                files: ["src/**/*.d.ts", "src/**/*.ts"],
+                tasks: ["ts", "copy"],
+                options: { spawn: false }
+            }
+        }
+    });
+
+    grunt.loadNpmTasks("grunt-contrib-watch");
+    grunt.loadNpmTasks("grunt-contrib-copy");
+    grunt.loadNpmTasks("grunt-ts");
+
+    grunt.registerTask("default", ["ts", "copy", "watch"]);
+};
+</code></pre>
+
+<p>There is some repeating of configuration (such as "es5" and "amd" TypeScript options) since this does not share any configuration with the Brackets TypeScript extension. The idea is that you fire up Brackets and open the "src" folder of the extension that you're writing. Then open up a command prompt and navigate to the project directory root and execute Grunt. This will compile your current TypeScript files and copy the resulting JavaScript from "src" into "build", then it will wait until any of the ".ts" (or ".d.ts") files within the "src" folder are changed and repeat the build &amp; copy process.</p>
+
+<p>It's worth noting that grunt-ts has some file-watching logic built into it, but if you want the source and destination folders to be different then it uses a hack where it injects a ".basedir.ts" file into the source, resulting in a ".basedir.js" in the destination - which I didn't like. It also doesn't support additional actions such as copying the "package.json" from the root into the "build" folder. The <a href="https://github.com/TypeStrong/grunt-ts">readme for grunt-ts</a> recommends using grunt-contrib-watch for more complicated watch configurations, so that's what I've done.</p>
+
+<p>One other issue I had with grunt-ts was with its "fast compile" option. This would always work the first time, but subsequent compilations would seem to lose the "brackets.d.ts" file and so claim that "brackets" was not a known module. This was annoying but easy to fix - the gruntfile.js above sets ts.options.fast to "never". This may mean that the compilation step will be a bit slower, but unless you're extension is enormous then this shouldn't be an issue.</p>
+
+<h3>Final tweaks</h3>
+
+<p>And with that, we're basically done! We can write TypeScript against the Brackets API (granted, if you want to use more functions in the API than I've defined then you'll have to get your hands dirty with the "brackets.d.ts" file) and this code can be compiled into JavaScript and copied into a "build" folder along with the package definition.</p>
+
+<p>The only other thing I'd say is that I found the "smart indenting" in Brackets to be appalling with TypeScript - it moves things all over the place as you go from one line to another! It's easily disabled, though, thankfully. There's a configuration file that needs editing - see the comment by "rkn" in <a href="http://www.raymondcamden.com/2012/08/22/Small-little-Adobe-Brackets-tweak-remove-Smart-Indent#comment-1713742741">Small little Adobe Brackets tweak – remove Smart Indent</a>. Once you've done this, you don't need to restart Brackets; it will take effect immediately.</p>
+
+<p>And now we really are done! Happy TypeScript Brackets Extension writing! Hopefully I'll have my first TypeScript extension ready to release in an early state soon.. :)</p>
+
+<p>(For convenience junkies, I've created a Bitbucket repo with everything that you need; the "<a href="https://bitbucket.org/DanRoberts/example-typescript-brackets-extension">Example TypeScript Brackets Extension</a>").</p>
+<p class="PostTime">Posted at 22:50</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/Brackets.html" title="3 Posts">Brackets</a></li><li><a href="Archive/Tag/TypeScript.html" title="6 Posts">TypeScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="writing-a-brackets-extension-in-typescript-in-brackets.html#disqus_thread" data-disqus-identifier="84">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">19 August 2014</h3><h2><a id="Post73"></a><a href="the-c-sharp-css-parser-in-javascript.html">The C# CSS Parser in JavaScript</a></h2>
+
+<p>I was talking last month (in <a href="javascript-dependencies-that-work-with-brackets-node-and-inbrowser.html">JavaScript dependencies that work with Brackets, Node and in-browser</a>) about <a href="http://brackets.io">Adobe Brackets</a> and how much I'd been enjoying giving it a try - and how its extensions are written in JavaScript.</p>
+
+<p>Well this had made me ambitious and wondering whether I could write an extension that would lint LESS stylesheets according to the rules I proposed last year in "<a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a>" - rules which have now been put into use on some major UK tourism destination websites through my subtle influence at work (and, granted, the Web Team Leader's enthusiasm.. but it's my blog so I'm going to try to take all the credit I can :) We have a LESS processor that applies these rules, the only problem is that it's written in C# and so can't easily be used by the Brackets editor.</p>
+
+<p>But in the past I've <a href="the-neocities-challenge-aka-the-full-text-indexer-goes-clientside.html">rewritten my own full text-indexer into JavaScript</a> so translating my <a href="https://bitbucket.org/DanRoberts/cssparser">C# CSSParser</a> shouldn't be too big of a thing. The main processing is described by a state machine - I published a slightly rambling explanation in my post <a href="parsing-css.html">Parsing CSS</a> which I followed up with <a href="c-sharp-state-machines.html">C# State Machines</a>, that talks about the same topic but in a more focused manner. This made things really straight forward for translation.</p>
+
+<p>When parsing content and categorising a sequence of characters as a Comment or a StylePropertyValue or whatever else, there is a class that represents the current state and knows what character(s) may result in a state change. For example, a single-line-comment processor only has to look out for a line return and then it may return to whatever character type it was before the comment started. A multi-line comment will be looking out for the characters "*/". A StylePropertyValue will be looking out for a semi-colon or a closing brace, but it also needs to look for quote characters that indicate the start of a quoted section - within this quoted content, semi-colons and closing braces do <em>not</em> indicate the end of the content, only a matching end quote does. When this closing quote is encountered, the logic reverts back to looking for a semi-colon or closing brace.</p>
+
+<p>Each processor is self-contained and most of them contain very little logic, so it was possible to translate them by just taking the C# code, pasting it into a JavaScript file, altering the structure to be JavaScript-esque and removing the types. As an example, this C# class</p>
+
+<pre><code>public class SingleLineCommentSegment : IProcessCharacters
+{
+  private readonly IGenerateCharacterProcessors _processorFactory;
+  private readonly IProcessCharacters _characterProcessorToReturnTo;
+  public SingleLineCommentSegment(
+    IProcessCharacters characterProcessorToReturnTo,
+    IGenerateCharacterProcessors processorFactory)
+  {
+    if (processorFactory == null)
+      throw new ArgumentNullException("processorFactory");
+    if (characterProcessorToReturnTo == null)
+      throw new ArgumentNullException("characterProcessorToReturnTo");
+
+    _processorFactory = processorFactory;
+    _characterProcessorToReturnTo = characterProcessorToReturnTo;
+  }
+
+  public CharacterProcessorResult Process(IWalkThroughStrings stringNavigator)
+  {
+    if (stringNavigator == null)
+      throw new ArgumentNullException("stringNavigator");
+
+    // For single line comments, the line return should be considered part of the comment content
+    // (in the same way that the "/*" and "*/" sequences are considered part of the content for
+    // multi-line comments)
+    var currentCharacter = stringNavigator.CurrentCharacter;
+    var nextCharacter = stringNavigator.CurrentCharacter;
+    if ((currentCharacter == '\r') &amp;&amp; (nextCharacter == '\n'))
+    {
+      return new CharacterProcessorResult(
+        CharacterCategorisationOptions.Comment,
+        _processorFactory.Get&lt;SkipCharactersSegment&gt;(
+          CharacterCategorisationOptions.Comment,
+          1,
+          _characterProcessorToReturnTo
+        )
+      );
+    }
+    else if ((currentCharacter == '\r') || (currentCharacter == '\n')) {
+      return new CharacterProcessorResult(
+        CharacterCategorisationOptions.Comment,
+        _characterProcessorToReturnTo
+      );
+    }
+
+    return new CharacterProcessorResult(CharacterCategorisationOptions.Comment, this);
+  }
+}
+</code></pre>
+
+<p>becomes</p>
+
+<pre><code>var getSingleLineCommentSegment = function (characterProcessorToReturnTo) {
+  var processor = {
+    Process: function (stringNavigator) {
+      // For single line comments, the line return should be considered part of the comment content
+      // (in the same way that the "/*" and "*/" sequences are considered part of the content for
+      // multi-line comments)
+      if (stringNavigator.DoesCurrentContentMatch("\r\n")) {
+        return getCharacterProcessorResult(
+          CharacterCategorisationOptions.Comment,
+          getSkipNextCharacterSegment(
+            CharacterCategorisationOptions.Comment,
+            characterProcessorToReturnTo
+          )
+        );
+      } else if ((stringNavigator.CurrentCharacter === "\r")
+          || (stringNavigator.CurrentCharacter === "\n")) {
+        return getCharacterProcessorResult(
+          CharacterCategorisationOptions.Comment,
+          characterProcessorToReturnTo
+        );
+      }
+      return getCharacterProcessorResult(
+        CharacterCategorisationOptions.Comment,
+        processor
+      );
+    }
+  };
+  return processor;
+};
+</code></pre>
+
+<p>There are some concessions I made in the translation. Firstly, I tend to be very strict with input validation in C# (I long for a world where I can replace it all with code contracts but the last time I looked into the .net work done on that front it didn't feel quite ready) and try to rely on rich types to make the compiler work for me as much as possible (in both documenting intent and catching silly mistakes I may make). But in JavaScript we have no types to rely on and it seems like the level of input validation that I would perform in C# would be very difficult to replicate as reliably without them. Maybe I'm rationalising, but while searching for a precedent for this sort of thing, I came across the article <a href="https://www.joyent.com/developers/node/design/errors">Error Handling in Node.js</a> which distinguishes between "operational" and "programmer" errors and states that</p>
+
+<blockquote>
+  <p>Programmer errors are bugs in the program. These are things that can always be avoided by changing the code. They can never be handled properly (since by definition the code in question is broken).</p>
+</blockquote>
+
+<p>One example in the article is</p>
+
+<blockquote>
+  <p>passed a "string" where an object was expected</p>
+</blockquote>
+
+<p>Since the "getSingleLineCommentSegment" function shown above is private to the CSS Parser class that I wrote, it holds true that any invalid arguments passed to it would be programmer error. So in the JavaScript version, I've been relaxed around this kind of validation. Not, mind you, that this means that I intend to start doing the same thing in my C# code - I still think that where static analysis is possible that every effort should be used to document in the code what is right and what is wrong. And while (without relying on some of the clever stuff I believe that is in the code contracts work that Microsoft has done) argument validation exceptions can't contribute to <em>static</em> analysis, I do still see it as documentation for pre-compile-time.</p>
+
+<p>Another concession I made was that in the C# version I went to effort to ensure that processors could be re-used if their configuration was identical - so there wouldn't have to be a new instances of a SingleLineCommentSegment processor for <em>every</em> single-line comment encountered. A "processorFactory" would new up an instance if an existing instance didn't already exist that could be used. This was really an optimisation that was intended for parsing huge amounts of content, as were some of the other decisions made in the C# version - such as the strict use of <strong>IEnumerable</strong> with only very limited read-ahead (so if the input was being read from a stream, for example, only a very small part of the stream's data need be in memory at any one time). For the JavaScript version, I am only imagining it being used to validate a single file and if that entire file can't be held as an array of characters by the editor then I think there are bigger problems afoot!</p>
+
+<p>So the complications around the "processorFactory" were skipped and the content was internally represented by a string that was the entire content. (Since the processor format expects a "string navigator" that reads a single character at a time, the JavaScript version has an equivalent object but internally this has a reference to the whole string, whereas the C# version did lots of work to deal with streams or any other enumerable source*).</p>
+
+<p>* <em>(If you have time to kill, I wrote a post last year.. well, more of an essay.. about how the C# code could access a <strong>TextReader</strong> through an immutable interface wrapper - internally an event was required on the implementation and if you've ever wanted to know the deep ins and outs of C#'s event system, how it can appear to cause memory leaks and what crazy hoops can be jumped through or avoided then you might enjoy it! See <a href="autoreleasing-event-listeners.html">Auto-releasing Event Listeners</a>).</em></p>
+
+<h3>Fast-forward a bit..</h3>
+
+<p>The actual details of the translating of the code aren't that interesting, it really was largely by rote with the biggest problem being concentrating hard enough that I didn't make silly mistakes. The optional second stage of processing - that takes categorised strings (Comment, StylePropertyName, etc..) and translates them into the heriarchical data that a LESS stylesheet describes - used bigger functions with messier logic, rather than the state machine of the first parsing phase, but it still wasn't particularly complicated and so the same approach to translation was used.</p>
+
+<p>One thing I did quite get in to was making sure that I followed all of JSLint's recommendations, since Brackets highlights every rule that you break by default. I touched on JSLint last time (in <a href="javascript-dependencies-that-work-with-brackets-node-and-inbrowser.html">JavaScript dependencies that work with Brackets, Node and in-browser</a>) - I really like what Google did with Go in having a <a href="http://golang.org/pkg/fmt">formatter</a> that dictates how the code should be laid out and so having JSLint shout at me for having brackets on the wrong line meant that I stuck to a standard and didn't have to worry about it. I didn't inherently like having an "else" start on the same line as the closing brace of the previous condition, but if that's the way that everyone using JSLint (such as everyone following the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a> when writing extensions) then fair enough, I'll just get on with it!</p>
+
+<p>Some of the rules I found quite odd, such as its hatred of "++", but then I've always found that one strange. According to the official site,</p>
+
+<blockquote>
+  <p>The ++ (increment) and -- (decrement) operators have been known to contribute to bad code by encouraging excessive trickiness</p>
+</blockquote>
+
+<p>I presume that this refers to confusion between "i++" and "++i" but the extended version of "i++" may be used: "i = i + 1" or "i += 1". Alternatively, mutation of a loop counter can be avoided entirely with the use of "forEach" -</p>
+
+<pre><code>[1, 2, 3].forEach(function(element, index) {
+</code></pre>
+
+<p>This relies upon a level of compatibility when considering JavaScript in the browser (though ancient browsers can have this worked around with polyfills) but since I had a Brackets extension as the intended target, "forEach" seemed like the best way forward. It also meant that I could avoid the warning</p>
+
+<blockquote>
+  <p>Avoid use of the continue statement. It tends to obscure the control flow of the function.</p>
+</blockquote>
+
+<p>by returning early from the enumeration function rather than continuing the loop (for cases where I wanted to use "continue" within a loop).</p>
+
+<p>I think it's somewhat difficult to justify returning early within an inline function being more or less guilty of obscuring the control flow than a "continue" in a loop, but using "forEach" consistently avoided two warnings and reduced mutation of local variables which I think is a good thing since it reduces (even if only slightly) mental overhead when reading code.</p>
+
+<p>At this point, I had code that would take style content such as</p>
+
+<pre><code>div.w1, div.w2 {
+  p {
+    strong, em { font-weight: bold; }
+  }
+}
+</code></pre>
+
+<p>and parse it with</p>
+
+<pre><code>var result = CssParserJs.ExtendedLessParser.ParseIntoStructuredData(content);
+</code></pre>
+
+<p>into a structure</p>
+
+<pre><code>[{
+  "FragmentCategorisation": 3,
+  "Selectors": [ "div.w1", "div.w2" ],
+  "ParentSelectors": [],
+  "SourceLineIndex": 0,
+  "ChildFragments": [{
+      "FragmentCategorisation": 3,
+      "Selectors": [ "p" ],
+      "ParentSelectors": [ [ "div.w1", "div.w2" ] ],
+      "SourceLineIndex": 1,
+      "ChildFragments": [{
+          "FragmentCategorisation": 3,
+          "Selectors": [ "strong", "em" ],
+          "ParentSelectors": [ [ "div.w1", "div.w2" ], [ "p" ] ],
+          "ChildFragments": [{
+              "FragmentCategorisation": 4,
+              "Value": "font-weight",
+              "SourceLineIndex": 2
+          }, {
+              "FragmentCategorisation": 5,
+              "Property": {
+                  "FragmentCategorisation": 4,
+                  "Value": "font-weight",
+                  "SourceLineIndex": 2
+              },
+              "Values": [ "bold" ],
+              "SourceLineIndex": 2
+          }],
+          "SourceLineIndex": 2
+      }]
+  }]
+}];
+</code></pre>
+
+<p>where the "FragmentCategorisation" values come from an enum-emulating reference CssParser.ExtendedLessParser.FragmentCategorisationOptions which has the properties</p>
+
+<pre><code>Comment: 0
+Import: 1,
+MediaQuery: 2,
+Selector: 3,
+StylePropertyName: 4,
+StylePropertyValue: 5
+</code></pre>
+
+<h3>So it works?</h3>
+
+<p>At this point, it was looking rosey - the translation had been painless, I'd made the odd silly mistake which I'd picked up quickly and it was giving the results I expected for some strings of content I was passing in. However, it's hard to be sure that it's <em>all</em> working perfectly without trying to exercise more of the code. Or without constructing some unit tests!</p>
+
+<p>The C# project has unit tests, using <a href="https://github.com/xunit/xunit">xUnit</a>. When I was looking at dependency management for my last post, one of the packages I was looking at was <a href="https://github.com/jashkenas/underscore">Underscore</a> which I was looking up to as an implementation of what people who knew what they were doing were actually doing. That repository includes a "test" folder which makes use of <a href="http://qunitjs.com/">QUnit</a>. A basic QUnit configuration consists of an html page that loads in the QUnit library - this makes available methods such as "ok", "equal", "notEqual", "deepEqual" (for comparing objects where the references need not be the same but all of their properties and the properties of nested types must match), "raises" (for testing for errors being raised), etc.. The html page also loads in one or more JavaScript files that describe the tests. The tests may be of the form</p>
+
+<pre><code>test('AttributeSelectorsShouldNotBeIdentifiedAsPropertyValues', function () {
+  var content = "a[href] { }",
+      expected = [
+        { Value: "a[href]", IndexInSource: 0, CharacterCategorisation: 4 },
+        { Value: " ", IndexInSource: 7, CharacterCategorisation: 7 },
+        { Value: "{", IndexInSource: 8, CharacterCategorisation: 2 },
+        { Value: " ", IndexInSource: 9, CharacterCategorisation: 7 },
+        { Value: "}", IndexInSource: 10, CharacterCategorisation: 1 }
+      ];
+  deepEqual(CssParserJs.ParseLess(content), expected);
+});
+</code></pre>
+
+<p>so they're nice and easy to read and easy to write.</p>
+
+<p><em>(Note: In the actual test code, I've used the enum-esque values instead of their numeric equivalents, so instead of</em></p>
+
+<pre><code>CharacterCategorisation: 4
+</code></pre>
+
+<p><em>I've used</em></p>
+
+<pre><code>CharacterCategorisation: CssParserJs.CharacterCategorisationOptions.SelectorOrStyleProperty
+</code></pre>
+
+<p><em>which makes it even easier to read and write - but it made arranging the code in this post awkward without requiring scroll bars in the code display, which I don't like!).</em></p>
+
+<p>The QUnit html page will execute all of the tests and display details about which passed and which failed.</p>
+
+<p>I translated the tests from the C# code into this format and they all passed! I will admit that it's not the most thorough test suite, but it does pick up a lot of parse cases and I did get into the habit of adding tests as I was adding functionality and fixing bugs when I was first writing the C# version, so having them all pass felt good.</p>
+
+<p>The final thing to add to the QUnit tests was a way to run them without loading a full browser. Again, this is a solved problem and, again, I looked to Underscore as a good example of what to do. That library uses <a href="http://phantomjs.org">PhantomJS</a> which is a "headless WebKit scriptable with a JavaScript API", according to the site. (I'm not sure if that should say "WebKit scriptable <em>browser</em>" or not, but you get the idea). This allows for the test scripts to be run at the command line and the output summary to be displayed. The tests are in a subfolder "test", within which is another folder "vendor", which includes the JavaScript and CSS for the core QUnit code. This allows for tests to be run (assuming you have PhantomJS installed) with</p>
+
+<pre><code>phantomjs test/vendor/runner.js test/index.html
+</code></pre>
+
+<h3>Share and share alike</h3>
+
+<p>As with all my public code, I've released this on bitbucket (at <a href="https://bitbucket.org/DanRoberts/cssparserjs">https://bitbucket.org/DanRoberts/cssparserjs</a>) but, since I've been looking into dependency management and npm, I've also released it as an npm package!</p>
+
+<p>This turned out to be really easy after looking on the <a href="https://www.npmjs.org/">npm site</a>. It's basically a case of constructing a "package.json" file with some details about the package - eg.</p>
+
+<pre><code>{
+  "name": "cssparserjs",
+  "description": "A simple CSS Parser for JavaScript",
+  "homepage": "https://bitbucket.org/DanRoberts/cssparserjs",
+  "author": "Dan Roberts &lt;dangger36@gmail.com&gt;",
+  "main": "CssParserJs.js",
+  "version": "1.2.1",
+  "devDependencies": {
+    "phantomjs": "1.9.7-1"
+  },
+  "scripts": {
+    "test": "phantomjs test/vendor/runner.js test/index.html"
+  },
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "https://bitbucket.org/DanRoberts/cssparserjs/src/4a9bb17f5a8a4fc0c2c164625b9dc3b8f7a03058/LICENSE.txt"
+    }
+  ]
+}
+</code></pre>
+
+<p>and then using "npm publish" at the command line. The name is in the json file, so it know <em>what</em> it's publishing. If you don't have an npm user then you use "npm adduser" first, and follow the prompts it gives you.</p>
+
+<p>This was pleasantly simple. For some reason I had expected there to be more hoops to jump through.. find it now at <a href="https://www.npmjs.org/package/cssparserjs">www.npmjs.org/package/cssparserjs</a>! :)</p>
+
+<p>It's worth noting when publishing that, by default, it will publish nearly all of the files in the folder (and subfolders). If you want to ignore any, then add them to an ".npmignore" file. If there's no ".npmignore" file but there <em>is</em> a ".gitignore" file then it will use the rules in there. And there are a set of default rules, so I didn't have to worry about it sending any files from the ".hg" folder relating to the Mercurial repo, since ".hg" is one of its default ignores. The documentation on the main site is really good for this: <a href="https://www.npmjs.org/doc/misc/npm-developers.html">npmjs Developers Guide</a>.</p>
+
+<h3>What else have I learned?</h3>
+
+<p>This last few weeks have been a voyage of exploration in modern JavaScript for me - there are new techniques and delivery mechanisms and frameworks that I was aware of but not intimately familiar with and I feel like I've plugged some of the holes in my knowledge and experience with what I've written about recently. One thing I've also finally put to bed was the use of the variety of <a href="http://en.wikipedia.org/wiki/Hungarian_notation">Hungarian Notation</a> I had still been using with JavaScript. I know, I know - don't judge me! :)</p>
+
+<p>Since JavaScript has no type annotations, I have historically named variables with a type prefix, such as "strName" or "intIndex" but I've never been 100% happy with it. While it <em>can</em> be helpful for arguments or variables with primitive types, once you start using "objPropertyDetails" or "arrPageDetails", you have very little information to work with - is the "objPropertyDetails" a JavaScript class? Or an object expected in a particular format (such as JSON with particular properties)? And what are the types in "arrPageDetails"?? Other than it being an array, this gives you almost no useful information. And so, having looked around at some of the big libraries and frameworks, I've finally decided to stop doing it. It's silly. There, I've said it! Maybe I should be looking into <a href="http://usejsdoc.org/about-getting-started.html">JSDoc</a> for public interfaces (which is where I think type annotations are even more important than internally within functions; when you want to share information with someone else who might be calling your code). Or maybe I should just be using TypeScript more! But these discussions are for another day..</p>
+
+<p>I haven't actually talked about the Brackets plugin that I was writing this code for, and how well that did or didn't go (what a cliffhanger!) but I think this post has gone on long enough and I'm going make a clean break at this point and pick that up another day.</p>
+
+<p>(The short version is that the plugin environment is easy to work with and has lots of capabilities and was fun to work with - check back soon for more details!).</p>
+<p class="PostTime">Posted at 22:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/Brackets.html" title="3 Posts">Brackets</a></li><li><a href="Archive/Tag/JavaScript.html" title="6 Posts">JavaScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-c-sharp-css-parser-in-javascript.html#disqus_thread" data-disqus-identifier="73">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">23 July 2014</h3><h2><a id="Post72"></a><a href="javascript-dependencies-that-work-with-brackets-node-and-inbrowser.html">JavaScript dependencies that work with Brackets, Node and in-browser</a></h2>
+
+<p><strong>tl;dr</strong> - I wanted to create a JavaScript package I could use in an <a href="http://brackets.io">Adobe Brackets</a> extension <em>and</em> release to <a href="https://www.npmjs.org">npm</a> for use with <a href="http://nodejs.org">Node.js</a> <em>and</em> have work in the browser as an old-school script tag import. It turned out that my knowledge of JavaScript dependency management was woefully out of date and while I came up with this solution..</p>
+
+<pre><code>/*jslint vars: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
+/*global define, require, module */
+(this.define || function (f) { "use strict"; var n = "dependencyName", s = this, r = f((typeof (require) === "undefined") ? function (d) { return s[d]; } : require); if ((typeof (module) !== "undefined") &amp;&amp; module.exports) { module.exports = r; } else { this[n] = r; } }).call(this, function (require) {
+  "use strict";
+
+  return {
+      // Dependency interface goes here..
+  };
+});
+</code></pre>
+
+<p>.. there may very well have plenty of room for improvement - but the meandering journey to get here taught me a lot (and so if there is a better solution out there, I'll happily switch over to it and chalk this all up to a learning experience!).</p>
+
+<p>This is the story of how I arrived at the cryptic jumble of characters above.</p>
+
+<h3>Back to the beginning</h3>
+
+<p>I've been working on an extension for <a href="http://brackets.io">Adobe Brackets</a>, an editor I've been trying out recently and liking for writing JavaScript and LESS stylesheets in particular. I used to instinctively go to Visual Studio for everything, but recently it's gone from starting up in a couple of seconds to taking over 40 if not a minute (I think it was since I installed Xamarin and then NuGet for VS 2010 that it got really bad, but it might have been something else and I'm unfairly misassigning blame).</p>
+
+<p>Brackets is written in JavaScript and its extensions are JavaScript modules, the API seems excellent so far. I like that linting of files is, by default, enabled on save. It has JSLint checks built in for JavaScript files and JSLint is specified in the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a>. I actually quite like a good coding convention or style guide - it takes the guess work out of a lot of decisions and, in writing a Brackets extension, I thought I'd jump right in and try to make sure that I write everything "Brackets style".</p>
+
+<p>Although I have written a lot of JavaScript in the past (and continue to do so), I've gotten out of touch with modern dependency management. JavaScript dependencies for projects at work are based on a custom dependency manager of sorts and my personal projects tend to be a bit more ad hoc.</p>
+
+<h3>Good practices for browser scripts, leading into Node.js</h3>
+
+<p>I started off writing a module in my normal manner, which tends to involve wrapping the code in an <a href="http://en.wikipedia.org/wiki/Immediately-invoked_function_expression">IIFE</a> and then exporting public references into a fixed namespace. This works fine if the JavaScript is being loaded directly into a web page - eg.</p>
+
+<pre><code>(function () {
+
+    var myModule = this.myModule || {};
+    myModule.AwesomeProcessor = {
+        Process: function (value) {
+            // Whatever..
+        };
+    }
+
+}());
+</code></pre>
+
+<p>This allows code elsewhere in the page to call "myModule.AwesomeProcessor.Process(value)" and ensures that any private methods and variables used to describe the "AwesomeProcessor" don't leak out and that nothing in global scope gets stomped over (unless there's already a "myModule.AwesomeProcessor" somewhere).</p>
+
+<p>Then I looked into Node.js, since it's on my list of things to know more about, that I currently know very little about. I knew that there was some sort of standard dependency management system for it since I've seen "npm" mentioned all over the place. I went to <a href="https://www.npmjs.org">npmjs.org</a> to try to find out more about how this worked. Not knowing where to start, I plucked out the first name that came to mind: <a href="https://github.com/jashkenas/underscore">Underscore</a>, to see if it was listed. I clicked through to its <a href="https://github.com/jashkenas/underscore">GitHub</a> page to see how it was arranged and found</p>
+
+<pre><code>// Establish the root object, `window` in the browser, or `exports` on the server.
+var root = this;
+</code></pre>
+
+<p>Flipping to information specifically about writing Node.js modules (why didn't I just start <a href="http://nodejs.org/docs/latest/api/modules.html#modules_modules">here</a>??) I find that the <em>exports</em> reference is one that properties can be set on that will be part of the object returned from a "requires" call. For example, if I have a script that requests a dependency be loaded with</p>
+
+<pre><code>var simple = require('./simplest-module-ever');
+</code></pre>
+
+<p>and the file "simplest-module-ever.js" contains</p>
+
+<pre><code>exports.answer = 42;
+</code></pre>
+
+<p>then simple will be set to an object with a property "answer" with value 42. Easy!</p>
+
+<p>This example was taken directly from "<a href="http://howtonode.org/creating-custom-modules">Creating Custom Modules</a>" on "How to Node", so thanks to Aaron Blohowiak! :)</p>
+
+<p>Unlike the "exports.answer" example above, the Underscore file is contained within an interesting IIFE -</p>
+
+<pre><code>(function() {
+
+    // Establish the root object, `window` in the browser, or `exports` on the server.
+    var root = this;
+
+    // The rest of the file..
+
+}.call(this));
+</code></pre>
+
+<p>The ".call(this)" at the bottom ensures that the "this" reference is maintained inside the function, so that when it's loaded into Node "this" is the "exports" reference that may be added to and in the browser "this" is the window, which also may have properties set on it. But the IIFE means that if it <em>is</em> being loaded in the browser that no global state is stomped on or private references leaked. When loaded into Node, some clever magic is done that ensures that the content is loaded in its own scope and that it doesn't leak anything out, which is why no IIFE is present on the "<a href="http://howtonode.org/creating-custom-modules">Creating Custom Modules</a>" example.</p>
+
+<p>It's also worth noting on that page, that "Node implements <a href="http://www.commonjs.org/specs/modules/1.0">CommonJS Modules 1.0</a>", which is helpful information when trying to compare all of the different mechanism that different solutions use.</p>
+
+<p>At this point, I did't know the difference between RequireJS, CommonJS, AMD; I had just heard the names. And didn't really know what else could be out there that I <em>hadn't</em> heard of!</p>
+
+<h3>What does Brackets use?</h3>
+
+<p>Having considered the above, I then came to realise that I hadn't actually looked into how Brackets deals with modules - which was somewhat foolish, considering a Brackets extension was to be my end goal! Part of the reason for this is that I got sidelined looking into pushing a package onto <a href="https://www.npmjs.org">npmjs</a>, but I'll talk about that another day, I don't want to stumble too far from my dependency implementation adventure right now.</p>
+
+<p>I learned from <a href="http://artoale.com/tutorial/brackets/2013/09/30/writing-brackets-extension-01">Writing Brackets extension - part 1</a> that</p>
+
+<blockquote>
+  <p>Brackets extensions use the AMD CommonJS Wrapper</p>
+</blockquote>
+
+<p>and that this essentially means that each file has a standard format</p>
+
+<pre><code>define(function (require, exports, module) {
+
+});
+</code></pre>
+
+<p>where define is a method that is provided by the dependency management system that calls an anonymous factory method that it provides with function arguments "require" (for nested dependencies), "export" (the same as with Node) and "module" (which I'm not going to talk about until further down). The factory method returns an object which is the dependency that has been loaded.</p>
+
+<p>The advantage of it being a non-immediately invoked function is that it can be dealt with asynchronously (which is what the A in AMD stands for) and only evaluated when required.</p>
+
+<p>To mirror the example earlier, this could be</p>
+
+<pre><code>define(function (require, exports, module) {
+
+    return {
+        Process: function (value) {
+            // Whatever..
+        };
+    }
+
+});
+</code></pre>
+
+<p>This dependency would be the "AwesomeProcessor" dependency and no namespace would be required to avoid clashes, since calling code requiring this dependency would state</p>
+
+<pre><code>var awesomeProcessor = require("awesomeprocessor");
+</code></pre>
+
+<p>and scoping is cleverly handled so that no global state may be affected.</p>
+
+<p>The define method may also be called with a reference to return directly as the dependency - eg.</p>
+
+<pre><code>define({
+    Process: function (value) {
+        // Whatever..
+    }
+});
+</code></pre>
+
+<p>in which case the dependency is not lazily instantiated, but otherwise the pattern is very similar.</p>
+
+<h3>So I can't have one file work with Node <em>and</em> with Brackets?? :(</h3>
+
+<p>Now I had my npm module that I wanted to use as a Brackets dependency, but the two formats looked completely different.</p>
+
+<p>There has been a lot written about this, particularly there is the "<a href="https://github.com/umdjs/umd">UMD (Universal Module Definition)</a>" code on GitHub with lots of patterns of ways to have modules that combine support for a variety of dependency managers, but when I looked at some of the examples I wasn't sure exactly what each was doing and I couldn't tell immediately which example (if any) would address the combination I was interested in; to work with Node <em>and</em> with Brackets <em>and</em> as a browser script.</p>
+
+<p>After some more stumbling around, I encounted <a href="http://webreflection.blogspot.co.uk/2013/01/a-simplified-universal-module-definition.html">A Simplified Universal Module Definition</a> which had this pattern to work with "define" if it was present -</p>
+
+<pre><code>(this.define || function(){})(
+this.what = function(){
+    var Hello = "Hello";
+    return {
+        ever: function () {
+            console.log(Hello);
+        }
+    };
+}());
+</code></pre>
+
+<p>I liked the look of this, it's compact and clever!</p>
+
+<p>When loaded using AMD, the "define" method is called using the dependency-reference-passed-as-argument approach, as opposed to factory-function-for-instantiating-dependency-reference-passed-as-argument. The argument passed is "this.what = function() { .. }" which is <em>not</em> an equality check, it will set "this.what" to the return value of the anonymous function and also pass on that value to the define method - it's like</p>
+
+<pre><code>return a = "MyName";
+</code></pre>
+
+<p>this will set a to "MyName" and then return "a" (which is, of course, now "MyName").</p>
+
+<p>So that works in my Brackets scenario just fine (note that the "this" reference is a temporary object in the Brackets case, and the setting of the "what" property on it effectively results in nothing happening - it is the fact that a reference is passed to the "define" method that makes things happen).</p>
+
+<p>When loaded into Node, where "define" is not available, it calls an anonymous "empty function" (one that performs no action), performing the "this.what = function() { .. }" work to pass as the argument. The argument is ignored as the empty function does nothing, but the "this.what" reference has been set. This works for the browser as well!</p>
+
+<p>It took me a couple of minutes to wrap my head around this, but I appreciated it when it clicked!</p>
+
+<p>One thing I didn't like, though, was that there seemed to be an "extra" object reference required in Node. If that file was my "what" dependency loaded in with</p>
+
+<pre><code>var a = require("what");
+</code></pre>
+
+<p>then to get at the "ever" function, I need to access</p>
+
+<pre><code>a.what.ever();
+</code></pre>
+
+<p>I would rather be able to say</p>
+
+<pre><code>var what = require("what");
+what.ever();
+</code></pre>
+
+<p>This is how it would appear in the Brackets, since the reference to "what" is returned directly.</p>
+
+<p>However, in the browser, this is desirable behaviour if I'm loading this with a script tag, since "this" will be window reference (ie. the global scope) and so after including the script tag, I'll be able to say</p>
+
+<pre><code>what.ever();
+</code></pre>
+
+<p>as "what" will have been added to the global scope.</p>
+
+<h3>More on Node packages</h3>
+
+<p>So I've already found that "this" in a Node package is an alias onto "exports", which allows us to declare what to return as the elements of the dependency. Well, it turns out that there are more references available within the dependency scope. For example, the "require" function is available so that dependencies that the current dependency depend on may be loaded. The "exports" reference is available <em>and</em> a "module" reference is available. Interestingly, these are the same three references passed into the "define" method - so it's the same information, just exposed in a different manner.</p>
+
+<p>It further turns out that "exports" is an alias onto an "exports" property on "module". However, the property on "module" can be overwritten completely, so (in a Node package)</p>
+
+<pre><code>module.exports = function(){
+    var Hello = "Hello";
+    return {
+        ever: function () {
+            console.log(Hello);
+        }
+    };
+};
+</code></pre>
+
+<p>could be used such that</p>
+
+<pre><code>var what = require("what");
+what.ever();
+</code></pre>
+
+<p><em>does</em> work. Which is what I wanted! But now there's a requirement that the "module" reference be available, which is no good for the browser.</p>
+
+<p>So I chopped and changed things around such that the there-is-no-define-method-available route (ie. Node and the browser, so far as I'm concerned) calls a factory method and either sets "module.exports" to the return value or sets "this.what" to the return value. For the case where there <em>is</em> a "define" method (ie. Brackets), the factory method will be passed into it - no funny business required.</p>
+
+<pre><code>(this.define || function (factory) {
+
+    var result = factory();
+    if ((typeof (module) !== "undefined") &amp;&amp; module.exports) {
+        module.exports = result;
+    else {
+        this.what = result;
+    }
+
+}).call(this, function () {
+
+    var Hello = "Hello";
+    return {
+        ever: function () {
+            console.log(Hello);
+        }
+    };
+
+});
+</code></pre>
+
+<h3>Final tweaks</h3>
+
+<p>At this point, it was shaping up well, but there were a couple of other minor niggles I wanted to address.</p>
+
+<p>In the browser, if the file is being loaded with a script tag, then any other dependencies should also be loaded through script tag(s) - so if "dependency2" requires "dependency1" in order to operate, then the "dependency1" script should be loaded before "dependency2". But in Node and Brackets, I want to be able to load them through calls to "require".</p>
+
+<p>This means that I wanted any "require" calls to be ignored when the script is loaded in the browser. This may be contentious, but it made sense to me.. and if you wanted a more robust dependency-handling mechanism for use in the browser, well <a href="http://requirejs.org">RequireJS</a> actually <em>is</em> intended for in-browser use - so you could use that to deal with complicated dependencies instead of relying on the old-fashioned script tag method!</p>
+
+<p>Also for the browser case, that named "what" reference is not as obvious as it could be - and it <em>should</em> be obvious since it needs to vary for each dependency.</p>
+
+<p>Finally, since I'm using Brackets and its on-by-default JSLint plugin, I wanted the code to meet those exacting style guide standards (using the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a> options).</p>
+
+<p>So these requirements lead to</p>
+
+<pre><code>/*jslint vars: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
+/*global define, require, module */
+(this.define || function (factory) {
+
+    "use strict";
+
+    var dependencyName = "what",
+        self = this,
+        result = factory((typeof (require) === "undefined")
+            ? function (dependency) { return self[dependency]; }
+            : require);
+
+    if ((typeof (module) !== "undefined") &amp;&amp; module.exports) {
+        module.exports = result;
+    } else {
+        this[dependencyName] = result;
+    }
+
+}).call(this, function (require) {
+
+    "use strict";
+
+    var Hello = "Hello";
+    return {
+        ever: function () {
+            console.log(Hello);
+        }
+    };
+
+});
+</code></pre>
+
+<p>A "require" argument is passed to the factory method now. For the Brackets case, this is fine since a "requires" argument is passed when "define" calls the factory method anyway. When "define" does not exist but the environment has a "require" method available, then this will be passed to the factory method (for Node). If there <em>isn't</em> a "require" method available then the dependency is retrieved from the original "this" reference - this is for the browser case (where "this" would have been the global window reference when the dependency code was evaulated).</p>
+
+<p>the "require" passed will be an empty function; this is for the browser case.</p>
+
+<p><strong><em>Correction (19th August 2014):</em></strong> I originally used an empty function if there was no "require" method available, for the browser case. But this was obviously wrong, since it would mean that nested depedencies would not have been  supported, when it was my intention that they should be.</p>
+
+<p>The only other important change is a string to specify the dependency name, right at the start of the content - so it's easy to see straight away what needs changing if this template is copy-pasted for other modules.</p>
+
+<p>Minified, this becomes</p>
+
+<pre><code>/*jslint vars: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
+/*global define, require, module */
+(this.define || function (f) { "use strict"; var n = "what", s = this, r = f((typeof (require) === "undefined") ? function (d) { return n[d]; } : require); if ((typeof (module) !== "undefined") &amp;&amp; module.exports) { module.exports = r; } else { this[n] = r; } }).call(this, function (require) {
+
+    "use strict";
+
+    var Hello = "Hello";
+    return {
+        ever: function () {
+            console.log(Hello);
+        }
+    };
+
+});
+</code></pre>
+
+<p>The only part that needs to change between files is the value of "n" (which was named "dependencyName" before minification).</p>
+
+<h3>The end (probably not really the end)</h3>
+
+<p>So.. I've achieved what I originally set out to do, which was to create a package that could be used by Node, Brackets or direct-in-the-browser.</p>
+
+<p>But more importantly, I've learnt a lot about some of the modern methods of dealing with dependencies in JavaScript. I suspect that there's a reasonable chance that I will change this template in the future, possibly to one of the "<a href="https://github.com/umdjs/umd">UMD (Universal Module Definition)</a>" examples if one matches my needs or possibly I'll just refine what I currently have.</p>
+
+<p>But for now, I want to get back to actually writing the meat of the package instead of worrying about how to deliver it!</p>
+<p class="PostTime">Posted at 20:44</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/Brackets.html" title="3 Posts">Brackets</a></li><li><a href="Archive/Tag/JavaScript.html" title="6 Posts">JavaScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="javascript-dependencies-that-work-with-brackets-node-and-inbrowser.html#disqus_thread" data-disqus-identifier="72">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

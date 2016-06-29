@@ -1,0 +1,275 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - The Full Text Indexer</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/the-full-text-indexer" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">17 July 2012</h3><h2><a id="Post30"></a><a href="the-full-text-indexer.html">The Full Text Indexer</a></h2>
+
+<p>I started out on a journey a few months ago being frustrated by the <a href="http://incubator.apache.org/lucene.net/">Lucene.net</a> integration we had with one of our products at work (I'm not badmouthing the Lucene project, I'm wholeheartedly blaming the integration I inherited!) and wondering just how difficult it would be to write a Full Text Indexer which could analyse generic content and generate some form of structure which could look up strings and assign weights to the source material, offering the best matches.</p>
+
+<p>And now I've got it to the point that I've tried the resulting solution out in a variety of configurations and am using it to handle searches on this blog and incorporating an autocomplete functionality (that may or may not benefit from some more tweaking yet) to go with it. I'm quite proud of it!</p>
+
+<p>Before I say any more, this was written to deal with the search tasks I needed and as such is not a direct replacement for Lucene, it's just an alternative I wanted to explore (for example I know that Lucene makes big claims about the number of documents it can maintain, I'm in no position right now to make any sorts of boasts on that scale!).</p>
+
+<p>Here's a really basic example that would analyse data from:</p>
+
+<pre><code>public interface IArticle 
+{
+    int Id { get; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    string Title { get; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    string Content { get; }
+}
+</code></pre>
+
+<p>and generate an IIndexData&lt;int&gt; instance which has this method (among others, but this is all we need for this first example):</p>
+
+<pre><code>public interface IIndexData&lt;TKey&gt;
+{
+    /// &lt;summary&gt;
+    /// This will throw an exception for null or blank input. It will never return null.
+    /// If there are no matches then an empty list will be returned.
+    /// &lt;/summary&gt;
+    NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetMatches(string source);
+}
+</code></pre>
+
+<p>by defining <strong>"Content Retrievers"</strong> (which extract sections of keyed content; meaning content that is associated with a Key that represents each source data item), a <strong>"Key Comparer"</strong> (which defines which keyed content instances belong to the same data item in order to group results together), a <strong>"Token Breaker"</strong> (which reduces content strings into individual words), a <strong>"String Normaliser"</strong> (which compares individual words in order to group them together but will also be used to compare values passed to the GetMatches method shown above) and <strong>"Weighted Entry Combiner"</strong> (which describes how tokens that appear multiple times for the same data item should have their weights combined):</p>
+
+<pre><code>using System;
+using System.Collections.Generic;
+using System.Linq;
+using Common.Lists;
+using Common.Logging;
+using FullTextIndexer.Indexes;
+using FullTextIndexer.Indexes.TernarySearchTree;
+using FullTextIndexer.IndexGenerators;
+using FullTextIndexer.TokenBreaking;
+
+namespace FullTextIndexerDemo
+{
+    public class Example
+    {
+        public IIndexData&lt;int&gt; GetIndex(NonNullImmutableList&lt;IArticle&gt; articles)
+        {
+            if (articles == null)
+                throw new ArgumentNullException("articles");
+
+            return GetIndexGenerator().Generate(articles);
+        }
+
+        private IIndexGenerator&lt;IArticle, int&gt; GetIndexGenerator()
+        {
+            var contentRetrievers = new List&lt;ContentRetriever&lt;IArticle, int&gt;&gt;
+            {
+                new ContentRetriever&lt;IArticle, int&gt;(
+                    article =&gt; new PreBrokenContent&lt;int&gt;(article.Id, article.Title),
+                    token =&gt; 5f
+                ),
+                new ContentRetriever&lt;IArticle, int&gt;(
+                    article =&gt; new PreBrokenContent&lt;int&gt;(article.Id, article.Content),
+                    token =&gt; 1f
+                )
+            };
+
+            return new IndexGenerator&lt;IArticle, int&gt;(
+                contentRetrievers.ToNonNullImmutableList(),
+                new IntEqualityComparer(),
+                new DefaultStringNormaliser(),
+                new WhiteSpaceTokenBreaker(),
+                weightedValues =&gt; weightedValues.Sum(),
+                new NullLogger()
+            );
+        }
+
+        private class IntEqualityComparer : IEqualityComparer&lt;int&gt;
+        {
+            public bool Equals(int x, int y) { return (x == y); }
+            public int GetHashCode(int obj) { return obj; }
+        }
+    }
+}
+</code></pre>
+
+<p>That was a lot of jargon that took more work to write than the code example! :)</p>
+
+<h4>Content Retrievers</h4>
+
+<p>These describe describe two simple things; a method to extract a particular content string from an item (along with a Key for that item) and a method to assign a weight to each token that is extracted from that content after it's been passed through a Token Breaker. In this example, more weight is given to "tokens" (for the time being we can take this to refer to a single word) matched in the Article Title than in the Article Content. Each Content Retriever can return null for a given Article if there is no content to retrieve for that instance - eg. if IArticle had an optional property for CategoryName for an instance then a Content Retriever might return null if the instance has no Category assigned to it.</p>
+
+<h4>Key Comparer</h4>
+
+<p>Here, the Key uniquely representing each Article is the Id value so the Key Comparer for this example is just an IEqualityComparer&lt;int&gt; implementation that compares integers - easy.</p>
+
+<h4>Token Breakers</h4>
+
+<p>This example uses a "WhiteSpaceTokenBreaker" which will take the string content from the Content Retrievers and break it into individual words by splitting on whitespace characters. Straight forward!</p>
+
+<h4>String Normaliser</h4>
+
+<p>The String Normaliser is essentially an IEqualityComparer&lt;string&gt; and will be used to generate a lookup of tokens and compare them against values passed into the GetMatches method. The DefaultStringNormaliser will remove all punctuation, exchange all non-latin characters for latin equivalents and lower-case them all. For the most basic lookups I had in mind, this does the hard work.</p>
+
+<h4>Weighted Entry</h4>
+
+<p>The Weighted Entry is a combination of a Key that identifies a data item and a numeric weight indicating the quality of the match; always positive and the higher the better.</p>
+
+<h4>Weighted Entry Combiner</h4>
+
+<p>This takes a set of match weights for a given token and must return a single value representing their combined total. In the example here I've just taken a sum of them, so if an Article has the word "giraffe" once in the Title and three times in the Content and "giraffe" was searched for, then match weights 5, 1, 1, 1 would be combined into 8 but it may be equally valid to take the maximum weight instead of considering Articles to be a better match if they have the same word more times (in which case "weightedValues => weightedValues.Max()" would be specified).</p>
+
+<h4>The Logger</h4>
+
+<p>While the index is being generated, status messages may be logged such as "Work completed: x%". This example ignores all log messages by passing a NullLogger to the index generator.</p>
+
+<h3>Customisation / Variations</h3>
+
+<p>This is a very basic example but it can be extended easily to handle other requirements or data structures. In general the Content Retrievers and Key Comparer are altered to deal with different input data while the Token Breakers, String Normaliser and Weighted Entry Combiner are varied to process that extracted data in a different manner.</p>
+
+<p>The "<a href="https://bitbucket.org/DanRoberts/full-text-indexer/src/4d1c288cb7f7/FullTextIndexer/Indexes/TernarySearchTree/EnglishPluralityStringNormaliser.cs">English Language Plurality String Normaliser (link to Bitbucket file)</a>" (which I've gone on about at considerable length in <a href="a-pluralityhandling-normaliser-correction.html">previous posts</a>) could replace the DefaultStringNormaliser (or wrap it, since it will take an "optionalPreNormaliser" as a constructor argument) so that the token matching is more flexible; searching for "giraffes" would now match an Article that included the word "giraffe" in the Title and/or Content even if it didn't also include "giraffes".</p>
+
+<p>Likewise, the WhiteSpaceTokenBreaker could be replaced with an alternative implementation that also breaks on commas (for content that doesn't also follow commas with spaces) or on the various bracket characters (especially useful for breaking content that includes code samples; so that "List&lt;string&gt;" is broken down into "List" and "string"). This can be done with the "WhiteSpaceExtendingTokenBreaker" class which replaces a fixed (but customisable) set of characters with spaces and then passes off processing to another Token Breaker (usually a WhiteSpaceTokenBreaker) to handle the altered content.</p>
+
+<h3>Multi-word Matching</h3>
+
+<p>With the above configuration, only single words would yield results when GetMatches is called on the index data since all of the content is broken into single words and so any multiple word "source" strings would fail to be matched without additional processing. For cases where the order of the words in a multiple word terms is not important there is an IIndexData&lt;TKey&gt; extension method:</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will break a given source string and return results based upon the combination of
+/// partial matches (so results that only match part of the source string may be included
+/// in the returned data). The token breaker and the match combiner must be specified by the
+/// caller - if the match combiner returns zero then the result will not be included in the
+/// final data. To require that all tokens in the source content be present for any returned
+/// results, the following matchCombiner could be specified:
+/// 
+///  (tokenMatches, allTokens) =&gt;
+///    (tokenMatches.Count &lt; allTokens.Count)
+///      ? 0 : tokenMatches.SelectMany(m =&gt; m.Weights).Sum()
+/// 
+/// &lt;/summary&gt;
+public static NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetPartialMatches&lt;TKey&gt;(
+    this IIndexData&lt;TKey&gt; index,
+    string source,
+    ITokenBreaker tokenBreaker,
+    MatchCombiner matchCombiner
+)
+</code></pre>
+
+<p>If this is called with the same Token Breaker as used by the index generator then the multi-word search term can be split up in the same manner and each resulting token searched for in the index. Then a combined weight must be determined for each matched token, this calculation is handled by the specified MatchCombiner. I won't go into too much detail about it here, I may do another time or you can look at the code for the nitty gritty (there's a Bitbucket link at the bottom of this post). I think the most common case is that illustrated in the summary comment in the code above; where all tokens that result from breaking the search term must be matched in order for results to be considered valid, and where the combined weight of valid matches is taken by summing the weights of all of the component matches.</p>
+
+<h3>Still to come..</h3>
+
+<p>This has still only touched on a simple use case. I'm hoping to cover in future posts how an index could handle multi-lingual content, how it could handle multi-word matching that increases the weight of the matching if tokens that are adjacent in the search term appear adjacent in the source data, how the index can be updated or have items added and removed, how the AutoComplete on this blog is generated and how the term highlighting on the search page works! Who knows, I may even go right off in the deep end and contemplate writing a search term parser that can perform searches on the index with quoted terms, boolean operators and who knows what! But that's all <em>definitely</em> for another day :)</p>
+
+<h3>The Code!</h3>
+
+<p>The code for this project is all available at Bitbucket: "<a href="https://bitbucket.org/DanRoberts/full-text-indexer">The Full Text Indexer</a>".</p>
+
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 20:33</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="compiled-linq-expressions-dont-serialise.html">Compiled LINQ Expressions don&#39;t serialise :(</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="the-full-text-indexer-adding-and-subtracting.html">The Full Text Indexer - Adding and Subtracting</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "30";
+							var disqus_title = "The Full Text Indexer";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

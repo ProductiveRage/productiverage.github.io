@@ -1,0 +1,339 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - TypeScript / ES6 classes for React components - without the hacks!</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/typescript-es6-classes-for-react-components-without-the-hacks" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">29 January 2015</h3><h2><a id="Post81"></a><a href="typescript-es6-classes-for-react-components-without-the-hacks.html">TypeScript / ES6 classes for React components - without the hacks!</a></h2>
+
+<p>React 0.13 has just been released into beta, a release I've been eagerly anticipating! This has been the release where finally they will be supporting ES6 classes to create React components. Fully supported, no messing about and jumping through hoops and hoping that breaking API changes don't drop in and catch you off guard.</p>
+
+<p>Back in September, I wrote about <a href="writing-react-components-in-typescript.html">Writing React components in TypeScript</a> and realised that before I had actually posted it that the version of React I was using was out of date and I would have to re-work it all again or wait until ES6 classes were natively supported (which was on the horizon back then, it's just that there were no firm dates). I took the lazy option and have been sticking to React 0.10.. until now!</p>
+
+<p><strong>Update (16th March 2015):</strong> React 0.13 was officially released last week, it's no longer in beta - this is excellent news! There appear to be very little changed since the beta so everything here is still applicable.</p>
+
+<h3>Getting the new code</h3>
+
+<p>I've got my head around npm, which is the recommended way to get the source. I had a few teething problems a few months ago with first getting going (I need python?? Oh, not that version..) but now everything's rosy. So off I went:</p>
+
+<blockquote>
+  <p>npm install react@0.13.0-beta.1</p>
+</blockquote>
+
+<p>I saw that the "lib" folder had the source code for the files, the dependencies are all nicely broken up. Then I had a small meltdown and stressed about how to build from source - did I need to run browserify or something?? I got that working, with some light hacking it about, and got to playing around with it. It was only later that I realised that there's also a "dist" folder with built versions - both production (ie. minified) and development. Silly boy.</p>
+
+<p>To start with, I stuck to vanilla JavaScript to play around with it (I didn't want to start getting confused as to whether any problems were with React or with TypeScript <em>with</em> React). The online <a href="http://facebook.github.io/react/jsx-compiler.html">JSX Compiler</a> can perform ES6 translations as well as JSX, which meant that I could take the example</p>
+
+<pre><code>class HelloMessage extends React.Component {
+  render() {
+    return &lt;div&gt;Hello {this.props.name}&lt;/div&gt;;
+  }
+}
+
+React.render(&lt;HelloMessage name="Sebastian" /&gt;, mountNode);
+</code></pre>
+
+<p>and translate it into JavaScript (this deals with creating a class, derives it "from React.Component" and it illustrates what the JSX syntax hides - particularly the "React.createElement" call):</p>
+
+<pre><code>var ____Class1 = React.Component;
+for (var ____Class1____Key in ____Class1) {
+  if (____Class1.hasOwnProperty(____Class1____Key)) {
+    HelloMessage[____Class1____Key] = ____Class1[____Class1____Key];
+  }
+}
+var ____SuperProtoOf____Class1 = ____Class1 === null ? null : ____Class1.prototype;
+HelloMessage.prototype = Object.create(____SuperProtoOf____Class1);
+HelloMessage.prototype.constructor = HelloMessage;
+HelloMessage.__superConstructor__ = ____Class1;
+
+function HelloMessage() {
+  "use strict";
+  if (____Class1 !== null) {
+    ____Class1.apply(this, arguments);
+  }
+}
+HelloMessage.prototype.render = function() {
+  "use strict";
+  return React.createElement("div", null, "Hello ", this.props.name);
+};
+
+React.render(
+  React.createElement(HelloMessage, { name: "Sebastian" }),
+  mountNode
+);
+</code></pre>
+
+<p>I put this into a test page and it worked! ("mountNode" just needs to be a container element - any div that you want to render your content inside).</p>
+
+<p>The derive-class code isn't identical to that you see in TypeScript's output. If you've looked at what TypeScript emits, this might be familiar:</p>
+
+<pre><code>var __extends = this.__extends || function (d, b) {
+  for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+  function __() { this.constructor = d; }
+  __.prototype = b.prototype;
+  d.prototype = new __();
+};
+</code></pre>
+
+<p>I tried hacking this in, in place of the inheritance approach from the JSX Compiler and it still worked. I presumed it would, but it's always best to take baby steps if you don't understand it all perfectly - and I must admit that I've been a bit hazy on some of React's terminology around components, classes, elements, factories, whatever.. (despite having read "<a href="http://facebook.github.io/react/blog/2014/10/14/introducing-react-elements.html">Introducing React Elements</a>" what feels like a hundred times).</p>
+
+<h3>Another wrong turn</h3>
+
+<p>In the code above, the arrangement of the line</p>
+
+<pre><code>React.render(
+  React.createElement(HelloMessage, { name: "Sebastian" }),
+  mountNode
+);
+</code></pre>
+
+<p>is very important. I must have spent <em>hours</em> earlier struggling with getting it working in TypeScript because I thought it was</p>
+
+<pre><code>React.render(
+  React.createElement(new HelloMessage({ name: "Sebastian" })),
+  mountNode
+);
+</code></pre>
+
+<p>It's not.</p>
+
+<p>It it <em>not</em> a new instance passed to "createElement"; it's a type and a properties object. I'm not sure where I got the idea from that it was the other way around - perhaps because I got all excited about it working with classes and then presumed that you worked directly with instances of those classes. Doh.</p>
+
+<h3>Time for TypeScript!</h3>
+
+<p>Like I said, I've been clinging to my hacked-about way to get TypeScript working with React until now (waiting until I could throw it away entirely, rather than replace it for something else.. which I would then have to throw away entirely when this release turned up). I took a lot of inspiration from code in the <a href="https://github.com/fdecampredon/react-typescript">react-typescript</a> repo. But that repo hasn't been kept up to date (for the same reason as I had, I believe, that the author knew that it was only going to be required until ES6 classes were supported). There is a link there to <a href="https://github.com/Asana/typed-react/">typed-react</a>, which seems to have been maintained for 0.12. This seemed like the best place to start.</p>
+
+<p><strong>Update (16th March 2015):</strong> With React 0.13's official release, the <a href="https://github.com/borisyankov/DefinitelyTyped/tree/master/react">DefinitelyTyped repo</a> has been updated and now <em>does</em> work with 0.13, I'm leaving the below section untouched for posterity but you might want to skip to the next section "Writing a TypeScript React component" if you're using the DefinitelyTyped definition.</p>
+
+<p>In fact, after some investigation, very little needs changing. Starting with their React type definitions (from the file <a href="https://github.com/Asana/typed-react/blob/master/typings/react/react.d.ts">typings/react/reactd.ts</a>), we need to expose the "React.Component" class but currently that is described by an interface. So the following must be changed -</p>
+
+<pre><code>interface Component&lt;P&gt; {
+  getDOMNode&lt;TElement extends Element&gt;(): TElement;
+  getDOMNode(): Element;
+  isMounted(): boolean;
+  props: P;
+  setProps(nextProps: P, callback?: () =&gt; void): void;
+  replaceProps(nextProps: P, callback?: () =&gt; void): void;
+}
+</code></pre>
+
+<p>for this -</p>
+
+<pre><code>export class Component&lt;P&gt; {
+  constructor(props: P);
+  protected props: P;
+}
+</code></pre>
+
+<p>I've removed isMounted and setProps because they've been deprecated from React. I've also removed the getDOMNode methods since I think they spill out more information than is necessary and I've removed replaceProps since the way that I've been using React I've not seen the use for it - I think it makes more sense to request a full re-render* rather than poke things around. You may not agree with me on these, so feel free to leave them in! Similarly, I've changed the access level of "props" to protected, since I don't think that it should be public information. This requires TypeScript 1.3, which might be why the typed-react version doesn't specify it.</p>
+
+<p>* <em>When I say "re-render", I mean that when some action changes the state of the application, I call React.render again and let the Virtual DOM do it's magic around making this efficient. Plus I'm experimenting at the moment with making the most of immutable data structures and returning false from shouldComponentUpdate where it's clear that the data can't have changed - so the Virtual DOM has less work to do. But that's straying from the point of this post a bit..</em></p>
+
+<p>Then the external interface needs changing from</p>
+
+<pre><code>interface Exports extends TopLevelAPI {
+  DOM: ReactDOM;
+  PropTypes: ReactPropTypes;
+  Children: ReactChildren;
+}
+</code></pre>
+
+<p>to</p>
+
+<pre><code>interface Exports extends TopLevelAPI {
+  DOM: ReactDOM;
+  PropTypes: ReactPropTypes;
+  Children: ReactChildren;
+  Component: Component&lt;any&gt;;
+}
+</code></pre>
+
+<p />Quite frankly, I'm not 100% sure why specifying "Component<any>" works as it does, since I would have thought that you could <em>only</em> then inherit from "Component<any>", rather than being able to specify whatever type param that you want. But it <em>does</em> work, thankfully (my understanding of type definitions is a little shallow at this point, so there's very likely something here that I don't quite understand which allows it work as it does).<p />
+
+<h3>Writing a TypeScript React component</h3>
+
+<p>So now we can write this:</p>
+
+<pre><code>import React = require('react');
+
+interface Props { name: string; role: string; }
+
+class PersonDetailsComponent extends React.Component&lt;Props&gt; {
+  constructor(props: Props) {
+    super(props);
+  }
+  public render() {
+    return React.DOM.div(null, this.props.name + " is a " + this.props.role);
+
+  }
+}
+
+function Factory(props: Props) {
+  return React.createElement(PersonDetailsComponent, props);
+}
+
+export = Factory;
+</code></pre>
+
+<p>Note that we are able to specify a type param for "React.Component" and, when you edit this in TypeScript, "this.props" is correctly identified as being of that type.</p>
+
+<p><strong>Update (16th March 2015):</strong> If you are using the DefinitelyTyped definitions then you need to specify both "Props" <em>and</em> "State" type params (I recommend that Component State never be used and that it always be specified as "{}", but that's out of the scope of this post) - ie.</p>
+
+<pre><code>class PersonDetailsComponent extends React.Component&lt;Props, {}&gt; {
+</code></pre>
+
+<p>The pattern I've used is to declare a class that is <em>not</em> exported. Rather, a "Factory" function is made available to the world. This is to prevent the problem that I described earlier - originally I was exporting the class and was trying to call</p>
+
+<pre><code>React.render(
+  React.createElement(new PersonDetailsComponent({
+    name: "Bob",
+    role: "Mouse catcher"
+  })),
+  mountNode
+);
+</code></pre>
+
+<p>but this does not work. The correct approach is to export a Factory method and then to consume the component thusly:</p>
+
+<pre><code>React.render(
+  PersonDetailsComponent({
+    name: "Bob",
+    role: "Mouse catcher"
+  }),
+  this._renderContainer
+);
+</code></pre>
+
+<p>Thankfully, the render method is specified in the type definition as</p>
+
+<pre><code>render&lt;P&gt;(
+  element: ReactElement&lt;P&gt;,
+  container: Element,
+  callback?: () =&gt; void
+): Component&lt;P&gt;;
+</code></pre>
+
+<p>so, if you forget to apply the structure of non-exported-class / exported-Factory-method and tried to export the class and new-one-up and pass it to "React.render" directly, you would get a compile error such as</p>
+
+<blockquote>
+  <p>Argument of type 'PersonDetailsComponent' is not assignable to parameter of type 'ReactElement&lt;Props&gt;'</p>
+</blockquote>
+
+<p>I do love it when the compiler can pick up on your silly mistakes!</p>
+
+<p><strong>Update (16th March 2015):</strong> Again, there is a slight difference between the <a href="https://github.com/Asana/typed-react/">typed-react</a> definition that I was originally using and the now-updated <a href="https://github.com/borisyankov/DefinitelyTyped/tree/master/react">DefinitelyTyped repo</a> version. With DefinitelyTyped, the render method is specified as:</p>
+
+<pre><code>render&lt;P, S&gt;(
+    element: ReactElement&lt;P&gt;,
+    container: Element,
+    callback?: () =&gt; any
+): Component&lt;P, S&gt;
+</code></pre>
+
+<p>but the meaning is much the same.        </p>
+
+<h3>Migration plan</h3>
+
+<p>The hacky way I've been working until now <em>did</em> allow instances of component classes to be used, so migrating over is going to require some boring mechanical work to change them - and to add Factory methods to each component. But, since they all shared a common base class (the "ReactComponentBridge"), it also shouldn't be too much work to change those base classes to "React.Component" in one search-and-replace. And there aren't too many other breaking changes to worry about. I was using "setProps" earlier on in development but I've already gotten rid of all those - so I'm optimistic that moving over to 0.13 isn't going to be too big of a deal.</p>
+
+<p>It's worth bearing in mind that 0.13 is still in beta at the moment, but it seems like the changes that I'm interested in here are unlikely to vary too much between now and the official release. So if I get cracking, maybe I can finish migrating not long after it's officially here - instead of being stuck a few releases behind!</p>
+<p class="PostTime">Posted at 01:02</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="typescript-classes-for-react-flux-actions.html">TypeScript classes for (React) Flux actions</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="simple-typescript-type-definitions-for-amd-modules.html">Simple TypeScript type definitions for AMD modules</a></div></div><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="javascript-dependencies-that-work-with-brackets-node-and-inbrowser.html">JavaScript dependencies that work with Brackets, Node and in-browser</a></li><li><a href="typescript-state-machines.html">TypeScript State Machines</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/JavaScript.html" title="6 Posts">JavaScript</a></li><li><a href="Archive/Tag/TypeScript.html" title="6 Posts">TypeScript</a></li><li><a href="Archive/Tag/React.html" title="11 Posts">React</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "81";
+							var disqus_title = "TypeScript / ES6 classes for React components - without the hacks!";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</any></any></div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

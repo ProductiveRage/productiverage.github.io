@@ -1,0 +1,2483 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Optimisation</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">12 December 2013</h3><h2><a id="Post66"></a><a href="cross-browser-pseudo-source-mapping-with-less.html">Cross Browser (Pseudo) Source Mapping with LESS</a></h2>
+
+<p>I have a component that is set up to load LESS stylesheets with what is essentially</p>
+
+<pre><code>var styleSheetLoader = new CachingLoader(
+  new MinifyingLoader(
+    new DotLessCompilingLoader(
+      new ImportFlatteningLoader(
+        new FromDiskLoader()
+      )
+    )
+  )
+);
+</code></pre>
+
+<p>This works great in terms of efficient delivery of content; the LESS styles are compiled into vanilla CSS, the <strong>ImportFlatteningLoader</strong> inserts referenced content in place of @import statements to minimise http requests so long as the referenced files are all in the same folder. This same-folder restriction allows the <strong>CachingLoader</strong> to compare a cached-entry's-last-modified date against the most-recently-modified-date-of-any-file-in-the-folder to see if the cached data should be expired, layering on a time-based-expiration cache of a few seconds so that during periods of high traffic disk access is constrained.</p>
+
+<p><em>Side note: Since dotLess can deal with imports it might seem a bit strange that I have <strong>ImportFlatteningLoader</strong> and <strong>FromDiskLoader</strong> references in there but that's largely because the component is based on what I wrote about last year; <a href="onthefly-css-minification.html">On-the-fly CSS Minification</a>. I just shoved the <a href="http://www.dotlesscss.org/">dotLess</a> processor into the chain.</em></p>
+
+<p>The problem is that when I'm editing styles and relying on web developer tools, everything appears to be in line 1 of "style.less"</p>
+
+<p><img alt="Minified Content Always Shows Styles on Line 1 of the Stylesheet" src="Content/Images/Posts/StylesWithoutMarkerIds.png" class="NoBorder AlwaysFullWidth" /></p>
+
+<p>The way that I've tried to address this is with a "<strong>SourceMappingMarkerInjectingLoader</strong>" and an "<strong>InjectedIdTidyingLoader</strong>". The former will push ids into selectors that indicate where the styles originated in the source - eg. "Content.less_123" (meaning line 123 in the file "Content.less") whilst the latter will tidy up any unnecessary styles that are the result of the LESS compilation.</p>
+
+<p>If, for example, one of the imported stylesheets has the filename "test.less" and the content</p>
+
+<pre><code>a.test
+{
+  color: #00f;
+  &amp;:hover { color: #00a; }
+}
+</code></pre>
+
+<p>then the <strong>SourceMappingMarkerInjectingLoader</strong> will rewrite this as</p>
+
+<pre><code>#test.less_1, a.test
+{
+  color: #00f;
+  #test.less_4, &amp;:hover { color: #00a; }
+}
+</code></pre>
+
+<p>but when the LESS processing has been applied, this will become</p>
+
+<pre><code>#test.less_1,a.test{color:#00f}
+#test.less_1 #test.less_4,#test.less_1:hover,a.test #test.less_4,a.test:hover{color:#00a}
+</code></pre>
+
+<p>On that second line, the fourth selector ("a.test:hover") is the only one that has any direct use; it is what the original source would have been compiled to. The first three selectors ("#test.less_1 #test.less_4", "#test.less_1:hover" and "a.test #test.less_4") are <em>not</em> of direct use but the selector element "#test.less_4" <em>is</em> useful since it indicates where in the source that the original selector originated. So most of the content in those first three selectors can be discarded and replaced only with "#test.less_4".</p>
+
+<p>This is what the <strong>InjectedIdTidyingLoader</strong> is for. If the component is initialised with</p>
+
+<pre><code>var styleSheetLoader = new CachingLoader(
+  new MinifyingLoader(
+    new InjectedIdTidyingLoader(
+      new DotLessCompilingLoader(
+        new ImportFlatteningLoader(
+          new SourceMappingMarkerInjectingLoader(
+            new FromDiskLoader()
+          )
+        )
+      )
+    )
+  )
+);
+</code></pre>
+
+<p>then the web dev tools show something more like</p>
+
+<p><img alt="Minified Content with Source Mapping Marker Ids" src="Content/Images/Posts/StylesWithMarkerIds.png" class="NoBorder AlwaysFullWidth" /></p>
+
+<p>Much more useful! Each style block still shows "<strong>Styles.less (line 1)</strong>" in big bold text, but each selector set includes ids to indicate the source filename and line number. While this content will bloat the uncompressed file size of the generated CSS, the filenames will likely be duplicated over and over, which lends itself very well to gzip'ing. (You can inspect the styles on this blog for an example of this process in action).</p>
+
+<h3>Performance problems</h3>
+
+<p>There is a problem, though. When the LESS source files start to get large and - more significantly - increasingly deeply-nested, the content that the <strong>DotLessCompilingLoader</strong> generates from the nested "Source Mapping Marker Ids" balloons. In one case, I had 116kb (which, granted, is <em>a lot</em> of rules) explode past 6mb. That's a huge amount of CSS that needs parsing and unnecessary selectors trimming from.</p>
+
+<p>Incidentally, the size of the delivered CSS (with "tidied" markers ids) was 119kb, an overhead of 17%. When gzip'd, the content without marker ids was 15.6kb while the content <em>with</em> marker ids was 18.9kb, an overhead of 20%. </p>
+
+<h3>Is this necessary at all?</h3>
+
+<p>As an aside, I expect that one day we will have well-integrated cross-browser <a href="https://developers.google.com/chrome-developer-tools/docs/css-preprocessors">Source Mapping</a> support that will make these injected markers unnecessary but it still seems to be early days on this front. It seems like the compile-to-JavaScript languages are making a lot of use of the Source Mapping support that some browsers have (CoffeeScript, for example) but for LESS it seems a lot patchier (for the .net component, anyway; less.js has <a href="https://twitter.com/addyosmani/status/380820562794131456/photo/1">this</a>). SASS seems better still (see <a href="http://snugug.com/musings/debugging-sass-source-maps">Debugging SASS with Source Maps</a>).</p>
+
+<p>But these solutions still need browser support. The recent builds of Chrome and Firefox will be fine. But with IE, even with the just-released IE11, you're going to be out of luck.</p>
+
+<p>So while these "Source Mapping Marker Ids" add overhead to the delivered content (and processing overhead, but I'm about to talk about improving that significantly) they do at least work across all browsers.</p>
+
+<h3>Addressing the performance problems</h3>
+
+<p>My last post was about my first stabs at optimising the id-tidying process (see <a href="optimising-the-css-processor-ants-and-algorithms.html">Optimising the CSS Processor - ANTS and algorithms</a>). I made some good strides but I wasn't happy with all of the approaches that I took and it still didn't perform as well as I would haved liked with source files that contained many deeply-nested selectors.</p>
+
+<p>If the problem I was trying to solve was that the LESS compiler was emitting too much content, maybe what I really needed to do was work <em>with it</em> rather than tidying up after it. The <a href="https://github.com/dotless/dotless">code is on GitHub</a> so I figured I'd dive in and see what I could find!</p>
+
+<h3>dotLess Plugins</h3>
+
+<p>After downloading the code and building it locally, I found the "Plugins" folder under dotLess / src / dotLess.Core. Seeing this was an indication that the author had developed the project with a view to making it extensible without having to change its own source.</p>
+
+<p>Searching for "dotLess plugins" will first lead you to people writing "function plugins" (a way to declare new functions that the parser will process as if they had been built into the core system) but digging deeper there are mentions of "visitor plugins". I found this article very useful: <a href="http://www.scottlogic.com/blog/2012/11/16/the-world-of-less.html">The world of LESS</a>. The phrase "visitor plugins" refers to the <a href="http://en.wikipedia.org/wiki/Visitor_pattern">Visitor Design Pattern</a>. In terms of dotLess, it allows you to intercept every instantiation of a LESS structure and either allow it through or replace it with something of your own. You can do this either before or after "evaluation" (where LESS mixins and values are replaced with CSS styles and nested selectors are flattened).</p>
+
+<p>What I wanted to do was write a visitor plugin that would take post-evaluation content and rewrite <strong>Ruleset</strong> instances whose selector sets needed tidying.</p>
+
+<p>A post-evaluation <strong>Ruleset</strong> is essentially a set of selectors (such as "#test.less_1 #test.less_4, #test.less_1:hover, a.test #test.less_4, a.test:hover") and a set of rules (such as "color: #00a;").</p>
+
+<p>So I want to grab these <strong>Ruleset</strong> instances and replace them with instances whose selector sets have been tidied where necessary. So "#test.less_1 #test.less_4, #test.less_1:hover, a.test #test.less_4, a.test:hover" will become "#test.less_4, a.test:hover".</p>
+
+<p>Digging further through the code, it turns out that there are some types that inherit from <strong>Ruleset</strong> that shouldn't be messed with, such as the top-level "<strong>Root</strong>" type. So the plugin will need to target specific <strong>Ruleset</strong> types, not just any instances that inherits it.</p>
+
+<p>So what I come up with is</p>
+
+<pre><code>private class SelectorRewriterVisitorPlugin : VisitorPlugin
+{
+  private readonly InsertedMarkerRetriever _markerIdRetriever;
+  public SelectorRewriterVisitorPlugin(InsertedMarkerRetriever markerIdRetriever)
+  {
+    if (markerIdRetriever == null)
+      throw new ArgumentNullException("markerIdRetriever");
+
+    _markerIdRetriever = markerIdRetriever;
+  }
+
+  public override VisitorPluginType AppliesTo
+  {
+    get { return VisitorPluginType.AfterEvaluation; }
+  }
+
+  public override Node Execute(Node node, out bool visitDeeper)
+  {
+    visitDeeper = true;
+    if (node.GetType() == typeof(Ruleset))
+    {
+      var ruleset = (Ruleset)node;
+      if (ruleset != null)
+      {
+        return new MarkerIdTidyingRuleset(ruleset.Selectors, ruleset.Rules, _markerIdRetriever)
+        {
+          Location = ruleset.Location
+        };
+      }
+    }
+    return node;
+  }
+}
+
+/// &lt;summary&gt;
+/// This should never return null, nor a set containing any null or blank entries - all markers
+/// should be of the format "#id.class"
+/// &lt;/summary&gt;
+public delegate IEnumerable&lt;string&gt; InsertedMarkerRetriever();
+</code></pre>
+
+<p>The <strong>MarkerIdTidyingRuleset</strong> is a class that inherits from <strong>Ruleset</strong> and rewrites its own selectors to remove the ones it doesn't need. The code isn't particularly complex or innovative, but it's too long to include here. It in the CSSMinifier project, though, so if you want to see it then you can find it on Bitbucket <a href="https://bitbucket.org/DanRoberts/cssminifier/src/727611baa56acb70c659094245a3a20dc3efeb65/CSSMinifier/FileLoaders/DotLessCssCssLoader.cs">here</a> (it's a nested class of the <strong>DotLessCssCssLoader</strong> so it's in that linked file somewhere!).</p>
+
+<p>The <strong>VisitorPlugin</strong> class, that the <strong>SelectorRewriterVisitorPlugin</strong> inherits, is in the dotLess source and makes writing visitor plugins easy.</p>
+
+<p>The only part that isn't <em>as</em> easy is registering the plugin. There isn't a collection that you can add an <strong>IPlugin</strong> implementation directly to, but <strong>LessEngine</strong> instances have a "Plugins" set whose elements are of type <strong>IPluginConfigurator</strong> - these are classes that know how to instantiate particular plugins.</p>
+
+<p>So I had to write:</p>
+
+<pre><code>private class SelectorRewriterVisitorPluginConfigurator : IPluginConfigurator
+{
+  private readonly InsertedMarkerRetriever _markerIdRetriever;
+  public SelectorRewriterVisitorPluginConfigurator(InsertedMarkerRetriever markerIdRetriever)
+  {
+    if (markerIdRetriever == null)
+      throw new ArgumentNullException("markerIdRetriever");
+
+    _markerIdRetriever = markerIdRetriever;
+  }
+
+  public IPlugin CreatePlugin() { return new SelectorRewriterVisitorPlugin(_markerIdRetriever); }
+  public IEnumerable&lt;IPluginParameter&gt; GetParameters() { return new IPluginParameter[0]; }
+  public void SetParameterValues(IEnumerable&lt;IPluginParameter&gt; parameters) { }
+  public string Name { get { return "SelectorRewriterVisitorPluginConfigurator"; } }
+  public string Description { get { return Name; } }
+  public Type Configurates { get { return typeof(SelectorRewriterVisitorPlugin); } }
+}
+</code></pre>
+
+<p>and then instantiate a <strong>LessEngine</strong> with</p>
+
+<pre><code>var engine = new LessEngine();
+engine.Plugins = new[] { 
+  new SelectorRewriterVisitorPluginConfigurator(_markerIdRetriever)
+};
+</code></pre>
+
+<h3>WINNING!</h3>
+
+<p>Since I started writing this article, a big project at work has used this component and the final size of the combined output is over 200kb. I said earlier that 116kb of minified content is a lot of styles, well this clearly tops that! In fairness, it's a large and complex site and it's chock full of responsive goodness to make it render beautifully on mobiles tiny and large, tablets and desktop.</p>
+
+<p>Before the id-tidying was handled with a dotLess visitor plugin (where there was an entirely separate processing step to tidy up the unnecessary marker-id selectors) the build process was taking almost 20 seconds. Not acceptable. <em>With</em> the visitor plugin approach, this is now just over 3 seconds. Much more palatable. And, like I found in the last post, it's another example of how changing the algorithm can sometimes have dramatic improvements over trying to micro-optimise the current approach. Or, perhaps, a reminder that the quickest way to do something might be not to do it!</p>
+
+<h3>Show me the code..</h3>
+
+<p>If you want to get at the code, it's all on Bitbucket: The <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a>. There's a "CSSMinifierDemo" (ASP.net MVC) project in there that has a <strong><a href="https://bitbucket.org/DanRoberts/cssminifier/src/46930a68eec0e047af44a54cb900bff57b2ee7af/CSSMinifierDemo/Controllers/CSSController.cs">CSSController</a></strong> class that import-flattens, injects pseudo-source-mapping marker ids, compiles LESS down to vanilla CSS, minifies, caches to memory and disk (invalidating when source files change), deals with 304s and with supporting gzip'ing responses.</p>
+
+<p>The primary project that utilises this at work doesn't use ASP.net but I do use MVC for this blog and it also seemed like a natural way to construct a full demonstration.</p>
+
+<h3>Mild disclaimer</h3>
+
+<p>I've become a bit of a dotLess advocate over the last year or so and dipping into the code here coincided with a colleague at work complaining about dotLess not working with Bootstrap 3. Finding the code approachable (and not being happy with this bad-mouthing I was hearing of my beloved dotLess!), I've fixed most of the problems and had pull requests merged into the <a href="https://github.com/dotless/dotless/commits/master">master repository</a>. And now a NuGet package is available (see <a href="http://www.tigraine.at/2013/12/10/dotless-v14-released">dotless v1.4 released</a>). This has been my first foray into contributing to an open source project and, especially considering some of the stories I've heard about people being ignored or rejected, it's been an absolute joy. I might have to look for more projects that I care about that I can help!</p>
+<p class="PostTime">Posted at 22:41</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="cross-browser-pseudo-source-mapping-with-less.html#disqus_thread" data-disqus-identifier="66">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">11 November 2013</h3><h2><a id="Post65"></a><a href="optimising-the-css-processor-ants-and-algorithms.html">Optimising the CSS Processor (ANTS and algorithms)</a></h2>
+
+<p>The Production Team at work have started using my best-practices-rules-validating LESS CSS Processor (which utilises <a href="http://www.dotlesscss.org/">dotLess</a>). This is excellent news for me! And frankly, I think it's excellent news for them! :D</p>
+
+<p>This all ties in with a post I wrote at the start of the year (<a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a>), a set of rules to write maintainable and genuinely reusable stylesheets. I gave a presentation on it at work and one of the Lead Devs on Production recently built the first site using the processor (I've used it for this blog but the styling here is hardly the most complex). Now that it's been proven, it's being used on another build. And a high-profile one, at that. Like I said, exciting times!</p>
+
+<p>However, during the site-build process there are periods where the routine goes tweak styles, refresh, tweak styles, refresh, tweak styles, lather, rinse, repeat. And when the full set of stylesheets starts getting large, the time to regenerate the final output (and perform all of the other processing) was getting greater and making this process painful.</p>
+
+<p>The good news is that now that the project is being used in work, I can use some of work's resources and toys to look into this. We allocated a little time this sprint to profile the component and see if there are any obvious bottlenecks that can be removed. The golden rule is <strong>you don't optimise until you have profiled</strong>. Since we use <a href="http://www.red-gate.com/products/dotnet-development/ants-performance-profiler/">ANTS Performance Profiler</a> at work, this seemed like an excellent place to start.</p>
+
+<h3>March of the ANTS</h3>
+
+<p>The ANTS Performance Profile is a great bit of kit for this sort of thing. I prepared an executable to test that would compile stylesheets from the new site in its current state. This executable had a depedency on the processor code - the idea is I choose something to optimise, rebuild the processor, rebuild the test executable and re-run the profiler.</p>
+
+<p>Things take much longer to run in the profiler than they would otherwise (which is to be expected, the profiler will be tracking all sorts of metrics as the code runs) but performance improvements should mean that the execution time decreases on subsequent runs. And, correspondingly, the component will run more quickly when <em>not</em> in the profiler, which is the whole point of the exercise!</p>
+
+<p>So I point the profiler at the executable and the results look like the following..</p>
+
+<p><img src="Content/Images/Posts/ProfilingTheProcessor.png" alt="ANTS Performance Profiler in action" title="ANTS Performance Profiler in action" /></p>
+
+<p><em>(I shrank the screenshot to get it to fit on the page properly, if you can't read it then don't worry, I'm about to explain the highlights)</em>.</p>
+
+<p>What we're looking at is a drilling-down of the most expensive methods. I've changed the Display Options to show "All Methods" (the default is "Only methods with source") so I can investigate as deep as I want to*. This view shows method calls as a hierarchy, so Tester.Program.Main is at the top and that calls other methods, the most expensive of which is the <strong>NonCascadingCSSRulesEnforcer.CSSMinifierIntegration.RulesEnforcingCssFileLoader.Load</strong> call. While the call to Main accounted for 99.254% of the total work, the call to this Load method accounted for 98.667% (looking at the "Time With Children (%)" column). This means that Main's own work and any other method calls it made account for a very small amount of total work done.</p>
+
+<p>* <em>(If the PDB files from a build are included in the executable folder then the profiler can use these to do line-by-line analysis in a window underneath the method call display shown above. To do this, "line-level and method-level timings" have to be selected when starting the profiling and the source code files will have to be available to the profiler - it will prompt for the location when you double-click on a method. If you don't have the PDB files or the source code then methods can be decompiled, but line level details will not be available).</em></p>
+
+<p>Method calls are ordered to show the most expensive first, the "HOT" method. This is why that Load method appears first inside the results for Main, it accounts for most of the work that Main does.</p>
+
+<p>So the first easy thing to do is to look for methods whose "HOT" method's "Time With Children" is much lower, this could be an indication that the method itself is quite expensive. It could also mean that it calls several methods which are all quite expensive, but this can still often be a good way to find easy wins.</p>
+
+<p>What jumps out at me straight away is the the <strong>CharacterProcessorResult..ctor</strong> (the class constructor) and its children account for 24.005% of the total run time, with <strong>Enum.IsDefined</strong> (and its children) accounting for 19.776%. The <strong>Enum.IsDefined</strong> call is to ensure that a valid enum value is passed to the constructor. <strong>Enum.IsDefined</strong> uses reflection if you look far enough down, I believe. A few calls to this method should be no big deal, but an instance of this class is used for every stylesheet character that is parsed - we can see that the constructor is called 5,772,750 times (the "Hit Count"). So replacing <strong>Enum.IsDefined</strong> with if statements for all of the possible enum options should speed things up considerably. Incidentally, 5,772,750 seems like a <em>lot</em> of character parse attempts, it's certainly a lot more content than exists in the source stylesheets, I'll address this further down..</p>
+
+<p>Looking at the screenshot above, there are two other "jumps" in "Time With Children" - one going from <strong>ProcessedCharacterGrouped+<getstring>d__0.MoveNext</getstring></strong> to <strong>SelectorOrStyleSegment.Process</strong> and from there to the <strong>CharacterProcessorResult..ctor</strong>. I've ignored the first one for now since that cryptically-named first method relates to how the C# compiler represents enumerable data and I know that the loop in that method uses the "yield" keyword which may complicate an investigation. I've also ignored <strong>SelectorOrStyleSegment.Process</strong> for now since that's probably the biggest method in the parsing code and so is likely to spread its load over multiple calls to other methods, it doesn't feel as likely that there will be any single particular area within the method itself that will be causing excessive work. At this point, I'm looking for easy wins to see how far that can get me.</p>
+
+<h3>More easy optimisations</h3>
+
+<p>After making the change outlined above (removing the <strong>Enum.IsDefined</strong> call from the <strong>CharacterProcessorResult</strong> constructor), the profiler is re-run to see if I can find any more small-change / big-payoff alterations to make. I did this a few times and identified (and addressed) the following -</p>
+
+<p>The <strong>StringNavigator.CurrentCharacter</strong> property was being marked as taking a lot of time. This was surprising to me since it doesn't do much, it only returns a character with a particular index from the content string that is being examined. However, the hit count was enormous as this could be called multiple times for each character being examined - so if there were nearly 6m character results, there were many more <strong>StringNavigator.CurrentCharacter</strong> requests. I changed the string to a character array internally thinking that access to it might be quicker but it didn't make a lot of difference. What <em>did</em> make a difference was to extract the <strong>CurrentCharacter</strong> value in the <strong>StringNavigator</strong>'s constructor and return that value directly from the property, reducing the number of character array accesses required. What made it even better was to find any method that requested the <strong>CurrentCharacter</strong> multiple times and change them to request it once, store it in a local variable and use that for subsequent requests. Although each property access is very cheap individually, signficantly reducing the total number of property requests resulted in faster-running code. This is the sort of thing that would have felt like a crazy premature optimisation if I didn't have the profiler highlighting the cost!</p>
+
+<p>The <strong>InjectedIdTidyingTextFileLoader</strong>'s <strong>TidySelectorContent</strong> method spent a lot of its time in a LINQ "Any" call. The same enumerable data was being looped through many times - changing it to a <strong>HashSet</strong> (and using the <strong>HashSet</strong>'s Contains method) made this much more efficient. (The <strong>HashSet</strong> uses the same technique as the <strong>Dictionary</strong>'s key lookup which, as I've written about before in <a href="the-net-dictionary-is-fast.html">The .Net Dictionary is FAST!</a>, has impressive performance).</p>
+
+<p>The <strong>CategorisedCharacterString</strong>'s constructor also had an <strong>Enum.IsDefined</strong> call. While this class is instantiated much less often than the <strong>CharacterProcessorResult</strong>, it was still in the hundreds of thousands range, so it was worth changing too.</p>
+
+<p>The <strong>StringNavigator</strong> had a method "TryToGetCharacterString" which would be used to determine whether the current selector was a media query (does the current position in the content start with "@media") or whether a colon character was part of a property declaration or part of a pseudo class in a selector (does the current position in the content start with ":hover", ":link", etc..) - but in each case, we didn't really want the next <em>n</em> characters, we just wanted to know whether they were "@media", ":hover" or whatever. So replacing "TryToGetCharacterString" with a "DoesCurrentContentMatch" method meant that less work would be done in the cases where no match was found (this method would exit "early" as soon as it encountered a character than didn't match what it was looking for).</p>
+
+<p>Finally, the <strong>ProcessedCharactersGrouper</strong> has an array of "CharacterTypesToNotGroup". This class groups adjacent characters that have the same <strong>CharacterCategorisationOptions</strong> into strings - so if there are characters 'a', '.', 't', 'e', 's', 't' which are all of type "SelectorOrStyleProperty" then these can be grouped into a string "a.test" (with type "SelectorOrStyleProperty"). However, multiple adjacent "}" characters are not combined since they represent the terminations of different style blocks and are not related to each other. So "CloseBrace" is one of the "CharacterTypesToNotGroup" entries. There were only three entries in this array (CloseBrace, OpenBrace and SemiColon). When deciding whether to group characters of the same categorisation together, replacing the LINQ "Contains" method call with three if statements for the particular values improved the performance. I believe that having a named array of values made the code more "self documenting" (it is effectively a label that describes <em>why</em> these three values are being treated differently) but in this case the performance is more important.</p>
+
+<p>The end result of all of these tweaks (all of which were easy to find with ANTS and easy to implement in the code) was a speed improvement of about 3.7 times (measuring the time to process the test content over several runs). Not too shabby!</p>
+
+<h3>Algorithms</h3>
+
+<p>I still wasn't too happy with the performance yet, it was still taking longer to generate the final rules-validated stylesheet content than I wanted.</p>
+
+<p>Before starting the profiling, I had had a quick think about whether I was doing anything too stupid, like repeating work where I didn't need to. The basic process is that</p>
+
+<ol>
+<li>Each .less file is loaded (any @imports will be "flattened" later, the referenced content is loaded at this point, though, so that it can be put in the place of the @import later on)</li>
+<li>Each file gets fed through the file-level rules validators</li>
+<li>Source Mapping Marker Ids are inserted</li>
+<li>The "@import flattening" occurs to result in a single combined content string</li>
+<li>This content is fed through the <a href="http://www.dotlesscss.org/">dotLess</a> processor (this translates LESS content into vanilla CSS and minifies the output)</li>
+<li>This is fed through the combined-content-level rules validators</li>
+<li>Any "scope-restricting html tags" are removed</li>
+<li>Source Mapping Marker Ids are tidied</li>
+</ol>
+
+<p>When each file gets fed through the file-level rules validators, the source content is parsed once and the parsed content passed through each validator. So if there are multiple validators that need to be applied to the same content, the content is only parsed once. So there's nothing obvious here.</p>
+
+<p>What <em>is</em> interesting is the "Source Mapping Marker Ids". Since the processor always returns minified content and there is no support for CSS Source Mapping across all browsers (it looks like Chrome 28+ is adding support, see <a href="http://net.tutsplus.com/tutorials/html-css-techniques/developing-with-sass-and-chrome-devtools/">Developing With Sass and Chrome DevTools</a>) I had my processor try to approximate the functionality. Say you have a file "test.css" with the content</p>
+
+<pre><code>html
+{
+  a.test
+  {
+    color: #00f;
+    &amp;:hover { color: #00a; }
+  }
+}
+</code></pre>
+
+<p>the processor rewrites this as</p>
+
+<pre><code>#test.css_1, html
+{
+  #test.css_3, a.test
+  {
+    color: #00f;
+    #test.css_6, &amp;:hover { color: #00a; }
+  }
+}
+</code></pre>
+
+<p>which will eventually result (after all of the steps outlined above have been applied) in</p>
+
+<pre><code>#test.css_3,a.test{color:#00f}
+#test.css_6,a.test:hover{color:#00a}
+</code></pre>
+
+<p>This means that when you examine the style in a browser's developer tools, each style can be traced back to where the selector was specified in the source content. A poor man's Source Mapping, if you like.</p>
+
+<p>The problem is that the LESS compiler will actually translate that source-with-marker-ids into</p>
+
+<pre><code>#test.css_1 #test.css_3,
+#test.css_1 a.test,
+html #test.css_3,
+html a.test { color: #00f; }
+
+#test.css_1 #test.css_3 #test.css_6,
+#test.css_1 #test.css_3:hover,
+#test.css_1 a.test #test.css_6,
+#test.css_1 a.test:hover,
+html #test.css_3 #test.css_6,
+html #test.css_3:hover,
+html a.test #test.css_6,
+html a.test:hover { color: #00a; }
+</code></pre>
+
+<p>That's a lot of overhead! There are many selectors here that aren't required in the final content (such as "html #test.css_3", that is neither specific enough to be helpful in the developer tools nor a real style that applies to actual elements). This is what the "Source Mapping Marker Ids are tidied" step deals with.</p>
+
+<p>And this explains why there were nearly 6 million characters being parsed in the stylesheets I've been testing! The real content is getting bloated by all of these Source Mapping Marker Ids. And every level of selector nesting makes it significantly worse.</p>
+
+<p><em>(To convince myself that I was thinking along the right lines, I ran some timed tests with variations of the processor; disabling the rules validation, disabling the source mapping marker id injection, disabling the marker id tidying.. Whether or not the rules validation was enabled made very little difference. Disabling the marker id injection and tidying made an enormous difference. Disabling just the tidying accounted for most of that difference but if marker ids were inserted and not tidied then the content was huge and full of unhelpful selectors).</em></p>
+
+<h3>Addressing the problems: Limiting Nesting</h3>
+
+<p>Since nesting selectors makes things much worse, any way to limit the nesting of selectors could be a signficant improvement. But this would largely involve pushing back the "blame" onto users of the processor, something I want to avoid. There <em>is</em> one obvious way, though. One of the rules is that all stylesheets (other than Resets and Themes sheets) must be wrapped in a "scope-restricting html tag". This means that any LESS mixins or values that are defined within a given file only exist within the scope of the current file, keeping everything self-contained (and so enabling an entire file to be shared between projects, if that file contains the styling for a particular common component, for example). Any values or mixins that should be shared across files should be declared in the Themes sheet. This "html" selector would result in styles that are functionally equivalent (eg. "html a.test:hover" is the same as "a.test:hover" as far as the browser is concerned) but the processor actually has a step to remove these from the final content entirely (so only "a.test:hover" is present in the final content instead of "html a.test:hover").</p>
+
+<p>So if these "html" wrappers will never contribute to the final content, having marker ids for them is a waste of time. And since they should be present in nearly every file, not rewriting them with marker ids should significantly reduce the size of the final content.</p>
+
+<p>Result: The test content is fully processed about 1.8x as fast (times averaged over multiple runs).</p>
+
+<h3>Addressing the problems: Shorter Marker Ids</h3>
+
+<p>Things are really improving now, but they can be better. There are no more easy ways to restrict the nesting that I can see, but if the marker ids themselves were shorter then the selectors that result from their combination would be shorter, meaning that less content would have to be parsed.</p>
+
+<p>However, the marker ids are the length they are for a reason; they need to include the filename and the line number of the source code. The only way that they could be reduced would be if the shortened value was temporary - the short ids could be used <em>until</em> the id tidying has been performed and then a replacement step could be applied to replace the short ids with the full length ids.</p>
+
+<p>To do this, I changed the marker id generator to generate the "real marker id" and stash it away and to instead return a "short marker id" based on the number of unique marker ids already generated. This short id was a base 63* representation of the number, with a "1" prefix. The reason for the "1" is that before HTML5, it was not valid for an id to begin with a number so I'm hoping that we won't have any pages that have real ids that these "short ids" would accidentally target - otherwise the replacement that swaps out the short ids for real ids on the stylesheets might mess up styles targetting real elements!</p>
+
+<p>* <em>(Base 63 means that the number may be represented by any character from the range A-Z, a-z, 0-9 or by an underscore, this means that valid ids are generated to ensure that characters are not pushed through the LESS compiler that would confuse it).</em></p>
+
+<p>The earlier example</p>
+
+<pre><code>html
+{
+  a.test
+  {
+    color: #00f;
+    &amp;:hover { color: #00a; }
+  }
+}
+</code></pre>
+
+<p>now gets rewritten as</p>
+
+<pre><code>html
+{
+  #1A, a.test
+  {
+    color: #00f;
+    #1B, &amp;:hover { color: #00a; }
+  }
+}
+</code></pre>
+
+<p>which is transformed into</p>
+
+<pre><code>html #1A,
+html a.test {
+  color: #00f;
+}
+html #1A #1B,
+html #1A:hover,
+html a.test #1B,
+html a.test:hover {
+  color: #00a;
+}
+</code></pre>
+
+<p>This is a lot better (combining the no-markers on the "html" wrapper and the shorter ids). There's still duplication present (which will get worse as styles are more deeply nested) but the size of the content is growing much less with the duplication.</p>
+
+<p>Result: The test content is fully processed about 1.2x faster after the above optimisation, including the time to replace the shortened ids with the real marker ids.</p>
+
+<h3>Conclusion</h3>
+
+<p>With the ANTS-identified optimistations and the two changes to the algorithm that processes the content, a total speed-up of about 7.9x has been achieved. This is almost an order of magnitude for not much effort!</p>
+
+<p>In real-world terms, the site style content that I was using as the basis of this test can be fully rebuilt from source in just under 2 seconds, rather than the almost 15 seconds it was taking before. When in the tweak / refresh / tweak / refresh cycle, this makes a huge difference.</p>
+
+<p>And it was interesting to see the "don't optimise before profiling" advice in action once more, along with "avoid premature optimisation". The places to optimise were not where I would have expected (well, certainly not in some of the cases) and the last two changes were not the micro-optimisations that profilers lead you directly to at all; if you blindly follow the profiler then you miss out on the "big picture" changes that the profiler is unaware of.</p>
+<p class="PostTime">Posted at 20:37</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="optimising-the-css-processor-ants-and-algorithms.html#disqus_thread" data-disqus-identifier="65">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">8 January 2013</h3><h2><a id="Post42"></a><a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a></h2>
+
+<h4>("Barely-cascading CSS: A revolution!", "Barely-cascading CSS: A revolution??")</h4>
+
+<p>This post was inspired by what I read at <a href="http://www.lispcast.com/cascading-separation-abstraction">www.lispcast.com/cascading-separation-abstraction</a> who in turn took some inspiration from <a href="http://37signals.com/svn/posts/3003-css-taking-control-of-the-cascade">37signals.com/svn/posts/3003-css-taking-control-of-the-cascade</a>.</p>
+
+<p>Part of what really clicked for me was this</p>
+
+<blockquote>
+  <p>The value of a CSS property is determined by these factors:</p>
+  
+  <ul>
+  <li>The order of CSS imports</li>
+  <li>The number of classes mentioned in the CSS rule</li>
+  <li>The order of rules in a particular file</li>
+  <li>Any inherits settings</li>
+  <li>The tag name of the element</li>
+  <li>The class of the element</li>
+  <li>The id of the element</li>
+  <li>All of the element's ancestors in the HTML tree</li>
+  <li>The default styles for the browser</li>
+  </ul>
+</blockquote>
+
+<p>combined with</p>
+
+<blockquote>
+  <p>By using nested LESS rules and child selectors, we can avoid much of the pain of cascading rules. Combining with everything else, we define our styles as mixins (and mixins of mixins)..</p>
+</blockquote>
+
+<p>and then the guidelines</p>
+
+<blockquote>
+  <ol>
+  <li>Only bare (classless + non-nested) selectors may occur in the reset.</li>
+  <li>No bare selectors may occur in the LESS rules.</li>
+  <li>No selector may be repeated in the LESS rules.</li>
+  </ol>
+</blockquote>
+
+<p>along with</p>
+
+<blockquote>
+  <p>The box model sucks.. And what happens when I set the width to 100%? What if a padding is cascaded in? Oops.</p>
+  
+  <p>I propose to boycott the following properties: ..</p>
+</blockquote>
+
+<p>I must admit that when I first read the whole article I thought it was quite interesting but it didn't fully grab me immediately. But it lingered in the back of my mind for a day or two and the more I thought about it, the more it took hold and I started to think this could offer a potentially huge step forward for styling. Now, I wish <em>I'd</em> put it all together!</p>
+
+<p>What I really think it could possibly offer as the holy grail is the ability to re-use entire chunks of styling across sites. At work this is something that has been posited many times in the past but it's never seemed realistic because the styles are so intermingled between layout specific to one site and the various elements of a control. So even in cases where the basic control and its elements are similar between sites, it's seemed almost implausible to consistently swap style chunks back and forth and to expect them to render correctly, no matter how careful and thoughtful you are with constructing the styles. But I realise now that this is really due almost entirely to the complex cascading rules and its many knock-on effects!</p>
+
+<p>So I'm going to present my interpretation of the guidelines. Now, these aren't fully road-tested yet, I intend to put them to use in a non-trivial project as soon as I get the chance so this is just my initial plan-of-attack..</p>
+
+<h3>My interpretation</h3>
+
+<p>I'm going to stick with <a href="http://lesscss.org">LESS</a> as the CSS processor since I've used it in the past.</p>
+
+<ol>
+<li><p>A standard (html5-element-supporting) reset sheet is compulsory, only bare selectors may be specified in it</p></li>
+<li><p>A single "common" or "theme" sheet will be included with a <em>minimum</em> of default styles, only bare selectors may be specified in it</p></li>
+<li><p>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur <em>within</em> a nested selector so long as child selectors are strictly used)</p></li>
+<li><p>Stylesheets are broken out into separate files, each with a well-defined purpose</p></li>
+<li><p>All files other than the reset and theme sheets should be wrapped in a body "scope"</p></li>
+<li><p>No selector may be repeated in the rules</p></li>
+<li><p>All measurements are described in pixels</p></li>
+<li><p>Margins, where specified, must always be fully-defined</p></li>
+<li><p>Border and Padding may not be combined with Width</p></li>
+</ol>
+
+<p><img src="Content/Images/Posts/MassivelyCascadingStyles.png" alt="Massively Cascading Styles" title="Massively Cascading Styles" /></p>
+
+<p><em>(Above) This is what I'm trying to avoid!</em></p>
+
+<h4>A standard (html5-element-supporting) reset sheet is compulsory</h4>
+
+<p>This is really to take any browser variation out of the equation. You can start by thinking it's something along the lines of "* { margin: 0; padding: 0; }" and then think some more about it and then just go for Eric Meyer's html5-supporting reset. That's my plan at least! :)</p>
+
+<h4>A single "common" or "theme" sheet will be included with a <em>minimum</em> of default styles, only bare selectors may be specified in it</h4>
+
+<p>I was almost in two minds about this because it feels like it <em>is</em> inserting a layer of cascading back in, but I think there should be one place to declare the background colour and margin for the body, to set the default font colour, to set "font-weight: bold" on strong tags and to set shared variables and mixins.</p>
+
+<h4>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur <em>within</em> a nested selector so long as child selectors are strictly used)</h4>
+
+<p>Bare selectors (eg. "div" rather than "div.AboutMe", or even "div.AboutMe div") are too generic and will almostly certainly end up polluting another element's style cascade, which we're trying to avoid.</p>
+
+<p>The reason for the exception around child selectors is that this may be used in places where classes don't exist on all of the elements to be targeted. Or if the bullet point type for a particular list is to be altered, we wouldn't expect to have to rely upon classes - eg.</p>
+
+<pre><code>&lt;div class="ListContainer"&gt;
+  &lt;ul&gt;
+    &lt;li&gt;Item&lt;/li&gt;
+    &lt;li&gt;Another Item&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>may be styled with</p>
+
+<pre><code>div.ListContainer
+{
+  &gt; ul &gt; li { list-style-type: square; }
+}
+</code></pre>
+
+<p>This would <em>not</em> affect the second level of items. So if the markup was</p>
+
+<pre><code>&lt;div class="ListContainer"&gt;
+  &lt;ul&gt;
+    &lt;li&gt;
+      Item
+      &lt;ul&gt;
+        &lt;li&gt;Sub Item&lt;li&gt;
+      &lt;/ul&gt;
+    &lt;/li&gt;
+    &lt;li&gt;Another Item&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>then "Sub Item" will not get the "square" bullet point from the above styles. And this is progress! This is what we want, for styles to have to be explicit and not possibly get picked up from layer after layer of possible style matches. If we didn't use child selectors and we didn't want the nested list to have square markers then we'd have to add another style to undo the square setting.</p>
+
+<p>Or, more to point (no pun intended!), if we want to specify a point style for the nested list then adding this style will not be overriding the point style from the outer list, it will be specifying it for the first time (on top of the reset style only), thus limiting the number of places where the style may have come from.</p>
+
+<p>In order for the inner list to have circle markers we need to extend the style block to</p>
+
+<pre><code>div.ListContainer
+{
+  &gt; ul &gt; li
+  {
+    list-style-type: square;
+    &gt; ul &gt; li
+    {
+      list-style-type: circle
+    }
+  }
+}
+</code></pre>
+
+<h4>Stylesheets are broken out into separate files, each with a well-defined purpose</h4>
+
+<p>This is for organisational purposes and I imagine that it's a fairly common practice to an extent, but I think it's worth taking a step further in terms of granularity and having each "chunk" or control in its own file. Since pre-processing is going to be applied to combine all of the files together, why not have loads of them if it makes styles easier to organise and find!</p>
+
+<p><img src="Content/Images/Posts/AmazonBreakdownExample.png" alt="Amazon Home Page" title="Amazon Home Page" />
+I've just had a quick look at Amazon to pick out examples. I would go so far as to have one file <em>NavTopBar.less</em> for the navigation strip across the top, distinct from the <em>NavShopByDepartment.less</em> file. Then a LayoutHomePage file would arrange these elements, with all of the other on that page.</p>
+
+<p>The more segregated styles are, the more chance (I hope!) that these file-size chunks could be shared between projects.</p>
+
+<p>One trick I've been toying with at work is to inject "source ids" into the generated css in the pre-processing step so that when the style content is all combined, LESS-compiled and minified, it's possible to determine where the style originally came from.</p>
+
+<p>For example, I might end up with style in the final output like</p>
+
+<pre><code>#AboutMe.css_6,div.ListContainer&gt;ul&gt;li{list-style-type:square}
+</code></pre>
+
+<p>where the "#AboutMe.css_6" id relates not to an element but line 6 of the "AboutMe.css" file. It's a sort of poor man's version of Source Mapping which I don't believe is currently available for CSS (which is a pity.. there's a Mozilla feature request for it, though: <a href="https://wiki.mozilla.org/DevTools/Features/CSSSourceMap">CSSSourceMap</a>).</p>
+
+<p>I haven't decided yet whether this should be some sort of debug option or whether the overhead of the additional bytes in the final payload are worth the benefit for debugging. There's an argument that if the styles are broken into files and all have tightly targeted selectors then it should be relatively easy to find the source file and line, but sometimes this doesn't feel like the case when you go back to a project six months after you last looked at it!</p>
+
+<p>Another example of a file with a "well-defined purpose" might be to apply a particular grid layout to a particular template, say "CheckoutPageLayout". This would arrange the various elements, but each <em>of</em> the elements within the page would have their own files.</p>
+
+<h4>All files other than the reset and theme sheets should be wrapped in a body scope</h4>
+
+<p>This is inspired by the Immediately Invoked Function Expression pattern used in Javascript to forcibly contain the scope of variables and functions within. Since we can do the same thing with LESS values and mixins, I thought it made sense to keep them segregated, this way if the same name is used for values or mixins in different files, they won't trample on each other toes.</p>
+
+<p>The idea is simply to nest all statements within a file inside a "body { .. }" declaration - ie.</p>
+
+<pre><code>body
+{
+
+  // All the content of the file goes here..
+
+}
+</code></pre>
+
+<p>This will mean that the resulting styles will all be preceded with the "body" tag which adds some bloat to the final content, but I think it's worth it to enable this clean scoping of values and mixins. Any values and mixins that <em>should</em> be shared across files should be defined in the "common" / "theme" sheet.</p>
+
+<p>Just as a quick reminder, the following LESS</p>
+
+<pre><code>@c = red;
+.e1 { color: @c; }
+body
+{
+  @c = blue;
+  .e2 { color: @c; }
+}
+.e3 { color: @c; }
+</code></pre>
+
+<p>will generate this CSS</p>
+
+<pre><code>.e1 { color: red; }
+body .e2 { color: blue; }
+.e3 { color: red; }
+</code></pre>
+
+<p>The @c value inside the body scope applies within that scope and overrides the @c value outside of the scope while inside the scope. Once back out of the scope (after the "body { .. }" content), @c still has the value "red".</p>
+
+<p>It's up for debate whether this definitely turns out to be a good idea. Interesting, so far I've not come across it anywhere else, but it really seems like it would increase the potential for sharing files (that are tightly scoped to particular controls, or other unit of layout / presentation) between projects.</p>
+
+<p><strong>Update (4th June 2013)</strong>: I've since updated this rule to specify the use of the html tag rather than body as I've written a processor that will strip out the additional tags injected (see <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a>) and stripping out body tags would mean that selectors could not be written that target elements in a page where a particular class is specified on the body tag.</p>
+
+<h4>No selector may be repeated in the rules</h4>
+
+<p>In order to try to ensure that no element gets styles specified in more places than it should (that means it should be set no more frequently than in the resets, in the "common" / "theme" sheet and then at most by one other specific selector), class names should not be repeated in the rules.</p>
+
+<p>With segregation of styles in various files, it should be obvious which single file any given style belongs in. To avoid duplicating a class name, LESS nesting should be taken advantage of, so the earlier example of</p>
+
+<pre><code>div.ListContainer
+{
+  border: 1px solid black;
+
+  &gt; ul &gt; li { list-style-type: square; }
+}
+</code></pre>
+
+<p>is used instead of</p>
+
+<pre><code>div.ListContainer { border: 1px solid black; }
+
+div.ListContainer &gt; ul &gt; li { list-style-type: square; }
+</code></pre>
+
+<p>and where previously class names might have been repeated in a CSS stylehset because similar properties were being set for multiple elements, this should now be done with mixins - eg. instead of</p>
+
+<pre><code>div.Outer, div.Inner
+{
+  float: left;
+  width: 100%;
+}
+
+div.Inner { border: 1px solid black; }
+</code></pre>
+
+<p>we can use</p>
+
+<pre><code>.FullWidthFloat ()
+{
+  float: left;
+  width: 100%;
+}
+
+div.Outer
+{
+  .FullWidthFloat;
+}
+
+div.Inner
+{
+  .FullWidthFloat;
+  border: 1px solid black;
+}
+</code></pre>
+
+<p>This is clearly straight from lispcast's post, it's a direct copy-and-paste of their guideline 2!</p>
+
+<p>We have to accept that this still can't prevent a given element from having styles set in multiple places, because it's feasible that multiple selectors could point to the same element (if an element has multiple classes then there could easily be multiple selectors that all target it) but this is definitely a good way to move towards the minimum number of rules affecting any one thing.</p>
+
+<h4>All measurements are described in pixels</h4>
+
+<p>I've been all round the houses in the last few years with measurement units. Back before browsers all handled content-resizing with zoom functionality (before Chrome was even released by Google to shake up the web world) I did at least one full site where <em>every</em> single measurement was in em's - not just the font sizes, but the layout measurements, the borders, the image dimensions, <em>everything</em>! This mean that when the font was sized up or down by the browser, the current zooming effect we all have now was delivered. In all browsers. Aside from having to do some lots of divisions to work out image dimensions (and remembering what the equivalent of 1px was for the borders!), this wasn't all <em>that</em> difficult most of the time.. but where it <em>would</em> become awkward was if a containing element had a font-size which would affect the effective size of an em such that the calculations from pixel to em changed. In other words, cascading styles bit me again!</p>
+
+<p><img src="Content/Images/Posts/MixedUnitMeasurements.png" alt="Mixing measurement units is confusing" title="Mixing measurement units is confusing" />
+In more common cases, I've combined pixels and ems - using ems in most places but pixels for particular layout arrangements and images.</p>
+
+<p>But with the current state of things, with the browsers handling zooming of the content regardless of the units specified, I'm seriously suggesting using pixels <em>exclusively</em>. For one thing, it will make width calculations, where required, much <em>much</em> simpler; there can't be any confusion when trying to reason about distances in mixed units!</p>
+
+<p>I'm going to try to pixels-only and see how it goes!</p>
+
+<p>One pattern that I've seen used is to combine "float: left;" and "width: 100%;" when an element has children that are floated, but the element must expand to fully contain all of those children. In the majority of cases I see it used in site builds where I work, the elements that have been floated could have had "display: inline-block" applied instead to achieve the same layout - the use of floats is left over from having to fully support IE6 which wouldn't respect "inline-block" (it was less than a year ago that we managed to finally shackle those IE6 chains! Now it's a graceful-degradation-only option, as I think it should be).</p>
+
+<p>So there's a chance that some allowances will have to be made for 100% widths, but I'm going to start off optimistic and hope that it's not the case until I'm proven wrong (either by myself or someone else trying these rules!).</p>
+
+<p><strong>Update (22nd January 2013)</strong>: Although I'm currently still aiming for all-pixel measurements for elements, after reading this article <a href="http://blog.cloudfour.com/the-ems-have-it-proportional-media-queries-ftw/">The EMs have it: Proportional Media Queries FTW!</a> I think I might get sold on the idea of using em's in media queries.. it seems like it would be an ideal to work with browsers that have been zoomed in sufficiently that they'd look better moving the next layout break point. I need to do some testing with mobile or tablet devices, but it sounds intriguing!</p>
+
+<h4>Margins, where specified, must always be fully-defined</h4>
+
+<p>This is straight from the lispcast post; it just means that if you specify a margin property that you should use the <em>"margin"</em> property and not "margin-left", "margin-top", etc.. The logic being that if you specify only "margin-left", for example, then the other margin sizes are inherited from the previous declaration that was applied (even if that's only the reset files). The point is that the style is split over multiple declarations and this is what we're trying to avoid.</p>
+
+<p>So instead of</p>
+
+<pre><code>margin-left: 4px;
+</code></pre>
+
+<p>specify</p>
+
+<pre><code>margin: 0 0 0 4px;
+</code></pre>
+
+<p>If you require a 4px margin top, bottom, left and right then</p>
+
+<pre><code>margin: 4px;
+</code></pre>
+
+<p>is fine, the point is to ensure that every dimension is specified at once (which the above will do), specifying the dimensions individually within a single margin value is only required if different sides need different margin sizes!</p>
+
+<h4>Border and Padding may not be combined with Width</h4>
+
+<p>This is also heavily inspired by the lispcast post, it's intended to avoid box model confusion. When I first read it, I had a blast-from-the-past shiver go through me from the dark days where we had to deal with different box models between IE and other browsers but this hasn't been an issue with the proper doc types since IE...6?? So what really concerns us is if we have</p>
+
+<pre><code>&lt;div class="outer"&gt;
+  &lt;div class="inner"&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>and we have the styles</p>
+
+<pre><code>.outer { width: 300px; margin: 0; border: 1px solid black; padding: 0; }
+.inner { width: 300px; margin: 0; border: 1px solid black; padding: 10px; }
+</code></pre>
+
+<p>then we could be forgiven for wanting both elements to be rendered with the same width, but we'll find the "inner" element to appear wider than the "outer" since the width within the border is the content width (as specified by the css style) and <em>then</em> the padding width on top of that.</p>
+
+<p>Another way to illustrate would be the with the styles</p>
+
+<pre><code>.outer { width: 300px; margin: 0; border: 1px solid black; padding: 0; }
+.inner { width: 100%;  margin: 0; border: 1px solid black; padding: 10px; }
+</code></pre>
+
+<p>Again, the "inner" element juts out of the "outer" since the padding is applied around the 100% width (in this example, the 100% equates to the 300px total width of the "outer" element) which seems counter-intuitive.</p>
+
+<p><img src="Content/Images/Posts/BoxModel.png" alt="Box Model Example" title="Box Model Example" /></p>
+
+<p>So what if we don't use padding at all?</p>
+
+<p>In an ideal world - in terms of the application of styling rules - where an element requires both an explicit width <em>and</em> a padding, this could be achieved with <em>two</em> elements; where the outer element has the width assigned and the inner element has the padding. But, depending upon how we're building content, we mightn't have the ability to insert extra elements. There's also a fair argument that we'd adding elements solely for presentation rather than semantic purpose. So, say we have something like</p>
+
+<pre><code>&lt;div class="AboutMe"&gt;
+  &lt;h3&gt;About&lt;/h3&gt;
+  &lt;p&gt;Content&lt;/p&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>instead of specifying</p>
+
+<pre><code>div.AboutMe { width: 200px; padding: 8px; }
+</code></pre>
+
+<p>maybe we could consider</p>
+
+<pre><code>div.AboutMe { width: 200px; }
+div.AboutMe &gt; h3 { margin: 8px 8px 0 8px; }
+div.AboutMe &gt; p { margin: 0 8px 8px 8px; }
+</code></pre>
+
+<p>This would achieve a similar effect but there is a certain complexity overhead. I've used child selectors to indicate the approach that might be used if there were more complicated content; if one of the child elements was a div then we would want to be certain that this pseudo-padding margin <em>only</em> applied to the child div and not one of <em>its</em> descendent divs (this ties in with rule 3's "a bare selector may occur within a nested selector so long as child selectors are strictly used" proviso).</p>
+
+<p>And the border issue hasn't been addressed; setting a border can extend the total rendered width beyond the width specified by css as well! (Also indicated in the example image above).</p>
+
+<p>So I'm tentatively suggesting just not having any styles apply to any element that specifies width <em>and</em> padding and/or border.</p>
+
+<p>This is one of the rules that I feel least confident about and will be considering retracting when I manage to get these into use in a few projects. If the benefit isn't sufficient to outweigh the cost of thinking around it, then it may have to be put out to pasture.</p>
+
+<h3>Linting</h3>
+
+<p>As I've said, I'm yet to fully use all of these rules in anger on a real, sizable project. But it's something I intend to do very soon, largely to see how well they do or don't all work together.</p>
+
+<p>Something I'm contemplating looking into is adding a pre-processing "lint" step that will try to confirm that all of these rules have been followed. Inspired by <a href="http://www.jslint.com">Douglas Crockford's JsLint</a> (and I've only just found out that "lint" is a generic term, I didn't know until now where it came from! See <a href="http://en.wikipedia.org/wiki/Lint_(software)">"Lint" on Wikipedia</a>).</p>
+
+<p>It could be configured such that if a rule was identified to have not been followed, then an error would be returned in place of any style content - that would ensure that I didn't ignore it!</p>
+
+<p>I'm not sure yet how easy it will or won't be to check for all of these rules, but I'm definitely interested in finding out!</p>
+
+<p>Hopefully I'll post back with a follow-up at some point, possibly with any interesting pre-processing code to go along with it. I think the only way to determine the validity of these rules is with the eating of a whole lot of my own dog food :)</p>
+
+<p><strong>Update (4th June 2013):</strong> I've written a couple of related posts - see the <a href="noncascading-css-the-followup.html">Non-cascading CSS: The follow-up</a> and <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a>. The first has a couple of amendments I've made to these rules after putting them into practice and the second has information about how my <a href="https://bitbucket.org/DanRoberts/cssminifier">CSS Minifier</a> project now has support for injecting into the compiled output the "source ids" mentioned in this post, along with a way to implement rule 5 (html-tag-scoping). I also intend to write a few posts about the mechanisms used to implement these processing steps starting with <a href="parsing-css.html">Parsing CSS</a>.</p>
+<p class="PostTime">Posted at 23:04</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="noncascading-css-a-revolution.html#disqus_thread" data-disqus-identifier="42">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">17 December 2012</h3><h2><a id="Post40"></a><a href="the-full-text-indexer-post-roundup.html">The Full Text Indexer Post Round-up</a></h2>
+
+<p>This is a compilation of links to articles outlining some of the details of the Full Text Indexer project I put together, just so I could point a link to everything all in one place (like from the BitBucket ReadMe!)</p>
+
+<p>I wrote about the basic building blocks of the Index Generator, went off on a few tangents about how using different key types could allow for searches over data with multi-lingual content (or support Product data that has different descriptions for different web sites, for example) and then came back round to illustrate how I've used the code for this blog's search functionality.</p>
+
+<ul>
+<li><a href="the-full-text-indexer.html">The Full Text Indexer</a></li>
+<li><a href="the-full-text-indexer-adding-and-subtracting.html">The Full Text Indexer - Adding and Subtracting</a></li>
+<li><a href="the-full-text-indexer-going-international.html">The Full Text Indexer - Going International!</a></li>
+<li><a href="the-full-text-indexer-token-breaker-and-string-normaliser-variations.html">The Full Text Indexer - Token Breaker and String Normaliser variations (+AutoComplete)</a></li>
+<li><a href="the-full-text-indexer-automating-index-generation.html">The Full Text Indexer - Automating Index Generation</a></li>
+<li><a href="the-full-text-indexer-structured-queries.html">The Full Text Indexer - Structured Queries</a></li>
+<li><a href="the-full-text-indexer-source-locations.html">The Full Text Indexer: Source Locations</a></li>
+<li><a href="the-full-text-indexer-search-term-highlighting-with-source-locations.html">Search Term Highlighting with Source Locations</a></li>
+<li><a href="the-neocities-challenge-aka-the-full-text-indexer-goes-clientside.html">The Full Text Indexer goes Client-side!</a></li>
+</ul>
+
+<p>Along the journey, I got to learn a few new things, take advantage of other's research and have fun trying to improve the performance of some of the bottlenecks in the index generation process.</p>
+
+<ul>
+<li><a href="the-net-dictionary-is-fast.html">The .Net Dictionary is FAST!</a></li>
+<li><a href="an-englishlanguage-pluralityhandling-string-normaliser.html">An English-language Plurality-handling String Normaliser</a></li>
+<li><a href="optimising-the-pluralityhandling-normaliser.html">Optimising the Plurality-Handling Normaliser</a></li>
+<li><a href="a-pluralityhandling-normaliser-correction.html">A Plurality-Handling Normaliser Correction</a></li>
+<li><a href="compiled-linq-expressions-dont-serialise.html">Compiled LINQ Expressions don't serialise :(</a></li>
+<li><a href="javascript-compression-putting-my-json-search-indexes-on-a-diet.html">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></li>
+</ul>
+
+<p>I also had a chance to revisit the basic immutable list structure that I used from the get-go in this project and improve its performance characteristics as well (again, taking a lot of inspiration from cleverer people who've tackled the same problems before me! :)</p>
+
+<ul>
+<li><a href="persistent-immutable-lists.html">Persistent Immutable Lists</a></li>
+<li><a href="persistent-immutable-lists-extended.html">Persistent Immutable Lists - Extended</a></li>
+</ul>
+
+<p>The code can be found in the <a href="https://bitbucket.org/DanRoberts/full-text-indexer/">Full Text Indexer BitBucket Repository</a>. I've still got a few ideas I'm contemplating toying with - but I've also got other projects I want to investigate! So we'll just have to see what happens with this next..</p>
+
+<p><strong>Update (5th March 2013):</strong> I just can't seem to let this lie! :) I've added another post <a href="the-full-text-indexer-automating-index-generation.html">The Full Text Indexer - Automating Index Generation</a> which demonstrates some new code that will examine your source data type and generate an index for you, all on its own! Easy! (Added to the list above).</p>
+
+<p><strong>Update (14th March 2013):</strong> And another! This time about support for structured querying, a way to combine terms with AND, OR, NOT operators. See <a href="the-full-text-indexer-structured-queries.html">The Full Text Indexer - Structured Queries</a>.  (Added to the list above).</p>
+
+<p><strong>Update (28th March 2013):</strong> Documenting an extension to the index data that allow for more performant consecutive term matching: <a href="the-full-text-indexer-source-locations.html">The Full Text Indexer: Source Locations</a>. Followed by a way to utilise this information for <a href="the-full-text-indexer-search-term-highlighting-with-source-locations.html">Search Term Highlighting with Source Locations</a>. (Added to the list above).</p>
+
+<p><strong>Update (25th July 2013):</strong> Inspired by the "<a href="http://10mbmanifesto.neocities.org">The 10 Megabyte Manifesto</a>" and <a href="http://neocities.org">NeoCities</a>, I've developed a way to consume search index data with JavaScript to enable a copy of this blog to be hosted where the searching is done entirely client-side. Read about it at <a href="the-neocities-challenge-aka-the-full-text-indexer-goes-clientside.html">The Full Text Indexer goes client-side!</a> and see it in action live at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a>! (Added to the list above).</p>
+
+<p><strong>Update (30th July 2013):</strong> A follow-up to the "The Full Text Indexer goes client-side" describing how the search index data can be compressed to take up less space on the host: <a href="javascript-compression-putting-my-json-search-indexes-on-a-diet.html">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a>. (Added to the list above).</p>
+<p class="PostTime">Posted at 18:06</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li><li><a href="Archive/Tag/Immutability.html" title="12 Posts">Immutability</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-full-text-indexer-post-roundup.html#disqus_thread" data-disqus-identifier="40">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">9 June 2012</h3><h2><a id="Post27"></a><a href="optimising-the-pluralityhandling-normaliser.html">Optimising the Plurality-Handling Normaliser</a></h2>
+
+<p>In the last post I took a first stab at an <a href="an-englishlanguage-pluralityhandling-string-normaliser.html">English-language Plurality-handling String Normaliser</a> to work with a Full Text Indexer research project I'm playing with. I've been using it in conjunction with a normaliser that strips out punctuation from words, replaces accented characters with latin versions (eg. "é" replaced with "e") and lower-cases the content. This originally used a few regular expressions along with some character replacement but I wasn't delighted with the performance, so that was re-written to do one pass through the character and do it all at once and is now running much better. Whether that ties back into my <a href="css-minification-regular-expressions.html">I don't like regular expressions</a> ramble well or not I'm not sure :)</p>
+
+<p>The point at which it does the most work is here:</p>
+
+<pre><code>public bool TryToTransform(string value, out string valueTransformed)
+{
+    if (value == null)
+        throw new ArgumentNullException("value");
+
+    if (_matchType == MatchTypeOptions.SuffixOnly)
+    {
+        var matchedSuffix = _values.FirstOrDefault(
+            suffix =&gt; (value.Length &gt; suffix.Length) &amp;&amp; value.EndsWith(suffix)
+        );
+        if (matchedSuffix != null)
+        {
+            valueTransformed =
+                value.Substring(0, value.Length - matchedSuffix.Length) + _combinedValues;
+            return true;
+        }
+    }
+    else
+    {
+        if (_values.Contains(value))
+        {
+            valueTransformed = _combinedValues;
+            return true;
+        }
+    }
+
+    valueTransformed = null;
+    return false;
+}
+</code></pre>
+
+<p>The first approach I took was to take out some of the LINQ - it makes it easy to read but I don't actually know for sure what it's doing! I thought it was worth checking if being more explicit about what I want to do would reap any performance benefit.. So the lengths are explicitly checked first (if matching WholeWord then the value length must match the suffix length, if matching SuffixOnly then the value length must be <em>greater</em> than the suffix length) and then count back through the last characters of the input value and ensure that each one matches the suffix. Not <em>quite</em> as readable but no big deal.</p>
+
+<pre><code>public bool TryToTransform(string value, out string valueTransformed)
+{
+    if (value == null)
+        throw new ArgumentNullException("value");
+
+    foreach (var suffix in _values)
+    {
+        if (_matchType == MatchTypeOptions.WholeWord)
+        {
+            if (value.Length != suffix.Length)
+                continue;
+        }
+        else if (!(value.Length &gt; suffix.Length))
+            continue;
+
+        var matchedSuffixLength = 0;
+        for (var index = 0; index &lt; suffix.Length; index++)
+        {
+            if (value[value.Length - (index + 1)] != suffix[suffix.Length - (index + 1)])
+            {
+                matchedSuffixLength = 0;
+                break;
+            }
+            matchedSuffixLength++;
+        }
+        if (matchedSuffixLength == 0)
+            continue;
+
+        valueTransformed =
+            value.Substring(0, value.Length - matchedSuffixLength) + _combinedValues;
+        return true;
+    }
+
+    valueTransformed = null;
+    return false;
+}
+</code></pre>
+
+<p>Running a few loops of the All English Words data I mentioned in the <a href="an-englishlanguage-pluralityhandling-string-normaliser.html">last post</a> saw an performance improvement (when run in release mode) over 3x - success!</p>
+
+<p>But with what I've been learning about LINQ Expressions over the last year or so (culminating in <a href="the-artist-previously-known-as-the-automapperbyconstructor.html">The artist previously known as the AutoMapper-By-Constructor</a> and <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">The CompilableTypeConverter BitBucket repository</a>) I couldn't help wondering if writing code that would generate expressions that unrolled the comparison loop and pre-generated the combined suffix extensions might not be faster. The only way to find out is to try!</p>
+
+<p>The idea is that it would effectively generate code along the lines of:</p>
+
+<pre><code>if ((value.length &gt; 1)
+&amp;&amp; (value[value.length - 1] == 'y'))
+    return value.substring(0, value.length - 1) + "[y][ies]";
+
+if ((value.length &gt; 3)
+&amp;&amp; (value[value.length - 3] == 'i')
+&amp;&amp; (value[value.length - 2] == 'e')
+&amp;&amp; (value[value.length - 1] == 's'))
+    return value.substring(0, value.length - 3) + "[y][ies]";
+</code></pre>
+
+<p>for all of the various plurality suffixes but while still maintaining the ability to easily define new suffix sets. And so, without further ado, I ended up with this:</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will match common strings where one is the plural and the other the singular version
+/// of the same word. It not intended to be perfect and may match a few false positives, but
+/// it should catch most of the most common cases.
+/// &lt;/summary&gt;
+[Serializable]
+public class EnglishPluralityStringNormaliser : IStringNormaliser
+{
+    private Func&lt;string, string&gt; _normaliser;
+    private IStringNormaliser _optionalPreNormaliser;
+    private PreNormaliserWorkOptions _preNormaliserWork;
+    public EnglishPluralityStringNormaliser(
+        IEnumerable&lt;PluralEntry&gt; plurals,
+        IEnumerable&lt;string&gt; fallbackSuffixes,
+        IStringNormaliser optionalPreNormaliser,
+        PreNormaliserWorkOptions preNormaliserWork)
+    {
+        if (plurals == null)
+            throw new ArgumentNullException("pluralEntries");
+        if (fallbackSuffixes == null)
+            throw new ArgumentNullException("fallbackSuffixes");
+        var allPreNormaliserOptions = (PreNormaliserWorkOptions)0;
+        foreach (PreNormaliserWorkOptions option in
+            Enum.GetValues(typeof(PreNormaliserWorkOptions)))
+        {
+            allPreNormaliserOptions = allPreNormaliserOptions | option;
+        }
+        if ((preNormaliserWork &amp; allPreNormaliserOptions) != preNormaliserWork)
+            throw new ArgumentOutOfRangeException("preNormaliserWork");
+
+        _normaliser = GenerateNormaliser(plurals, fallbackSuffixes);
+        _optionalPreNormaliser = optionalPreNormaliser;
+        _preNormaliserWork = preNormaliserWork;
+    }
+
+    public EnglishPluralityStringNormaliser(
+        IStringNormaliser optionalPreNormaliser,
+        PreNormaliserWorkOptions preNormaliserWork
+    ) : this(DefaultPlurals, DefaultFallback, optionalPreNormaliser, preNormaliserWork) { }
+
+    public EnglishPluralityStringNormaliser()
+        : this(null, PreNormaliserWorkOptions.PreNormaliserDoesNothing) { }
+
+    public string GetNormalisedString(string value)
+    {
+        if (value == null)
+            throw new ArgumentNullException("value");
+
+        // If an additional normaliser was specified in the constructor then process the
+        // string with that first (eg. a normaliser that removes punctuation from values
+        // may be beneficial depending upon the the content that may be passed in)
+        if (_optionalPreNormaliser != null)
+            value = _optionalPreNormaliser.GetNormalisedString(value);
+
+        if ((_preNormaliserWork &amp; PreNormaliserWorkOptions.PreNormaliserTrims)
+        != PreNormaliserWorkOptions.PreNormaliserTrims)
+            value = value.Trim();
+        if (value == "")
+            return "";
+
+        // We have to lower case the trimmed value since the suffixes are all stored as
+        // lower case values
+        if ((_preNormaliserWork &amp; PreNormaliserWorkOptions.PreNormaliserLowerCases)
+        != PreNormaliserWorkOptions.PreNormaliserLowerCases)
+            value = value.ToLower();
+        return _normaliser(value);
+    }
+
+    public bool Equals(string x, string y)
+    {
+        if (x == null)
+            throw new ArgumentNullException("x");
+        if (y == null)
+            throw new ArgumentNullException("y");
+
+        return GetNormalisedString(x) == GetNormalisedString(y);
+    }
+
+    public int GetHashCode(string obj)
+    {
+        if (obj == null)
+            throw new ArgumentNullException("obj");
+
+        return GetNormalisedString(obj).GetHashCode();
+    }
+
+    private static Func&lt;string, string&gt; GenerateNormaliser(
+        IEnumerable&lt;PluralEntry&gt; plurals,
+        IEnumerable&lt;string&gt; fallbackSuffixes)
+    {
+        if (plurals == null)
+            throw new ArgumentNullException("pluralEntries");
+        if (fallbackSuffixes == null)
+            throw new ArgumentNullException("fallbackSuffixes");
+
+        // Build up if statements for each suffix - if a match is found, return the input
+        // value with the matched suffix replaced with a combination of all the other
+        // suffixes in PluralEntry
+        var result = Expression.Parameter(typeof(string), "result");
+        var endLabel = Expression.Label(typeof(string));
+        var valueTrimmed = Expression.Parameter(typeof(string), "valueTrimmed");
+        var expressions = new List&lt;Expression&gt;();
+        foreach (var plural in plurals)
+        {
+            if (plural == null)
+                throw new ArgumentException("Null reference encountered in plurals set");
+
+            foreach (var suffix in plural.Values)
+            {
+                var assignNormalisedValueToResult = Expression.Assign(
+                    result,
+                    GenerateStringConcatExpression(
+                        GenerateRemoveLastCharactersExpression(valueTrimmed, suffix.Length),
+                        Expression.Constant(
+                            CreateSuffixExtension(plural.Values),
+                            typeof(string)
+                        )
+                    )
+                );
+                expressions.Add(
+                    Expression.IfThen(
+                        GeneratePredicate(suffix, valueTrimmed, plural.MatchType),
+                        Expression.Block(
+                            assignNormalisedValueToResult,
+                            Expression.Return(endLabel, result)
+                        )
+                    )
+                );
+            }
+        }
+
+        // If any fallback suffixes are specified, add a statement to append them if none
+        // of the PluralEntry matches are made
+        fallbackSuffixes = TidyStringList(fallbackSuffixes, v =&gt; v.Trim().ToLower());
+        if (fallbackSuffixes.Any())
+        {
+            expressions.Add(
+                Expression.Assign(
+                    result,
+                    GenerateStringConcatExpression(
+                        valueTrimmed,
+                        Expression.Constant(
+                            CreateSuffixExtension(fallbackSuffixes),
+                            typeof(string)
+                        )
+                    )
+                )
+            );
+        }
+        else
+            expressions.Add(Expression.Assign(result, valueTrimmed));
+
+        // Add the return-point label, configured to return the string value in "result"
+        expressions.Add(Expression.Label(endLabel, result));
+
+        return Expression.Lambda&lt;Func&lt;string, string&gt;&gt;(
+            Expression.Block(
+                new[] { result },
+                expressions
+            ),
+            valueTrimmed
+        ).Compile();
+    }
+
+    /// &lt;summary&gt;
+    /// Generate an expression that determines whether a string parameter matches a specified
+    /// suffix / matchType combination
+    /// &lt;/summary&gt;
+    private static Expression GeneratePredicate(
+        string suffix,
+        ParameterExpression valueTrimmed,
+        MatchTypeOptions matchType)
+    {
+        if (string.IsNullOrWhiteSpace(suffix))
+            throw new ArgumentException("Null/blank suffix specified");
+        if (valueTrimmed == null)
+            throw new ArgumentNullException("valueTrimmed");
+        if (!Enum.IsDefined(typeof(MatchTypeOptions), matchType))
+            throw new ArgumentOutOfRangeException("matchType");
+
+        suffix = suffix.Trim();
+
+        var conditionElements = new List&lt;Expression&gt;();
+        var lengthProperty = typeof(string).GetProperty("Length");
+        var indexedProperty = typeof(string).GetProperties().First(
+            p =&gt; (p.GetIndexParameters() ?? new ParameterInfo[0]).Any()
+        );
+        if (matchType == MatchTypeOptions.SuffixOnly)
+        {
+            conditionElements.Add(
+                Expression.GreaterThan(
+                    Expression.Property(valueTrimmed, lengthProperty),
+                    Expression.Constant(suffix.Length, typeof(int))
+                )
+            );
+        }
+        else
+        {
+            conditionElements.Add(
+                Expression.Equal(
+                    Expression.Property(valueTrimmed, lengthProperty),
+                    Expression.Constant(suffix.Length, typeof(int))
+                )
+            );
+        }
+        for (var index = 0; index &lt; suffix.Length; index++)
+        {
+            conditionElements.Add(
+                Expression.Equal(
+                    Expression.Constant(suffix[index], typeof(char)),
+                    Expression.Property(
+                        valueTrimmed,
+                        indexedProperty,
+                        Expression.Subtract(
+                            Expression.Property(valueTrimmed, lengthProperty),
+                            Expression.Constant(suffix.Length - index, typeof(int))
+                        )
+                    )
+                )
+            );
+        }
+        return CombineExpressionsWithAndAlso(conditionElements);
+    }
+
+    private static Expression CombineExpressionsWithAndAlso(
+        IEnumerable&lt;Expression&gt; expressions)
+    {
+        if (expressions == null)
+            throw new ArgumentNullException("expressions");
+
+        var expressionsTidied = new List&lt;Expression&gt;();
+        foreach (var expression in expressions)
+        {
+            if (expression == null)
+                throw new ArgumentException("Null reference encountered in expressions set");
+            expressionsTidied.Add(expression);
+        }
+        if (!expressionsTidied.Any())
+            throw new Exception("No entries in expressions set");
+        else if (expressionsTidied.Count == 1)
+            return expressionsTidied[0];
+
+        var reducedExpressions = new List&lt;Expression&gt;();
+        for (var index = 0; index &lt; expressionsTidied.Count; index += 2)
+        {
+            var expression = expressionsTidied[index];
+            if (index &lt; (expressionsTidied.Count - 1))
+            {
+                var expressionNext = expressionsTidied[index + 1];
+                reducedExpressions.Add(Expression.AndAlso(expression, expressionNext));
+            }
+            else
+                reducedExpressions.Add(expression);
+        }
+
+        return (reducedExpressions.Count == 1)
+            ? reducedExpressions[0]
+            : CombineExpressionsWithAndAlso(reducedExpressions);
+    }
+
+    /// &lt;summary&gt;
+    /// The value Expression must represent a non-null string that is as at least as long as
+    /// the specified length or an exception will
+    /// be thrown upon exection
+    /// &lt;/summary&gt;
+    private static Expression GenerateRemoveLastCharactersExpression(
+        Expression value,
+        int length)
+    {
+        if (value == null)
+            throw new ArgumentNullException("value");
+        if (length &lt; 0)
+            throw new ArgumentOutOfRangeException("length");
+
+        return Expression.Call(
+            value,
+            typeof(string).GetMethod("Substring", new[] { typeof(int), typeof(int) }),
+            Expression.Constant(0),
+            Expression.Subtract(
+                Expression.Property(value, typeof(string).GetProperty("Length")),
+                Expression.Constant(length, typeof(int))
+            )
+        );
+    }
+
+    /// &lt;summary&gt;
+    /// The values Expressions must represent strings otherwise the expression will fail when
+    /// executed
+    /// &lt;/summary&gt;
+    private static Expression GenerateStringConcatExpression(params Expression[] values)
+    {
+        if (values == null)
+            throw new ArgumentNullException("values");
+
+        var valuesTidied = values.ToList();
+        if (!valuesTidied.Any())
+            throw new ArgumentException("No entries in values set");
+        if (valuesTidied.Any(v =&gt; v == null))
+            throw new ArgumentException("Null reference encountered in values set");
+
+        return Expression.Call(
+            typeof(string).GetMethod("Concat", new[] { typeof(string[]) }),
+            Expression.NewArrayInit(
+                typeof(string),
+                valuesTidied
+            )
+        );
+    }
+
+    private static string CreateSuffixExtension(IEnumerable&lt;string&gt; suffixes)
+    {
+        if (suffixes == null)
+            throw new ArgumentNullException("suffixes");
+
+        var suffixesTidied = suffixes.ToList();
+        if (!suffixesTidied.Any())
+            throw new ArgumentException("No entries in suffixes set");
+        if (suffixesTidied.Any(s =&gt; string.IsNullOrWhiteSpace(s)))
+            throw new ArgumentException("Null/blank entry encountered in suffixes set");
+
+        return "|" + string.Join("|", suffixesTidied.Select(s =&gt; s.Trim()));
+    }
+
+    /// &lt;summary&gt;
+    /// Given a set of values, ensure that none are null and return them de-duplicated after
+    /// having been pushed through a string manipulation. This will throw an exception for
+    /// null arguments or if any null value is encountered in the values set.
+    /// &lt;/summary&gt;
+    private static IEnumerable&lt;string&gt; TidyStringList(
+        IEnumerable&lt;string&gt; values,
+        Func&lt;string, string&gt; transformer)
+    {
+        if (values == null)
+            throw new ArgumentNullException("values");
+        if (transformer == null)
+            throw new ArgumentNullException("transformer");
+
+        var valuesTidied = new List&lt;string&gt;();
+        foreach (var value in values)
+        {
+            if (value == null)
+                throw new ArgumentException("Null entry encountered in values");
+
+            var valueToStore = transformer(value);
+            if (!valuesTidied.Contains(valueToStore))
+                valuesTidied.Add(valueToStore);
+        }
+        return valuesTidied.Distinct();
+    }
+
+    public readonly static IEnumerable&lt;string&gt; DefaultFallback = new[] { "ses", "es", "s" };
+    public readonly static PluralEntry[] DefaultPlurals = new[]
+    {
+        // eg. formula / formulae / formulas
+        new PluralEntry(new[] { "ula", "ulae", "ulas" }, MatchTypeOptions.SuffixOnly),
+
+        // eg. category / categories
+        new PluralEntry(new[] { "y", "ies" }, MatchTypeOptions.SuffixOnly),
+
+        // eg. cactus / cactii
+        new PluralEntry(new[] { "us", "ii" }, MatchTypeOptions.SuffixOnly),
+
+        // eg. child / children
+        new PluralEntry(new[] { "ld", "ldren" }, MatchTypeOptions.SuffixOnly),
+
+        // eg. medium / media
+        new PluralEntry(new[] { "ium", "ia" }, MatchTypeOptions.SuffixOnly),
+
+        // Common special cases that have to come before the "ses", es", "s" form
+        new PluralEntry(new[] { "index", "indexes", "indices" }, MatchTypeOptions.WholeWord),
+        new PluralEntry(new[] { "matrix", "matrices" }, MatchTypeOptions.WholeWord),
+        new PluralEntry(new[] { "vertex", "vertices" }, MatchTypeOptions.WholeWord),
+
+        // eg. Abacuses, matching "s" here means we must use "ses", "es" AND "s" as fallbacks
+        new PluralEntry(new[] { "ses", "es", "s" }, MatchTypeOptions.SuffixOnly),
+
+        // Other common special cases
+        new PluralEntry(new[] { "datum", "data" }, MatchTypeOptions.WholeWord),
+        new PluralEntry(new[] { "man", "men" }, MatchTypeOptions.WholeWord),
+        new PluralEntry(new[] { "woman", "women" }, MatchTypeOptions.WholeWord)
+    };
+
+    [Serializable]
+    public class PluralEntry
+    {
+        public PluralEntry(IEnumerable&lt;string&gt; values, MatchTypeOptions matchType)
+        {
+            if (values == null)
+                throw new ArgumentNullException("values");
+            if (!Enum.IsDefined(typeof(MatchTypeOptions), matchType))
+                throw new ArgumentOutOfRangeException("matchType");
+
+            var valuesTidied = TidyStringList(values, v =&gt; v.Trim().ToLower());
+            if (!valuesTidied.Any())
+                throw new ArgumentException("No entries in values set");
+
+            Values = valuesTidied.Distinct().ToList().AsReadOnly();
+            MatchType = matchType;
+        }
+
+        /// &lt;summary&gt;
+        /// This will never be null or an empty set, nor will it contain any null, empty or
+        /// duplicate values (all values are lower-cased and trimmed)
+        /// &lt;/summary&gt;
+        public ReadOnlyCollection&lt;string&gt; Values { get; private set; }
+
+        public MatchTypeOptions MatchType { get; private set; }
+    }
+
+    [Serializable]
+    public enum MatchTypeOptions
+    {
+        SuffixOnly,
+        WholeWord
+    }
+}
+</code></pre>
+
+<p>It still takes me a far while to craft the generation LINQ Expressions but I do think that once written the resulting code is actually fairly easy to follow. For each suffix in a "PluralEntry" (where the PluralEntry might describe the group "y", "ies" as a SuffixOnly extension - as clearly seen in the <a href="an-englishlanguage-pluralityhandling-string-normaliser.html">last post</a>) a predicate is generated with LINQ Expressions that compares the input string's length and each of the characters that could correlate with the suffix string. Very similar to inside the loop of the first optimisation at the top of this post. An IfThen Expression will consider this predicate and - if matched - generate result that removes the suffix from the input value and appends a combined string consisting of the the suffix values in the group before jumping to the end of the Expression block (effectively "returning" out of the block). Again, just like the setting of the valueTransformed string in the earlier code. If none of the suffix groups are found to match then it will append a default set of suffixes, so that "cat" is transformed to "cat|s|es|ses" in order to match "cats" which would also be transformed to "cat|s|es|ses", for example.</p>
+
+<p>There are couple of oddities in the code - I struggled for a while to find a nice way to access characters by index in a string since the ArrayAccess Expressions can't be used since a string isn't <em>technically</em> an array of characters; you have to first use reflection to get hold of the indexed property of the string type, there's only one so that must be the property we want to access! When comparing the string length and the individual characters, the Expressions are combined with the AndAlso Expression as this ensures that short-circuiting of the conditions is utilised - as soon as one condition is not met, any further ones are ignored.</p>
+
+<p>This brought on another performance improvement of over 3x - success again!</p>
+
+<h3>Additional tweaks</h3>
+
+<p>There are a couple more minor optimisations in the new code that were made with knowledge of how I intended to integrate it. I was intending to use this "DefaultStringNormaliser" mentioned earlier that would trim, lower-case, remove punctuation and replace non-latin characters. This can be passed in as the "optionalPreNormaliser" constructor parameter and will process the string before the plurality normalisation is handled. However, if this "pre-normaliser" is going to trim and lower-case the input then there's no need for the EnglishPluralityStringNormaliser to do it as well! So there's a PreNormaliserWorkOptions enum that allows the instantiator to pass in hints as to whether the optionalPreNormaliser (if any) is going to do any of this work.</p>
+
+<p>Sending a few passes of the All English Words data through an EnglishPluralityStringNormaliser that wraps the DefaultStringNormaliser (code below) with PreNormaliserLowerCases and PreNormaliserTrims specified compared to running it with PreNormaliserDoesNothing (which force the Trim and ToLower calls to be made by the EnglishPluralityStringNormaliser even though the DefaultStringNormaliser has already done this work) resulted in a performance boost of over 1.4x. Not as dramatic, but definitely not to be sniffed at!</p>
+
+<p>There's one final tweak to note; I've switched from appending the suffix groups as "[s][es][ses]" to "|s|es|ses" since I'm intended to store the resulting normalised strings in a Ternary Search Tree (as discussed in <a href="the-net-dictionary-is-fast.html">The .Net Dictionary is FAST!</a>) and if the string is shorter then less comparisons have to be made when matching a string in that structure!</p>
+
+<h3>The "Default String Normaliser"</h3>
+
+<p>Since I've made reference a few times to the DefaultStringNormaliser which I've made use of, here's the current code:</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will perform string comparisons where the values have any accented characters
+/// replaced with non-accented versions, all whitespace converted to spaces and runs of
+/// whitespace replaced with a single space, all punctuation removed and the content
+/// then lower-cased.
+/// &lt;/summary&gt;
+[Serializable]
+public sealed class DefaultStringNormaliser : IStringNormaliser
+{
+    private readonly static HashSet&lt;Char&gt; PunctuationCharacters = new HashSet&lt;char&gt;(
+        Enumerable.Range(char.MinValue, char.MaxValue)
+            .Select(c =&gt; (char)c)
+            .Where(c =&gt; char.IsPunctuation(c))
+    );
+
+    public string GetNormalisedString(string value)
+    {
+        if (value == null)
+            throw new ArgumentNullException("value");
+
+        var normalisedValue = value.Normalize(NormalizationForm.FormKD);
+        var content = new char[normalisedValue.Length];
+        var contentIndex = 0;
+        var contentIndexOfLastNonWhitespace = 0;
+        var lastCharWasWhitespace = false;
+        var gotContent = false;
+        for (var index = 0; index &lt; normalisedValue.Length; index++)
+        {
+            var currentChar = normalisedValue[index];
+            if (PunctuationCharacters.Contains(currentChar))
+                continue;
+            if ((currentChar == '\r') || (currentChar == '\n') || (currentChar == '\t'))
+                currentChar = ' ';
+            else
+            {
+                var unicodeCategory = CharUnicodeInfo.GetUnicodeCategory(currentChar);
+                if ((unicodeCategory == UnicodeCategory.EnclosingMark)
+                || (unicodeCategory == UnicodeCategory.NonSpacingMark)
+                || (unicodeCategory == UnicodeCategory.SpacingCombiningMark))
+                    currentChar = ' ';
+            }
+            if (currentChar == ' ')
+            {
+                if (!lastCharWasWhitespace &amp;&amp; gotContent)
+                {
+                    content[contentIndex] = currentChar;
+                    contentIndex++;
+                    lastCharWasWhitespace = true;
+                }
+                continue;
+            }
+            if (!char.IsLower(currentChar))
+                currentChar = char.ToLower(currentChar);
+            content[contentIndex] = currentChar;
+            contentIndex++;
+            contentIndexOfLastNonWhitespace = contentIndex;
+            lastCharWasWhitespace = false;
+            gotContent = true;
+        }
+        return new string(content, 0, contentIndexOfLastNonWhitespace);
+    }
+
+    public bool Equals(string x, string y)
+    {
+        if (x == null)
+            throw new ArgumentNullException("x");
+        if (y == null)
+            throw new ArgumentNullException("y");
+
+        return GetNormalisedString(x) == GetNormalisedString(y);
+    }
+
+    public int GetHashCode(string obj)
+    {
+        if (obj == null)
+            throw new ArgumentNullException("obj");
+
+        return GetNormalisedString(obj).GetHashCode();
+    }
+}
+</code></pre>
+
+<h3>Conclusion</h3>
+
+<p>I'm still a firm believer in writing the code to work and be easily understood and maintained first. But when a section of code is measurably a bottleneck, and that bottleneck is worth removing, then little adventures like this can be fun <em>and</em> beneficial! And, to be honest, I don't think the resulting code is <em>that</em> difficult to understand. There are probably a few more tweaks that could be made to really eke out some more performance but I'm perfectly happy with it for now :)</p>
+
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 00:04</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="optimising-the-pluralityhandling-normaliser.html#disqus_thread" data-disqus-identifier="27">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">16 May 2012</h3><h2><a id="Post25"></a><a href="the-net-dictionary-is-fast.html">The .Net Dictionary is FAST!</a></h2>
+
+<p>I've been playing around with writing a Full Text Indexer - not for any practical reason, more because I was having an argument with an integration of Lucene (.Net) at work and that phrase crossed my mind; "how hard could it be?!" Yeah.. generally that should be a warning sign :)</p>
+
+<p>I was working under no false illusions - even if the basic concept was easy our integration has all sorts of issues dealing with indexing across different languages, filtering shared content for use in different websites, all sorts.. but I thought it might be a way to learn something new so why not!</p>
+
+<p>At its core, once all of the source content has been parsed and analysed, there's a mapping of string matches back to results with appropriate weightings for the mappings. I initially used a <strong>Dictionary&lt;string, WeightedEntry&lt;TKey&gt;&gt;</strong> where <strong>WeightedEntry&lt;TKey&gt;</strong> is a key / weight pair. It struck me that the built-in class is a very general purpose implementation and surely it should be possible to write something that would perform better for more specific circumstances. For instance, I'll consider dropping mutability and only accept strings for keys if these can somehow be traded for performance.</p>
+
+<h3>The naive approach</h3>
+
+<p>The first pass was very simple - if the built-in dictionary was really just a list of KeyValuePairs then key lookups would have to compare the requested key against every key already in the data. So if I had a lookup class that pre-hashed the keys then on a key lookup I could take the requested key's hash and then only compare it to other keys that I already know have the same hash value. Simples!</p>
+
+<p>Too simple of course.. the .Net Dictionary outperformed this easily. I suspected that, being such a commonly-used class, the framework developers would most likely have put some optimisation work into it - but it's always worth a go!</p>
+
+<h3>A still-pretty-naive approach</h3>
+
+<p>I remembered seeing some code somewhere deep in the past that had to deal with large numbers of entries in a lookup and the one optimisation it used was to "bucket" the data. So we could take the pre-hashed values and take the modulus of the integer value for some arbitrary number of buckets. Then there would be less comparisons again for a fairly simple one-off up-front calculation. Awesome!</p>
+
+<p>Turns out that after running some tests that the built-in Dictionary was still a way ahead of me. Sigh.</p>
+
+<h3>.Net Framework Source</h3>
+
+<p>At some point I remembered reading that Microsoft made available the source for the .Net Framework so why not have a bit of a peek - maybe I'll learn something! I've also poked around in source with <a href="http://www.jetbrains.com/decompiler/">dotPeek</a> in the past and I believe that will hook into source servers these days.</p>
+
+<p>After a quick shufty it seems like it's using a bucketed approach and basing the number of buckets on a prime number related to the capacity of the dictionary.... er, what?! I presume this is based on a well researched and performant algorithm thought up by clever people and implemented in .Net as a speedy generic implementation. Looks like improving on this will be more difficult that I first imagined (granted, I didn't think my original naive thoughts were particularly realistic).</p>
+
+<h3>One more try</h3>
+
+<p>The night I came to this point I went to bed and was bothered by what I'd found and ended up keeping myself half awake with ideas about data splitting and bucketing and lots of things that probably made no sense. It was like the opposite of the clarity of a "<a href="http://online.wsj.com/article/SB124535297048828601.html">shower moment</a>" when a solution pops unbidden into your mind, I was just thinking round and round in circles. </p>
+
+<p>But I came out of it wondering - if bucketing the values to reduce the number of comparisons (even if these comparisons are only of hashed values) yields such improved performance, and since computers love simple binary operations the best, then wouldn't having nested buckets which we fall through by repeatedly dividing the hash value by two until we get to the value (if present) be faster again??</p>
+
+<p>All I'd be doing would be bit-shifting the hash and AND'ing the last bit to determine whether to go one way or the other as I go through the layers. I could even represent the set of "buckets" with structs and push them all into one array - that should make accessing the data that much faster as the memory access is more predictable? Right??</p>
+
+<p>And maybe I could experiment with optimising for cases where keys are <em>not</em> present in the data - perhaps it would be quicker to have a "key-not-found" bucket which loops back on itself instead of having to check at each division whether the next bucket exists, surely it would be quicker for the cases where the key <em>is</em> found since there would be less work performed each step!</p>
+
+<p>Well.. I'll not ramble on too much more about this. The .Net Dictionary still beat me.</p>
+
+<p>(Just in case you have a morbid curiousity to the myriad ways in which I failed - and in which I succeeded - there will be a link to a Bitbucket repository further down with example code).</p>
+
+<h3>Some algorithm research!</h3>
+
+<p>I had a little break from it all (to wallow in the disappointment) before realising I'd basically missed a trick. How often is it that Google doesn't have the answer one way or the other?! More specifically, I'm thinking there must have been many many people who have tried to solve similar problems before.. Maybe I should have thought of this when I looked at the Framework source. Maybe I should have thought of it in the first place! But then I would have missed out on the fun of poking about with the existing Dictionary and tinkering about with all of the above.</p>
+
+<p>So it's proper research time!</p>
+
+<p>I must admit that my knowledge of lower level algorithms and structures is a bit lacking. I have a Maths degree so never covered all those courses from Computer Science, I'm mostly self-taught. Well I've <em>heard</em> about these mysterious red/black trees, binary search trees, self-adjusting balancing search trees, tries - it's just that I don't know what they all are! Maybe one of them can help. I mean, if these have been tested and applied to similar specialised scenarios then I can use someone else's genius to make my own code faster - good times!</p>
+
+<h3>The Ternary Search Tree</h3>
+
+<p>Having spent a little while trying to get a basic ground in some of the more common structures and investigating which may be appropriate to the matter in hand, I settled on trying out a Ternary Search Tree - partly because the performance characteristics seems to indicate that it could offer an improvement and because it seemed like it would easy to implement (and so not frustrate me too much if it got me nowhere!).</p>
+
+<p>Reading the following articles was enough to get to grips with the structure and write a C# class to implement it:</p>
+
+<p><a href="http://en.wikipedia.org/wiki/Ternary_search_tree">http://en.wikipedia.org/wiki/Ternary_search_tree</a></p>
+
+<p><a href="http://www.drdobbs.com/database/184410528">http://www.drdobbs.com/database/184410528</a></p>
+
+<p>Although the partial string matching and "nearest-neighbour" possibilities seemed interesting I didn't investigate them too far since I don't think they offer too much for the problem domain I've got in mind. This is in context of a full text indexer and the the partial string matching will only match a "template" string - the strings must be the same length and specific characters can be considered flexible. Nearest-neighbour also relies on making comparisons between strings of the same length. Both methods would allow only minor flexibility in incorrect spellings, for example. And the partial matching only taking single character wildcards means that a search-for-substring-within-a-key facility couldn't be created in that manner.</p>
+
+<p>The constructor takes a list of KeyValuePairs where the key must be a string while the value is a generic typeparam. It also takes a "keyNormaliser" which will enable a transformation to be applied to all keys before insertion into the tree and the same transformation applied to all keys passed to the retrieval method. This would enable a case-insensitive search tree to be specified. Or it could enable a transformation which replaces all accented characters with latin alternatives. Or enable basic plurality handling by appending an "s" to the end of keys unless the key ends in certain letters (so "s" can safely be appended to "chair" to make "chair[s]" whilst "category" would become "categor[y][ies]" and "cactus" "cact[us][ii]" - the approach would have to map both ways, so would map both "chair" <em>and</em> "chairs" to "chair[s]", it would be language-specific and probably not perfect but it opens up an interesting avenue of investigation).</p>
+
+<p><strong>Update (31st May 2012):</strong> To illustrate, an example English-language plurality-handling normaliser can be seen in <a href="an-englishlanguage-pluralityhandling-string-normaliser.html">this post</a>.</p>
+
+<h3>Test  data</h3>
+
+<p>When testing some early forays into this full text indexer problem I pulled some data from the <a href="http://developer.nytimes.com/docs/read/article_search_api">New York Times Article Search API</a> which I only discovered while trying to find a good source of data. I just did a search for "test" and pulled as many articles as I could in the number of API call you're allowed for a day. Then processed the content, leaving me essentially with a dictionary of data with string keys (each key being a word in an article, title or other field in their data).</p>
+
+<p>The API is really simple to communicate with, below is the code I used to perform the retrieval (the comments were stripped out for brevity):</p>
+
+<pre><code>using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Web;
+using System.Web.Script.Serialization;
+
+namespace NewYorkTimesDataRetriever
+{
+    public class NewYorkTimesArticleRetriever : IArticleRetriever
+    {
+        private Uri _serviceUrl;
+        private string _apiKey;
+        public NewYorkTimesArticleRetriever(Uri serviceUrl, string apiKey)
+        {
+            if (serviceUrl == null)
+                throw new ArgumentNullException("serviceUrl");
+            if (!serviceUrl.IsAbsoluteUri)
+                throw new ArgumentException("serviceUrl must be an absolute Uri");
+            if (!string.IsNullOrWhiteSpace(serviceUrl.Query))
+                throw new ArgumentException("serviceUrl may not have any query content");
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new ArgumentException("Null/empty apiKey specified");
+
+            _serviceUrl = serviceUrl;
+            _apiKey = apiKey.Trim();
+        }
+
+        public ArticleSet GetArticles(string searchTerm, int pageIndex)
+        {
+            if (string.IsNullOrWhiteSpace(searchTerm))
+                throw new ArgumentException("Null/empty searchTerm specified");
+            if (pageIndex &lt; 0)
+                throw new ArgumentOutOfRangeException("pageIndex", "must be zero or greater");
+
+            var request = WebRequest.Create(string.Format(
+                "{0}?query={1}&amp;api-key={2}&amp;fields=column_facet,body,title,byline&amp;offset={3}",
+                _serviceUrl.ToString(),
+                HttpUtility.UrlEncode(searchTerm.Trim()),
+                HttpUtility.UrlEncode(_apiKey.Trim()),
+                pageIndex
+            ));
+
+            string jsonData;
+            using (var stream = request.GetResponse().GetResponseStream())
+            {
+                using (var reader = new StreamReader(stream))
+                {
+                    jsonData = reader.ReadToEnd();
+                }
+            }
+            var results = new JavaScriptSerializer().Deserialize&lt;Resultset&gt;(jsonData);
+            var translatedArticles = new List&lt;Article&gt;();
+            for (var index = 0; index &lt; results.Results.Count; index++)
+            {
+                var article = results.Results[index];
+                if (string.IsNullOrWhiteSpace(article.Title)
+                || string.IsNullOrWhiteSpace(article.Body))
+                    continue;
+                translatedArticles.Add(new Article(
+                    (pageIndex * PageSize) + index,
+                    article.Title,
+                    article.ByLine,
+                    article.Column_Facet,
+                    article.Body
+                ));
+            }
+            return new ArticleSet(results.Total, pageIndex, translatedArticles);
+        }
+
+        public int PageSize { get { return 10; } }
+
+        private class Resultset
+        {
+            public Resultset()
+            {
+                Results = new List&lt;Result&gt;();
+            }
+            public int Offset { get; set; }
+            public int Total { get; set; }
+            public string[] Tokens { get; set; }
+            public List&lt;Result&gt; Results { get; set; }
+
+            public class Result
+            {
+                public string Title { get; set; }
+                public string ByLine { get; set; }
+                public string Column_Facet { get; set; }
+                public string Body { get; set; }
+            }
+        }
+    }
+
+    public interface IArticleRetriever
+    {
+        ArticleSet GetArticles(string searchTerm, int pageIndex);
+        int PageSize { get; }
+    }
+
+    public class ArticleSet
+    {
+        private ReadOnlyCollection&lt;Article&gt; _articles;
+        public ArticleSet(int totalResultCount, int pageIndex, IEnumerable&lt;Article&gt; articles)
+        {
+            if (totalResultCount &lt; 0)
+                throw new ArgumentOutOfRangeException(
+                    "totalResultCount",
+                    "must be zero or greater"
+                );
+            if (pageIndex &lt; 0)
+                throw new ArgumentOutOfRangeException(
+                    "pageIndex",
+                    "must be zero or greater"
+                );
+            if (articles == null)
+                throw new ArgumentNullException("articles");
+
+            var articlesTidied = new List&lt;Article&gt;();
+            foreach (var article in articles)
+            {
+                if (article == null)
+                    throw new ArgumentException("Null entry encountered in articles");
+                articlesTidied.Add(article);
+            }
+            if ((totalResultCount == 0) &amp;&amp; articlesTidied.Any())
+                throw new ArgumentException("Article set must be empty if total count is 0");
+
+            TotalResultCount = totalResultCount;
+            PageIndex = pageIndex;
+            _articles = articlesTidied.AsReadOnly();
+        }
+
+        public int TotalResultCount { get; private set; }
+        public int PageIndex { get; private set; }
+        public ReadOnlyCollection&lt;Article&gt; Articles { get { return _articles; } }
+    }
+
+    public class Article
+    {
+        public Article(int key, string title, string byLine, string keywords, string body)
+        {
+            if (string.IsNullOrWhiteSpace(title))
+                throw new ArgumentNullException("Null/empty title specified");
+            if (string.IsNullOrWhiteSpace(body))
+                throw new ArgumentNullException("Null/empty body specified");
+
+            Key = key;
+            Title = title.Trim();
+            ByLine = (byLine ?? "").Trim();
+            Keywords = (keywords ?? "").Trim();
+            Body = body.Trim();
+        }
+
+        public int Key { get; private set; }
+        public string Title { get; private set; }
+        public string ByLine { get; private set; }
+        public string Keywords { get; private set; }
+        public string Body { get; private set; }
+    }
+}
+</code></pre>
+
+<h3>Celebrate good times!</h3>
+
+<p>With this data (over 86,000 keys) I set up some initial test runs - comparing the performance of the .Net Dictionary against my Ternary Search Tree implementation by taking 1000 keys at random from the source data and requesting them all from the .Net Dictionary and then the TST. The retrieval was performed 1000 times successively against each dictionary and then entire process was looped 5 times. Perhaps not the ultimate in the application of the scientific method, but good enough to get an idea.</p>
+
+<p>Running the test app I saw a performance improvement over the .Net Dictionary by the TST with it doing the work over 2.7 times as fast. Amazing! (This was in a release build, debug builds still showed impressive improvement but not <em>as</em> great; around 2x the speed). This was a real result and clearly a marked improvement over my meagre efforts! :)</p>
+
+<p>However.. due to the manner in which the TST performs its lookups, this is really the ideal case for it and so further investigation is required before it can be considered a complete success.</p>
+
+<p>So to look further into it I took the same randomly-selected keys and reversed half of them so that only have of them should match (there will be a few single character keys and some pallindromes - I ran a quick a quick check and there were 275 in the set 86,728 keys so they're fairly negligible). This time the TST was over 1.9 times as fast as the .Net Dictionary - still definitely an improvement but not as dramatic. If I reverse <em>all</em> of the keys then it turns out the TST is <em>just</em> slower than the .Net Dictionary (over 97% the speed, but not quite as fast nonetheless).</p>
+
+<p>Before I go too far down this path, though, there's something else that's bugging me. The order in which the keys are inserted while the tree is being constructed is going to alter the internal structure of the completed tree. It seems very unlikely that every order will have identical retrieval performance. Which brings on to thinking hard about..</p>
+
+<h3>Insertion Order</h3>
+
+<p>The Dobbs article makes a mention about varying performance due to key insertion order:</p>
+
+<blockquote>
+  <p>If you insert the nodes in sorted order, the result is a long skinny tree that is very costly to build and search. Fortunately, if you insert the nodes in random order, a binary search tree is usually close to balanced.</p>
+</blockquote>
+
+<p>and</p>
+
+<blockquote>
+  <p>You can build a completely balanced tree by inserting the median element of the input set, then recursively inserting all lesser elements and greater elements.</p>
+</blockquote>
+
+<p>To test it out I tried a few orderings on inserted items; as they appeared in the source data, applying a random sort, alphabetical and the median-item method recommended above.</p>
+
+<p>I re-ran the earlier tests, reversing none of the keys, half of the keys and then all of the keys to get a rough idea of how that might affect the results. Each time the median-item sorting approach was fastest. <em>But</em>.. in the best cases it wasn't much over 2% faster than the random-ordered insertions and less than 2% faster than the unordered data. It was about 8.5% faster than the alphabetical-sorted keys so (as expected from the above) that was considerably worse. When <em>all</em> keys were reversed the improvements were in the region of 0.5%, 0.2% and 3.7% (for random, unordered and alphabetical). So there's definitely an improvement to be had but it's much smaller between randomly sorted keys and "ideally" sorted keys (a well-balanced tree) than between the .Net Dictionary and the TST.</p>
+
+<p>If the data was to infrequently updated and heavily read then ensuring the tree is well-balanced is most likely worth it, but in other scenarios it would be a toss-up as to whether re-sorting the data at each update is worth the initial hit.</p>
+
+<h3>Measure of balance</h3>
+
+<p>If there was a standard way to measure how well balanced the tree is then it might be feasible to apply a threshold that, once crossed, triggers a re-build of the tree. Oddly, though, I had a quick scour of the internet and couldn't find a standard metric! The gist is that the less "deep" a tree is, the better - which makes sense as the seek operations can be envisaged as travelling down the branches of the tree and if a tree is wider than it is deep then retrievals can generally be expected to require less operations.</p>
+
+<p>So I considered trying to measure the width and depth of the tree, then the range of tree lengths (then a few other things)... and finally settled on calculating the average depth-to-key-length ratio. This will always be greater than one (unless there are no items, in which case it should be considered undefined) since no key can be contained in less elements than there are characters in the key (after any manipulations by the keyNormaliser). For the data I was using, I got "balance factors" (for want of a better name!) of 2.17, 2.13, 6.65 and 1.96 for the randomly-sorted keys, the unsorted keys, the alphabetically-sorted keys and the median-item-sorted keys, each of which tie in roughly with the differences in seek times I described above.</p>
+
+<h3>Final results</h3>
+
+<p>Taking a well-balanced tree with my sample data, I ran it through the same batch of tests (with varying proportions of key flipped) to see how good we could get it:</p>
+
+<p>No keys reversed (so <em>all</em> keys requested present in data): Over 2.8x the retrieval performance of the .Net Dictionary.</p>
+
+<p>75% of the keys reversed: Over 1.4x</p>
+
+<p>50%: Over 1.2x</p>
+
+<p>97%: Almost 1.1x</p>
+
+<p>98%: Between 1.0x and 1.1x</p>
+
+<p>99%: Slightly slower, about 99% the speed of the .Net Dictionary</p>
+
+<p>All keys reversed: Slower again, about 97% the performance</p>
+
+<p>All in all, pretty impressive! So long as at least 99% of requests are for keys that are present then the TST will offer an improvement, and a drastic one when <em>most</em> requests are for valid keys.</p>
+
+<p>It's been a fun venture and left me think I should fill in my algorithm knowledge a little more - it's not every day that I'm going to obsess over a particular structure, but it's always good to increase my awareness of what's out there. </p>
+
+<p>The code can be found in the repository <a href="https://bitbucket.org/DanRoberts/dictionaryspeedtests">https://bitbucket.org/DanRoberts/dictionaryspeedtests</a> - along with a few tests I ran and some of the approaches I tried out that I talked about at the top of the post - but the TST class is basically the following (again, slightly trimmed for brevity). As my original premise was to consider an immutable store I haven't implemented any add / delete / update methods but now that I'm happy with the performance boost I may well do - but then I'll have to make more decisions into whether I should try to build in a re-balancing threshold mechanism and I think instead I might have a little rest! :)</p>
+
+<pre><code>using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+
+namespace TSTExample
+{
+    public class TernarySearchTreeDictionary&lt;TValue&gt;
+    {
+        private Node _root;
+        private IStringNormaliser _keyNormaliser;
+        private ReadOnlyCollection&lt;string&gt; _keys;
+
+        public TernarySearchTreeDictionary(
+            IEnumerable&lt;KeyValuePair&lt;string, TValue&gt;&gt; data,
+            IStringNormaliser keyNormaliser)
+        {
+            if (data == null)
+                throw new ArgumentNullException("data");
+            if (keyNormaliser == null)
+                throw new ArgumentNullException("keyNormaliser");
+
+            Node root = null;
+            var nodeCount = 0;
+            var keys = new HashSet&lt;string&gt;(keyNormaliser);
+            var depthToLengthRatio = new List&lt;float&gt;();
+            foreach (var entry in data)
+            {
+                var key = entry.Key;
+                if (key == null)
+                    throw new ArgumentException("Null key encountered in data");
+                var normalisedKey = keyNormaliser.GetNormalisedString(key);
+                if (normalisedKey == "")
+                    throw new ArgumentException("normalised key is blank: " + key);
+                if (keys.Contains(normalisedKey))
+                    throw new ArgumentException("duplicate normalised key: " + key);
+                keys.Add(key);
+
+                if (root == null)
+                {
+                    root = new Node() { Character = normalisedKey[0] };
+                    nodeCount++;
+                }
+
+                var node = root;
+                var index = 0;
+                var depth = 1;
+                while (true)
+                {
+                    if (node.Character == normalisedKey[index])
+                    {
+                        index++;
+                        if (index == normalisedKey.Length)
+                        {
+                            node.IsKey = true;
+                            node.Value = entry.Value;
+                            depthToLengthRatio.Add(depth / normalisedKey.Length);
+                            break;
+                        }
+                        if (node.MiddleChild == null)
+                        {
+                            node.MiddleChild = new Node() { Character = normalisedKey[index] };
+                            nodeCount++;
+                        }
+                        node = node.MiddleChild;
+                    }
+                    else if (normalisedKey[index] &lt; node.Character)
+                    {
+                        if (node.LeftChild == null)
+                        {
+                            node.LeftChild = new Node() { Character = normalisedKey[index] };
+                            nodeCount++;
+                        }
+                        node = node.LeftChild;
+                    }
+                    else
+                    {
+                        if (node.RightChild == null)
+                        {
+                            node.RightChild = new Node() { Character = normalisedKey[index] };
+                            nodeCount++;
+                        }
+                        node = node.RightChild;
+                    }
+                    depth++;
+                }
+            }
+
+            _root = root;
+            _keyNormaliser = keyNormaliser;
+            _keys = keys.ToList().AsReadOnly();
+            BalanceFactor = depthToLengthRatio.Any() ? depthToLengthRatio.Average() : 0;
+        }
+
+        private class Node
+        {
+            public char Character { get; set; }
+            public Node LeftChild { get; set; }
+            public Node MiddleChild { get; set; }
+            public Node RightChild { get; set; }
+            public bool IsKey { get; set; }
+            public TValue Value { get; set; }
+        }
+
+        public int Count
+        {
+            get { return _keys.Count; }
+        }
+
+        public IEnumerable&lt;string&gt; Keys
+        {
+            get { return _keys; }
+        }
+
+        public float BalanceFactor { get; private set; }
+
+        public bool TryGetValue(string key, out TValue value)
+        {
+            if (key == null)
+                throw new ArgumentNullException("key");
+            var normalisedKey = _keyNormaliser.GetNormalisedString(key);
+            if (normalisedKey != "")
+            {
+                var node = _root;
+                var index = 0;
+                while (true)
+                {
+                    if (node.Character == normalisedKey[index])
+                    {
+                        index++;
+                        if (index == normalisedKey.Length)
+                        {
+                            if (node.IsKey)
+                            {
+                                value = node.Value;
+                                return true;
+                            }
+                            break;
+                        }
+                        node = node.MiddleChild;
+                    }
+                    else if (normalisedKey[index] &lt; node.Character)
+                        node = node.LeftChild;
+                    else
+                        node = node.RightChild;
+                    if (node == null)
+                        break;
+                }
+            }
+            value = default(TValue);
+            return false;
+        }
+
+        public TValue this[string key]
+        {
+            get
+            {
+                TValue value;
+                if (!TryGetValue(key, out value))
+                    throw new KeyNotFoundException();
+                return value;
+            }
+        }
+    }
+
+    public interface IStringNormaliser : IEqualityComparer&lt;string&gt;
+    {
+        string GetNormalisedString(string value);
+    }
+}
+</code></pre>
+
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 23:38</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-net-dictionary-is-fast.html#disqus_thread" data-disqus-identifier="25">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">26 January 2012</h3><h2><a id="Post21"></a><a href="css-minification-regular-expressions.html">CSS Minification Regular Expressions</a></h2>
+
+<h3>I don't like regular expressions (most of the time)</h3>
+
+<blockquote>
+  <p>Some people, when confronted with a problem, think "I know, I'll use regular expressions." Now they have two problems.</p>
+</blockquote>
+
+<p>Using this quote when talking about regular expressions is not exactly original, <a href="http://www.codinghorror.com/blog/2008/06/regular-expressions-now-you-have-two-problems.html">I know</a> but I do have a long-standing mistrust and borderline disdain for regular expressions which may well have a relation to the fact that they are not exactly my forte. But unfortunately they also seem to be frequently used by people whose forte they also are not! Often the times I come across them they don't cover all the edge cases that the writer originally either expected them to or didn't expect at all - and then they sort of mutate over time into barely-readable strings of symbols that are more difficult to comprehend and maintain (and slower) than a set of functionally-equivalent string manipulation procedures. Don't even get me started on the fact that commenting them seems to be bypassed every time.. since the regex itself is so small the comment would dwarf it, and that would be stupid right? <a href="http://twitter.com/#!/quepimquepam/statuses/141976977061068801">Wrong</a>.</p>
+
+<p>Everyone knows the classic email validation example which is frequently brought out as a case against regular expressions but I've got two other stories I suffered through first hand:</p>
+
+<h4>The CSS comment-extracing regular expression fail</h4>
+
+<p>I wrote a CSS minimiser for use in a Classic ASP Javascript app some years ago using a regular expression to strip the comments out before further processing was done, thus:</p>
+
+<pre><code>return strContent.replace(/\/\*(.|[\r\n])*?\*\//g, "");
+</code></pre>
+
+<p>I did my research on the old t'interwebs and this seemed to be well recommended and would do just what I wanted. It worked fine for a few weeks until - out of the blue - IIS was flatlining the CPU and requests were timing out. I don't even remember how we tracked this down but it eventually arose that a stylesheet had an unclosed comment in it. Appending "/**/" to the content before performing the replacement made the problem disappear.</p>
+
+<h4>The Availability Component regular expression fail</h4>
+
+<p>The second example was a component I was given to integrate with at work, part of whose job was to query a Hotel Availablity Web Service. The response xml was always passed through a regular expression that would ensure no credit card details appeared in the content. The xml returned often described detailed information from many Suppliers and could be several megabytes of text so when these calls were taking over 60 seconds and pegging the cpu I was told that it must be the weight of data and the deserialisation causing it. Watching the data move back and forth in Fiddler, though, it was clear that these requests would complete in around 6 seconds.. further investigation by the component writer eventually confirmed that the deserialisation took very little time or resources (well, "very little" in relation to a 60 seconds / 100% cpu event) but the regular expression scanning for the card details was creating all the work. The best part being that these response would <em>never</em> contain any credit card details, its just that this expression had been applied to <em>all</em> responses for "consistency".</p>
+
+<p>It could well be argued that none of these cases are really the fault of regular expressions themselves - the email example is misuse of a tool, the CSS comment removal could be the regex engine implementation (possibly?!) and the availability issue was entirely unnecessary work. But the fact that these issues are lurking out there (waiting to strike!) makes me wary - which is <em>not</em> a reason in isolation not to use something, but it definitely makes me think that my understanding not only of how they can be written but the implications of how they will be processed could do with serious improvement. But I think this needs to go for anyone else writing these regular expressions - if you don't know how they're being worked out, how do you know whether or not they'll scale to text more than a few lines long? Will they scale linearly or exponentially or in some completely different manner?? Again, these are not exactly original thoughts and Joel Spolsky's <a href="http://www.joelonsoftware.com/articles/LeakyAbstractions.html">Leaky Abstractions</a> article is basically saying (much more eloquently) that you should understand at least one layer below the current abstraction you're using.</p>
+
+<h3>Fighting my fears</h3>
+
+<p>But so many people will tell you that regular expressions are a valuable tool to have on hand. And I've used ISAPI Rewriter before to deal with friendly urls and that was great. (Not that I can say I miss it when I use ASP.Net MVC Routing instead though :) And there are definite occassion where regular expressions look like the <em>ideal</em> tool to use - the ones I "borrowed" to write the CSS minifier in my <a href="onthefly-css-minification.html">last post</a> were <em>so</em> convenient and much nicer than the idea of parsing all that content manually. And so I'm off to try and expand my knowledge and experience by extending the minifier to deal with "@import" statements in the stylesheets..</p>
+
+<p>This is what I've cobbled together for now. It probably looks to an experienced regular expression writer like it was written by a noob.. er, yeah, there's a good reason for that! :D And I'm not sure if the way I've tried to combine the various import formats using String.Join makes for more readable code or for code that looks like nonsense. Not to mention that they all start and end exactly the same - is this duplication something I want to hide away (<a href="http://en.wikipedia.org/wiki/Don't_repeat_yourself">DRY</a>) or will that harm the readability which is also very important??</p>
+
+<pre><code>private static Regex ImportDeclarationsMatcher = new Regex(
+    String.Join("|", new[]
+    {
+        // @import url("test.css") screen;
+        "@import\\s+url\\(\"(?&lt;filename&gt;.*?)\"\\)\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)",
+
+        // @import url("test.css") screen;
+        "@import\\s+url\\('(?&lt;filename&gt;.*?)'\\)\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)",
+
+        // @import url(test.css) screen;
+        "@import\\s+url\\((?&lt;filename&gt;.*?)\\)\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)",
+
+        // @import "test.css" screen;
+        "@import\\s+\"(?&lt;filename&gt;.*?)\"\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)",
+
+        // @import 'test.css' screen;
+        "@import\\s+'(?&lt;filename&gt;.*?)'\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)"
+    }),
+    RegexOptions.Compiled | RegexOptions.IgnoreCase
+);
+
+/// &lt;summary&gt;
+/// This will never return null nor any null instances. The content should be stripped of
+/// comments before being passed in since there is no parsing done to ensure that the
+/// imports matched exist in active (ie. non-commented-out) declarations.
+/// &lt;/summary&gt;
+public static IEnumerable&lt;StylesheetImportDeclaration&gt; GetImports(string content)
+{
+    if (content == null)
+        throw new ArgumentNullException("content");
+    if (content.Trim() == "")
+        return new NonNullImmutableList&lt;StylesheetImportDeclaration&gt;();
+
+    // Note: The content needs a line return appending to the end just in case the last line
+    // is an import doesn't have a trailing semi-colon or line return of its own (the Regex
+    // won't pick it up otherwise)
+    var imports = new List&lt;StylesheetImportDeclaration&gt;();
+    foreach (Match match in ImportDeclarationsMatcher.Matches(content + "\n"))
+    {
+        if (match.Success)
+        {
+            imports.Add(new StylesheetImportDeclaration(
+                match.Value,
+                match.Groups["filename"].Value,
+                match.Groups["media"].Value
+            ));
+        }
+    }
+    return imports;
+}
+
+public class StylesheetImportDeclaration
+{
+    public StylesheetImportDeclaration(
+        string declaration,
+        string filename,
+        string mediaOverride)
+    {
+        if (string.IsNullOrWhiteSpace(declaration))
+            throw new ArgumentException("Null/blank declaration specified");
+        if (string.IsNullOrWhiteSpace(filename))
+            throw new ArgumentException("Null/blank filename specified");
+
+        Declaration = declaration.Trim();
+        Filename = filename.Trim();
+        MediaOverride = string.IsNullOrWhiteSpace(mediaOverride)
+            ? null
+            : mediaOverride.ToString();
+    }
+
+    /// &lt;summary&gt;
+    /// This will never be null or empty
+    /// &lt;/summary&gt;
+    public string Declaration { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or empty
+    /// &lt;/summary&gt;
+    public string Filename { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This may be null but it will never be empty
+    /// &lt;/summary&gt;
+    public string MediaOverride { get; private set; }
+}
+</code></pre>
+
+<p>This will hopefully match imports of the various supported formats</p>
+
+<pre><code>@import url("test.css")
+@import url("test.css")
+@import url(test.css)
+@import "test.css"
+@import 'test.css'
+</code></pre>
+
+<p>all terminated with either semi-colons or line returns, all with optional media types / media queries, all with variable whitespace between the elements. That is all done in a <em>lot</em> less code that if I was going to try to parse that content myself. Which is nice!</p>
+
+<h3>So..</h3>
+
+<p>I think this little foray has been a success! But now I've got the syntax down (for this case at least), I need to stop being a hypocrit and go off and try to find out how exactly these expressions are processed. As far as I know these might run fine on content up to a certain size and then go batshit crazy on anything bigger! Or they might run like finely honed algorithmic masterpieces on anything thrown at them* - I guess I won't know until I find out more!</p>
+
+<p>* No, I don't believe that either! :)</p>
+<p class="PostTime">Posted at 22:30</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li><li><a href="Archive/Tag/RegEx.html" title="2 Posts">RegEx</a></li></ul></div>
+						<p class="Comments">
+							<a href="css-minification-regular-expressions.html#disqus_thread" data-disqus-identifier="21">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">21 January 2012</h3><h2><a id="Post20"></a><a href="onthefly-css-minification.html">On-the-fly CSS Minification</a></h2>
+
+<p>I've been experimenting with minifying javascript and stylesheet content on-the-fly with an ASP.Net MVC project where different pages may have different combinations of javascript and stylesheets - not just to try to minimise the quantity of data transmitted but because some of the stylesheets may conflict.</p>
+
+<p>If this requirement was absent and <em>all</em> of the stylesheets or javascript files from a given folder could be included, I'd probably wait until this becomes available (I'm sure I read somewhere it would be made available for .Net 4.0 as well, though I'm struggling now to find a link to back that up!) -</p>
+
+<p><a href="http://weblogs.asp.net/scottgu/archive/2011/11/27/new-bundling-and-minification-support-asp-net-4-5-series.aspx">New Bundling and Minification Support (ASP.NET 4.5 Series)</a></p>
+
+<p>However, mostly due to this special requirement (and partly because I'll still be learning thing even if this doesn't turn out being as useful as I'd initially hoped :) I've pushed on with investigation.</p>
+
+<h3>The proof-of-concept</h3>
+
+<p>I'm going to jump straight to the first code I've got in use. There's a controller..</p>
+
+<pre><code>public class CSSController : Controller
+{
+    public ActionResult Process()
+    {
+        var filename = Server.MapPath(Request.FilePath);
+
+        DateTime lastModifiedDateOfData;
+        try
+        {
+            var file = new FileInfo(filename);
+            if (!file.Exists)
+                throw new FileNotFoundException("Requested file does not exist", filename);
+
+            lastModifiedDateOfData = file.LastWriteTime;
+        }
+        catch (Exception e)
+        {
+            Response.StatusCode = 500;
+            Response.StatusDescription = "Error encountered";
+            return Content(
+                String.Format(
+                    "/* Unable to determine LastModifiedDate for file: {0} [{1}] */",
+                    filename,
+                    e.Message
+                ),
+                "text/css"
+            );
+        }
+
+        var lastModifiedDateFromRequest = TryToGetIfModifiedSinceDateFromRequest();
+        if ((lastModifiedDateFromRequest != null) &amp;&amp;
+        (Math.Abs(
+            lastModifiedDateFromRequest.Value.Subtract(lastModifiedDateOfData).TotalSeconds)
+         &lt; 2))
+        {
+            // Add a small grace period to the comparison (if only because
+            // lastModifiedDateOfLiveData is granular to milliseconds while
+            // lastModifiedDate only considers seconds and so will nearly
+            // always be between zero and one seconds older)
+            Response.StatusCode = 304;
+            Response.StatusDescription = "Not Modified";
+            return Content("", "text/css");
+        }
+
+        // Try to retrieve from cache
+        var cacheKey = "CSSController-" + filename;
+        var cachedData = HttpContext.Cache[cacheKey] as TextFileContents;
+        if (cachedData != null)
+        {
+            // If the cached data is up-to-date then use it..
+            if (cachedData.LastModified &gt;= lastModifiedDateOfData)
+            {
+                SetResponseCacheHeadersForSuccess(lastModifiedDateOfData);
+                return Content(cachedData.Content, "text/css");
+            }
+
+            // .. otherwise remove it from cache so it can be replaced with current data below
+            HttpContext.Cache.Remove(cacheKey);
+        }
+
+        try
+        {
+            var content = MinifyCSS(System.IO.File.ReadAllText(filename));
+
+            SetResponseCacheHeadersForSuccess(lastModifiedDateOfData);
+
+            // Use DateTime.MaxValue for AbsoluteExpiration (since we're considering the
+            // file's LastModifiedDate we don't want this cache entry to expire
+            // on a separate time based scheme)
+            HttpContext.Cache.Add(
+                cacheKey,
+                new TextFileContents(filename, lastModifiedDateOfData, content),
+                null,
+                DateTime.MaxValue,
+                System.Web.Caching.Cache.NoSlidingExpiration,
+                System.Web.Caching.CacheItemPriority.Normal,
+                null
+            );
+
+            return Content(content, "text/css");
+        }
+        catch (Exception e)
+        {
+            Response.StatusCode = 500;
+            Response.StatusDescription = "Error encountered";
+
+            return Content("/* Error: " + e.Message + " */", "text/css");
+        }
+    }
+
+    /// &lt;summary&gt;
+    /// Try to get the If-Modified-Since HttpHeader value - if not present or not valid
+    /// (ie. not interpretable as a date) then null will be returned
+    /// &lt;/summary&gt;
+    private DateTime? TryToGetIfModifiedSinceDateFromRequest()
+    {
+        var lastModifiedDateRaw = Request.Headers["If-Modified-Since"];
+        if (lastModifiedDateRaw == null)
+            return null;
+
+        DateTime lastModifiedDate;
+        if (DateTime.TryParse(lastModifiedDateRaw, out lastModifiedDate))
+            return lastModifiedDate;
+
+        return null;
+    }
+
+    /// &lt;summary&gt;
+    /// Mark the response as being cacheable and implement content-encoding requests such
+    /// that gzip is used if supported by requester
+    /// &lt;/summary&gt;
+    private void SetResponseCacheHeadersForSuccess(DateTime lastModifiedDateOfLiveData)
+    {
+        // Mark the response as cacheable
+        // - Specify "Vary" "Content-Encoding" header to ensure that if cached by proxies
+        //   that different versions are stored for different encodings (eg. gzip'd vs
+        //   non-gzip'd)
+        Response.Cache.SetCacheability(System.Web.HttpCacheability.Public);
+        Response.Cache.SetLastModified(lastModifiedDateOfLiveData);
+        Response.AppendHeader("Vary", "Content-Encoding");
+
+        // Handle requested content-encoding method
+        var encodingsAccepted = (Request.Headers["Accept-Encoding"] ?? "")
+            .Split(',')
+            .Select(e =&gt; e.Trim().ToLower())
+            .ToArray();
+        if (encodingsAccepted.Contains("gzip"))
+        {
+            Response.AppendHeader("Content-encoding", "gzip");
+            Response.Filter = new GZipStream(Response.Filter, CompressionMode.Compress);
+        }
+        else if (encodingsAccepted.Contains("deflate"))
+        {
+            Response.AppendHeader("Content-encoding", "deflate");
+            Response.Filter = new DeflateStream(Response.Filter, CompressionMode.Compress);
+        }
+    }
+
+    /// &lt;summary&gt;
+    /// Represent a last-modified-date-marked text file we can store in cache
+    /// &lt;/summary&gt;
+    [Serializable]
+    private class TextFileContents
+    {
+        public TextFileContents(string filename, DateTime lastModified, string content)
+        {
+            if (string.IsNullOrWhiteSpace(filename))
+                throw new ArgumentException("Null/blank filename specified");
+            if (content == null)
+                throw new ArgumentNullException("content");
+
+            Filename = filename.Trim();
+            LastModified = lastModified;
+            Content = content.Trim();
+        }
+
+        /// &lt;summary&gt;
+        /// This will never be null or empty
+        /// &lt;/summary&gt;
+        public string Filename { get; private set; }
+
+        public DateTime LastModified { get; private set; }
+
+        /// &lt;summary&gt;
+        /// This will never be null but it may be empty if the source file had no content
+        /// &lt;/summary&gt;
+        public string Content { get; private set; }
+    }
+
+    /// &lt;summary&gt;
+    /// Simple method to minify CSS content using a few regular expressions
+    /// &lt;/summary&gt;
+    private string MinifyCSS(string content)
+    {
+        if (content == null)
+            throw new ArgumentNullException("content");
+
+        content = content.Trim();
+        if (content == "")
+            return "";
+
+        content = HashSurroundingWhitespaceRemover.Replace(content, "#");
+        content = ExtraneousWhitespaceRemover.Replace(content, "");
+        content = DuplicateWhitespaceRemover.Replace(content, " ");
+        content = DelimiterWhitespaceRemover.Replace(content, "$1");
+        content = content.Replace(";}", "}");
+        content = UnitWhitespaceRemover.Replace(content, "$1");
+        return CommentRemover.Replace(content, "");
+    }
+
+    // Courtesy of http://madskristensen.net/post/Efficient-stylesheet-minification-in-C.aspx
+    private static readonly Regex HashSurroundingWhitespaceRemover
+        = new Regex(@"[a-zA-Z]+#", RegexOptions.Compiled);
+    private static readonly Regex ExtraneousWhitespaceRemover
+        = new Regex(@"[\n\r]+\s*", RegexOptions.Compiled);
+    private static readonly Regex DuplicateWhitespaceRemover
+        = new Regex(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex DelimiterWhitespaceRemover
+        = new Regex(@"\s?([:,;{}])\s?", RegexOptions.Compiled);
+    private static readonly Regex UnitWhitespaceRemover
+        = new Regex(@"([\s:]0)(px|pt|%|em)", RegexOptions.Compiled);
+    private static readonly Regex CommentRemover
+        = new Regex(@"/\*[\d\D]*?\*/", RegexOptions.Compiled);
+}
+</code></pre>
+
+<p>.. and some route configuration:</p>
+
+<pre><code>// Have to set this to true so that stylesheets (for example) get processed rather than
+// returned direct
+routes.RouteExistingFiles = true;
+routes.MapRoute(
+    "StandardStylesheets",
+    "{*allwithextension}",
+    new { controller = "CSS", action = "Process" },
+    new { allwithextension = @".*\.css(/.*)?" }
+);
+</code></pre>
+
+<h3>The minification</h3>
+
+<p>I've used a very straight-forward minification approach that I borrowed from this fella -</p>
+
+<p><a href="http://madskristensen.net/post/Efficient-stylesheet-minification-in-C.aspx">Efficient stylesheet minification in C#</a></p>
+
+<h3>Caching / 304'ing</h3>
+
+<p>The minified content is cached along with the last-modified-date of the file so that the http headers can be used to prevent unnecessary work (and bandwidth) by returning a 304 ("Not Modified") response (which doesn't require content). When a browser requests a "hard refresh" it will leave this header out of the request and so will get fresh content.</p>
+
+<h3>Compression / Encoding</h3>
+
+<p>So far there have been no real surprises but I came across a problem for which I'm still not completely sure where to point the blame. When hosted in IIS (but not the "Visual Studio Development [Web] Server" or IIS Express) there would be responses with the minified content returned to "hard refresh" requests that would appear corrupted. Fiddler would pop up a "The content could not be decompressed. The magic number in GZip header is not correct. Make sure you are passing in a GZIP stream" message. If the css file was entered into the url bar in Firefox, it would display "Content Encoding Error".</p>
+
+<p>Successful requests (for example, where the cache is either empty or the file has been modified since the cache entry was recorded), the request and response headers would be of the form:</p>
+
+<pre><code>GET http://www.productiverage.com/Content/Default.css HTTP/1.1
+Host: www.productiverage.com
+User-Agent: Mozilla/5.0 (Windows NT 5.1; rv:6.0.2) Gecko/20100101 Firefox/6.0.2
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept-Language: en-gb,en;q=0.5
+Accept-Encoding: gzip, deflate
+Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7
+Connection: keep-alive
+
+HTTP/1.1 200 OK
+Cache-Control: public
+Content-Type: text/css; charset=utf-8
+Last-Modified: Thu, 19 Jan 2012 23:03:37 GMT
+Vary: Accept-Encoding
+Server: Microsoft-IIS/7.0
+X-AspNetMvc-Version: 3.0
+X-AspNet-Version: 4.0.30319
+X-Powered-By: ASP.NET
+Date: Thu, 19 Jan 2012 23:08:55 GMT
+Content-Length: 4344
+
+html{background:url("/Content/Images/Background-Repeat.jpg") repeat-x #800C0E}body,td{ ...
+</code></pre>
+
+<p>while the failing requests would be such:</p>
+
+<pre><code>GET http://www.productiverage.com/Content/Default.css HTTP/1.1
+Host: www.productiverage.com
+User-Agent: Mozilla/5.0 (Windows NT 5.1; rv:6.0.2) Gecko/20100101 Firefox/6.0.2
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept-Language: en-gb,en;q=0.5
+Accept-Encoding: gzip, deflate
+Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7
+Connection: keep-alive
+Pragma: no-cache
+Cache-Control: no-cache
+
+HTTP/1.1 200 OK
+Cache-Control: public
+Content-Type: text/css; charset=utf-8
+Content-Encoding: gzip
+Last-Modified: Thu, 19 Jan 2012 23:03:37 GMT
+Vary: Accept-Encoding
+Server: Microsoft-IIS/7.0
+X-AspNetMvc-Version: 3.0
+X-AspNet-Version: 4.0.30319
+X-Powered-By: ASP.NET
+Date: Thu, 19 Jan 2012 23:07:52 GMT
+Content-Length: 4344
+
+html{background:url("/Content/Images/Background-Repeat.jpg") repeat-x #800C0E}body,td{ ...
+</code></pre>
+
+<p>The only differences in the request being the cache-disabling "Pragma" and "Cache-Control" headers but in the failing response a "Content-Encoding: gzip" header has been added but the content itself is in its raw form - ie. <em>not</em> gzip'd.</p>
+
+<p>That explains the gzip error - the content is being reported as compressed when in actual fact it isn't!</p>
+
+<p>I presume that the compression settings in IIS are somehow interfering here but unfortunately I've not been able to definitively find the cause or if I should do anything in configuration. My Google-fu is failing me today :(</p>
+
+<p>However, the solution in the above code is to handle the response compression in the CSSController. In the SetResponseCacheHeadersForSuccess method the "Accept-Encoding" request header is tested for gzip and deflate and will return content accordingly by setting the Response.Filter to be either a GZipStream or DeflateStream. This has solved the problem! And so I'm going to leave my root-cause investigation for another day :)</p>
+
+<p><strong>Note:</strong> You can find the source code to this in one of my repositories at Bitbucket: <a href="https://bitbucket.org/DanRoberts/cssminifier">The CSS Minifier</a>.</p>
+<p class="PostTime">Posted at 16:56</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li><li><a href="Archive/Tag/RegEx.html" title="2 Posts">RegEx</a></li></ul></div>
+						<p class="Comments">
+							<a href="onthefly-css-minification.html#disqus_thread" data-disqus-identifier="20">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

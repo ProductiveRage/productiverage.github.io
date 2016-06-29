@@ -1,0 +1,297 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Publishing RSS</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/publishing-rss" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">20 March 2013</h3><h2><a id="Post52"></a><a href="publishing-rss.html">Publishing RSS</a></h2>
+
+<p>With the recent furor about the death of Google Reader, I've been inspired to add an RSS Feed to my blog. It's not something that was at the forefront of my mind since I don't subscribe to any RSS Feeds. The sort of feeds that I might subscribe to will probably have any interesting posts they generate appear on <a href="http://news.ycombinator.com/">Hacker News</a> or <a href="http://programming.reddit.com/">Programming Reddit</a> - and they have the benefit that any posts that <em>aren't</em> particularly interesting to me aren't likely to appear at all!</p>
+
+<p>I've got a passing knowledge of RSS and have been somewhat involved in developments before to generate RSS Feeds and consume them so this should be no big deal.. right??</p>
+
+<h3>Content Encoding</h3>
+
+<p>My swiss cheese knowledge of the basic format had led me to think that the "description" element of the items in the feed should be plain text since there is a "content:encoded" element that I thought was added in a separate module specifically to support content with html markup.</p>
+
+<blockquote>
+  <p>The &lt;description&gt; tag is for the summary of the post, but in plain text only. No markup.</p>
+</blockquote>
+
+<p>I'd say I'm not the only one since that quote was taken from the answer to a Stack Overflow question: <a href="http://stackoverflow.com/a/7369487">Difference between description and content:encoded tags in RSS2</a>. The same is mentioned, though with less force -</p>
+
+<blockquote>
+  <p>However, the RSS &lt;description&gt; element is only supposed to be used to include plain text data</p>
+</blockquote>
+
+<p>on <a href="https://developer.mozilla.org/en-US/docs/RSS/Article/Why_RSS_Content_Module_is_Popular_-_Including_HTML_Contents">Why RSS Content Module is Popular - Including HTML Contents</a> on the Mozilla Developer Network pages.</p>
+
+<p>The <a href="http://cyber.law.harvard.edu/rss/rss.html">RSS 2.0 Specification</a>, however, clearly says</p>
+
+<blockquote>
+  <p>An item may represent a "story" -- much like a story in a newspaper or magazine; if so its description is a synopsis of the story, and the link points to the full story. An item may also be complete in itself, if so, the description contains the text (entity-encoded HTML is allowed; see examples)</p>
+</blockquote>
+
+<p><em>Sigh.</em></p>
+
+<p>So I thought I'd start by looking at a well-known blog that I know has an RSS Feed: <a href="http://www.codinghorror.com/blog/">Coding Horror</a>. The feed comes from <a href="http://feeds.feedburner.com/codinghorror/">http://feeds.feedburner.com/codinghorror/</a> which makes me feel even more confident that whatever I see here is likely to be a good starting point since it suggests that there's a standard service generating it.</p>
+
+<p>And here I see that the description element is being used for html content, where the content is wrapped in a CDATA section. This makes me uneasy since CDATA just feels <em>wrong</em> in XML somehow. And what makes it worse is that it doesn't support escaping for the end characters, so you can't have a CDATA section contain the characters "<strong>]]&gt;</strong>" since it opens with <strong>&lt;![CDATA[</strong> and ends with <strong>]]&gt;</strong> and doesn't allow for them to be escaped at all - so this post couldn't simply be wrapped in a CDATA section, for example, as it now contains those characters!</p>
+
+<p>The only way to support it is to break content and wrap it in <em>multiple</em> CDATA sections so that the critical sequence nevers appears in one section. So to wrap the content</p>
+
+<blockquote>
+  <p>This sequence is not allowed ]]&gt; in CDATA</p>
+</blockquote>
+
+<p>you need to break it into two separate CDATA sections</p>
+
+<blockquote>
+  <p>This sequence is not allowed ]]</p>
+</blockquote>
+
+<p>and</p>
+
+<blockquote>
+  <p>&gt; in CDATA</p>
+</blockquote>
+
+<p>So that those three magical characters are not encountered within a single CDATA section.</p>
+
+<p>It turns out, though, that content can be html-encoded (as indicated by that excerpt from the RSS 2.0 Spec above). So that makes life a bit easier and makes me wonder why anyone uses CDATA!</p>
+
+<h3>Content Length</h3>
+
+<p>So my next question is how many items to include in the feed. The RSS Spec has information about this:</p>
+
+<blockquote>
+  <p>A channel may contain any number of &lt;item&gt;s</p>
+</blockquote>
+
+<p>Not very <em>useful</em> information then :S</p>
+
+<p>Looking around, the common pattern seems to be ten or fifteen posts for a blog, particularly if including the entire article content in the description / content:encoded and not just a summary. Since these will be accessed by RSS Readers to check for updates, it's probably best that it's not allowed to grow to be massive. If someone's only just subscribed to your feed, they're not likely to want hundreds of historical posts to be shown. If someone is already subscribed to your feed then they just want to get new content. So ten posts sounds good to me.</p>
+
+<h3>Previewing the feed</h3>
+
+<p>I thought I'd see how the feed was shaping up at this point. I don't regularly use an RSS Reader, as I've already said, so I hit up my local blog installation's feed url in Chrome. And just got a load of xml filling the screen. Which seems fair enough, but I thought for some reason that browsers do some nice formatting when you view an RSS Feed..</p>
+
+<p>It turns out that both Firefox and IE do (versions 19 and 9, respectively, I have no idea at what version they started doing this). But not Chrome. The Coding Horror feed looks formatted but I think Feed Burner does something clever depending upon the request or the user agent or something.</p>
+
+<p>A little research reveals that you can specify an XSLT document to transform the content when viewed in a browser just by referencing it with the line</p>
+
+<pre><code>&lt;?xml-stylesheet href="/Content/RSS.xslt" type="text/xsl" media="screen"?&gt;
+</code></pre>
+
+<p>before the opening "rss" tag.</p>
+
+<p>I've seen some horrific uses of XSLT in the past but here it doesn't require anything too long or convoluted:</p>
+
+<pre><code>&lt;?xml version="1.0" encoding="iso-8859-1"?&gt;
+&lt;xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"&gt;
+  &lt;xsl:template match="/"&gt;
+    &lt;html&gt;
+      &lt;head&gt;
+        &lt;title&gt;
+          &lt;xsl:value-of select="rss/channel/title"/&gt; RSS Feed
+        &lt;/title&gt;
+        &lt;style&gt;
+          /* Some styling goes here to tidy things up */
+        &lt;/style&gt;
+      &lt;/head&gt;
+      &lt;body&gt;
+        &lt;h1&gt;
+          &lt;xsl:value-of select="rss/channel/title"/&gt;
+        &lt;/h1&gt;
+        &lt;h2&gt;&lt;xsl:value-of select="rss/channel/description"/&gt;&lt;/h2&gt;
+        &lt;img class="Logo" src="{rss/channel/image/url}" /&gt;
+        &lt;xsl:for-each select="rss/channel/item"&gt;
+          &lt;div class="Post"&gt;
+            &lt;h2 class="Title"&gt;
+              &lt;a href="{link}" rel="bookmark"&gt;
+                &lt;xsl:value-of select="title"/&gt;
+              &lt;/a&gt;
+            &lt;/h2&gt;
+            &lt;p class="PostedDate"&gt;
+              &lt;xsl:value-of select="pubDate"/&gt;
+            &lt;/p&gt;
+            &lt;xsl:value-of select="description" disable-output-escaping="yes"/&gt;
+          &lt;/div&gt;
+        &lt;/xsl:for-each&gt;
+      &lt;/body&gt;
+    &lt;/html&gt;
+  &lt;/xsl:template&gt;
+&lt;/xsl:stylesheet&gt;
+</code></pre>
+
+<p>This only affects Chrome on my computer, not Firefox or IE. I haven't tried it with Opera or Safari since I don't have them installed right now. Essentially, it should improve the rendering on any browser that doesn't already format the content itself.</p>
+
+<h3>Absolute URLs</h3>
+
+<p>This one nearly caught me out; all of the example links in the spec are absolute urls but the content generated by my blog for the standard view of the posts are relative urls. Since whatever's retrieving the RSS Feed knows where it's getting the content from, it should be able to resolve any relative urls into absolute ones. But thinking about it, I've seen an integration written at work that renders the markup straight out from an RSS Feed's items. Which won't work with my content as it is! So a few changes are required to ensure that all links specify absolute urls. As do image locations.</p>
+
+<h3>Channel pubDate vs lastBuildDate</h3>
+
+<p>According to the spec, pubDate is</p>
+
+<blockquote>
+  <p>The publication date for the content in the channel. For example, the New York Times publishes on a daily basis, the publication date flips once every 24 hours. That's when the pubDate of the channel changes.</p>
+</blockquote>
+
+<p>But there is no indication what the publicdation date should flip <em>to</em>. Feeds that I've looked at either ignore this value or make it the same as the lastBuildDate which, thankfully, <em>is</em> well defined in a clear manner:</p>
+
+<blockquote>
+  <p>The last time the content of the channel changed.</p>
+</blockquote>
+
+<p>So, for my blog, that's just the date of the most recent Post. I've decided to go the route of specifying a lastBuildDate value but no pubDate. It is in no way clear from the spec what effect this will have on my feed and how readers interact with it, if any.</p>
+
+<h3>TTL (Time To Live)</h3>
+
+<p>This one I really don't even know where to start with. </p>
+
+<blockquote>
+  <p>ttl stands for time to live. It's a number of minutes that indicates how long a channel can be cached before refreshing from the source. This makes it possible for RSS sources to be managed by a file-sharing network such as Gnutella.</p>
+</blockquote>
+
+<p>That doesn't sound too unreasonable. It makes it sound like "Expires" http header which can reduce the number of requests for a resource by allowing it to be cached by various proxies - essentially by promising that it won't change before that time.</p>
+
+<p>But there are few guidelines as to what the value should be. It's unusual for me to publish a post a day, so should I set it to 24 hours? But if I do this, then there could be a delay after a post <em>is</em> published before it's picked up if the 24 hours just awkwardly happens to start one hour before I publish. So should I set it to 8 hours so that it's not checked too often but also not too infrequently? How will this affect it compared to specifying no ttl value at all??</p>
+
+<p>I've found this article informative: <a href="http://www.therssweblog.com/?guid=20070529130637">The RSS Blog: Understanding TTL</a>.</p>
+
+<p>There's a lot of interesting content in there but the summary sorted it out for me -</p>
+
+<blockquote>
+  <p><strong>Practice</strong></p>
+  
+  <p>In practice, I've seen several uses of the TTL. Many aggregators let the user determine how often a feed is polled and some of those will use the TTL as a > default (or 60 minutes if not present). Some aggregators simply use the TTL as a hint to determine how often they are polled. The RSS draft profile is > likely a good source for examples of these behaviors. Most aggregators simply ignore TTL and do nothing with it.</p>
+  
+  <p><strong>Conclusion</strong></p>
+  
+  <p>Make your own. TTL is rarely supported by both publishers and clients.</p>
+</blockquote>
+
+<p>I'm ignoring the option of including a ttl element in my feed.</p>
+
+<h3>Final Validation</h3>
+
+<p>At this point I started figuring that there must be a simpler way to find out what I was definitely doing wrong. And this <a href="http://feedvalidator.org/check.cgi">Online Feed Validator</a> seemed like a good approach.</p>
+
+<p>It identified a few mistakes I'd made. Firstly, the image that I'd used for the channel was too big. This apparently may be no larger than 144 pixels on either dimension. It told me that the item's were lacking "guid" elements. The surprisingly informative help text on the site explained that this just had to be something that uniquely identified the item, not a GUID as defined on Wikipedia <a href="http://en.wikipedia.org/wiki/Globally_unique_identifier">Globally unique identifier</a>. A permalink to the post would do fine. The same value as was being specified for the "link" element. The validator help information suggested that using the same value for both (so long as it's a unique url for the article) would be fine. There is a note in the Wikipedia article to that effect as well!</p>
+
+<blockquote>
+  <p><strong>XML syndication formats</strong></p>
+  
+  <p>There is also a guid element in some versions of the RSS specification, and a mandatory id element in Atom, which should contain a unique identifier for each individual article or weblog post. In RSS the contents of the GUID can be any text, and in practice is typically a copy of the article URL. Atoms' IDs need to be valid URIs (usually URLs pointing to the entry, or URNs containing any other unique identifier).</p>
+</blockquote>
+
+<p>It also pointed out that I wasn't formatting dates correctly. It turns out that .Net doesn't have a formatter to generate the dates in the required RFC 822 layout, as outlined (and then addressed) here <a href="http://madskristensen.net/post/Convert-a-date-to-the-RFC822-standard-for-use-in-RSS-feeds.aspx">Convert a date to the RFC822 standard for use in RSS feeds</a>. That article was written by the same guy who I borrowed some CSS minification regular expressions from back in <a href="onthefly-css-minification.html">On-the-fly CSS Minification</a> post - a useful fella! :)</p>
+
+<p>A final point was that my channel has no "atom:link" element so I added that. It duplicates the url from the channel's "link" element by has additional attributes rel="self" and type="application/rss+xml". Apparently without these my feed is not valid.</p>
+
+<h3>Done!</h3>
+
+<p>But with that, I'm finished! After more work than I'd first envisaged, to be honest. But now users of <a href="http://www.feedly.com/">Feedly</a> or whatever ends up taking the place of Google Reader can keep up to date with my ramblings. Those lucky, lucky people :)</p>
+
+<p>I've had a look at a few other blogs for comparison. I happen to know this guy: <a href="http://www.mobtowers.com/">MobTowers</a> whose blog is generated by WordPress which generates the RSS Feed on its own. It uses the "description" element to render a summary and the "content:encoded" element for the full article content. But both description <em>and</em> content:encoded are CDATA-wrapped, with the description apparently containing some entity-encoded characters. If both WordPress <em>and</em> Feed Burner are going to work with "accepted common practices" rathen than strict spec adherence then I feel comfortable that my implementation will do the job just fine as it is.</p>
+<p class="PostTime">Posted at 23:18</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="the-full-text-indexer-structured-queries.html">The Full Text Indexer - Structured Queries</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="the-full-text-indexer-source-locations.html">The Full Text Indexer: Source Locations</a></div></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "52";
+							var disqus_title = "Publishing RSS";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

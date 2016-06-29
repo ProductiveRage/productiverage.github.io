@@ -1,0 +1,226 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - A Plurality-Handling Normaliser Correction</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/a-pluralityhandling-normaliser-correction" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">16 June 2012</h3><h2><a id="Post28"></a><a href="a-pluralityhandling-normaliser-correction.html">A Plurality-Handling Normaliser Correction</a></h2>
+
+<p>A slight amendment to a previous post (<a href="an-englishlanguage-pluralityhandling-string-normaliser.html">An English-language Plurality-handling String Normaliser</a>); the original intention of IStringNormaliser implementations was to expose IEqualityComparer&lt;string&gt; and return a value from GetNormalisedString that could be maintained in a dictionary (specifically a <a href="the-net-dictionary-is-fast.html">Ternary Search Tree</a>). And at this the English Language Pluarity-handling String Normaliser has operated splendidly! Does the string "cat" match the string "cats" when searching? Why, yes it does! (And things like this are important to know since <a href="http://www.rathergood.com/cats">the internet is made of cats</a>).</p>
+
+<p>However.. since the normalised values are maintained as strings in a dictionary they may be returned <em>as</em> normalised values. And <em>then</em> compared to a string that would be normalised to that value; so "cat" may be transformed through GetNormalisedString and then compared again to "cat" - and this is where things go awry. "cat" and "cats" are found to match as they are both normalised to "cat|s|es|ses" (as covered the <a href="an-englishlanguage-pluralityhandling-string-normaliser.html">earlier post I linked to</a>) and the problem is that "cat|s|es|ses" does <em>not</em> get matched to "cat" (or "cats" for that matter) as it incorrectly gets transformed <em>again</em> to "cat|s|es|se|s|es|ses" as the final "s" gets matched as a potential suffix and the value gets altered.</p>
+
+<p>Thankfully, the fix is none too difficult; before tring to perform transformations based upon value endings, we need to check for whether a suffix group has already been appended to the value. So before checking whether a value ends with "s", "es" or "ses" we need to check whether it ends with "|s|es|ses" and if so then return it as pre-transformed.</p>
+
+<p>The method that requires changing is that below:</p>
+
+<pre><code>private static Func&lt;string, string&gt; GenerateNormaliser(
+    IEnumerable&lt;PluralEntry&gt; plurals,
+            IEnumerable&lt;string&gt; fallbackSuffixes)
+{
+    if (plurals == null)
+        throw new ArgumentNullException("pluralEntries");
+    if (fallbackSuffixes == null)
+        throw new ArgumentNullException("fallbackSuffixes");
+
+    // Build up if statements for each suffix - if a match is found, return the input value
+    // with the matched suffix replaced with a combination of all the other suffixes in
+    // PluralEntry
+    var result = Expression.Parameter(typeof(string), "result");
+    var endLabel = Expression.Label(typeof(string));
+    var valueTrimmed = Expression.Parameter(typeof(string), "valueTrimmed");
+    var expressions = new List&lt;Expression&gt;();
+    var pluralsTidied = new List&lt;PluralEntry&gt;();
+    foreach (var plural in plurals)
+    {
+        if (plural == null)
+            throw new ArgumentException("Null reference encountered in plurals set");
+        pluralsTidied.Add(plural);
+    }
+    foreach (var plural in pluralsTidied)
+    {
+        // Before checking for for suffix matches we need to check whether the input string
+        // is a value that has already been through the normalisation process! eg. "category"
+        // and "categories" will both be transformed into the value "categor|y|ies", but if
+        // that value is passed in again it should leave as "categor|y|ies" and not have
+        // any futher attempts at normalisation applying to it.
+        expressions.Add(
+            Expression.IfThen(
+                GeneratePredicate(
+                    CreateSuffixExtension(plural.Values),
+                    valueTrimmed,
+                    plural.MatchType
+                ),
+                Expression.Block(
+                    Expression.Assign(
+                        result,
+                        valueTrimmed
+                    ),
+                    Expression.Return(endLabel, result)
+                )
+            )
+        );
+    }
+    foreach (var plural in pluralsTidied)
+    {
+        foreach (var suffix in plural.Values)
+        {
+            var assignNormalisedValueToResult = Expression.Assign(
+                result,
+                GenerateStringConcatExpression(
+                    GenerateRemoveLastCharactersExpression(valueTrimmed, suffix.Length),
+                    Expression.Constant(
+                        CreateSuffixExtension(plural.Values),
+                        typeof(string)
+                    )
+                )
+            );
+            expressions.Add(
+                Expression.IfThen(
+                    GeneratePredicate(suffix, valueTrimmed, plural.MatchType),
+                    Expression.Block(
+                        assignNormalisedValueToResult,
+                        Expression.Return(endLabel, result)
+                    )
+                )
+            );
+        }
+    }
+
+    // If any fallback suffixes are specified, add a statement to append them if none of the
+    // PluralEntry matches are made
+    fallbackSuffixes = TidyStringList(fallbackSuffixes, v =&gt; v.Trim().ToLower());
+    if (fallbackSuffixes.Any())
+    {
+        expressions.Add(
+            Expression.Assign(
+                result,
+                GenerateStringConcatExpression(
+                    valueTrimmed,
+                    Expression.Constant(
+                        CreateSuffixExtension(fallbackSuffixes),
+                        typeof(string)
+                    )
+                )
+            )
+        );
+    }
+    else
+        expressions.Add(Expression.Assign(result, valueTrimmed));
+
+    // Add the return-point label, configured to return the string value in "result"
+    expressions.Add(Expression.Label(endLabel, result));
+
+    return Expression.Lambda&lt;Func&lt;string, string&gt;&gt;(
+        Expression.Block(
+            new[] { result },
+            expressions
+        ),
+        valueTrimmed
+    ).Compile();
+}
+</code></pre>
+
+<p>In the places I'm using this the plurality-handling normaliser wraps another normaliser that trims the string, lower-cases it, removes any punctuation and replaces any non-latin characters with latin equivalents. This is no problem. But if a normaliser was wrapped that removed any non-alpha characters completely then the the method above wouldn't be able to match the transformed "|s|es|ses" ending as the pipe characters would have been removed. So long as this situation is avoided then everything will work lovely, but it's worth bearing in mind!</p>
+
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 17:53</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="optimising-the-pluralityhandling-normaliser.html">Optimising the Plurality-Handling Normaliser</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="compiled-linq-expressions-dont-serialise.html">Compiled LINQ Expressions don&#39;t serialise :(</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "28";
+							var disqus_title = "A Plurality-Handling Normaliser Correction";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

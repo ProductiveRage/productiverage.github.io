@@ -1,0 +1,1580 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - March 2013</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">28 March 2013</h3><h2><a id="Post53"></a><a href="the-full-text-indexer-source-locations.html">The Full Text Indexer: Source Locations</a></h2>
+
+<p>After adding the <a href="the-full-text-indexer-structured-queries.html">Structured Queries</a> functionality to my <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer</a> project I've been looking back at the mechanism for matching runs of tokens - eg. matching</p>
+
+<blockquote>
+  <p>"penguins are the best"</p>
+</blockquote>
+
+<p>not just to results that contain the words "penguins", "are", "the", "best" but results that contain them in a string, as a run of consecutive tokens.</p>
+
+<p>I'd previously addressed this functionality with the <strong>ConsecutiveTokenCombiningTokenBreaker</strong> - this can wrap another token breaker so that during Index generation the Index will be populated with tokens that are not just individual words but also runs of words strung back together. (There's more details in the <a href="the-full-text-indexer-token-breaker-and-string-normaliser-variations.html">Token Breaker and String Normaliser variations</a> post).</p>
+
+<p>There are some issues that I've encountered with this when I've used it with real data, however. Firstly, the Index generation time expands greatly since so much more work is done in terms of generating the tokens and also building the Index with all of this additional token data. Secondly, all of this additional data takes up a lot more space (whether persisting the Index to disk or just maintaining it in memory). An Index generated with the use of a <strong>ConsecutiveTokenCombiningTokenBreaker</strong> will likely be several times larger, feasibly ten times as large. And finally, the token breaker takes a constructor argument "maxNumberOfTokens" which caps how many tokens will be strung together in any given run. This puts a limit on the length of input search strings, based on the number of tokens it would be broken down into ("penguins are the best" would be a run of four words. If a maxNumberOfTokens value of three was specified, then the string couldn't be matched in any content).</p>
+
+<h3>Source Locations</h3>
+
+<p>Something I've been thinking about adding is "Source Location" information to the match data. I believe that Lucene can be configured to record where in the source content that a particular token was extracted from, which can be used for search term highlighting. I've implemented search term highlighting on my blog but that tries to match search terms to content after the Index has identified which posts match the search. And it doesn't use the same string normaliser as the Index so it doesn't realise that "cat" and "cats" will be considered the same by the Index.</p>
+
+<p>So in the back of my mind I've thought about adding this source location data to token matches so that I could use it to implement more consistent search term highlighting (consistent in that the same token matches identified by the Index will be considered by the search term highlighter).</p>
+
+<p>But it struck me that I should be able to use the same data to search for consecutive runs of token matches after the Index has been generated, rather than requiring additional processing to generate the Index in the first place.</p>
+
+<p>If all of the string data for a source data entry was extracted out into one long string then each "Source Location" instance would need a start index and a length for the segment of that string that was extracted for a particular token. However, this isn't how the string data is extracted for data types that have multiple properties to extract from, each is considered a separate field. So the source location would require a field index as well as the content start index and length. (If the source data type represents articles, for example, then different fields may be Title, Description, Author, etc..).</p>
+
+<p>If, in addition to this, we record the "token index" for each source location then we would have the data required to identify consecutive runs. If a source data instance had a single text property with the content</p>
+
+<blockquote>
+  <p>"penguins are the best, penguins!"</p>
+</blockquote>
+
+<p>this could be extracted into source locations with</p>
+
+<pre><code>{ 0, 0, 0,  8 }, // FieldIndex, TokenIndex, ContentIndex, ContentLength
+{ 0, 1, 9,  3 }, // FieldIndex, TokenIndex, ContentIndex, ContentLength
+{ 0, 2, 13, 3 }, // FieldIndex, TokenIndex, ContentIndex, ContentLength
+{ 0, 3, 17, 4 }, // FieldIndex, TokenIndex, ContentIndex, ContentLength
+{ 0, 4, 23, 8 }  // FieldIndex, TokenIndex, ContentIndex, ContentLength
+</code></pre>
+
+<p>(They would all have FieldIndex zero since there is only a single field to extract from).</p>
+
+<p>The search for "penguins are the best" could be performed by searching for each of the four words and then analysing the match data and its source locations to only consider token matches that are arranged in the content as part of a consecutive run. The second instance of "penguins" could be ignored as there is no match for the word "are" that has the same FieldIndex but a TokenIndex one greater.</p>
+
+<p>This logic is incorporated into the new "GetConsecutiveMatches" extension method. Its signature is similar to "GetPartialMatches" - it takes a search term which is expected to be multiple tokens according to the token breaker which must also be provided. It then requires <em>two</em> weight combiners where GetPartialMatches only requires one.</p>
+
+<pre><code>// There are alternate signatures that take less arguments in favour of sensible defaults
+public static NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetConsecutiveMatches&lt;TKey&gt;(
+    this IIndexData&lt;TKey&gt; index,
+    string source,
+    ITokenBreaker tokenBreaker,
+    IndexGenerator.WeightedEntryCombiner weightCombinerForConsecutiveRuns,
+    IndexGenerator.WeightedEntryCombiner weightCombinerForFinalMatches
+)
+</code></pre>
+
+<p>GetPartialMatches will combine matches for each of the individual words in the search term, regardless of where they appear in the source content. There is only one combination of match data for any given result. GetConsecutiveMatches has to break down the match data back into individual occurences in the source data because some occurences of a word may be valid for the returned data (if they are part of a consecutive run of search terms) while other occurences may <em>not</em> be valid (if they <em>aren't</em> part of a consecutive run). In the above example, the word "penguin" appears as a match with two source locations but only the first source location is valid as that is the only one that is part of a consecutive run of tokens that match "penguins are the best".</p>
+
+<p>GetConsecutiveMatches will identify distinct runs of tokens represented by WeightedEntry instances with a single SourceLocation each. The first weight combiner will be called with these sets of tokens (where each set represents a single run that matches the entire search term) and must return a weight that represents the entire run. This run of tokens will be reduced to a single WeightedEntry instance with a single SourceLocation that spans from the start of the first token in the run to the end of the last one. A reasonable implementation of a weight combiner for this purpose would be one that sums together the weights of each token in the run and then applies a multiplier based on the length of the run (how many tokens are in it), this way longer token runs are awarded a greater match weight.</p>
+
+<p>The second weight combiner is responsible for determing the final match weight for a result where the run of tokens is identified multiple times. If the source data in the earlier example had other data where the phrase "penguins are the best" appeared then a single WeightedEntry for that result for the string "penguins are the best" is required, its weight will be an aggregate of the weights of the individual matches. This process is exactly the same as that which takes place as part of the Index generation; when a token is found multiple times for the same result a combined weight for that token must be determined. The exact same delegate (the <strong>IndexGenerator.WeightedEntryCombiner</strong>) is used by the <strong>IndexGenerator</strong>'s constructor and for the weight combiners for GetConsecutiveMatches.</p>
+
+<h3>Hurrah for defaults</h3>
+
+<p>That's the detail about the source locations data that enabled the GetConsecutiveMatches extension method to be written, and the detail about how to call it where you need to specify all of its behaviour. But following the convenience of the <strong>AutomatedIndexGeneratorFactory</strong> (see <a href="the-full-text-indexer-automating-index-generation.html">Automating Index Generation</a>) I've included some method signatures which provide defaults for the weight combiners and the token breaker. So you can get results with the much simpler</p>
+
+<pre><code>var results = index.GetConsecutiveMatches("penguins are the best");
+</code></pre>
+
+<p>The default token breaker is a <strong>WhiteSpaceExtendingTokenBreaker</strong> that treats common puncuation characters as whitespace (such as square, round, curly or triangular brackets, commas, full stops, colons and some others). This is the same token breaker that the <strong>AutomatedIndexGeneratorFactory</strong> will use unless a token break override is specified.</p>
+
+<p>The default weight-combiner-for-consecutive-runs will sum the weights of tokens in the consecutive run and then multiply by two to the power number-of-tokens-minus-one (so x2 if there are two tokens that make up the run, x4 if there are three, x8 if there are four, etc..). The default weight-combiner-for-all-of-a-results-consecutive-runs will sum the weights of the tokens (which is the default weight combiner used by the <strong>AutomatedIndexGeneratorFactoryBuilder</strong>).</p>
+
+<p>While I was doing this, I added similar alternate method signatures to GetPartialMatches as well, so now the bare minimum it needs is</p>
+
+<pre><code>var results = index.GetPartialMatches("penguins are the best");
+</code></pre>
+
+<p>The default token break is the same as described above and the default weight combiner is one that sums the weights so long as all of the search terms are present for the result somewhere in its content. Any result that contains the words "penguins", "are" and "the" but not "best" would not be included in the results.</p>
+
+<h3>More data but reduced disk space requirements</h3>
+
+<p>For my blog, I persist the search index data to disk so that it doesn't need to be rebuilt if the application is reset (it stores a last-modified date alongside the index data which can be compared to the last-modified date of any post, so it's rebuilt when the source data changes rather than when a memory cache entry arbitrarily expires).</p>
+
+<p>I was concerned that this additional source location data would make a significant difference to the size of this stored data, which could be inconvenient because I tend to build it before uploading changes to the web server (so smaller is better). And, to be honest, I had already been somewhat surprised that the data I persist to disk was several megabytes. (Even though that also contains all of the raw Post contents, along with the AutoComplete content extracted from analysing the Posts, it was still larger than my gut instinct suspected it would be). So I didn't want to make it any worse!</p>
+
+<p>I've used the bog standard <strong>BinaryFormatter</strong> to serialise the data and <strong>GZipStream</strong> to compress it. To see how much overhead was added by this approach compared to writing a custom serialisation method for the <strong>IndexData</strong>, I wrote the <strong>IndexDataSerialiser</strong>. This only works with <strong>IndexData</strong> (the specific implemenation of <strong>IIndexData</strong> rather than <em>any</em> <strong>IIndexData</strong> implementation) which means that there are assumptions that can be made (eg. that all of the source locations will be instances of the <strong>SourceFieldLocation</strong> class and not another class derived from it). And it's reduced the size of the data for the Index that my blog content generates to about 10% of what it was before. Win!</p>
+
+<p>The <strong>IndexDataSerialiser</strong> is a static class with two methods:</p>
+
+<pre><code>void IndexDataSerialiser.Serialise(IndexData&lt;TKey&gt; source, Stream stream);
+
+IndexData&lt;TKey&gt; IndexDataSerialiser.Deserialise(Stream stream);
+</code></pre>
+
+<p>It doesn't compress the data at all, so there will be advantages to using a <strong>GZipStream</strong>. It uses the <strong>BinaryWriter</strong> to write out the bare minimum content required to describe the data when serialising and then the <strong>BinaryReader</strong> to read the data back out and instantiate a new <strong>IndexData</strong> from it. It has to rebuild the <strong>TernarySearchTreeDictionary</strong> that the <strong>IndexData</strong> takes as a constructor argument but my feeling is that the processing required to do this is less than deserialising an already-populated <strong>IndexData</strong> using the <strong>BinaryFormatter</strong>. (I've not compared them thorough but in preliminary testing it seemed to take longer to deserialise with the <strong>BinaryFormatter</strong> when the data was loaded into a <strong>MemoryStream</strong> than the <strong>IndexDataSerialiser</strong> deserialisation took when loading from disk).</p>
+
+<p>I might write another day about how I implemented the search term highlighting on this blog but I think this post has already gone on long enough! <strong>Update (9th April):</strong> See <a href="the-full-text-indexer-search-term-highlighting-with-source-locations.html">Search Term Highlighting with Source Locations</a>.</p>
+
+<p>For more information on this project, see the <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up</a>.</p>
+<p class="PostTime">Posted at 23:29</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-full-text-indexer-source-locations.html#disqus_thread" data-disqus-identifier="53">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">20 March 2013</h3><h2><a id="Post52"></a><a href="publishing-rss.html">Publishing RSS</a></h2>
+
+<p>With the recent furor about the death of Google Reader, I've been inspired to add an RSS Feed to my blog. It's not something that was at the forefront of my mind since I don't subscribe to any RSS Feeds. The sort of feeds that I might subscribe to will probably have any interesting posts they generate appear on <a href="http://news.ycombinator.com/">Hacker News</a> or <a href="http://programming.reddit.com/">Programming Reddit</a> - and they have the benefit that any posts that <em>aren't</em> particularly interesting to me aren't likely to appear at all!</p>
+
+<p>I've got a passing knowledge of RSS and have been somewhat involved in developments before to generate RSS Feeds and consume them so this should be no big deal.. right??</p>
+
+<h3>Content Encoding</h3>
+
+<p>My swiss cheese knowledge of the basic format had led me to think that the "description" element of the items in the feed should be plain text since there is a "content:encoded" element that I thought was added in a separate module specifically to support content with html markup.</p>
+
+<blockquote>
+  <p>The &lt;description&gt; tag is for the summary of the post, but in plain text only. No markup.</p>
+</blockquote>
+
+<p>I'd say I'm not the only one since that quote was taken from the answer to a Stack Overflow question: <a href="http://stackoverflow.com/a/7369487">Difference between description and content:encoded tags in RSS2</a>. The same is mentioned, though with less force -</p>
+
+<blockquote>
+  <p>However, the RSS &lt;description&gt; element is only supposed to be used to include plain text data</p>
+</blockquote>
+
+<p>on <a href="https://developer.mozilla.org/en-US/docs/RSS/Article/Why_RSS_Content_Module_is_Popular_-_Including_HTML_Contents">Why RSS Content Module is Popular - Including HTML Contents</a> on the Mozilla Developer Network pages.</p>
+
+<p>The <a href="http://cyber.law.harvard.edu/rss/rss.html">RSS 2.0 Specification</a>, however, clearly says</p>
+
+<blockquote>
+  <p>An item may represent a "story" -- much like a story in a newspaper or magazine; if so its description is a synopsis of the story, and the link points to the full story. An item may also be complete in itself, if so, the description contains the text (entity-encoded HTML is allowed; see examples)</p>
+</blockquote>
+
+<p><em>Sigh.</em></p>
+
+<p>So I thought I'd start by looking at a well-known blog that I know has an RSS Feed: <a href="http://www.codinghorror.com/blog/">Coding Horror</a>. The feed comes from <a href="http://feeds.feedburner.com/codinghorror/">http://feeds.feedburner.com/codinghorror/</a> which makes me feel even more confident that whatever I see here is likely to be a good starting point since it suggests that there's a standard service generating it.</p>
+
+<p>And here I see that the description element is being used for html content, where the content is wrapped in a CDATA section. This makes me uneasy since CDATA just feels <em>wrong</em> in XML somehow. And what makes it worse is that it doesn't support escaping for the end characters, so you can't have a CDATA section contain the characters "<strong>]]&gt;</strong>" since it opens with <strong>&lt;![CDATA[</strong> and ends with <strong>]]&gt;</strong> and doesn't allow for them to be escaped at all - so this post couldn't simply be wrapped in a CDATA section, for example, as it now contains those characters!</p>
+
+<p>The only way to support it is to break content and wrap it in <em>multiple</em> CDATA sections so that the critical sequence nevers appears in one section. So to wrap the content</p>
+
+<blockquote>
+  <p>This sequence is not allowed ]]&gt; in CDATA</p>
+</blockquote>
+
+<p>you need to break it into two separate CDATA sections</p>
+
+<blockquote>
+  <p>This sequence is not allowed ]]</p>
+</blockquote>
+
+<p>and</p>
+
+<blockquote>
+  <p>&gt; in CDATA</p>
+</blockquote>
+
+<p>So that those three magical characters are not encountered within a single CDATA section.</p>
+
+<p>It turns out, though, that content can be html-encoded (as indicated by that excerpt from the RSS 2.0 Spec above). So that makes life a bit easier and makes me wonder why anyone uses CDATA!</p>
+
+<h3>Content Length</h3>
+
+<p>So my next question is how many items to include in the feed. The RSS Spec has information about this:</p>
+
+<blockquote>
+  <p>A channel may contain any number of &lt;item&gt;s</p>
+</blockquote>
+
+<p>Not very <em>useful</em> information then :S</p>
+
+<p>Looking around, the common pattern seems to be ten or fifteen posts for a blog, particularly if including the entire article content in the description / content:encoded and not just a summary. Since these will be accessed by RSS Readers to check for updates, it's probably best that it's not allowed to grow to be massive. If someone's only just subscribed to your feed, they're not likely to want hundreds of historical posts to be shown. If someone is already subscribed to your feed then they just want to get new content. So ten posts sounds good to me.</p>
+
+<h3>Previewing the feed</h3>
+
+<p>I thought I'd see how the feed was shaping up at this point. I don't regularly use an RSS Reader, as I've already said, so I hit up my local blog installation's feed url in Chrome. And just got a load of xml filling the screen. Which seems fair enough, but I thought for some reason that browsers do some nice formatting when you view an RSS Feed..</p>
+
+<p>It turns out that both Firefox and IE do (versions 19 and 9, respectively, I have no idea at what version they started doing this). But not Chrome. The Coding Horror feed looks formatted but I think Feed Burner does something clever depending upon the request or the user agent or something.</p>
+
+<p>A little research reveals that you can specify an XSLT document to transform the content when viewed in a browser just by referencing it with the line</p>
+
+<pre><code>&lt;?xml-stylesheet href="/Content/RSS.xslt" type="text/xsl" media="screen"?&gt;
+</code></pre>
+
+<p>before the opening "rss" tag.</p>
+
+<p>I've seen some horrific uses of XSLT in the past but here it doesn't require anything too long or convoluted:</p>
+
+<pre><code>&lt;?xml version="1.0" encoding="iso-8859-1"?&gt;
+&lt;xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"&gt;
+  &lt;xsl:template match="/"&gt;
+    &lt;html&gt;
+      &lt;head&gt;
+        &lt;title&gt;
+          &lt;xsl:value-of select="rss/channel/title"/&gt; RSS Feed
+        &lt;/title&gt;
+        &lt;style&gt;
+          /* Some styling goes here to tidy things up */
+        &lt;/style&gt;
+      &lt;/head&gt;
+      &lt;body&gt;
+        &lt;h1&gt;
+          &lt;xsl:value-of select="rss/channel/title"/&gt;
+        &lt;/h1&gt;
+        &lt;h2&gt;&lt;xsl:value-of select="rss/channel/description"/&gt;&lt;/h2&gt;
+        &lt;img class="Logo" src="{rss/channel/image/url}" /&gt;
+        &lt;xsl:for-each select="rss/channel/item"&gt;
+          &lt;div class="Post"&gt;
+            &lt;h2 class="Title"&gt;
+              &lt;a href="{link}" rel="bookmark"&gt;
+                &lt;xsl:value-of select="title"/&gt;
+              &lt;/a&gt;
+            &lt;/h2&gt;
+            &lt;p class="PostedDate"&gt;
+              &lt;xsl:value-of select="pubDate"/&gt;
+            &lt;/p&gt;
+            &lt;xsl:value-of select="description" disable-output-escaping="yes"/&gt;
+          &lt;/div&gt;
+        &lt;/xsl:for-each&gt;
+      &lt;/body&gt;
+    &lt;/html&gt;
+  &lt;/xsl:template&gt;
+&lt;/xsl:stylesheet&gt;
+</code></pre>
+
+<p>This only affects Chrome on my computer, not Firefox or IE. I haven't tried it with Opera or Safari since I don't have them installed right now. Essentially, it should improve the rendering on any browser that doesn't already format the content itself.</p>
+
+<h3>Absolute URLs</h3>
+
+<p>This one nearly caught me out; all of the example links in the spec are absolute urls but the content generated by my blog for the standard view of the posts are relative urls. Since whatever's retrieving the RSS Feed knows where it's getting the content from, it should be able to resolve any relative urls into absolute ones. But thinking about it, I've seen an integration written at work that renders the markup straight out from an RSS Feed's items. Which won't work with my content as it is! So a few changes are required to ensure that all links specify absolute urls. As do image locations.</p>
+
+<h3>Channel pubDate vs lastBuildDate</h3>
+
+<p>According to the spec, pubDate is</p>
+
+<blockquote>
+  <p>The publication date for the content in the channel. For example, the New York Times publishes on a daily basis, the publication date flips once every 24 hours. That's when the pubDate of the channel changes.</p>
+</blockquote>
+
+<p>But there is no indication what the publicdation date should flip <em>to</em>. Feeds that I've looked at either ignore this value or make it the same as the lastBuildDate which, thankfully, <em>is</em> well defined in a clear manner:</p>
+
+<blockquote>
+  <p>The last time the content of the channel changed.</p>
+</blockquote>
+
+<p>So, for my blog, that's just the date of the most recent Post. I've decided to go the route of specifying a lastBuildDate value but no pubDate. It is in no way clear from the spec what effect this will have on my feed and how readers interact with it, if any.</p>
+
+<h3>TTL (Time To Live)</h3>
+
+<p>This one I really don't even know where to start with. </p>
+
+<blockquote>
+  <p>ttl stands for time to live. It's a number of minutes that indicates how long a channel can be cached before refreshing from the source. This makes it possible for RSS sources to be managed by a file-sharing network such as Gnutella.</p>
+</blockquote>
+
+<p>That doesn't sound too unreasonable. It makes it sound like "Expires" http header which can reduce the number of requests for a resource by allowing it to be cached by various proxies - essentially by promising that it won't change before that time.</p>
+
+<p>But there are few guidelines as to what the value should be. It's unusual for me to publish a post a day, so should I set it to 24 hours? But if I do this, then there could be a delay after a post <em>is</em> published before it's picked up if the 24 hours just awkwardly happens to start one hour before I publish. So should I set it to 8 hours so that it's not checked too often but also not too infrequently? How will this affect it compared to specifying no ttl value at all??</p>
+
+<p>I've found this article informative: <a href="http://www.therssweblog.com/?guid=20070529130637">The RSS Blog: Understanding TTL</a>.</p>
+
+<p>There's a lot of interesting content in there but the summary sorted it out for me -</p>
+
+<blockquote>
+  <p><strong>Practice</strong></p>
+  
+  <p>In practice, I've seen several uses of the TTL. Many aggregators let the user determine how often a feed is polled and some of those will use the TTL as a > default (or 60 minutes if not present). Some aggregators simply use the TTL as a hint to determine how often they are polled. The RSS draft profile is > likely a good source for examples of these behaviors. Most aggregators simply ignore TTL and do nothing with it.</p>
+  
+  <p><strong>Conclusion</strong></p>
+  
+  <p>Make your own. TTL is rarely supported by both publishers and clients.</p>
+</blockquote>
+
+<p>I'm ignoring the option of including a ttl element in my feed.</p>
+
+<h3>Final Validation</h3>
+
+<p>At this point I started figuring that there must be a simpler way to find out what I was definitely doing wrong. And this <a href="http://feedvalidator.org/check.cgi">Online Feed Validator</a> seemed like a good approach.</p>
+
+<p>It identified a few mistakes I'd made. Firstly, the image that I'd used for the channel was too big. This apparently may be no larger than 144 pixels on either dimension. It told me that the item's were lacking "guid" elements. The surprisingly informative help text on the site explained that this just had to be something that uniquely identified the item, not a GUID as defined on Wikipedia <a href="http://en.wikipedia.org/wiki/Globally_unique_identifier">Globally unique identifier</a>. A permalink to the post would do fine. The same value as was being specified for the "link" element. The validator help information suggested that using the same value for both (so long as it's a unique url for the article) would be fine. There is a note in the Wikipedia article to that effect as well!</p>
+
+<blockquote>
+  <p><strong>XML syndication formats</strong></p>
+  
+  <p>There is also a guid element in some versions of the RSS specification, and a mandatory id element in Atom, which should contain a unique identifier for each individual article or weblog post. In RSS the contents of the GUID can be any text, and in practice is typically a copy of the article URL. Atoms' IDs need to be valid URIs (usually URLs pointing to the entry, or URNs containing any other unique identifier).</p>
+</blockquote>
+
+<p>It also pointed out that I wasn't formatting dates correctly. It turns out that .Net doesn't have a formatter to generate the dates in the required RFC 822 layout, as outlined (and then addressed) here <a href="http://madskristensen.net/post/Convert-a-date-to-the-RFC822-standard-for-use-in-RSS-feeds.aspx">Convert a date to the RFC822 standard for use in RSS feeds</a>. That article was written by the same guy who I borrowed some CSS minification regular expressions from back in <a href="onthefly-css-minification.html">On-the-fly CSS Minification</a> post - a useful fella! :)</p>
+
+<p>A final point was that my channel has no "atom:link" element so I added that. It duplicates the url from the channel's "link" element by has additional attributes rel="self" and type="application/rss+xml". Apparently without these my feed is not valid.</p>
+
+<h3>Done!</h3>
+
+<p>But with that, I'm finished! After more work than I'd first envisaged, to be honest. But now users of <a href="http://www.feedly.com/">Feedly</a> or whatever ends up taking the place of Google Reader can keep up to date with my ramblings. Those lucky, lucky people :)</p>
+
+<p>I've had a look at a few other blogs for comparison. I happen to know this guy: <a href="http://www.mobtowers.com/">MobTowers</a> whose blog is generated by WordPress which generates the RSS Feed on its own. It uses the "description" element to render a summary and the "content:encoded" element for the full article content. But both description <em>and</em> content:encoded are CDATA-wrapped, with the description apparently containing some entity-encoded characters. If both WordPress <em>and</em> Feed Burner are going to work with "accepted common practices" rathen than strict spec adherence then I feel comfortable that my implementation will do the job just fine as it is.</p>
+<p class="PostTime">Posted at 23:18</p>
+						<p class="Comments">
+							<a href="publishing-rss.html#disqus_thread" data-disqus-identifier="52">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">13 March 2013</h3><h2><a id="Post51"></a><a href="the-full-text-indexer-structured-queries.html">The Full Text Indexer - Structured Queries</a></h2>
+
+<p>I've considered in the past extending the way in which searches can be defined for use with the Full Text Indexer. The current approaches are:</p>
+
+<ol>
+<li>A simple one-word query</li>
+<li>A multi-word query using GetPartialMatches</li>
+<li>A multi-word query where all of the words must appear</li>
+</ol>
+
+<p>The first doesn't need much explaining, most of the examples have been based around this. The use of GetPartialMatches was outlined in the first <a href="the-full-text-indexer.html">Full Text Indexer post</a>; the method takes a search term, a Token Breaker (to break the multi-word term into single-word terms) and a "MatchCombiner" delegate which describes how to combine the weighted matches for each broken-down word (this delegate will include the logic that determines whether <em>all</em> of the words in the original term must be matched or if it's just that a greater combined weight should be given to results that do match them all). This is the method that the search facility on this blog uses.</p>
+
+<p>The third approach makes use of the <strong>ConsecutiveTokenCombiningTokenBreaker</strong> and is a bit different; when the index is being generated, the content is not only broken down into individual words but also runs of multiple words. This is explained in more detail in the <a href="the-full-text-indexer-token-breaker-and-string-normaliser-variations.html">Token Breaker and String Normaliser variations</a> post, but that's the gist. In this scenario, the search term is <em>not</em> broken down and treated as a single token to search for. If you want to perform searches for multi-word terms where those words must appear in the order specified (rather than just appearing in any order, anywhere throughout the source content - possibly spanning multiple fields) then this is what you'd use.</p>
+
+<h3>Structured Querying</h3>
+
+<p>I wanted to introduce a consolidated query method but I'd been putting off writing a parser to take a search string and work out what to do with the various components. However, having recently written a CSS / LESS parser (<a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser on Bitbucket</a>) I was inspired to use the same recursive parsing technique and piece together something for the Full Text Indexer.</p>
+
+<p>I went into it wanting something vaguely like GetPartialMatches but with.. more. The first assumption I wanted to make was that where multiple terms are specified then they should be considered an OR combination; so a match will be found if any one of the terms is found. If a particular term absolutely must be present then it can be prefixed with a "+". If a term must <em>not</em> be present then it can be prefixed with a "-". These ideas are directly influenced by Google query format! :)</p>
+
+<p>This would allow us straight away to specify</p>
+
+<blockquote>
+  <p>apples pears bananas +fruit +nuts -lunatics</p>
+</blockquote>
+
+<p>so that we could match articles (or whatever the source content may be) that have "fruit" and "nuts" in the content (but not "lunatics", we don't want those kinds of nuts!) and apply a greater match weigh to results that contain the words "apples", "pears" and / or "bananas". If an article doesn't contain the word "apples" then it may still be returned so long as it contains the word "fruit" (and not "lunatics").</p>
+
+<p>The same logic about word matching would be applied as normal, so if an index is built with an <strong>EnglishPluralityStringNormaliser</strong> then the word "fruits" would be matched as it was "fruit".</p>
+
+<p>There are a few more refinements that I wanted to add, the first also straight from Google search's interface! I wanted to allow words or phrases to be quoted such that they should appear precisely as specified. So, if our example became</p>
+
+<blockquote>
+  <p>"apples" pears bananas +fruit +nuts -lunatics</p>
+</blockquote>
+
+<p>then the word "apple" should <em>not</em> be considered a match for "apples". This is also applicable to phrases so</p>
+
+<blockquote>
+  <p>"apples and pears"</p>
+</blockquote>
+
+<p>should only match articles that contain the string "apples and pears", not ones that contain the words "apples" / "and" / "pears" present but in a different order.</p>
+
+<p>These should be combinable such that we could specify</p>
+
+<blockquote>
+  <p>-"apples and pears" apples pears bananas +fruit</p>
+</blockquote>
+
+<p>which would return articles that definitely contained "fruit" (or a word that is considered equivalent by the string normaliser), with additional weight given to articles that contained "apples" / "pears" / "bananas", so long as they don't contain the phrase "apples and pears". I think I've contorted this example a bit far now :)</p>
+
+<p>The final aspect to throw in the mix is the ability to bracket terms. Let's stretch the example on step further:</p>
+
+<blockquote>
+  <p>+(apples pears bananas) +fruit +nut -lunatic</p>
+</blockquote>
+
+<p>This will return articles that contain <em>at least one</em> of "apples" / "pears" / "bananas" <em>and</em> "fruit" <em>and</em> "nut" and <em>not</em> "lunatic".</p>
+
+<p>The bracketing and compulsory / excluding (the "+" and "-") operators should be combinable and nestable in any manner. They can't be nested within quoted sections as they would be considered to be part of the content, but quoted sections can be nested with brackets or combined with the other operators, as already seen. (If a quote is required within a quoted section that it may be escaped with a backslash).</p>
+
+<h3>Show me the code!</h3>
+
+<p>In case you're not that interested in stepping through the internals, there's a complete working example at the end of this post that demonstrates how to use this! Just change the string passed to the querier.GetMatches method to play around with it.</p>
+
+<h3>Content Analysers</h3>
+
+<p>The first step is to break down a search term into the various <strong>IQuerySegment</strong> types in the Querier project (in the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer Bitbucket repository</a>): the <strong>StandardMatchQuerySegment</strong>, <strong>PreciseMatchQuerySegment</strong>, <strong>CompulsoryQuerySegment</strong>, <strong>ExcludingQuerySegment</strong>, <strong>CombiningQuerySegment</strong> and <strong>NoMatchContentQuerySegment</strong> (used, for example, when brackets surround empty content).</p>
+
+<p>To illustrate, the example</p>
+
+<blockquote>
+  <p>+(apples pears bananas) +fruit +nut -lunatic</p>
+</blockquote>
+
+<p>would be translated into</p>
+
+<pre><code>CombiningQuerySegment
+{
+  CompulsoryQuerySegment
+  {
+    CombiningQuerySegment
+    {
+      StandardMatchQuerySegment: apples
+      StandardMatchQuerySegment: pears
+      StandardMatchQuerySegment: bananas
+    }
+  },
+  CompulsoryQuerySegment
+  {
+    StandardMatchQuerySegment: fruit
+  },
+  CompulsoryQuerySegment
+  {
+    StandardMatchQuerySegment: nut
+  },
+  ExcludingQuerySegment
+  {
+    StandardMatchQuerySegment: lunatic
+  }
+}
+</code></pre>
+
+<p>The outermost <strong>CombiningQuerySegment</strong> is required since a Content Analyser should only return a single query segment, and since there were multiple in the search term they have to be wrapped up in the <strong>CombiningQuerySegment</strong>.</p>
+
+<p>To translate an arbitrary search term into an <strong>IQuerySegment</strong>, we use</p>
+
+<pre><code>var querySegment = (new BreakPointCharacterAnalyser()).Process(new StringNavigator(searchTerm));
+</code></pre>
+
+<p>That's quite a mouthful, but if you read on you'll see that the <strong>Querier</strong> class means that you should never need to call that directly.</p>
+
+<p>It breaks tokens on whitespace unless inside a quoted section, so the only way to specify particular multi-word phrases is to quote them (as with "apples and pears" above).</p>
+
+<h3>Two Indexes</h3>
+
+<p>One thing I haven't addressed so far is how quoted sections can be processed differently to none-quoted sections. Unfortunately, there's no clever facility to introduce and the bad news is that to deal with this, <em>two</em> indexes will have to be generated for the source content. The first index, the "default", uses the most common construction parameters and will be more forgiving on matches. It would be appropriate to use the <strong>EnglishPluralityStringNormaliser</strong> for this index, for example (assuming that it <em>is</em> English language content!). It will only need to deal with single word matches (as only quoted sections in the content are parsed into query segments with multiple words).</p>
+
+<p>The second index, the "precise match" index, should be less forgiving (using a <strong>DefaultStringNormaliser</strong>, perhaps, which will normalise casing and ignore punctuation but not consider singular and plural versions of words to be equivalent). It will also need to make use of the <strong>ConsecutiveTokenCombiningTokenBreaker</strong> if quoted phrases are to be matchable (as opposed to only supporting quoting individual words).</p>
+
+<h3>Query Translator</h3>
+
+<p>The two indexes (and a MatchCombiner, see below) are used to instantiate a <strong>QueryTranslator</strong> whose method GetMatches will take an <strong>IQuerySegment</strong> and return an immutable set of WeighedEntry results, just like the the <em>*IIndexData</em> class.</p>
+
+<p>The MatchCombiner is used whenever multiple matches need be combined together into one - this will happen if there are multiple words in the initial query and will happen any times multiple terms are bracketed together. For the search term</p>
+
+<blockquote>
+  <p>apples +(pears bananas +(pomegranate tomato))</p>
+</blockquote>
+
+<p>there will be three match weight combinations:</p>
+
+<ol>
+<li>pomegranate / tomato</li>
+<li>pears / bananas / combined-pomegranate-tomato</li>
+<li>apples / combined-bananas-combined-pomegranate-tomato</li>
+</ol>
+
+<p>This could be a simple summing or averaging of the match weights. One variation is to sum the weights but then always divide by a particular value, this reduces the weight of nested terms - so if terms are several bracketing levels deep then they will impart a lower weight on the final weight of the result. Whether this seems appropriate or not is up to you!</p>
+
+<h3>The Querier</h3>
+
+<p>The <strong>Querier</strong> class tidies up access to the Content Analysers and the Query Translator to try to make life easier. The <strong>Querier</strong> is instantiated with the two indexes and the MatchCombiner that the <strong>QueryTranslator</strong> requires and exposes a method GetMatches which takes a search term, translates it into an <strong>IQuerySegment</strong>, passes it through the <strong>QueryTranslator</strong> and returns the weighted results.</p>
+
+<h3>Example code</h3>
+
+<p>Below is a complete example that has a simple "Post" source type. I've used the <strong>AutomatedIndexGeneratorFactoryBuilder</strong> (see <a href="the-full-text-indexer-automating-index-generation.html">The Full Text Indexer - Automating Index Generation</a>) to kick things off. I've taken the first content from a couple of Posts on my blog as example content. The largest piece of setup code is the instantiation of the generator for the "precise match" index, and that's most due to the explanatory comments!</p>
+
+<pre><code>using System;
+using System.Linq;
+using FullTextIndexer.Common.Lists;
+using FullTextIndexer.Core.Indexes.TernarySearchTree;
+using FullTextIndexer.Core.TokenBreaking;
+using FullTextIndexer.Helpers;
+using FullTextIndexer.Querier;
+
+namespace Tester
+{
+  class Program
+  {
+    static void Main(string[] args)
+    {
+      var posts = new NonNullImmutableList&lt;Post&gt;(new[]
+      {
+        new Post(30, "The Full Text Indexer", "I started out on a journey a few months ago being " +
+          "frustrated by the Lucene.net integration we had with one of our products at work (I'm not " +
+          "badmouthing the Lucene project, I'm wholeheartedly blaming the integration I inherited!)"),
+        new Post(31, "The Full Text Indexer - Adding and Subtracting", "The Full Text Indexer that I " +
+          "talked about last time took a definition for an Index Generator for a specific TSource type " +
+          "and produced an IndexData instance, using that generator, for a TSource set."),
+        new Post(32, "The Full Text Indexer - Going International!", "Pushing on with the Full Text " +
+          "Indexer series I'm been posting about (see Full Text Indexer and Full Text Indexer - Adding " +
+          "and Subtracting) I want to demonstrate how it can work with multi-lingual content")
+      });
+
+      var defaultIndexGenerator = (new AutomatedIndexGeneratorFactoryBuilder&lt;Post, int&gt;()).Get().Get();
+      var preciseMatchIndexGenerator = (new AutomatedIndexGeneratorFactoryBuilder&lt;Post, int&gt;())
+        .SetTokenBreaker(
+          new ConsecutiveTokenCombiningTokenBreaker(
+            // The ConsecutiveTokenCombiningTokenBreaker wraps another token breaker and then creates new
+            // tokens by stringing runs of broken tokens together
+            new WhiteSpaceExtendingTokenBreaker(
+              new ImmutableList&lt;char&gt;(new[] { '&lt;', '&gt;', '[', ']', '(', ')', '{', '}', '.', ',' }),
+              new WhiteSpaceTokenBreaker()
+            ),
+
+            // This is the maximum number of words that are strung together, if quoted sections have more
+            // words than this then they won't be matched. A way to work around this may be hashed out
+            // one day (but not today :)
+            12,
+
+            // Tokens may be given an additional weight multiplier (between 0 and 1) when content is
+            // is broken down, when multiple tokens are combined a multiplier for the combined token
+            // must be provider. Commonly it is stop words that have a fractional multiplier, but
+            // when words are combined into a phrase, it makes sense to remove any fractional
+            // multiplier and give the combined token the full value of 1.
+            weightMultipliersOfCombinedTokens =&gt; 1
+          )
+        )
+        .SetStringNormaliser(new DefaultStringNormaliser())
+        .Get()
+        .Get();
+
+      var querier = new Querier&lt;Post, int&gt;(
+        defaultIndexGenerator.Generate(posts),
+        preciseMatchIndexGenerator.Generate(posts),
+        (matchWeights, sourceQuerySegments) =&gt; matchWeights.Sum()
+      );
+
+      var matches = querier.GetMatches("Generator");
+    }
+  }
+
+  public class Post
+  {
+    public Post(int id, string title, string content)
+    {
+      if (string.IsNullOrWhiteSpace(title))
+        throw new ArgumentException("Null/blank title specified");
+      if (string.IsNullOrWhiteSpace(content))
+        throw new ArgumentException("Null/blank content specified");
+
+      Id = id;
+      Title = title;
+      Content = content;
+    }
+
+    public int Id { get; set; }
+    public string Title { get; set; }
+    public string Content { get; set; }
+  }
+}
+</code></pre>
+
+<p>To try different search terms, just replace the string "Generator" with something else.</p>
+
+<blockquote>
+  <p>Generator</p>
+</blockquote>
+
+<p>will indicate one result, as only Post 31 is matched (it contains the word "generators").</p>
+
+<blockquote>
+  <p>Indexer Generators</p>
+</blockquote>
+
+<p>will indicate that all three Posts match. With the configuration here, Posts 31 and 32 are found to have an identical match weight of 4 - as Post 31 matches "Indexer" twice and "Generators" twice while Post 32 matches "Indexer" four times. (Post 30 matches "Indexer" once and "Generator" zero times).</p>
+
+<blockquote>
+  <p>Indexer +"multi-lingual"</p>
+</blockquote>
+
+<p>will only match Post 31, since that is the only one that contains "multi-lingual".</p>
+
+<blockquote>
+  <p>"Full Text Indexer" -adding</p>
+</blockquote>
+
+<p>will only match Post 30 since, while they all have contain the phrase "Full Text Indexer", both Posts 31 and 32 also contain the word "adding".</p>
+
+<blockquote>
+  <p>"Full Text Indexers"</p>
+</blockquote>
+
+<p>matches zero Posts. Since none of them contain that precise phrase. They will contain "Full Text Indexer", singular "Indexer", but not the plural "Full Text Indexers".</p>
+
+<p>I don't think any more examples are required, really, hopefully it's clear enough how to construct the queries and understand how they're applied :)</p>
+
+<p>I wouldn't necessarily expect this structured querying to be exposed through a simple site search (I have no immediate intentions of enabling it on this blog at the moment*) but it could certainly have a place elsewhere in application logic for performing a variety of full text searches against data.</p>
+
+<p>* <em>(The site search configuration here makes it compulsory that every word in the search term is matched in order for a Post to be returned, for cases where multiple words are specified. Changing over to use the Querier would mean that Posts would come back that don't match all of the words unless the "+" compulsory operator precedes each of them which, for now, I don't want to do).</em></p>
+<p class="PostTime">Posted at 22:36</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-full-text-indexer-structured-queries.html#disqus_thread" data-disqus-identifier="51">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">12 March 2013</h3><h2><a id="Post50"></a><a href="css-minifier-caching.html">CSS Minifier - Caching</a></h2>
+
+<p>A week or so ago I wrote about <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a> and some new facilities in my project on Bitbucket (the imaginatively-named <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a>). Particularly the <strong>EnhancedNonCachedLessCssLoaderFactory</strong> which you can use to get up and running with all of the fancy new features in no time!</p>
+
+<p>However, I didn't mention anything about the caching mechanisms, which are important when there's potentially so much processing required.</p>
+
+<p>This won't take long, but it's worth blasting through. It's also worth noting that the example code in the CSSMinifierDemo is the solution does all of this, so if you want to see it all one place then that's a good place to start (in the CSSController).</p>
+
+<h3>Last-modified-dates</h3>
+
+<p>The <strong>EnhancedNonCachedLessCssLoaderFactory</strong> utilises the <strong>SameFolderImportFlatteningCssLoader</strong> which will run through the CSS / LESS files and pull in any content fom "import" statements inline - effectively flattening them all into one chunk of stylesheet content.</p>
+
+<p>A built-in (and intentional) limitation of this class is that all imports must come from the same folder as the source file. This means you can't import stylesheets from any other folder or any server (if you were going to load a resets sheet from a CDN, perhaps).</p>
+
+<p>The benefit of this restriction is that there is a cheap "short cut" that can be taken to determine when any cached representations of the data should be expired; just take the most recent last-modified-date of any file in that folder.</p>
+
+<p>This has the disadvantage that a file in that folder may be updated that isn't related to the stylesheet being loaded but that a cache expiration will still be performed. The advantage, though, is that we don't have to fully process a file (and all of its imports) in order to determine when any of the files that it imports actually <em>was</em> updated!</p>
+
+<p>This last-modified-date can be used for returning 304 responses when the Client already has the up-to-date content and may also be used to cache stylesheet processing results on the server for Clients without the content in their browser caches.</p>
+
+<h3>In-memory caching</h3>
+
+<p>The simplest caching mechanism uses the <strong>CachingTextFileLoader</strong> which wraps a content loader (that returned by the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>, for example) and takes references to an <strong>ILastModifiedDateRetriever</strong> and <strong>ICanCacheThingsWithModifiedDates&lt;TextFileContents&gt;</strong>.</p>
+
+<pre><code>public interface ILastModifiedDateRetriever
+{
+  DateTime GetLastModifiedDate(string relativePath);
+}
+
+// Type param must be a class (not a value type) so that null may be returned from the getter to indicate
+// that the item is not present in the cache
+public interface ICacheThingsWithModifiedDates&lt;T&gt; where T : class, IKnowWhenIWasLastModified
+{
+  T this[string cacheKey] { get; }
+  void Add(string cacheKey, T value);
+  void Remove(string cacheKey);
+}
+
+public interface IKnowWhenIWasLastModified
+{
+  DateTime LastModified { get;  }
+}
+</code></pre>
+
+<p>If you're using the <strong>SameFolderImportFlatteningCssLoader</strong> then the <strong>SingleFolderLastModifiedDateRetriever</strong> will be ideal for the first reference. It requires an <strong>IRelativePathMapper</strong> reference, but so does the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>, and an ASP.Net implementation is provided below. An example ICacheThingsWithModifiedDates implementation for ASP.Net is also provided:</p>
+
+<pre><code>// The "server" reference passed to the constructor may be satisfied with the Server reference available
+// in an ASP.Net MVC Controller or a WebForms Page's Server reference may be passed if it's wrapped
+// in an HttpServerUtilityWrapper instance - eg. "new HttpServerUtilityWrapper(Server)"
+public class ServerUtilityPathMapper : IRelativePathMapper
+{
+  private HttpServerUtilityBase _server;
+  public ServerUtilityPathMapper(HttpServerUtilityBase server)
+  {
+    if (server == null)
+      throw new ArgumentNullException("server");
+
+    _server = server;
+  }
+
+  public string MapPath(string relativePath)
+  {
+    if (string.IsNullOrWhiteSpace(relativePath))
+      throw new ArgumentException("Null/blank relativePath specified");
+
+    return _server.MapPath(relativePath);
+  }
+}
+
+// The "cache" reference passed to the constructor may be satisfied with the Cache reference available
+// in an ASP.Net MVC Controller or a WebForms Page's Cache reference. There is no time-based expiration
+// of cache items (DateTime.MaxValue is passed for the cache's Add method's absoluteExpiration argument
+// since the CachingTextFileLoader will call Remove to expire entries if their source files have been
+// modified since the cached data was recorded.
+public class NonExpiringASPNetCacheCache : ICacheThingsWithModifiedDates&lt;TextFileContents&gt;
+{
+  private Cache _cache;
+  public NonExpiringASPNetCacheCache(Cache cache)
+  {
+    if (cache == null)
+      throw new ArgumentNullException("cache");
+
+    _cache = cache;
+  }
+
+  public TextFileContents this[string cacheKey]
+  {
+    get
+    {
+      var cachedData = _cache[cacheKey];
+      if (cachedData == null)
+        return null;
+
+      var cachedTextFileContentsData = cachedData as TextFileContents;
+      if (cachedTextFileContentsData == null)
+      {
+        Remove(cacheKey);
+        return null;
+      }
+
+      return cachedTextFileContentsData;
+    }
+  }
+
+  public void Add(string cacheKey, TextFileContents value)
+  {
+    _cache.Add(
+      cacheKey,
+      value,
+      null,
+      DateTime.MaxValue,
+      Cache.NoSlidingExpiration,
+      CacheItemPriority.Normal,
+      null
+    );
+  }
+
+  public void Remove(string cacheKey)
+  {
+    _cache.Remove(cacheKey);
+  }
+}
+</code></pre>
+
+<p>The <strong>CachingTextFileLoader</strong> will look in the cache to see if it has data for the specified relativePath. If so then it will try to get the last-modified-date for any of the source files. If the last-modified-date on the cached entry is current then the cached data is returned. Otherwise, the cached data is removed from the cache, the request is processed as normal, the new content stored in cache and then returned.</p>
+
+<h3>Disk caching</h3>
+
+<p>The <strong>DiskCachingTextFileLoader</strong> class is slightly more complicated, but not much. It works on the same principle of storing cache data then retrieving it and returning it for requests if none of the source files have changed since it was cached, and rebuilding and storing new content before returning if the source files <em>have</em> changed.</p>
+
+<p>Like the <strong>CachingTextFileLoader</strong>, it requires a content loader to wrap and an <strong>ILastModifiedDateRetriever</strong>. It also requires a <strong>CacheFileLocationRetriever</strong> delegate which instructs it where to store cached data on disk. A simple approach is to specify</p>
+
+<pre><code>relativePath =&gt; new FileInfo(relativePathMapper.MapPath(relativePath) + ".cache")
+</code></pre>
+
+<p>which will create a file alongside the source file with the ".cache" extension (for when "Test1.css" is processed, a file will be created alongside it called "Test1.css.cache").</p>
+
+<p>This means that we need to ignore these cache files when looking at the last-modified-dates of files, but the <strong>SingleFolderLastModifiedDateRetriever</strong> conveniently has an optional constructor parameter to specify which extensions should be considered. So it can be instantiated with</p>
+
+<pre><code>var lastModifiedDateRetriever = new SingleFolderLastModifiedDateRetriever(
+  relativePathMapper,
+  new[] { "css", "less" }
+);
+</code></pre>
+
+<p>and then you needn't worry about the cache files interfering.</p>
+
+<p>There are some additional options that must be specified for the <strong>DiskCachingTextFileLoader</strong>; whether exceptions should be raised or swallowed (after logging) for IO issues and likewise if the cache file has invalid content (the cached content will have a CSS comment injected into the start of the content that records the relative path of the original request and the last-modified-date, without these a TextFileContents instance could not be accurately recreated from the cached stylesheets - the TextFileContents could have been binary-serialised and written out as the cached data but I prefered that the cached data be CSS).</p>
+
+<h3>Bringing it all together</h3>
+
+<p>This is the updated version of the CSSController from the post last year: <a href="onthefly-css-minification.html">On-the-fly CSS Minification</a>. It incorporates functionality to deal with 304 responses, to cache in-memory and on disk, to flatten imports, compile LESS, minify the output and all of the other advanced features covered in <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a>.</p>
+
+<p>This code is taken from the CSSMinifiedDemo project in the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> repository, the only difference being that I've swapped out the <strong>DefaultNonCachedLessCssLoaderFactory</strong> for the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>. If you don't want the source mapping, the media-query grouping and the other features then you might stick with the <strong>DefaultNonCachedLessCssLoaderFactory</strong>. If you wanted something in between then you could just take the code from either factory and tweak to meet your requirements!</p>
+
+<pre><code>using System;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Web;
+using System.Web.Mvc;
+using CSSMinifier.Caching;
+using CSSMinifier.FileLoaders;
+using CSSMinifier.FileLoaders.Factories;
+using CSSMinifier.FileLoaders.LastModifiedDateRetrievers;
+using CSSMinifier.Logging;
+using CSSMinifier.PathMapping;
+using CSSMinifierDemo.Common;
+
+namespace CSSMinifierDemo.Controllers
+{
+  public class CSSController : Controller
+  {
+    public ActionResult Process()
+    {
+      var relativePathMapper = new ServerUtilityPathMapper(Server);
+      var relativePath = Request.FilePath;
+      var fullPath = relativePathMapper.MapPath(relativePath);
+      var file = new FileInfo(fullPath);
+      if (!file.Exists)
+      {
+        Response.StatusCode = 404;
+        Response.StatusDescription = "Not Found";
+        return Content("File not found: " + relativePath, "text/css");
+      }
+
+      try
+      {
+        return Process(
+          relativePath,
+          relativePathMapper,
+          new NonExpiringASPNetCacheCache(HttpContext.Cache),
+          TryToGetIfModifiedSinceDateFromRequest()
+        );
+      }
+      catch (Exception e)
+      {
+        Response.StatusCode = 500;
+        Response.StatusDescription = "Internal Server Error";
+        return Content("Error: " + e.Message);
+      }
+    }
+
+    private ActionResult Process(
+      string relativePath,
+      IRelativePathMapper relativePathMapper,
+      ICacheThingsWithModifiedDates&lt;TextFileContents&gt; memoryCache,
+      DateTime? lastModifiedDateFromRequest)
+    {
+      if (string.IsNullOrWhiteSpace(relativePath))
+        throw new ArgumentException("Null/blank relativePath specified");
+      if (memoryCache == null)
+        throw new ArgumentNullException("memoryCache");
+      if (relativePathMapper == null)
+        throw new ArgumentNullException("relativePathMapper");
+
+      var lastModifiedDateRetriever = new SingleFolderLastModifiedDateRetriever(
+        relativePathMapper,
+        new[] { "css", "less" }
+      );
+      var lastModifiedDate = lastModifiedDateRetriever.GetLastModifiedDate(relativePath);
+      if ((lastModifiedDateFromRequest != null)
+      &amp;&amp; AreDatesApproximatelyEqual(lastModifiedDateFromRequest.Value, lastModifiedDate))
+      {
+        Response.StatusCode = 304;
+        Response.StatusDescription = "Not Modified";
+        return Content("", "text/css");
+      }
+
+      var errorBehaviour = ErrorBehaviourOptions.LogAndContinue;
+      var logger = new NullLogger();
+      var cssLoader = (new EnhancedNonCachedLessCssLoaderFactory(
+        relativePathMapper,
+        errorBehaviour,
+        logger
+      )).Get();
+
+      var diskCachingCssLoader = new DiskCachingTextFileLoader(
+        cssLoader,
+        relativePathRequested =&gt; new FileInfo(relativePathMapper.MapPath(relativePathRequested) + ".cache"),
+        lastModifiedDateRetriever,
+        DiskCachingTextFileLoader.InvalidContentBehaviourOptions.Delete,
+        errorBehaviour,
+        logger
+      );
+      var memoryAndDiskCachingCssLoader = new CachingTextFileLoader(
+        diskCachingCssLoader,
+        lastModifiedDateRetriever,
+        memoryCache
+      );
+
+      var content = memoryAndDiskCachingCssLoader.Load(relativePath);
+      if (content == null)
+        throw new Exception("Received null response from Css Loader - this should not happen");
+      if ((lastModifiedDateFromRequest != null)
+      &amp;&amp; AreDatesApproximatelyEqual(lastModifiedDateFromRequest.Value, lastModifiedDate))
+      {
+        Response.StatusCode = 304;
+        Response.StatusDescription = "Not Modified";
+        return Content("", "text/css");
+      }
+      SetResponseCacheHeadersForSuccess(content.LastModified);
+      return Content(content.Content, "text/css");
+    }
+
+    /// &lt;summary&gt;
+    /// Try to get the If-Modified-Since HttpHeader value - if not present or not valid (ie. not
+    /// interpretable as a date) then null will be returned
+    /// &lt;/summary&gt;
+    private DateTime? TryToGetIfModifiedSinceDateFromRequest()
+    {
+      var lastModifiedDateRaw = Request.Headers["If-Modified-Since"];
+      if (lastModifiedDateRaw == null)
+        return null;
+
+      DateTime lastModifiedDate;
+      if (DateTime.TryParse(lastModifiedDateRaw, out lastModifiedDate))
+        return lastModifiedDate;
+
+      return null;
+    }
+
+    /// &lt;summary&gt;
+    /// Dates from HTTP If-Modified-Since headers are only precise to whole seconds while files'
+    /// LastWriteTime are granular to milliseconds, so when
+    /// comparing them a small grace period is required
+    /// &lt;/summary&gt;
+    private bool AreDatesApproximatelyEqual(DateTime d1, DateTime d2)
+    {
+      return Math.Abs(d1.Subtract(d2).TotalSeconds) &lt; 1;
+    }
+
+    /// &lt;summary&gt;
+    /// Mark the response as being cacheable and implement content-encoding requests such that gzip is
+    /// used if supported by requester
+    /// &lt;/summary&gt;
+    private void SetResponseCacheHeadersForSuccess(DateTime lastModifiedDateOfLiveData)
+    {
+      // Mark the response as cacheable
+      // - Specify "Vary" "Content-Encoding" header to ensure that if cached by proxies that different
+      //   versions are stored for different encodings (eg. gzip'd vs non-gzip'd)
+      Response.Cache.SetCacheability(System.Web.HttpCacheability.Public);
+      Response.Cache.SetLastModified(lastModifiedDateOfLiveData);
+      Response.AppendHeader("Vary", "Content-Encoding");
+
+      // Handle requested content-encoding method
+      var encodingsAccepted = (Request.Headers["Accept-Encoding"] ?? "")
+        .Split(',')
+        .Select(e =&gt; e.Trim().ToLower())
+        .ToArray();
+      if (encodingsAccepted.Contains("gzip"))
+      {
+        Response.AppendHeader("Content-encoding", "gzip");
+        Response.Filter = new GZipStream(Response.Filter, CompressionMode.Compress);
+      }
+      else if (encodingsAccepted.Contains("deflate"))
+      {
+        Response.AppendHeader("Content-encoding", "deflate");
+        Response.Filter = new DeflateStream(Response.Filter, CompressionMode.Compress);
+      }
+    }
+  }
+}
+</code></pre>
+
+<p>Following a few bug fixes which I've made recently to the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> and <a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser</a>, I don't have any other major features to add to these projects until I make time to complete a rules validator so that the <a href="noncascading-css-a-revolution.html">Non-cascading CSS</a> guidelines can optionally be enforced. I'm still working on these and trying to get them into as much use as possible since I still believe they offer a real turning point for the creation of maintainable stylesheets!</p>
+<p class="PostTime">Posted at 16:45</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li></ul></div>
+						<p class="Comments">
+							<a href="css-minifier-caching.html#disqus_thread" data-disqus-identifier="50">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">5 March 2013</h3><h2><a id="Post49"></a><a href="supporting-idispatch-through-the-cominteraction-wrapper.html">Supporting IDispatch through the COMInteraction wrapper</a></h2>
+
+<p>Some time ago, I wrote some code that would generate a wrapper to apply a given interface to any object using reflection. The target object would need to expose the properties and methods of the interface but may not implement the interface itself. This was intended to wrap some old WSC components that I was having to work with but is just as easy to demonstrate with .Net classes:</p>
+
+<pre><code>using System;
+using COMInteraction.InterfaceApplication;
+using COMInteraction.InterfaceApplication.ReadValueConverters;
+
+namespace DemoApp
+{
+  class Program
+  {
+    static void Main(string[] args)
+    {
+      // Warning: This code will not compile against the current code since the interface has changed
+      // since the example was written but read on to find out how it's changed!
+      // - Ok, ok, just replace "new InterfaceApplierFactory" with "new ReflectionInterfaceApplierFactory"
+      //   and "InterfaceApplierFactory.ComVisibilityOptions.Visible" with "ComVisibilityOptions.Visible"
+      //   :)
+      var interfaceApplierFactory = new InterfaceApplierFactory(
+        "DynamicAssembly",
+        InterfaceApplierFactory.ComVisibilityOptions.Visible
+      );
+      var interfaceApplier = interfaceApplierFactory.GenerateInterfaceApplier&lt;IAmNamed&gt;(
+        new CachedReadValueConverter(interfaceApplierFactory)
+      );
+
+      var person = new Person() { Id = 1, Name = "Teddy" };
+      var namedEntity = interfaceApplier.Apply(person);
+    }
+  }
+
+  public interface IAmNamed
+  {
+    string Name { get; }
+  }
+
+  public class Person
+  {
+    public int Id { get; set; }
+    public string Name { get; set; }
+  }
+}
+</code></pre>
+
+<p>The "namedEntity" reference implements IAmNamed and passes the calls through to the wrapped "Person" instance through reflection (noting  that Person does not implement IAmNamed). Of course, this will cause exceptions if an instance is wrapped that doesn't expose the properties or methods of the interface when those are called.</p>
+
+<p>I wrote about the development of this across a few posts: <a href="dynamically-applying-interfaces-to-objects.html">Dynamically applying interfaces to objects</a>, <a href="dynamically-applying-interfaces-to-objects-part-2.html">Part 2</a> and <a href="dynamically-applying-interfaces-to-objects-part-3.html">Part 3</a> (with the code available at the <a href="https://bitbucket.org/DanRoberts/cominteraction">COMInteraction project on Bitbucket</a>).</p>
+
+<p>And this worked fine for the purpose at hand. To be completely frank, I'm not entirely sure <em>how</em> it worked when calling into the WSC components that expose a COM interface since I'm surprised the reflection calls are able to hook into the methods! It felt a bit hacky..</p>
+
+<p>But just recently I've gotten into some of the nitty gritty of IDispatch (see <a href="idispatch-iwastedtimeonthis-but-ilearntlots.html">IDispatch (IWastedTimeOnThis but ILearntLots)</a>) and thought maybe I could bring this information to bear on this project.</p>
+
+<h3>Supporting Reflection <em>and</em> IDispatch</h3>
+
+<p>The existing InterfaceApplierFactory class has been renamed to the <strong>ReflectionInterfaceApplierFactory</strong> and a new implementation of <strong>IInterfaceApplierFactory</strong> has been added: the <strong>IDispatchInterfaceApplierFactory</strong>. (Where do I come up with these catchy names?! :).</p>
+
+<p>Where the existing (and now renamed) class generated IL to access the methods and properties through reflection, the new class generates IL to access the methods and properties using the code from my previous IDispatch post, handily wrapped up into a static <strong>IDispatchAccess</strong> class.</p>
+
+<p>The code to do this wasn't too difficult to write, starting with the reflection-approach code as a template and writing the odd bit of test code to disassemble with ildasm if I found myself getting a bit lost.</p>
+
+<p>While I was doing this, I changed the structure of the <strong>ReflectionInterfaceApplierFactory</strong> slightly - I had left a comment in the code explaining that properties would be defined for the type generated by the IL with getter and setter methods attached to it but that these methods would then be overwritten since the code that enumerates methods for the implemented interface(s) picks up "get_" and "set_" methods for each property. The comment goes on to say that this doesn't appear to have any negative effect and so hasn't been addressed. But with this revision I've gone a step further and removed the code the generates the properties entirely, relying solely on the "get_" and "set_" methods that are found in the interface methods as this seems to work without difficulty too! Even indexed properties continue to work as they get the methods "get_Item" and "set_Item" - if you have a class with an indexed property you may not also have a method named "Item" as you'll get a compilation error:</p>
+
+<blockquote>
+  <p>"The type 'Whatever' already contains a definition for 'Item'</p>
+</blockquote>
+
+<p>I'm not 100% confident at this point that what I've done here is correct and whether or not I'm relying on some conventions that may not be guaranteed in the future. But I've just received a copy of "CLR via C#" in the post so maybe I'll get a better idea of what's going on and amend this in the future if required!</p>
+
+<p>The types generated by the <strong>IDispatchInterfaceApplierFactory</strong> will <em>not</em> work if properties are not explicitly defined (and so IL is emitted to do this properly in this case).</p>
+
+<h3>Choosing Reflection, IDispatch (or neither)</h3>
+
+<p>Another new class is the <strong>CombinedInterfaceApplierFactory</strong> which is intended to take the decision-making out of the use of reflection / IDispatch. It will generate an <strong>IInterfaceApplier</strong> whose Apply method will apply an IDispatch wrapper if the object-to-wrap's type's IsCOMObject property is true. Otherwise it will use reflection. Actually, it performs a check before this to ensure that the specified object-to-wrap doesn't already implement the required interface - in which case it returns it straight back! (This was useful in some scenarios I was testing out and also makes sense; if the type doesn't require any manipulation then don't perform any).</p>
+
+<h3>Not being Lazy</h3>
+
+<p>I realised, going back to this project, that I'd got over-excited when I discovered the Lazy&lt;T&gt; class in .Net 4 and used it when there was some work in the code that I wanted to defer until it was definitely required. But this, of course, meant that the code had a dependency on .Net 4! Since I imagine that this could be useful in place of the "dynamic" keyword in some cases, I figured it would make sense to try to remove this dependency. (My over-excitement is probably visible when I wrote about it at <a href="check-check-it-out.html">Check, check it out</a>).</p>
+
+<p>I was using it with the "threadSafe" option set to true so that the work would only be executed once (at most). This is a fairly straight forward implemenation of the double-checked locking pattern (if there <em>is</em> such a thing! :) with a twist that if the work threw an exception then that exception should be thrown for not only the call on the thread that actually performed the work but also subsequent calls:</p>
+
+<pre><code>using System;
+
+namespace COMInteraction.Misc
+{
+  /// &lt;summary&gt;
+  /// This is similar to the .Net 4's Lazy class with the isThreadSafe argument set to true
+  /// &lt;/summary&gt;
+  public class DelayedExecutor&lt;T&gt; where T : class
+  {
+    private readonly Func&lt;T&gt; _work;
+    private readonly object _lock;
+    private volatile Result _result;
+    public DelayedExecutor(Func&lt;T&gt; work)
+    {
+      if (work == null)
+        throw new ArgumentNullException("work");
+
+      _work = work;
+      _lock = new object();
+      _result = null;
+    }
+
+    public T Value
+    {
+      get
+      {
+        if (_result == null)
+        {
+          lock (_lock)
+          {
+            if (_result == null)
+            {
+              try
+              {
+                _result = Result.Success(_work());
+              }
+              catch(Exception e)
+              {
+                _result = Result.Failure(e);
+              }
+            }
+          }
+        }
+        if (_result.Error != null)
+          throw _result.Error;
+        return _result.Value;
+      }
+    }
+
+    private class Result
+    {
+      public static Result Success(T value)
+      {
+        return new Result(value, null);
+      }
+      public static Result Failure(Exception error)
+      {
+        if (error == null)
+          throw new ArgumentNullException("error");
+        return new Result(null, error);
+      }
+      private Result(T value, Exception error)
+      {
+        Value = value;
+        Error = error;
+      }
+
+      public T Value { get; private set; }
+
+      public Exception Error { get; private set; }
+    }
+  }
+}
+</code></pre>
+
+<h3>Conclusion</h3>
+
+<p>So finally, the project works with .Net 3.5 and can be used with only the following lines:</p>
+
+<pre><code>var interfaceApplierFactory = new CombinedInterfaceApplierFactory(
+  new ReflectionInterfaceApplierFactory("DynamicAssembly", ComVisibilityOptions.Visible),
+  new IDispatchInterfaceApplierFactory("DynamicAssembly", ComVisibilityOptions.Visible)
+);
+var interfaceApplier = interfaceApplierFactory.GenerateInterfaceApplier&lt;IWhatever&gt;(
+  new CachedReadValueConverter(interfaceApplierFactory)
+);
+var wrappedInstance = interfaceApplier.Apply(obj);
+</code></pre>
+
+<p>In real use, you would want to share generated Interface Appliers rather than creating them each time a new instance needs wrapping up in an interface but how you decide to handle that is down to you!*</p>
+
+<p>* (I've also added a <strong>CachingInterfaceApplierFactory</strong> class which can be handed to multiple places to easily enable the sharing of generated Interface Appliers - that may well be useful in preventing more dynamic types being generated than necessary).</p>
+<p class="PostTime">Posted at 23:29</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/COM.html" title="8 Posts">COM</a></li><li><a href="Archive/Tag/IDispatch.html" title="2 Posts">IDispatch</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="supporting-idispatch-through-the-cominteraction-wrapper.html#disqus_thread" data-disqus-identifier="49">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">5 March 2013</h3><h2><a id="Post48"></a><a href="the-full-text-indexer-automating-index-generation.html">The Full Text Indexer - Automating Index Generation</a></h2>
+
+<p>In the introductory <a href="the-full-text-indexer.html">Full Text Indexer</a> post I showed how to build an Index Generator by defining "Content Retrievers" for each property of the source data type. I didn't think that, in itself, this was a huge amount of code to get started but it did have a generous spattering of potentially-cryptic class instantiations that implied a large assumed knowledge before you could use it.</p>
+
+<p>With that in mind, I've added a project to the <a href="https://bitbucket.org/DanRoberts/full-text-indexer/">Full Text Indexer (Bitbucket)</a> solution that can automate this step by applying a combination of reflection (to examine the source type) and default values for the various dependencies (eg. the string normaliser, token breaker, etc..).</p>
+
+<p>This means that indexing data can now be as simple as:</p>
+
+<pre><code>var indexGenerator = (new AutomatedIndexGeneratorFactoryBuilder&lt;Post, int&gt;()).Get().Get();
+var index = indexGenerator.Generate(posts.ToNonNullImmutableList());
+</code></pre>
+
+<p>where data is a set of Post instances (the ToNonNullImmutableList call is not required if the set is already a NonNullImmutableList&lt;Post&gt;).</p>
+
+<pre><code>public class Post
+{
+  public int Id { get; set; }
+  public string Title { get; set; }
+  public string Content { get; set; }
+  public IEnumerable&lt;Comment&gt; Comments { get; set; }
+}
+
+public class Comment
+{
+  public string Author { get; set; }
+  public string Content { get; set; }
+}
+</code></pre>
+
+<p>The two "Get" calls are because the example uses an <strong>AutomatedIndexGeneratorFactoryBuilder</strong> which is able to instantiate an <strong>AutomatedIndexGeneratorFactory</strong> using a handful of defaults (explained below). The <strong>AutomatedIndexGeneratorFactory</strong> is the class that processes the object model to determine how to extract text data. Essentially it runs through the object graph and looks for text properties, working down through nested types or sets of nested types (like the IEnumerable&lt;Comment&gt; in the Post class above).</p>
+
+<p>So an AutomatedIndexGeneratorFactory is returned from the first "Get" call and this returns an IIndexGenerator&lt;Post, int&gt; from the second "Get".</p>
+
+<pre><code>// This means we can straight away query data like this!
+var results = index.GetMatches("potato");
+</code></pre>
+
+<p><em>(Note: Ignore the fact that I'm using mutable types for the source data here when I'm always banging on about immutability - it's just for brevity of example source code :)</em></p>
+
+<h3>Tweaking the defaults</h3>
+
+<p>This may be enough to get going - because once you have an IIndexGenerator you can start call GetMatches and retrieving search results straight away, and if your data changes then you can update the index reference with another call to</p>
+
+<pre><code>indexGenerator.Generate(posts.ToNonNullImmutableList());
+</code></pre>
+
+<p>But there are a few simple methods built in to adjust some of the common parameters - eg. to give greater weight to text matched in Post Titles I can specify:</p>
+
+<pre><code>var indexGenerator = (new AutomatedIndexGeneratorFactoryBuilder&lt;Post, int&gt;())
+  .SetWeightMultiplier("DemoApp.Post", "Title", 5)
+  .Get()
+  .Get();
+</code></pre>
+
+<p>If, for some reason, I decide that the Author field of the Comment type shouldn't be included in the index I can specify:</p>
+
+<pre><code>var indexGenerator = (new AutomatedIndexGeneratorFactoryBuilder&lt;Post, int&gt;())
+  .SetWeightMultiplier("DemoApp.Post.Title", 5)
+  .Ignore("DemoApp.Comment.Author")
+  .Get()
+  .Get();
+</code></pre>
+
+<p>If I didn't want <em>any</em> comments content then I could ignore the Comments property of the Post object entirely:</p>
+
+<pre><code>var indexGenerator = (new AutomatedIndexGeneratorFactoryBuilder&lt;Post, int&gt;())
+  .SetWeightMultiplier("DemoApp.Post.Title", 5)
+  .Ignore("DemoApp.Post.Comments")
+  .Get()
+  .Get();
+</code></pre>
+
+<p>(There are overloads for SetWeightMultiplier and Ignore that take a PropertyInfo argument instead of the strings if that's more appropriate for the case in hand).</p>
+
+<h3>Explaining the defaults</h3>
+
+<p>The types that the <strong>AutomatedIndexGeneratorFactory</strong> requires are a <strong>Key Retriever</strong>, a <strong>Key Comparer</strong>, a <strong>String Normaliser</strong>, a <strong>Token Breaker</strong>, a <strong>Weighted Entry Combiner</strong> and a <strong>Token Weight Determiner</strong>.</p>
+
+<p>The first is the most simple - it needs a way to extract a Key for each source data instance. In this example, that's the int "Id" field. We have to specify the type of the source data (Post) and type of Key (int) in the generic type parameters when instantiating the <strong>AutomatedIndexGeneratorFactoryBuilder</strong>. The default behaviour is to look for properties named "Key" or "Id" on the data type, whose property type is assignable to the type of the key. So in this example, it just grabs the "Id" field from each Post. If alternate behaviour was required then the <strong>SetKeyRetriever</strong> method may be called on the factory builder to explicitly define a Func&lt;TSource, TKey&gt; to do the job.</p>
+
+<p>The default <strong>Key Comparer</strong> uses the <strong>DefaultEqualityComparer&lt;TKey&gt;</strong> class, which just checks for equality using the Equals class of TKey. If this needs overriding for any reason, then the <strong>SetKeyComparer</strong> method will take an IEqualityComparer&lt;TKey&gt; to do the job.</p>
+
+<p>The <strong>String Normaliser</strong> used is the <strong>EnglishPluralityStringNormaliser</strong>, wrapping a <strong>DefaultStringNormaliser</strong>. I've written about these in detail before (see <a href="the-full-text-indexer-token-breaker-and-string-normaliser-variations.html">The Full Text Indexer - Token Breaker and String Normaliser variations</a>). The gist is that punctuation, accented characters, character casing and pluralisation are all flattened so that common expected matches can be made. If this isn't desirable, there's a <strong>SetStringNormaliser</strong> method that takes an IStringNormaliser. There's a pattern developing here! :)</p>
+
+<p>The <strong>Token Breaker</strong> dissects text content into individual tokens (normally individual words). The default will break on any whitespace, brackets (round, triangular, square or curly) and other punctuation that tends to define word breaks such as commas, colons, full stops, exclamation marks, etc.. (but not apostrophes, for example, which mightn't mark word breaks). There's a <strong>SetTokenBreaker</strong> which takes an ITokenBreak reference if you want it.</p>
+
+<p>The <strong>Weighted Entry Combiner</strong> describes the calculation for combining match weight when multiple tokens for the same Key are found. If, for example, I have the word "article" once in the Title of a Post (with weight multiplier 5 for Title, as in the examples above) and the same word twice in the Content, then how should these be combined into the final match weight for that Post when "article" is searched for? Should it be the greatest value (5)? Should it be the sum of all of the weights (5 + 1 + 1 = 7)? The <strong>Weighted Entry Combiner</strong> takes a set of match weights and must return the final combined value. The default is to sum them together, but there's always the <strong>SetWeightedEntryCombiner</strong> method if you disagree!</p>
+
+<p>Nearly there.. the <strong>Token Weight Determiner</strong> specifies what weight each token that is extracted from the text content should be given. By default, tokens are given a weight of 1 for each match unless they are from a property to ignore (in which they are skipped) or they are from a property that was specified by the <strong>SetWeightCombiner</strong> method, in which case they will take the value provided there. Any English stop words (common and generally irrelevant words such as "a", "an" and "the") have their weights divided by 100 (so they're not removed entirely, but matches against them count much less than matches for anything else). This entire process can be replaced by calling <strong>SetTokenWeightDeterminer</strong> with an alternate implementation (the property that the data has been extracted from will be provided so different behaviour per-source-property can be supported, if required).</p>
+
+<h3>Phew!</h3>
+
+<p>Well done if you got drawn in with the introductory this-will-make-it-really-easy promise and then actually got through the detail as well! :)</p>
+
+<p>I probably went deeper off into a tangent on the details than I really needed to for this post. But if you're somehow desperate for more then I compiled my previous posts on this topic into a <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up</a> where there's plenty more to be found!</p>
+<p class="PostTime">Posted at 00:01</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-full-text-indexer-automating-index-generation.html#disqus_thread" data-disqus-identifier="48">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">2 March 2013</h3><h2><a id="Post47"></a><a href="extending-the-css-minifier.html">Extending the CSS Minifier</a></h2>
+
+<p>I have a <a href="https://bitbucket.org/DanRoberts/cssminifier">CSS Minifier project hosted on Bitbucket</a> which I've used for some time to compile and minify the stylesheet contents for this blog but I've recently extended its functionality after writing the <a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a> post.</p>
+
+<p>The original, fairly basic capabilities were to flatten imports into a single request and then to remove comments and minify the content to reduce bandwidth requirements in delivery. The CSSMinifierDemo project in solution above also illustrated implementing support for 304 responses (for when the Client already has the latest content in their browser cache) and compression (gzip or deflate) handling. I wrote about this in the <a href="onthefly-css-minification.html">On-the-fly CSS Minification</a> post.</p>
+
+<p>Some time after that I incorporated LESS support by including a reference to <a href="http://www.dotlesscss.org/">dotLess</a>.</p>
+
+<p>However, now I think it has some features which aren't quite as bog standard and so it's worth talking about again!</p>
+
+<h3>Source Mapping</h3>
+
+<p>One of the difficulties with "debugging" styles in large and complex sheets when they've been combined and minified (and compiled, in the case of LESS content) is tracking down precisely where a given still originated from when you're looking at it in Firebug or any of the other web developer tools in the browsers.</p>
+
+<p>With javascript - whether it be minified, compiled from CoffeeScript or otherwise manipulated before being delivered the Client - there is support in modern browsers for "Source Mapping" where metadata is made available that can map anywhere in the processed content back to the original. Clever stuff. (There's a decent started article on HTML5 Rocks: <a href="http://www.html5rocks.com/en/tutorials/developertools/sourcemaps/">Introduction to Javascript Source Maps</a>).</p>
+
+<p>However, there's (currently, if I'm being optimistic) no such support for CSS.</p>
+
+<p>So I've come up with a workaround!</p>
+
+<p>If I have a file Test1.css</p>
+
+<pre><code>@import "Test2.css";
+
+body
+{
+  margin: 0;
+  padding: 0;
+}
+</code></pre>
+
+<p>and Test2.css</p>
+
+<pre><code>h2
+{
+  color: blue;
+
+  a:hover
+  {
+    text-decoration: none;
+  }
+}
+</code></pre>
+
+<p>then these would be compiled (since Test2.css uses LESS nested selectors) down to</p>
+
+<pre><code>body{margin:0;padding:0}
+h2{color:blue}
+h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>(I've added line breaks between style blocks for readability);</p>
+
+<p>My approach is to inject additional pseudo selectors into the content that indicate which file and line number a style block came from in the pre-processed content. The selectors will be valid for CSS but shouldn't relate to any real elements in the markup.</p>
+
+<pre><code>#Test1.css_3,body{margin:0;padding:0}
+#Test2.css_1,h2{color:blue}
+#Test2.css_5,h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>Now, when you look at any given style in the web developer tools you can immediately tell where in the source content to look!</p>
+
+<p>The <strong>LessCssLineNumberingTextFileLoader</strong> class takes two constructor arguments; one is the file loader reference to wrap and the second is a delegate which takes a relative path (string) and a line number (int) and returns a string that will be injected into the start of the selector.</p>
+
+<p>This isn't quite without complications, unfortunately, when dealing with nested styles in LESS content. For example, since this</p>
+
+<pre><code>#Test2.css_1,h2
+{
+  color: blue;
+
+  #Test2.css_5,a:hover
+  {
+    text-decoration: none;
+  }
+}
+</code></pre>
+
+<p>is translated by the compiler into (disabling minification)</p>
+
+<pre><code>#Test2.css_1, h2
+{
+  color: blue;
+}
+
+#Test2.css_1 #Test2.css_5,
+#Test2.css_1 a:hover,
+h2 #Test2.css_5
+h2 a:hover
+{
+  text-decoration: none;
+}
+</code></pre>
+
+<p>The LESS translator has had to multiply out the comma separated selectors "#Test2.css_1" and "h2" across the nested selectors "#Test2.css_5" and "a:hover" since this is the only way it <em>can</em> be translated into CSS and be functionality equivalent.</p>
+
+<p>But this isn't as helpful when it comes to examining the styles to trace back to the source. So additional work is required to add another processing step to remove any unnecessary markers. This can be dealt with by the <strong>InjectedIdTidyingTextFileLoader</strong> but it requires that you keep track of all of the markers inserted with the <strong>LessCssLineNumberingTextFileLoader</strong> (which isn't a massive deal if the delegate that is passed to the <strong>LessCssLineNumberingTextFileLoader</strong> also records the markers it has provided).</p>
+
+<p>The good news is that the class <strong>CSSMinifier.FileLoaders.Factories.EnhancedNonCachedLessCssLoaderFactory</strong> in the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSS Minifier repo</a> will instantiate a LESS file loader / processor that will apply all of the functionality that I'm going to cover in this post (including this source mapping) so if it's not clear from what I've described here how to implement it, you can either use that directly or look at the code to see how to configure it.</p>
+
+<h3>Body-scope overhead removing</h3>
+
+<p>Rule 5 in <a href="noncascading-css-a-revolution.html">Non-cascading CSS</a> states that</p>
+
+<blockquote>
+  <p>All files other than the reset and theme sheets should be wrapped in a body "scope"</p>
+</blockquote>
+
+<p>This is so that LESS values and mixins can be declared in self-contained files that can be safely included alongside other content, safe in the knowledge that the values and mixins are restricted in the scope to the containing file. (See that post for more details).</p>
+
+<p>The disadvantage of this is the overhead of the additional body tag included in all of the resulting selectors. If we extend the earlier example</p>
+
+<pre><code>body
+{
+  h2
+  {
+    color: blue;
+
+    a:hover
+    {
+      text-decoration: none;
+    }
+  }
+}
+</code></pre>
+
+<p>it will compile down to</p>
+
+<pre><code>body h2{color:blue}
+body h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>The <strong>LessCssOpeningBodyTagRenamer</strong> will parse the file's content to determine if it is wrapped in a body tag (meaning that the only content outside of the body tag is whitespace or comments) and replace the text "body" of the tag with a given value. So we may get it translated into</p>
+
+<pre><code>REPLACEME
+{
+  h2
+  {
+    color: blue;
+
+    a:hover
+    {
+      text-decoration: none;
+    }
+  }
+}
+</code></pre>
+
+<p>and consequently</p>
+
+<pre><code>REPLACEME h2{color:blue}
+REPLACEME h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>This allows the <strong>ContentReplacingTextFileLoader</strong> to remove all references to "REPLACEME " when the LESS processing and minification has been completed. Leaving just</p>
+
+<pre><code>h2{color:blue}
+h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>The string "REPLACEME" and "REPLACEME " (with the trailing space) are specified as constructor arguments for the <strong>LessCssOpeningBodyTagRenamer</strong> and <strong>ContentReplacingTextFileLoader</strong> so different values may be used if you think something else would be more appropriate.</p>
+
+<p><strong>Update (4th June):</strong> I've replaced <strong>LessCssOpeningBodyTagRenamer</strong> with <strong>LessCssOpeningHtmlTagRenamer</strong> since trimming out the body tag will prevent stylesheets being written where selectors target classes on the body, which some designs I've worked with rely upon being able to do.</p>
+
+<h3>Media Query Grouping</h3>
+
+<p>In order to follow <a href="noncascading-css-a-revolution.html">Non-cascading CSS</a> Rule 3</p>
+
+<blockquote>
+  <p>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur within a nested selector so long as child selectors are strictly used)</p>
+</blockquote>
+
+<p>media queries must be nested inside style blocks rather than existing in separate files that rearrange elements for different breakpoints (which is a common pattern I've seen used). This makes the maintenance of the styles much easier as the styles for a given element are arranged together but it means that there may end up being many media-query-wrapped sections in the final content where many sections have the same criteria (eg. "@media screen and (max-width:35em)").</p>
+
+<p>I'm sure that I've read somewhere* that on some devices, having many such sections can be expensive since they all have to evaluated. I think it mentioned a particular iPhone model but I can't for the life of me find the article now! But if this is a concern then we can take all styles that are media-query-wrapped and merge any media queries whose criteria are identical using the <strong>MediaQueryGroupingCssLoader</strong>.</p>
+
+<p>Note that this will move all of the media query sections to the end of the style content. If your styles rely on them appearing in the final output in the same order as they appear in the source then this may pose a problem. But this is one of the issues addressed by the <a href="noncascading-css-a-revolution.html">Non-cascading CSS</a> rules, so if they're followed then this manipulation will always be safe.</p>
+
+<p>* <strong>Update (4th June):</strong> It finally found what I was thinking of but couldn't find - it was <a href="http://alwaystwisted.com/post.php?s=2012-05-05-everyday-im-bubbling-with-media-queries-and-less#comment-537669505">this comment</a> on the artible <a href="http://alwaystwisted.com/post.php?s=2012-05-05-everyday-im-bubbling-with-media-queries-and-less">Everyday I'm Bubbling. With Media Queries and LESS</a>.</p>
+
+<h3>More to come!</h3>
+
+<p>As part of this work, I've written a CSS / LESS parser which can be found on Bitbucket: <a href="https://bitbucket.org/DanRoberts/cssparser">CSS Parser</a>. It will lazily evaluate the content, so if you only need to examine the first few style declarations of a file then only the work required to parse those styles will be performed. It's used by the <strong>LessCssOpeningBodyTagRenamer</strong> (<strong>4th June</strong>: Now the <strong>LessCssOpeningHtmlTagRenamer</strong>) and I intend to use it to write a validator that will check which of my Non-cascading CSS rules are or aren't followed by particular content. I might write more about the parser then.</p>
+
+<p>In the meantime, if you want to give it a go for any reason then clone that repository and call</p>
+
+<pre><code>CSSParser.Parser.ParseLESS(content);
+</code></pre>
+
+<p>giving it a string of content and getting back an IEnumerable&lt;CategorisedCharacterString&gt;.</p>
+
+<pre><code>public class CategorisedCharacterString
+{
+  public CategorisedCharacterString(
+    string value,
+    int indexInSource, 
+    CharacterCategorisationOptions characterCategorisation);
+
+  public CharacterCategorisationOptions CharacterCategorisation { get; }
+
+  // Summary: This is the location of the start of the string in the source data
+  public int IndexInSource { get; }
+
+  // Summary: This will never be null or an empty string
+  public string Value { get; }
+}
+
+public enum CharacterCategorisationOptions
+{
+  Comment,
+  CloseBrace,
+  OpenBrace,
+  SemiColon,
+
+  // Summary: Either a selector (eg. "#Header h2") or a style property (eg. "display")
+  SelectorOrStyleProperty,
+
+  // Summary: This is the colon between a Style Property and Value (not any colons that may exist in a
+  // media query, for example)
+  StylePropertyColon,
+
+  Value,
+  Whitespace
+}
+</code></pre>
+
+<p>The content is parsed as that enumerable set is iterated through, so when you stop enumerating it stops processing.</p>
+
+<p><strong>Update (12th March):</strong> I've posted a follow-up to this about various caching mechanism so that all of this processing need be performed as infrequently as possible! See <a href="css-minifier-caching.html">CSS Minifier - Caching</a>.</p>
+
+<p><strong>Update (4th June):</strong> I've also started writing up a bit about how I implemented the parsing, there's a few interesting turns (at least I think there are!) so check it out at <a href="more-caching-mechanisms.html">Parsing CSS</a>.</p>
+<p class="PostTime">Posted at 15:02</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li></ul></div>
+						<p class="Comments">
+							<a href="extending-the-css-minifier.html#disqus_thread" data-disqus-identifier="47">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">2 March 2013</h3><h2><a id="Post46"></a><a href="noncascading-css-the-followup.html">Non-cascading CSS: The follow-up</a></h2>
+
+<p>This is related to the post <a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution</a>. In that I talked about 9 proposed rules to write genuinely reusable and maintainable CSS (inspired by <a href="http://www.lispcast.com/cascading-separation-abstraction">www.lispcast.com/cascading-separation-abstraction</a>):</p>
+
+<ol>
+<li>A standard (html5-element-supporting) reset sheet is compulsory, only bare selectors may be specified in it</li>
+<li>A single "common" or "theme" sheet will be included with a minimum of default styles, only bare selectors may be specified in it</li>
+<li>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur within a nested selector so long as child selectors are strictly used)</li>
+<li>Stylesheets are broken out into separate files, each with a well-defined purpose</li>
+<li>All files other than the reset and theme sheets should be wrapped in a body "scope"</li>
+<li>No selector may be repeated in the rules</li>
+<li>All measurements are described in pixels</li>
+<li>Margins, where specified, must always be fully-defined</li>
+<li>Border and Padding may not be combined with Width</li>
+</ol>
+
+<p>Shortly after that I re-wrote the styling for this blog to ensure that the principles held sound (since I've started keeping my blog in BitBucket, you can find it <a href="https://bitbucket.org/DanRoberts/blog">here</a>). And I'm happy to say that they did! In fact, after a very short adjustment period, it felt very natural and somewhat reassuring with its structure. It felt like writing good code rather than the CSS I've written before that left functional but somewhat lacking.. something. (And trust me, I've written a <em>lot</em> over the years).</p>
+
+<p>Each file felt comfortably self-contained and logical. I was particularly happy with how simple the layout.less file was, despite handling the media queries to render the content differently on smaller screens.</p>
+
+<h3>Amendments</h3>
+
+<p>Having talked to more people and considered the uses in the context of particular scenarios I still feel confident that they nearly all hold firm. With one exception..</p>
+
+<blockquote>
+  <p>All measurements are described in pixels</p>
+</blockquote>
+
+<p>This rule has so much promise and is able to deliver so much if it can be applied everywhere. As outlined in the <a href="noncascading-css-a-revolution.html">original post</a>, it solves the compound issue with percentages or ems being applied to multiple layers (so a paragraph's font-size of 80% will be affected by its parent div element's font-size of 90%, for example).</p>
+
+<p>It has the potential to make some responsive designs I've seen easier to implement. Some current accepted wisdom is that all dimensions should be specified in percentages so that the design is "fluid". Using the example of a page split into two columns such that there's a main content area and a side bar, in many cases it's entirely possible to have the sidebar be fixed width and then leave the main content area to fill the remaining width.</p>
+
+<p><img src="Content/Images/Posts/FluidLayouts.png" alt="Fixed Width Sidebar Fluid Design" title="Fixed Width Sidebar Fluid Design" /></p>
+
+<p>This has the benefit that the narrower side bar controls can be styled more predictably - they don't have to deal with as much jiggling about as the available horizontal resolution varies. And often in scenarios like this, the space and element arrangement of side bars can be quite tight. If there is a search image button, for example, you must make sure that it can't become too wide to fit into the available width as the width is reduced with a fluid-width side bar. The content area, on the other hand, is more likely to lend itself to flexibility due to its wider nature.</p>
+
+<p>For common breakpoints less-than-480px, up-to-600px, up-to-768px, up-to-900px and greater-than-900px, there may be a fluid layout between 600px and 900px. Below 600px the design may have most elements full width (similar to this blog in reduced-width formatting) and above 900px it's common to be fixed width to prevent content areas from becoming too wide and lines of text becoming too long. If the side bar is 250px wide, say, the the content area will vary between 350px and and 650px but the formatting of the side bar need not vary. There may be an argument to have a mid-way point for the side bar to be 300px wide when the horizontal resolution is greater than 768px whilst 200px wide between 600px and 768px. Now there are two variations for the side bar formatting but the content width only varies between 400px and 600px.</p>
+
+<p>I think there's a lot of mileage to be had from this joint fixed-width / fluid-layout combination.</p>
+
+<p>BTW, if you haven't read the classic "A List Apart" article <a href="http://alistapart.com/article/negativemargins">Creating Liquid Layouts with Negative Margins</a> (from 2004!) then be sure to check it out - when I came to actually trying to implement fixed width side bar(s) with a fluid width main column I came a bit unstuck until I rooted this out and refreshed my memory on what is basically the definitive way to do it.</p>
+
+<p>However, there is one point at which I've become stuck. I've seen designs which have a horizontal gallery of items: imagine a row of images with captions beneath them. In a similar design to that shown above, these would appear below the content area - so within the 400-600px wide region. The design requires that four items be displayed within the gallery at all times. The current approach I've seen to implementing this is for a wrapper around the gallery to effectively be 100% of the available width and then for each of the four items to have a width of 25%. This means that they resize as the available width changes. The image for each item has a width of 100% which ensures that it fills the space it has <em>within</em> the 25% section.</p>
+
+<p><img src="Content/Images/Posts/FluidLayoutsGallery.png" alt="Fluid Width Gallery Problem" title="Fluid Width Gallery Problem" /></p>
+
+<p>I don't really like this because in order for the image to fit within its gallery item container, it <em>has</em> to specify this 100% width. But I can't see any way other than this approach to make it work. I'd like a way to specify a fixed width for the gallery items and for them to arrange themselves with horizontal whitespace to stretch across the whole width, possibly with a change to the fixed width at the 768px breakpoint as suggested for side bar above. This would make styling the items much simpler and predictable. But unfortunately I haven't quite managed to come up with a way to do this in CSS yet! So I might have to admit to relaxing this rule in some cases. That's not to say that I've completely given up on a way to work round this, at which point maybe the rule can be promoted again!</p>
+
+<p>One other note about "pixels everywhere"; I'm definitely onboard with the idea with the principle of specifying media queries in ems, as mentioned in my first post about this (and as taken straight from here: <a href="http://blog.cloudfour.com/the-ems-have-it-proportional-media-queries-ftw/">The EMs have it: Proportional Media Queries FTW!</a>). I've done that with the breakpoint in my blog formatting so that it's not a pixel width that I break at but 35em. This means that if the browser font size is increased sufficiently that the breakpoint will be passed and the formatting changed. I've noticed that Firefox will do this immediately when the font size becomes large enough but with Chrome the page has to be refreshed after increasing the font the blog, then the reduced-width layout would be used).</p>
+
+<h3>Return of the CSS Minifier</h3>
+
+<p>I'm going to write another post now about some changes to the CSS Minifier project that I've written about before (<a href="onthefly-css-minification.html">On-the-fly CSS Minification</a>). Some time ago I included a reference to <a href="http://www.dotlesscss.org/">dotLess</a> to enable the compilation of LESS but I've now added further functionality such as a form of source mapping (indicating where styles in compiled output originated from), a way to address the overhead of Rule 5: <em>All files other than the reset and theme sheets should be wrapped in a body "scope"</em> and a way to automatically group media queries. See <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a>.</p>
+<p class="PostTime">Posted at 13:48</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li></ul></div>
+						<p class="Comments">
+							<a href="noncascading-css-the-followup.html#disqus_thread" data-disqus-identifier="46">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

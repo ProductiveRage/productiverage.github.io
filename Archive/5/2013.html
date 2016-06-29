@@ -1,0 +1,929 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - May 2013</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">22 May 2013</h3><h2><a id="Post56"></a><a href="more-caching-mechanisms.html">More Caching Mechanisms</a></h2>
+
+<p>This is something I'd meant to cover in the last post (<a href="caching-mechanisms.html">Caching Mechanisms</a>) before I realised how long the last one was getting! And it's a bite-sized post before I segue into more about alternate approches to expiring cache entries.</p>
+
+<p>Last time I had the catchily-named <strong>StaleResultDeliveringLastModifiedBasedCachingConfigLoader</strong> which implemented this simple interface</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  ConfigDetails Get();
+}
+</code></pre>
+
+<p>and combined a cache expiration mechanism based upon the last-modified date of the source content with a willingness to return stale content so long as it promised to perform a background update of the cached data when it first knowingly returned stale content.</p>
+
+<p>The principle being that this sort of cache would be used in an environment where retrieving the data is expensive and the frequency of requests is high. If stale data delivery was not allowed then this combination of expensive data retrieval and high request frequency would mean that when cached data was found to be stale (and so removed from cache) there would likely be multiple requests all going to retrieve the live data independently. And if this process is so expensive then this would be a bad thing that we'd like to avoid!</p>
+
+<p>An alternative to delivering stale data during these points would be to queue up the requests that all want to go and get the live data such that only one makes the live retrieval and pushes it into cache, then the queued requests could be set free but directed at the now-populated cache. Delivering stale data during the update process, however, means that all of the requests are fast during the background update process and the high frequency of the requests should mean that stale data is not present in the cache long before it is updated (and hence the window in which stale data is returned should be small).</p>
+
+<p>However, at first request the cache will be empty and if the request rate is so high and the retrieval so expensive  then there will be a burst of activity as multiple requests all have to retrieve the data live before the first to complete pushes it into the cache.</p>
+
+<p>To address that, there's this variation on it, the <strong>WorkAvoidingLastModifiedBasedCachingConfigLoader</strong> (because it's getting late and I was unable to come up with a succinct but descriptive name.. ironic considering the quote about the "hard things in computer science" I started the <a href="caching-mechanisms.html">last post</a> with!).</p>
+
+<p>This adds a queue around requests that have to deal with the case of the cache being unable to provide any content, stale or otherwise. The synchronisation mechanism here is more like a traditional lock construct but with a timeout so that a limit can optionally be put on how long requests should be patient for while waiting for another request to get the live data, with an exception being raised if this time is exceeded. (I say "optionally" since specifying TimeSpan.MaxValue for the timeout value would effectively disable this behaviour).</p>
+
+<p>A "lock" is basically translated by the compiler from</p>
+
+<pre><code>lock (lockObject)
+{
+  // Do work
+}
+</code></pre>
+
+<p>into</p>
+
+<pre><code>var copyOfLockObject = lockObject;
+var lockWasTaken = false;
+try
+{
+  Monitor.Enter(copyOfLockObject, ref lockWasTaken);
+
+  // Do work
+}
+finally
+{
+  if (lockWasTaken)
+    Monitor.Exit(copyOfLockObject);
+}
+</code></pre>
+
+<p>I've used the Monitor.TryEnter method that takes a timeout argument. If the lock couldn't be taken then a timeout occurred and so I throw an exception.</p>
+
+<p>This lock-unrolling information is taken from Eric Lippert's <a href="http://blogs.msdn.com/b/ericlippert/archive/2009/03/06/locks-and-exceptions-do-not-mix.aspx">Locks and exceptions do not mix</a> which is quite short and absolutely worth a read (as per usual!). He mentions that "the body of a lock should do as little as possible" not only "so that anyone waiting on the lock does not have to wait long" but more importantly that "small, simple lock bodies minimize the chance that the thing in there is going to throw an exception" which could leave the resources in a messed up state. Wwrapping work in a lock only guarantees that a single thread can process it at any given time, not that the work magically becomes atomic - it could half succeed and then fail, leaving these resources that must be protected in an unpredictable way. Thankfully, here all I'm doing inside the lock is trying to retrieve live data and then updating the cache - <em>hopefully</em> nothing that can leave things corrupt in any way.</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  public class WorkAvoidingLastModifiedBasedCachingConfigLoader : IRetrieveConfigDetails
+  {
+    private readonly IRetrieveConfigDetails _configLoader;
+    private readonly Func&lt;DateTime&gt; _lastModifiedDateRetriever;
+    private readonly TimeSpan _retrieverLockAcquisitionTimeout;
+    private readonly Action&lt;Action&gt; _backgroundWorkExecuter;
+    private readonly ICacheOneSpecificThing _cache;
+    private int _workInProgressIndicator;
+    private readonly object _retrieverLock;
+    public StaleResultDeliveringLastModifiedBasedCachingConfigLoader(
+      IRetrieveConfigDetails configLoader,
+      Func&lt;DateTime&gt; lastModifiedDateRetriever,
+      TimeSpan retrieverLockAcquisitionTimeout,
+      Action&lt;Action&gt; backgroundWorkExecuter,
+      ICacheOneSpecificThing cache)
+    {
+      if (configLoader == null)
+        throw new ArgumentNullException("configLoader");
+      if (lastModifiedDateRetriever == null)
+        throw new ArgumentNullException("lastModifiedDateRetriever");
+      if (retrieverLockAcquisitionTimeout.Ticks &lt;= 0)
+        throw new ArgumentOutOfRangeException(
+          "retrieverLockAcquisitionTimeout",
+          "must be a positive duration"
+        );
+      if (backgroundWorkExecuter == null)
+        throw new ArgumentNullException("backgroundWorkExecuter");
+      if (cache == null)
+        throw new ArgumentNullException("cache");
+
+      _configLoader = configLoader;
+      _lastModifiedDateRetriever = lastModifiedDateRetriever;
+      _retrieverLockAcquisitionTimeout = retrieverLockAcquisitionTimeout;
+      _backgroundWorkExecuter = backgroundWorkExecuter;
+      _cache = cache;
+      _workInProgressIndicator = 0;
+      _retrieverLock = new object();
+    }
+    public StaleResultDeliveringLastModifiedBasedCachingConfigLoader(
+      IRetrieveConfigDetails configLoader,
+      Func&lt;DateTime&gt; lastModifiedDateRetriever,
+      TimeSpan retrieverLockAcquisitionTimeout,
+      ICacheOneSpecificThing cache)
+      : this(
+        configLoader,
+        lastModifiedDateRetriever,
+        retrieverLockAcquisitionTimeout,
+        ThreadPoolBackgroundWorkExecuter,
+        cache
+      ) { }
+
+    /// &lt;summary&gt;
+    /// The default manner in which background work is performed is to queue up the work through
+    /// the Threadpool but this be can overridden by using the constructor that takes the 
+    /// backgroundWorkExecuter argument
+    /// &lt;/summary&gt;
+    public static Action&lt;Action&gt; ThreadPoolBackgroundWorkExecuter
+    {
+      get
+      {
+        return backgroundAction =&gt;
+        {
+          if (backgroundAction == null)
+            return;
+
+          ThreadPool.QueueUserWorkItem(state =&gt; { backgroundAction(); });
+        };
+      }
+    }
+
+    public ConfigDetails Get()
+    {
+      // Try to retrieve data from cache
+      var lastModified = _lastModifiedDateRetriever();
+      var cachedData = _cache.GetIfAvailable() as ConfigDetailsWithModifiedDate;
+
+      // If unavailable in cache then the cache needs populating, only one request should be
+      // allowed to perform this work, any others should wait until the work has completed
+      // and the data been made available in the cache
+      if (cachedData == null)
+      {
+        var lockWasTaken = false;
+        try
+        {
+          Monitor.TryEnter(_retrieverLockAcquisitionTimeout, ref lockWasTaken);
+          if (lockWasTaken)
+          {
+            cachedData = _cache.GetIfAvailable() as ConfigDetailsWithModifiedDate;
+            if (cachedData == null)
+            {
+              var liveData = _configLoader.Get();
+              _cache.SetIfNotAvailable(
+                new ConfigDetailsWithModifiedDate(
+                  liveData,
+                  lastModified
+                )
+              );
+              return liveData;
+            }
+          }
+        }
+        finally
+        {
+          if (lockWasTaken)
+            Monitor.Exit(_retrieverLockAcquisitionTimeout);
+        }
+        if (!lockWasTaken)
+          throw new TimeoutException("The request timed out while waiting for Config Details load");
+      }
+
+      // If the available data is still valid then return that
+      if (cachedData.LastModified &gt;= lastModified)
+        return cachedData.Config;
+
+      // If the available data is no longer valid then initiate a background request immediately
+      // return the stale data (if CompareExchange returns zero then it means that the value of
+      // _workInProgressIndicator was zero before the call to CompareExchange (and so it will
+      // have then been set to one since the second argument is the value to set the first
+      // argument's reference to if it currently matches the third argument)
+      if (Interlocked.CompareExchange(ref _workInProgressIndicator, 1, 0) == 0)
+      {
+        _backgroundWorkExecuter(() =&gt;
+        {
+          try
+          {
+            UpdateCachedData();
+          }
+          catch
+          {
+            // Ignore any errors - if this work was performed on another thread then there's
+            // nothing we can do about it here, we just need to be sure to reset the
+            // workInProgressIndicator value
+          }
+          Interlocked.Exchange(ref _workInProgressIndicator, 0);
+        });
+      }
+      return cachedData.Config;
+    }
+
+    private void UpdateCachedData()
+    {
+      var lastModified = _lastModifiedDateRetriever();
+      var backgroundUpdateLiveData = _configLoader.Get();
+      _cache.RemoveIfAvailable();
+      _cache.SetIfNotAvailable(
+        new ConfigDetailsWithModifiedDate(
+          backgroundUpdateLiveData,
+          lastModified
+        )
+      );
+    }
+
+    private class ConfigDetailsWithModifiedDate
+    {
+      public ConfigDetailsWithModifiedDate(ConfigDetails config, DateTime lastModified)
+      {
+        if (config == null)
+          throw new ArgumentNullException("config");
+
+        Config = config;
+        LastModified = lastModified;
+      }
+
+      /// &lt;summary&gt;
+      /// This will never be null
+      /// &lt;/summary&gt;
+      public ConfigDetails Config { get; private set; }
+
+      public DateTime LastModified { get; private set; }
+    }
+  }
+}
+</code></pre>
+
+<p>I think the use of Monitor for the locking in this case is most appropriate for the case in hand where the timeout on queued requests is required. Particularly since the time spent with the cache empty should be relatively small and so any performance losses comparing Monitor to the Interlocked approach used for marking a background update as being in progress will be minor.</p>
+
+<p>The test for an empty cache has to implement the double-checked locking pattern for cases where requests are queued up while one gets the live data, otherwise once the live data becomes available then the queued requests would try to get the live data themselves even though it's just been put into cache. There's no complications with this implementation of the pattern as having the Monitor call implicitly generates "full fence" memory barriers around it to prevent any instructions reordering that is the threat to this sort of thing. I think the definitive article is Joe Albarhari's <a href="http://www.albahari.com/threading/part4.aspx">Threading in C# (Part 4: Advanced Threading)</a>. I'm sure I've linked to it before and I've certainly read it over and over again over the years!</p>
+
+<p>I think I've covered everything I wanted to about implementing caches for now*, I still need to do some more work before I can crack on with talking about all of the cache expiration methods I have in mind. Think it's going to be a little while before that's all ready but having to get everything completely straight in my head for a topic has been one of the benefit I've found to blogging about things!</p>
+
+<p>* (I half contemplated writing <em>another</em> variation which would have a perioidic timer to pick up on an empty cache or trigger a background update if stale data is present and an update is not already in progress, but to be honest I think that might be labouring the point a bit and wouldn't add that much value to the post - hopefully it's obvious both how such a mechanism could be implemented and what some of the pros and cons would be).</p>
+<p class="PostTime">Posted at 00:26</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/Caching.html" title="2 Posts">Caching</a></li></ul></div>
+						<p class="Comments">
+							<a href="more-caching-mechanisms.html#disqus_thread" data-disqus-identifier="56">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">20 May 2013</h3><h2><a id="Post55"></a><a href="caching-mechanisms.html">Caching Mechanisms</a></h2>
+
+<p>I've been tinkering with some data caching recently and thinking about various method of cache invalidation, particularly since I've made some changes recently at work to more intelligently detect expired cached data rather than just waiting for it to fall out of a cache after a particular (and usually arbitrary) period of time.</p>
+
+<blockquote>
+  <p>There are two hard things in computer science: cache invalidation, naming things, and off-by-one errors </p>
+</blockquote>
+
+<p>(Quoted in various places, amongst which <a href="http://martinfowler.com/bliki/TwoHardThings.html">http://martinfowler.com/bliki/TwoHardThings.html</a>).</p>
+
+<p>I'm going to jump right in with some example code and contort it in numerous ways to illustrate different approaches.</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  public interface IRetrieveConfigDetails
+  {
+    ConfigDetails Get();
+  }
+}
+
+namespace CachingExamples
+{
+  [Serializable]
+  public class ConfigDetails
+  {
+    private readonly ReadOnlyCollection&lt;string&gt; _apiKeys;
+    public ConfigDetails(IEnumerable&lt;string&gt; apiKeys)
+    {
+      if (apiKeys == null)
+        throw new ArgumentNullException("apiKeys");
+
+      _apiKeys = apiKeys.ToList().AsReadOnly();
+      if (_apiKeys.Any(key =&gt; string.IsNullOrWhiteSpace(key)))
+        throw new ArgumentException("Null/blank entry encountered in apiKeys set");
+    }
+
+    public IEnumerable&lt;string&gt; APIKeys { get { return _apiKeys; } }
+  }
+}
+</code></pre>
+
+<p>The interface here is to load some fictional Config Details data (here it's just a list of API Keys with no additional data - would not be very useful in real life but will do the job for this example!).</p>
+
+<p>The non-cached implementation goes something like</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  public class DiskBasedConfigLoader : IRetrieveConfigDetails
+  {
+    private readonly FileInfo _configFile;
+    public DiskBasedConfigLoader(FileInfo configFile)
+    {
+      if (configFile == null)
+        throw new ArgumentNullException("configFile");
+
+      _configFile = configFile;
+    }
+
+    public ConfigDetails Get()
+    {
+      string content;
+      using (var stream = _configFile.Open(FileMode.Open, FileAccess.Read, FileShare.Read))
+      {
+        using (var reader = new StreamReader(stream))
+        {
+          content = reader.ReadToEnd();
+        }
+      }
+      return new ConfigDetails(
+        content.Split(new[] { '\r', '\n' }).Select(s =&gt; s.Trim()).Where(s =&gt; s != "")
+      );
+    }
+  }
+}
+</code></pre>
+
+<p>Again, nothing exciting, just setting the scene.</p>
+
+<h3>Time-based Expiration</h3>
+
+<p>Starting with the most common and arguably easiest to implement; "Time-based expiration". Tell the cache to keep hold of some information for a specified length of time and then forget about it. Requests for the data within that period should return the same results, requests after that period should return nothing unless new data has been pushed into the cache to replace the gap.</p>
+
+<p>To introduce caching I generally start with a generic interface such as:</p>
+
+<pre><code>namespace CachingExamples.Caching
+{
+  public interface ICacheThings
+  {
+    object this[string key] { get; }
+    void Add(string key, object value);
+    void Remove(string key);
+  }
+}
+</code></pre>
+
+<p>This is not explicitly tied to a time-based caching mechanism since no cache duration is specified when calling Add. This is an example of keeping the implementation separate from the interface (which is a good thing).</p>
+
+<p>So a time-based implementation may follow (using .Net 4's <a href="http://msdn.microsoft.com/en-us/library/system.runtime.caching.memorycache.aspx">MemoryCache</a>):</p>
+
+<pre><code>namespace CachingExamples.Caching
+{
+  public class ObjectCacheWrappingCache : ICacheThings
+  {
+    private readonly ObjectCache _cache;
+    private readonly TimeSpan _cacheDuration;
+    public ObjectCacheWrappingCache(ObjectCache cache, TimeSpan cacheDuration)
+    {
+      if (cache == null)
+        throw new ArgumentNullException("cache");
+      if (cacheDuration.Ticks &lt;= 0)
+        throw new ArgumentOutOfRangeException("cacheDuration must be a positive value");
+
+      _cache = cache;
+      _cacheDuration = cacheDuration;
+    }
+    public ObjectCacheWrappingCache(TimeSpan cacheDuration)
+      : this(MemoryCache.Default, cacheDuration) { }
+
+    public object this[string key]
+    {
+      get
+      {
+        if (string.IsNullOrWhiteSpace(key))
+          throw new ArgumentException("Null/empty key specified");
+
+        return _cache[key.Trim()];
+      }
+    }
+
+    public void Add(string key, object value)
+    {
+      if (string.IsNullOrWhiteSpace(key))
+        throw new ArgumentException("Null/empty key specified");
+      if (value == null)
+        throw new ArgumentNullException("value");
+
+      // Don't overflow is a large cacheDuration (such as TimeSpan.MaxValue) was specified
+      DateTime expirationPoint;
+      if (DateTime.MaxValue.Subtract(DateTime.Now) &lt; _cacheDuration)
+        expirationPoint = DateTime.MaxValue;
+      else
+        expirationPoint = DateTime.Now.Add(_cacheDuration);
+      _cache.Add(key.Trim(), value, expirationPoint);
+    }
+
+    public void Remove(string key)
+    {
+      if (string.IsNullOrWhiteSpace(key))
+        throw new ArgumentException("Null/empty key specified");
+
+      _cache.Remove(key.Trim());
+    }
+  }
+}
+</code></pre>
+
+<p>(To use the MemoryCache, you need a reference to System.Runtime.Caching).</p>
+
+<p>For this particular example, I'm going to go one step further with this separate-implementation-from-interface tack; if there's no need for cache duration to be specified, why should it be necessary to specify a cache key? Quite feasibly, a caching implementation of <strong>IRetrieveConfigDetails</strong> doesn't even have enough information to generate a unique key! If the <strong>DiskBasedConfigLoader</strong> gets the source filename passed into its constructor then I think there's a very fair argument for caching loaders to not have to know anything about the source of the data (which is tied to generating a cache key for it).</p>
+
+<pre><code>namespace CachingExamples.Caching
+{
+  public interface ICacheOneSpecificThing
+  {
+    object GetIfAvailable();
+    void SetIfNotAvailable(object value);
+    void RemoveIfAvailable();
+  }
+}
+</code></pre>
+
+<p>This could be implemented with a wrapper around any <strong>ICacheThings</strong> implementations that also takes a cache key - eg.</p>
+
+<pre><code>namespace CachingExamples.Caching
+{
+  public class SingleValueCache : ICacheOneSpecificThing
+  {
+    private readonly ICacheThings _cache;
+    private readonly string _cacheKey;
+    public SingleValueCache(ICacheThings cache, string cacheKey)
+    {
+      if (cache == null)
+        throw new ArgumentNullException("cache");
+      if (string.IsNullOrWhiteSpace(cacheKey))
+        throw new ArgumentException("Null/blank cacheKey specified");
+
+      _cache = cache;
+      _cacheKey = cacheKey;
+    }
+
+    public object GetIfAvailable()
+    {
+      return _cache[_cacheKey];
+    }
+
+    public void SetIfNotAvailable(object value)
+    {
+      if (value == null)
+        throw new ArgumentNullException("value");
+
+      _cache.Add(_cacheKey, value);
+    }
+
+    public void RemoveIfAvailable()
+    {
+      _cache.Remove(_cacheKey);
+    }
+  }
+}
+</code></pre>
+
+<p>Now we're ready for an <strong>IRetrieveConfigDetails</strong> implementation that caches..</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  public class SimpleCachingConfigLoader : IRetrieveConfigDetails
+  {
+    private readonly IRetrieveConfigDetails _configLoader;
+    private readonly ICacheOneSpecificThing _cache;
+    public SimpleCachingConfigLoader(IRetrieveConfigDetails configLoader, ICacheOneSpecificThing cache)
+    {
+      if (configLoader == null)
+        throw new ArgumentNullException("configLoader");
+      if (cache == null)
+        throw new ArgumentNullException("cache");
+
+      _configLoader = configLoader;
+      _cache = cache;
+    }
+
+    public ConfigDetails Get()
+    {
+      var cachedData = _cache.GetIfAvailable() as ConfigDetails;
+      if (cachedData != null)
+        return cachedData;
+
+      var liveData = _configLoader.Get();
+      _cache.SetIfNotAvailable(liveData);
+      return liveData;
+    }
+  }
+}
+</code></pre>
+
+<p>And now all that's required is to tie it all together and we've got a cached loader of Config Details that backs onto a from-disk retriever! Everything sounds so exciting with exclamation marks!! :D</p>
+
+<pre><code>var configFile = new FileInfo("ConfigDetails.txt");
+var cacheKey = "TimeBasedExpirationExample:" + configFile.FullName
+
+var configLoader = new SimpleCachingConfigLoader(
+  new DiskBasedConfigLoader(configFile),
+  new SingleValueCache(
+    new ObjectCacheWrappingCache(TimeSpan.FromMinutes(10)),
+    cacheKey
+  )
+);
+</code></pre>
+
+<p>This implements a config loader that tries to retrieve the data from a particular file, unless it already has that data in cache. It only holds onto the data in cache for ten minutes. The cache key is tied directly to the filename, config loaders with different source files would use different cache keys so that the data from separate files is maintained by separate cache entries (you wouldn't want the data from one config file trying to overwrite a cache entry relating to data from <em>another</em> config file).</p>
+
+<h3>Last-Modified-Date-based Expiration</h3>
+
+<p>While very simple, time-based expiration has the disadvantage that no changes to the source content will be reflected until the cached data expires. In many cases it is desirable for the changes to be available almost as soon as the changes are made to the source content, if not <em>as</em> soon.</p>
+
+<p>This is where the difficulty with cache invalidation comes in, determining when the source content has changed such that the cached data is invalid. If caching content extracted from a complicated database structure, for example, then it might not be possible to determine whether the cached content is up-to-date without performing significant work through more database queries which could negate a lot of the benefit of caching the data to begin with!</p>
+
+<p>In this example (loading Config Details), the content is expected to come from a single source - if a single file then we can easily determine whether the cached data is current by recording alongside the cached data the date at which the source file was last modified; if the source file's last-modified date matches that stored with the cached data then the cached data is still current. If the source file's last-modified date has changed since the cached data was recorded then the source file has (probably) changed.</p>
+
+<p>A more complicated example is the caching available in my <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> project. The code will load in stylesheets and flatten any @imports into a single file and minify the content (amongst many other things). The recommended configuration is to use the <strong>SameFolderImportFlatteningCssLoader</strong> which will flatten @imports but only if they references files in the same folder as the stylesheet that contains the @import. This limitation is a trade-off between the convenience of organising imported stylesheets across multiple folders and being able to easily determine whether content may have changed since the CSS processing occured; if all of the files must come from the same folder then the last-modified date for the cached entry can be taken as the most recent last-modified date from any file in that location. If any of those files is altered - and so gets assigned a later last-modified date - then the date stored with the cached data will no longer match it and the cached data can be considered out-of-date. It's possible that a file in that location could be changed that isn't one of the imported files for a given stylesheet request, meaning that cached data gets identified as expired when it hasn't been but the alternative would be following all of the import declarations and, again, a lot of the performance benefits of caching data    are negated by having to do a lot of work to determine whether the cached data is still valid.</p>
+
+<p>Returning to loading in these Config Details.. we can quite easily alter the caching mechanism to check the last-modified date of the source file before returning any cached data - and ejecting the entry from the cache if it's out of date. This means that each time that cached data is returned then there is overhead of a file IO call to check the source file's last-modified date, but this should be a reasonable trade-off when the alternative is reading the file fresh and processing its contents on each request.</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  public class LastModifiedBasedCachingConfigLoader : IRetrieveConfigDetails
+  {
+    private readonly IRetrieveConfigDetails _configLoader;
+    private readonly Func&lt;DateTime&gt; _lastModifiedDateRetriever;
+    private readonly ICacheOneSpecificThing _cache;
+    public LastModifiedBasedCachingConfigLoader(
+      IRetrieveConfigDetails configLoader,
+      Func&lt;DateTime&gt; lastModifiedDateRetriever,
+      ICacheOneSpecificThing cache)
+    {
+      if (configLoader == null)
+        throw new ArgumentNullException("configLoader");
+      if (lastModifiedDateRetriever == null)
+        throw new ArgumentNullException("lastModifiedDateRetriever");
+      if (cache == null)
+        throw new ArgumentNullException("cache");
+
+      _configLoader = configLoader;
+      _lastModifiedDateRetriever = lastModifiedDateRetriever;
+      _cache = cache;
+    }
+
+    public ConfigDetails Get()
+    {
+      var lastModified = _lastModifiedDateRetriever();
+      var cachedData = _cache.GetIfAvailable() as ConfigDetailsWithModifiedDate;
+      if (cachedData != null)
+      {
+        if (cachedData.LastModified &gt;= lastModified)
+          return cachedData.Config;
+        _cache.RemoveIfAvailable();
+      }
+
+      var liveData = _configLoader.Get();
+      _cache.SetIfNotAvailable(
+        new ConfigDetailsWithModifiedDate(
+          liveData,
+          lastModified
+        )
+      );
+      return liveData;
+    }
+
+    private class ConfigDetailsWithModifiedDate
+    {
+      public ConfigDetailsWithModifiedDate(ConfigDetails config, DateTime lastModified)
+      {
+        if (config == null)
+          throw new ArgumentNullException("config");
+        Config = config;
+        LastModified = lastModified;
+      }
+      public ConfigDetails Config { get; private set; }
+      public DateTime LastModified { get; private set; }
+    }
+  }
+}
+</code></pre>
+
+<p>Now we have a Config Details retriever that caches the ConfigDetails data alongside the last-modified date of the source file. To adhere to the principle of separation of concerns, we don't directly retrieve the last-modified date of the source file, instead a <strong>Func&lt;DateTime&gt;</strong> is provided to the class instance which does that work - who knows, maybe the data doesn't have to come from a file, it could be something else entirely since a generic <strong>IRetrieveConfigDetails</strong> is provided to work in conjunction with the <strong>Func&lt;DateTime&gt;</strong>.</p>
+
+<p>Sticking with the from-disk loading..</p>
+
+<pre><code>var configFile = new FileInfo("ConfigDetails.txt");
+var cacheKey = "LastModifiedDateExpirationExample:" + configFile.FullName
+
+var configLoader new LastModifiedBasedCachingConfigLoader(
+  new DiskBasedConfigLoader(configFile),
+  () =&gt;
+  {
+    // The FileInfo instance will cache the LastWriteTime so call Refresh before accessing its
+    // LastWriteTime property
+    configFile.Refresh();
+    return configFile.LastWriteTime;
+  },
+  new SingleValueCache(
+    new ObjectCacheWrappingCache(TimeSpan.MaxValue),
+    cacheKey
+  )
+);
+</code></pre>
+
+<p>Note that this time the <strong>ObjectCacheWrappingCache</strong> has TimeSpan.MaxValue specified for its cache duration - since the <strong>LastModifiedBasedCachingConfigLoader</strong> will remove entries from the cache that are no longer valid there's no need for entries to be expired at all on a time-based plan. This allows cached items whose sources are infrequently changed to remain in cache for longer and so save even more work.</p>
+
+<h3>Layered Caching (Last-Modified-Date-based Expiration for High Request Rates)</h3>
+
+<p>Above, I brushed over any concerns about file IO costs the may arise from checking a file's last-modified date every time a cached result may be returned. There may be times where this is less acceptable, if there are requests for cached data that originate from many files and there is a very high frequency of requests for this data then the file IO costs may become an issue.</p>
+
+<p>In this case we may consider "layering" the caching, coming up with a way to combine the benefits of the last-modified expiration mechanism (cached data not getting out of date) with time-based expiration (minimal overhead for each cache request).</p>
+
+<p>A naive approach (that I realised recently I was doing in one of my projects and so changed to what I'll suggest shortly!) may be:</p>
+
+<pre><code>var configFile = new FileInfo("ConfigDetails.txt");
+var timedBasedCacheKey = "TimeBasedExpirationExample:" + configFile.FullName
+var lastModifiedCacheKey = "LastModifiedDateExpirationExample:" + configFile.FullName
+
+var configLoader = new SimpleCachingConfigLoader(
+  new LastModifiedBasedCachingConfigLoader(
+    new DiskBasedConfigLoader(configFile),
+    () =&gt;
+    {
+      configFile.Refresh();
+      return configFile.LastWriteTime;
+    },
+    new SingleValueCache(
+      new ObjectCacheWrappingCache(TimeSpan.MaxValue),
+      lastModifiedCacheKey
+    )
+  ),
+  new SingleValueCache(
+    new ObjectCacheWrappingCache(TimeSpan.FromSeconds(5)),
+    timedBasedCacheKey
+  )
+);
+</code></pre>
+
+<p>where the <strong>SimpleCachingConfigLoader</strong> (that uses a time-based expiration mechanism) wraps the <strong>LastModifiedBasedCachingConfigLoader</strong>. A short cache duration is used for the time-based expiration (5 seconds in the above example) which delivers a different trade-off: changes to the source content may not be reflected by the configLoader for this short cache duration time but the last-modified checks are only performed when the data is not available in the short term time-based cache.</p>
+
+<p>However, not only does this approach potentially introduce a short delay between changes to the source content being reflected by the cached data but it also stores two complete copies of the data in cache. It's often the case that cached data is substantial in size and so storing it twice can be very wasteful. (Data that is ideal for caching is data that is worth the overhead of the additional memory requirements since it's more expensive to retrieve fresh each request; sometimes they may be small data sets that are very expensive to compute or they may be larger data sets that are expensive to retrieve - it would be particularly inefficient to double-up the storage of the latter).</p>
+
+<p>So an alternative is to cache the last-modified date of the source file in a short term cache rather than the entirety of the resulting data. (This would be an example of a case where the cached data - the last-modified date, in this case - is small, but the cost to retrieve it was, relatively, expensive).</p>
+
+<pre><code>var configFile = new FileInfo("ConfigDetails.txt");
+var lastModifiedCacheKey = "LastModifiedDateExpirationExample:" + configFile.FullName
+var lastModifiedDateCacheKey = "LastModifiedDateExpirationExample_Date:" + configFile.FullName
+
+var lastModifiedDateCache = new SingleValueCache(
+  new ObjectCacheWrappingCache(TimeSpan.FromSeconds(5)),
+  lastModifiedDateCacheKey
+);
+return new LastModifiedBasedCachingConfigLoader(
+  new DiskBasedConfigLoader(configFile),
+  () =&gt;
+  {
+    var cachedDate = lastModifiedDateCache.GetIfAvailable();
+    if (cachedDate is DateTime)
+      return (DateTime)cachedDate;
+    configFile.Refresh();
+    var lastModifiedDate = configFile.LastWriteTime;
+    lastModifiedDateCache.SetIfNotAvailable(lastModifiedDate);
+    return lastModifiedDate;
+  },
+  new SingleValueCache(
+    new ObjectCacheWrappingCache(TimeSpan.MaxValue),
+    lastModifiedCacheKey
+  )
+);
+</code></pre>
+
+<p>Much better! Now we have the benefit of reducing the file IO without having to store the entirety of the Config Details data twice!</p>
+
+<p>(Just to reiterate, if there were fewer requests than one every 5 seconds then the additional cache layer would provide no benefit - this would only be worth the additional complexity if the request rate was high enough that the file IO was causing measurable performance hit).</p>
+
+<h3>Returning Stale Data</h3>
+
+<p>In circumstances where it may be acceptable to knowingly deliver "stale data" (really just an only-slightly-more-acceptable term for expired data) - like above where the Config Details content may be up to 5 seconds behind any changes - it may be acceptable to deliver stale data not only when when we're unaware that it's stale (as in the 5 second windows in the above example) but also when we <em>are</em> aware that it's stale and that rebuilding is in progress.</p>
+
+<p>Something that the above approach does not address is that if there are thousands of requests a second, say, then when the source file is updated and the data expired from the cache, the chances are that there will be multiple requests which independently do the work of re-loading the data and trying to update the cache. This is because the expired data is ejected from cache, then the new data is loaded and <em>then</em> this is pushed back into cache. So depending upon the length of time it takes to load that content from disk, there could be many requests that try to get the data in that window when the cached entry has been expired.</p>
+
+<p>One approach would be to change the process such that we change from</p>
+
+<ol>
+<li>Identify cached data as expired</li>
+<li>Remove entry from cache</li>
+<li>Retrieve fresh data</li>
+<li>Store new data in cache for subsequent requests</li>
+<li>Return new data to satisfy the current request</li>
+</ol>
+
+<p>to</p>
+
+<ol>
+<li>Identify cached data as expired</li>
+<li>Fire off a background worker to retrieve fresh content and update the cache (so long as there isn't already a worker doing this, the point is to avoid multiple requests for live data when the cached data has expired)</li>
+<li>Return stale data to satisfy the current request</li>
+</ol>
+
+<p>Thusly..</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  public class StaleResultDeliveringLastModifiedBasedCachingConfigLoader : IRetrieveConfigDetails
+  {
+    private readonly IRetrieveConfigDetails _configLoader;
+    private readonly Func&lt;DateTime&gt; _lastModifiedDateRetriever;
+    private readonly Action&lt;Action&gt; _backgroundWorkExecuter;
+    private readonly ICacheOneSpecificThing _cache;
+    private int _workInProgressIndicator;
+    public StaleResultDeliveringLastModifiedBasedCachingConfigLoader(
+      IRetrieveConfigDetails configLoader,
+      Func&lt;DateTime&gt; lastModifiedDateRetriever,
+      Action&lt;Action&gt; backgroundWorkExecuter,
+      ICacheOneSpecificThing cache)
+    {
+      if (configLoader == null)
+        throw new ArgumentNullException("configLoader");
+      if (lastModifiedDateRetriever == null)
+        throw new ArgumentNullException("lastModifiedDateRetriever");
+      if (backgroundWorkExecuter == null)
+        throw new ArgumentNullException("backgroundWorkExecuter");
+      if (cache == null)
+        throw new ArgumentNullException("cache");
+
+      _configLoader = configLoader;
+      _lastModifiedDateRetriever = lastModifiedDateRetriever;
+      _backgroundWorkExecuter = backgroundWorkExecuter;
+      _cache = cache;
+      _workInProgressIndicator = 0;
+    }
+    public StaleResultDeliveringLastModifiedBasedCachingConfigLoader(
+      IRetrieveConfigDetails configLoader,
+      Func&lt;DateTime&gt; lastModifiedDateRetriever,
+      ICacheOneSpecificThing cache)
+        : this(configLoader, lastModifiedDateRetriever, ThreadPoolBackgroundWorkExecuter, cache) { }
+
+    /// &lt;summary&gt;
+    /// The default manner in which background work is performed is to queue up the work through
+    /// the Threadpool but this be can overridden by using the constructor that takes the 
+    /// backgroundWorkExecuter argument
+    /// &lt;/summary&gt;
+    public static Action&lt;Action&gt; ThreadPoolBackgroundWorkExecuter
+    {
+      get
+      {
+        return backgroundAction =&gt;
+        {
+          if (backgroundAction == null)
+            return;
+
+          ThreadPool.QueueUserWorkItem(state =&gt; { backgroundAction(); });
+        };
+      }
+    }
+
+    public ConfigDetails Get()
+    {
+      var lastModified = _lastModifiedDateRetriever();
+      var cachedData = _cache.GetIfAvailable() as ConfigDetailsWithModifiedDate;
+      if (cachedData != null)
+      {
+        // If the available data is still valid then return that
+        if (cachedData.LastModified &gt;= lastModified)
+          return cachedData.Config;
+
+        // If the available data is no longer valid then initiate a background request immediately
+        // return the stale data (if CompareExchange returns zero then it means that the value of
+        // _workInProgressIndicator was zero before the call to CompareExchange (and so it will
+        // have then been set to one since the second argument is the value to set the first
+        // argument's reference to if it currently matches the third argument)
+        if (Interlocked.CompareExchange(ref _workInProgressIndicator, 1, 0) == 0)
+        {
+          _backgroundWorkExecuter(() =&gt;
+          {
+            try
+            {
+              UpdateCachedData();
+            }
+            catch
+            {
+              // Ignore any errors - if this work was performed on another thread then there's
+              // nothing we can do about it here, we just need to be sure to reset the
+              // workInProgressIndicator value
+            }
+            Interlocked.Exchange(ref _workInProgressIndicator, 0);
+          });
+        }
+        return cachedData.Config;
+      }
+
+      var liveData = _configLoader.Get();
+      _cache.SetIfNotAvailable(
+        new ConfigDetailsWithModifiedDate(
+          liveData,
+          lastModified
+        )
+      );
+      return liveData;
+    }
+
+    private void UpdateCachedData()
+    {
+      var lastModified = _lastModifiedDateRetriever();
+      var liveData = _configLoader.Get();
+      _cache.RemoveIfAvailable();
+      _cache.SetIfNotAvailable(
+        new ConfigDetailsWithModifiedDate(liveData, lastModified)
+      );
+    }
+
+    private class ConfigDetailsWithModifiedDate
+    {
+      public ConfigDetailsWithModifiedDate(ConfigDetails config, DateTime lastModified)
+      {
+        if (config == null)
+          throw new ArgumentNullException("config");
+        Config = config;
+        LastModified = lastModified;
+      }
+      public ConfigDetails Config { get; private set; }
+      public DateTime LastModified { get; private set; }
+    }
+  }
+}
+</code></pre>
+
+<p>Instead of using a lock when checking the "workInProgressIndicator" I've used the Interlocked.CompareExchange method for performance. I did have hold of an excellent article about this topic that went into great depth and had various benchmarks.. but I can't immediately find it, I think maybe I bookmarked it at work and my Google skills are failing me at home today. For now this article seems fairly trustworthy and explains the point nicely: <a href="http://software.intel.com/en-us/articles/choosing-between-synchronization-primitives">Choosing Between Synchronization Primitives (software.intel.com)</a>. Site note: "Using the lock keyword marks a statement block as a critical section" (from <a href="http://msdn.microsoft.com/en-us/library/c5kehkcz(v=vs.71).aspx">The lock statement on MSDN</a>) so anywhere that that article refers to a "critical section" corresponds to code within a lock statement in C#.</p>
+
+<p>Since the whole point of this specific cache implementation is a particular type of optimisation, it doesn't seem over the top to think a bit about the appropriate synchronisation mechanism. One thing that looks a bit strange is the use of an int for the "workInProgressIndicator" but that's only because there is no support for booleans in the Interlocked class. (There's more about that on this <a href="http://stackoverflow.com/questions/6164751/why-interlocked-exchange-does-not-support-boolean-type">Why Interlocked.Exchange does not support Boolean type?</a> post).</p>
+
+<h3>More about cache expiration</h3>
+
+<p>When I started writing this post, I'd intended on covering more about different ways to expire cached data other than the time-based and last-modified-date-based approaches. Particularly since I've been looking in more depth into declaring cache dependencies when data is stored in cache (which has overlap with the <strong>CacheItemPolicy</strong> that can be used when adding items to the .Net <strong>ObjectCache</strong> through its use of the <strong>ChangeMonitor</strong> class) but I think there's far too much content there to cover here and so I'm hoping to address that in a separate post entirely.</p>
+
+<p>I also contemplated adding a variation of the above cache mechanism which would ensure that when the cache was empty that only a single thread would retrieve the data while other requests would wait until that thread had successfully done so - not only can it be useful if the resource is particularly expensive but it nicely illustrates how to incorporate timeout-handling with the lock mechanism. But the code in this post has already made it stretch over a lot of vertical space to get to this point so I might write a follow-up mini-post to get into that another day!</p>
+<p class="PostTime">Posted at 22:42</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/Caching.html" title="2 Posts">Caching</a></li></ul></div>
+						<p class="Comments">
+							<a href="caching-mechanisms.html#disqus_thread" data-disqus-identifier="55">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

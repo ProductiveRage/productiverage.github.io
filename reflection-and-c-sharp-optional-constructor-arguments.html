@@ -1,0 +1,446 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Reflection and C# optional constructor arguments</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/reflection-and-c-sharp-optional-constructor-arguments" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">22 January 2014</h3><h2><a id="Post67"></a><a href="reflection-and-c-sharp-optional-constructor-arguments.html">Reflection and C# optional constructor arguments </a></h2>
+
+<h3>Bonus provocative headline: Like AutoMapper, but 100x faster!</h3>
+
+<p>I overheard someone at work bemoaning the fact that StructureMap doesn't seem to support optional constructor arguments (which, having a quick scout around the internet, does indeed seem to be the case, though there are solutions out there such as <a href="http://www.sep.com/sep-blog/2010/06/04/teaching-structuremap-about-c-4-0-optional-parameters-and-default-values">Teaching StructureMap About C# 4.0 Optional Parameters and Default Values</a>).</p>
+
+<p>This put me in mind of the "<a href="http://bitbucket.org/DanRoberts/compilabletypeconverter">Compilable Type Converter</a>" project I wrote a couple of years ago. It started off life as a way to try to easily extend AutoMapper to apply all of its cleverness to constructor arguments as well as properties. So instead of using the properties on one object to populate the properties of another object, it would call a constructor on the destination class and pass in values taken from properties on the source object. (AutoMapper allows constructors to be used for creating new instances, using the "ConvertUsing" method, but it doesn't do its magic with name mappings and type conversions).</p>
+
+<p>It then grew to generate conversion LINQ Expressions, which were compiled for performance. And from there it became a standalone component that could perform mappings without AutoMapper at all! It could still be used with AutoMapper since the converters it generated could be used in "ConvertUsing" calls but the property-to-constructor-argument mappings would be created automatically instead of manually. And if non-compilable type converters (not compiled to LINQ Expression and so functional but slower) were being generated with my project, there were classes to utilise AutoMapper to help perform the type conversions.</p>
+
+<p>The last thing I had done to it was add in support so that it could generate compiled converters that would populate the desination object using property setters (like AutoMapper does) instead of by-constructor.</p>
+
+<p>I wrote a couple of posts about this a long time ago, but they were early posts and they weren't written all that well, so I'm embarassed to link to them here. :)</p>
+
+<p>Anyway.. the point is, I was fairly confident that the Compilable Type Converter also did not support optional constructor arguments. And I didn't actually know how optional constructor arguments would look in the reflected information (the converter uses reflection to analyses the source and destination types and decide how to perform the conversion, but then generates a LINQ Expression to do the work which should have performance comparable to custom hand-written conversion code) so it seemed like a good opportunity to brush off an old project and have a bit of fun with it!</p>
+
+<h3>.net's representation of optional constructor arguments</h3>
+
+<p>This is the easy bit. I hadn't known how easy until I looked into it, but very easy.</p>
+
+<p>Say there is a class</p>
+
+<pre><code>public class TypeWithOptionalConstructorArguments
+{
+  public TypeWithOptionalConstructorArguments(string name, int number = 1)
+  {
+    // Do initialisation work..
+  }
+
+  // Have the rest of the class here..
+}
+</code></pre>
+
+<p>then to determine that the <em>number</em> argument is optional, we interrogate information about the constructor -</p>
+
+<pre><code>var constructorParameters = typeof(TypeWithOptionalConstructorArguments)
+  .GetConstructor(new[] { typeof(string), typeof(int) })
+  .GetParameters();
+
+var numberParameter = constructorParameters[1];
+var numberParameterType = numberParameter.ParameterType;
+var isNumberParameterOptional = numberParameter.IsOptional;
+var numberParameterDefaultValue = numberParameter.DefaultValue;
+</code></pre>
+
+<p>Here we find that <em>numberParameterType</em> is int, <em>isNumberParameterOptional</em> is true and <em>numberParameterDefaultValue</em> is 1. If we considered the first parameter then IsOptional would be false.</p>
+
+<h3>Incorporating this into the Compilable Type Converter</h3>
+
+<p>Before I give a quick run-down of how I made my code "optional-constructor-argument aware", I'll go quickly through the core concepts it uses when trying to generate a conversion.</p>
+
+<p>There are Property Getters which will take a value from a property on the source type in order to satisfy a value required to generate the destination type (this value may be a constructor argument or a property, depending upon whether a by-constructor or by-property-setter conversion is desired). Property Getters come in several varieties; there is one that will map a source value if the source value's type may be assigned directly to the destination type (ie. the source value matches the destination value or inherits from it / implements it). There is one that will map enum values - from one enum to another, according to a naming convention (this convention is determined by a Name Matcher, see below). There is another one that will perform one specific type translation, so if a converter is generated for mapping between <strong>SNested</strong> and <strong>DNested</strong> then a new Property Getter may be created that will help convert type <strong>SParent</strong> to <strong>DParent</strong> if <strong>SParent</strong> has a property with type <strong>SNested</strong> that needs to be mapped to a property on <strong>DParent</strong> with type <strong>DNested</strong>. There's another that's very similar but for enumerable types, so given an <strong>SNested</strong> -> <strong>DNested</strong> converter it can help map <strong>SParent</strong> to <strong>DParent</strong> if <strong>SParent</strong> has a property of type <strong>IEnumerable&lt;SNested&gt;</strong> and <strong>DParent</strong> has a property of type <strong>IEnumerable&lt;DNested&gt;</strong>.</p>
+
+<p>Property Getters are created by Property Getter Factories. When a conversion request is being analysed, the Property Getter Factories will be asked "can you perform a mapping from Src to Dest for the property on Dest named Prop?" (the property on Dest may be an actual property or it may be a constructor argument). The factory will look at all of the properties on the Src type and see which, if any, it would map onto Prop based upon the source property's name and type. The type matching depends upon what sort of Property Getter the factory can create (whether that be an assignable-to getter, an enum-translating getter, etc.. all of the options I just described above) and what name matching approach it will use. The name matching depends upon the Name Matcher that was provided to the factory at instantiation.</p>
+
+<p>Name Matchers simply answer the question "are these property/argument names equivalent?", the basic implementation in the project is the <strong>CaseInsensitiveSkipUnderscoreNameMatcher</strong>. This ignores underscores and case when comparing names, so "Title" and "title" and considered to be the same, as are "Person_Name" and "personName".</p>
+
+<p>Finally, when a by-constructor conversion is being generated, there may be multiple constructors which may be satisfied (ie. all of their constructor arguments may be provided with values from the source object's properties). In this case, a decision will need to be made as to which constructor to use. For this, there is a Constructor Prioritiser. Each may-be-satisifed-constructor is represented by the fully-generated converter that would use that constructor. The prioritiser must then pick one to be used as the converter that should be used for that translation.</p>
+
+<p>The only Constructor Prioritiser implementation that I currently have is an <strong>ArgsLengthTypeConverterPrioritiser</strong>. This simply picks the constructor which has the most arguments, the thinking being that this must be the constructor that uses the most data from the source type and so will result in the best-populated destination instance possible.</p>
+
+<p>However, if there are two constructors, one with four compulsory arguments and one with five arguments total, but two of them optional, then the five-argument constructor may no longer be the best bet. If a conversion is available that explicitly populates those five values with data from the source object, then this is probably still the best match. But if the only conversion that uses that five-argument constructor is actually relying on the default values for those two optional arguments then it's only actually populating <em>three</em> constructor arguments from the source data, so surely the four-argument constructor is better!</p>
+
+<h3>A quick(ish) explanation of how I introduced optional constructor arguments</h3>
+
+<p>So I have a <strong>CompilableTypeConverterByConstructorFactory</strong>. This has a method Get&lt;TSource, TDest&gt;() which will try return an <strong>ICompilableTypeConverter&lt;TSource, TDest&gt;</strong> that maps from <strong>TSource</strong> to <strong>TDest</strong>. If it can't create such a type converter then it will throw an exception.</p>
+
+<p>The particular implementation of <strong>ICompilableTypeConverter&lt;TSource, TDest&gt;</strong> returned from this class will be a <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong>.</p>
+
+<p>This class previously required a <strong>ConstructorInfo</strong> and a set of Property Getters for each argument in that constructor. The factory's job was to select the best <strong>ConstructorInfo</strong> and provide those Property Getters from the Property Getter Factories that it had access to. The constructor of the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> class would do some validation to ensure that the number of Property Getters matched the number of constructor arguments for the specified constructor, and that the types returned by the Property Getters matched the constructor's arguments types.</p>
+
+<p>The change I made was for the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> to also take a <strong>ICompilableConstructorDefaultValuePropertyGetter</strong> set - Property Getters which are associated with a particular constructor argument which has a default value, and which just return this default value when a value is requested.</p>
+
+<p>These Default Value Property Getters would only be specified by the Type Converter Factory if there was no Property Getter that could otherwise provide that constructor argument with a value - if it's possible to get data from the source object for a constructor argument then there's no point using the argument's default value!</p>
+
+<p>The benefit of providing two distinct sets of Property Getters (those relying upon default values and those not) to the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> is that it was possible to add another public property to it; the <em>NumberOfConstructorArgumentsMatchedWithNonDefaultValues</em> (this is the total number of arguments that the target constructor has minus the number of Default Value Property Getters). And the benefit of <em>this</em> is that it allows for a Constructor Prioritiser to consider the number of constructor arguments that were populated with data from the source object, as opposed to the <em>total</em> number of constructor arguments fulfilled, regardless of how many actually had to fall back on to using default values. Which addresses the problem I outlined in the section above.</p>
+
+<h3>Code updates</h3>
+
+<p>While I was making these changes and experimenting with various scenarios (trying to re-familiarise myself with exactly how everything worked) I found it interesting to note how some I've changed some coding conventions over the years. Particularly, I disliked a method on the <strong>ITypeConverterFactory</strong> interface -</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will return null if unable to generate the specified converter
+/// &lt;/summary&gt;
+ITypeConverter&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
+</code></pre>
+
+<p>From some sides, this doesn't sound all that bad. And it's not uncommon to find code out there that does the same sort of thing; try to get the requested value and return null if unable to.</p>
+
+<p>As a rule, though, I don't like this <em>at all</em>. I prefer to avoid nulls wherever humanly possible and explicitly indicate the possibility of their presence where they must crop up.</p>
+
+<p>If a class exists where a property may be null since the data is not required for that particular structure, then I will prefix that property with "Optional". If a method may be expected to return null then I will prefix it with "TryTo". This isn't a perfect system by any means but it's a convention that I've found useful.</p>
+
+<p>So I could change the Get method above to</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will return null if unable to generate the specified converter
+/// &lt;/summary&gt;
+ITypeConverter&lt;TSource, TDest&gt; TryToGet&lt;TSource, TDest&gt;();
+</code></pre>
+
+<p>if not being able to return the requested converter is not an error condition.</p>
+
+<p>However, for the cases a converter could <em>not</em> be generated to perform the specified <strong>TSource</strong> -> <strong>TDest</strong> mapping, the caller has no additional information - all they have is a null! And I suspect that someone trying to get a converter by calling a "Get" method would indeed consider it an error condition if it didn't actually return a converter.</p>
+
+<p>So I changed it to</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will throw an exception if unable to generate the specified converter, it will never
+/// return null
+/// &lt;/summary&gt;
+ITypeConverter&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
+</code></pre>
+
+<p>I then changed the Type Converter Factories to throw custom exceptions indicating what property could not be set on the target type or what constructor arguments could not be mappped. Changing the contract so that it is considered an error condition when a mapping could not be created resulted in more information being availble to the caller, more <em>useful and important</em> information.</p>
+
+<h3>Static convenience wrapper</h3>
+
+<p>Since I felt like I was cooking on gas at this point, I thought I'd address another problem with this project; trying to use this code for the first time (if you'd just cloned the project, for example) is difficult! I've got a ReadMe file in the project that tells you how to initialise a converter factory and then generate types but it's quite a lot of work to do so!</p>
+
+<p>In some of my other projects I've included "convenience wrappers" to do the fiddly work of initialising everything for the most common case so that the code is as easy as possible to get working with. For example, the <a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser</a> has the static <strong>Parser</strong> class, with its method "ParseCSS" and "ParseLESS" (with method signatures that will read from strings or from <strong>TextReader</strong>s). The <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> has the <strong>DefaultNonCachedLessCssLoaderFactory</strong> and <strong>EnhancedNonCachedLessCssLoaderFactory</strong> which can be initialised with only an ASP.Net "Server" reference. And, of course, AutoMapper is phenonemally easy to get going with since there is a static <strong>Mapper</strong> class with CreateMap and Map methods (amongst many others). So I thought that <em>my</em> Type Converter library would benefit from something similar!</p>
+
+<p>It can't get much simpler than this:</p>
+
+<pre><code>Converter.CreateMap&lt;MutablePersonDetails.RoleDetails, ImmutablePersonDetails.RoleDetails&gt;();
+var dest = Converter.Convert&lt;MutablePersonDetails, ImmutablePersonDetails&gt;(source);
+</code></pre>
+
+<p>The "source" objectin this example is initialised with</p>
+
+<pre><code>var source = new MutablePersonDetails
+{
+  Name = "Henry",
+  Roles = new List&lt;MutablePersonDetails.RoleDetails&gt;
+  {
+    new MutablePersonDetails.RoleDetails
+    {
+      Title = "Head Penguin Cleaner",
+      ClearanceLevel = ClearanceLevelOptions.Maximum
+    }
+  }
+};
+</code></pre>
+
+<p>(The actual classes for the source and destination types will be included later on for completion's sake).</p>
+
+<p>The types <strong>MutablePersonDetails.RoleDetails</strong> and <strong>ImmutablePersonDetails.RoleDetails</strong> are considered "nested" as they are not the target of the primary mapping (which is from <strong>MutablePersonDetails</strong> to <strong>ImmutablePersonDetails</strong>). There are properties on the source and destination types which are sets of these <strong>RoleDetails</strong> nested types.</p>
+
+<p>So first a mapping for the nested types is created. The <strong>Converter</strong> class is able to use this mapping to generate mappings between sets of these types; so creating a <strong>MutablePersonDetails.RoleDetails</strong> to <strong>ImmutablePersonDetails.RoleDetails</strong> mapping means that a <strong>List&lt;MutablePersonDetails.RoleDetails&gt;</strong> to <strong>IEnumerable&lt;ImmutablePersonDetails.RoleDetails&gt;</strong> becomes available as well.</p>
+
+<p>The <em>Convert</em> call will implicitly try to create a suitable mapping if one is not already available, this is why no explicit call to <em>CreateMap</em> is required for <strong>MutablePersonDetails</strong> to <strong>ImmutablePersonDetails</strong>.</p>
+
+<p>The mapping here was a "by-constructor" mapping (which is what I originally started this project for), it takes property values from the source object and uses them to populate constructor arguments on the destination type to create a new instance of it. But "by-property-setter" mappings are also supported, so we could also create a mapping in the opposite direction to that above:</p>
+
+<pre><code>Converter.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;();
+var dest = Converter.Convert&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+</code></pre>
+
+<p>The source and destination classes in the examples are as follow:</p>
+
+<pre><code>public class MutablePersonDetails
+{
+  public string Name { get; set; }
+  public List&lt;RoleDetails&gt; Roles { get; set; }
+
+  public class RoleDetails
+  {
+    public string Title { get; set; }
+    public ClearanceLevelOptions ClearanceLevel { get; set; }
+  }
+}
+
+public class ImmutablePersonDetails
+{
+  public ImmutablePersonDetails(string name, IEnumerable&lt;RoleDetails&gt; roles)
+  {
+    if (string.IsNullOrWhiteSpace(name))
+      throw new ArgumentException("Null/blank name specified");
+    if (roles == null)
+      throw new ArgumentNullException("roles");
+
+    Name = name;
+
+    Roles = roles.ToList().AsReadOnly();
+    if (Roles.Any(role =&gt; role == null))
+      throw new ArgumentException("Null reference encountered in roles set");
+  }
+
+  public string Name { get; private set; }
+  public IEnumerable&lt;RoleDetails&gt; Roles { get; private set; }
+
+  public class RoleDetails
+  {
+    public RoleDetails(string title, ClearanceLevelOptions clearanceLevel)
+    {
+      if (string.IsNullOrWhiteSpace(title))
+        throw new ArgumentException("Null/blank title specified");
+      if (!Enum.IsDefined(typeof(ClearanceLevelOptions), clearanceLevel))
+        throw new ArgumentOutOfRangeException("clearanceLevel");
+
+      Title = title;
+      ClearanceLevel = clearanceLevel;
+    }
+
+    public string Title { get; private set; }
+    public ClearanceLevelOptions ClearanceLevel { get; private set; }
+  }
+}
+
+public enum ClearanceLevelOptions
+{
+  Regular,
+  Maximum
+}
+</code></pre>
+
+<h3>Ignoring properties / using default constructor arguments</h3>
+
+<p>If the above classes were changed such that <strong>MutablePersonDetails.RoleDetails</strong> no longer has a <em>ClearanceLevel</em> property and the <strong>ImmutablePersonDetails.RoleDetails</strong> constructor's <em>clearanceLevel</em> argument is assigned a default value..</p>
+
+<pre><code>// Nested type of MutablePersonDetails
+public class RoleDetails
+{
+  public string Title { get; set; }
+}
+
+// Nested type of ImmutablePersonDetails
+public RoleDetails(
+  string title,
+  ClearanceLevelOptions clearanceLevel = ClearanceLevelOptions.Regular)
+</code></pre>
+
+<p>.. then the <strong>Converter</strong> will take this into account and still generate the expected mapping with:</p>
+
+<pre><code>Converter.CreateMap&lt;MutablePersonDetails.RoleDetails, ImmutablePersonDetails.RoleDetails&gt;();
+var dest = Converter.Convert&lt;MutablePersonDetails, ImmutablePersonDetails&gt;(source);
+</code></pre>
+
+<p>If we reversed this such that the <strong>MutablePersonDetails.RoleDetails</strong> still has a ClearanceLevel property but the <strong>ImmutablePersonDetails.RoleDetails</strong> does <em>not</em>..</p>
+
+<pre><code>// Nested type of MutablePersonDetails
+public class RoleDetails
+{
+  public string Title { get; set; }
+  public ClearanceLevelOptions ClearanceLevel { get; set; }
+}
+
+// Nested type of ImmutablePersonDetails
+public class RoleDetails
+{
+  public RoleDetails(string title)
+  {
+    if (string.IsNullOrWhiteSpace(title))
+      throw new ArgumentException("Null/blank title specified");
+    Title = title;
+  }
+  public string Title { get; private set; }
+}
+</code></pre>
+
+<p>.. then the mapping will fail as the <strong>Converter</strong> will throw an exception if it can't map every property on the target when performing a by-property-setter conversion. <em>Unless</em> it is explicitly instructed to ignore the property -</p>
+
+<pre><code>Converter.BeginCreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;()
+  .Ignore(
+    r =&gt; r.ClearanceLevel
+  )
+  .Create();
+var dest = Converter.Convert&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+</code></pre>
+
+<p>The <em>BeginCreateMap</em> allows for exceptions to be made to the normal mapping process. The <strong>Create</strong> call (at the end of the <em>BeginCreateMap</em>, <em>Ignore</em>, <em>Create</em> chain) is important since the work to try to generate the converter will not be performed without that call (and all of the <strong>BeginCreateMap</strong> and any subsequent calls in that chain will be ignored without <em>Create</em> being called).</p>
+
+<p>This is different to the AutoMapper approach since AutoMapper will take in information about how the mappings should be created but not use it until a conversion is required. This means that mappings can be specified in any order with AutoMapper; the following would be fine, for example -</p>
+
+<pre><code>Mapper.CreateMap&lt;ImmutablePersonDetails, MutablePersonDetails&gt;();
+Mapper.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;();
+</code></pre>
+
+<p>AutoMapper doesn't mind the mappings for the nested type appearing after the mapping for the "containing type" since it won't try to use this information until it actually performs a conversion.</p>
+
+<p>My <strong>Converter</strong> class, however, generates the converters when <em>CreateMap</em> (or <em>Convert</em> is called). So a mapping for the nested types must be specified before the containing type as a converter for the containing type can't be generated without knowing how to convert the nested types! While I think there are advantages to the flexibility of AutoMapper's approach (not having to worry about converter dependencies; not having to worry about the order in which mappings are specified) I also think there are advantages to my approach since an exception will be raised as soon as a mapping is requested that can not be created (along with information about what properties or constructor arguments could not be satisfied).</p>
+
+<p>Another advantage of the converters being generated as the mappings are specified is that the <strong>Converter</strong> is keeping track of them and can provide a reference to any of them through a call to <em>GetConverter</em>. The converters are all immutable and if a converter is returned from the <em>GetConverter</em> method then no further changes to the <strong>Converter</strong> class may affect it. This is reassuring in that the converter may be used elsewhere without having to worry about the mutability of the static <strong>Converter</strong> class but it also has performance benefits; calls to the <strong>Converter</strong>'s <em>Convert</em> method (and <em>CreateMap</em> and <em>GetConverter</em> methods) require cache lookups and locks. If you use a converter reference delivered by the <em>GetConverter</em> method then you don't need to worry about these lookups and locks. Which brings me neatly to..</p>
+
+<h3>The Compilable Type Converter's Performance</h3>
+
+<p>First off, the Compilable Type Converter isn't intended to compete feature-for-feature with AutoMapper. AutoMapper is a well-rounded library with all sorts of functionality that address all sorts of edge cases. For example, I only encountered the <em>BeforeMap</em> and <em>AfterMap</em> calls when looking into it more deeply to write this article! It also offers <a href="https://automapper.codeplex.com/wikipage?title=Flattening">object model flattening</a> and retrieval of data through Get methods rather than properties. I don't have any intention of supporting any of these, though I <em>do</em> intend to add some custom property mappings at some point. Something like</p>
+
+<pre><code>Converter.BeginCreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;()
+  .Custom(
+    dest =&gt; dest.ClearanceLevel,
+    src =&gt; src.GetClearanceLevel()
+  )
+  .Create();
+</code></pre>
+
+<p>(Let's not forget the killer feature of my library - for me, at least - is that it performs the name matching magic from properties onto constructor arguments so that immutable classes can be instantiated by the mappers).</p>
+
+<p>So anyway.. making performance comparisons between the two libraries is probably not all that productive. But since I've banged on about the Compilable Type Converter producing LINQ-Expression-compiled converters, I'm going to anyway! :)</p>
+
+<p>We'll stick with the <strong>ImmutablePersonDetails</strong> to <strong>MutablePersonDetails</strong> mapping that was in the earlier examples. </p>
+
+<p>There are two aspects that need considering - the startup time and the conversion time. If the Compilable Type Converter can perform conversions faster than AutoMapper but with a greater initialisation cost (which we'd expect since there is expensive LINQ Expression compilation going on) then there will have to be a certain number of conversion performed before we "break even" on the startup time. But after that, it should be all win!</p>
+
+<p>So I've set up a test program that times the initialisation processes, repeated in a loop. At the end of each loop, the <em>Reset</em> method is called for both the <strong>Mapper</strong> and <strong>Converter</strong> (these calls are outside of the initialisation work that is timed, since we're not interested in the efficiency of the <em>Reset</em> methods). The last loop doesn't call <em>Reset</em> so that everything is ready for the next section of the program, where I time a conversion from an <strong>ImmutablePersonDetails</strong> instance to a new <strong>MutablePersonDetails</strong> (over and over again).</p>
+
+<p>The init sections looks like this (basically the same as we've already seen above). We have to actually perform one mapping in the init code since AutoMapper postpones doing work until a mapping is actually requested, as I've already spoken about.</p>
+
+<pre><code>Mapper.CreateMap&lt;ImmutablePersonDetails, MutablePersonDetails&gt;();
+Mapper.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;();
+var destAutoMapperInitialise = Mapper.Map&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+
+Converter.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;();
+var converter = Converter.GetConverter&lt;ImmutablePersonDetails, MutablePersonDetails&gt;();
+var destCompilableTypeConverterInitialise = converter.Convert(source);
+</code></pre>
+
+<p>Then there are three operations that are individually timed in the "convert loop":</p>
+
+<pre><code>// Convert using AutoMapper
+Mapper.Map&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+
+// Convert using the Compilable Type Converter, through the static convenience wrapper
+Converter.Convert&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+
+// Convert using the Compilable Type Converter, using the converter reference from a GetConverter
+// call in the init phase (this will be quicker as the cache lookups and locks in the convenience
+// wrapper are not required)
+converter.Convert(source);
+</code></pre>
+
+<p>I've run this whole process half a dozen times and got comparable results each time. The last time I ran it, the average time to initialise <strong>AutoMapper was 8ms</strong> and to initialise the <strong>Compilable Type Converter was 41ms</strong> (average taken over 100 repeated initialisations). The average time (taken over 100,000 loops) to perform the conversions was <strong>310 ticks for AutoMapper</strong>, <strong>46 ticks for the Compilable Type Converter via the convenience wrapper</strong> and <strong>3 ticks for the Compilable Type Converter via the <em>converter</em> reference</strong> that was obtained as part of the initialisation work.</p>
+
+<p>The standout result here is that the Compilable Type Converter was able to perform the conversion 100x faster.</p>
+
+<p><em>100x faster!</em></p>
+
+<p>That's good times! :)</p>
+
+<p>However, this ignores the initialisation overhead. If you were only ever going to perform a single conversion then speed of the initialised converter is more than offset by the additional initialisation time required. However, if you're expecting to perform a lot of these conversions then this initialisation overhead should be easily offset. (My original aim for this work was to translate a WCF web service's public-facing mutable classes into their internal immutable counterparts, so there <em>would</em> be many conversions in that case). In the example above, it would take 349 conversions to break even if using the <strong>Converter</strong> wrapper and only 300 if using the <em>converter</em> reference directly.</p>
+<p class="PostTime">Posted at 23:19</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="cross-browser-pseudo-source-mapping-with-less.html">Cross Browser (Pseudo) Source Mapping with LESS</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable.html">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "67";
+							var disqus_title = "Reflection and C# optional constructor arguments";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,2210 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - CSS</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">12 December 2013</h3><h2><a id="Post66"></a><a href="cross-browser-pseudo-source-mapping-with-less.html">Cross Browser (Pseudo) Source Mapping with LESS</a></h2>
+
+<p>I have a component that is set up to load LESS stylesheets with what is essentially</p>
+
+<pre><code>var styleSheetLoader = new CachingLoader(
+  new MinifyingLoader(
+    new DotLessCompilingLoader(
+      new ImportFlatteningLoader(
+        new FromDiskLoader()
+      )
+    )
+  )
+);
+</code></pre>
+
+<p>This works great in terms of efficient delivery of content; the LESS styles are compiled into vanilla CSS, the <strong>ImportFlatteningLoader</strong> inserts referenced content in place of @import statements to minimise http requests so long as the referenced files are all in the same folder. This same-folder restriction allows the <strong>CachingLoader</strong> to compare a cached-entry's-last-modified date against the most-recently-modified-date-of-any-file-in-the-folder to see if the cached data should be expired, layering on a time-based-expiration cache of a few seconds so that during periods of high traffic disk access is constrained.</p>
+
+<p><em>Side note: Since dotLess can deal with imports it might seem a bit strange that I have <strong>ImportFlatteningLoader</strong> and <strong>FromDiskLoader</strong> references in there but that's largely because the component is based on what I wrote about last year; <a href="onthefly-css-minification.html">On-the-fly CSS Minification</a>. I just shoved the <a href="http://www.dotlesscss.org/">dotLess</a> processor into the chain.</em></p>
+
+<p>The problem is that when I'm editing styles and relying on web developer tools, everything appears to be in line 1 of "style.less"</p>
+
+<p><img alt="Minified Content Always Shows Styles on Line 1 of the Stylesheet" src="Content/Images/Posts/StylesWithoutMarkerIds.png" class="NoBorder AlwaysFullWidth" /></p>
+
+<p>The way that I've tried to address this is with a "<strong>SourceMappingMarkerInjectingLoader</strong>" and an "<strong>InjectedIdTidyingLoader</strong>". The former will push ids into selectors that indicate where the styles originated in the source - eg. "Content.less_123" (meaning line 123 in the file "Content.less") whilst the latter will tidy up any unnecessary styles that are the result of the LESS compilation.</p>
+
+<p>If, for example, one of the imported stylesheets has the filename "test.less" and the content</p>
+
+<pre><code>a.test
+{
+  color: #00f;
+  &amp;:hover { color: #00a; }
+}
+</code></pre>
+
+<p>then the <strong>SourceMappingMarkerInjectingLoader</strong> will rewrite this as</p>
+
+<pre><code>#test.less_1, a.test
+{
+  color: #00f;
+  #test.less_4, &amp;:hover { color: #00a; }
+}
+</code></pre>
+
+<p>but when the LESS processing has been applied, this will become</p>
+
+<pre><code>#test.less_1,a.test{color:#00f}
+#test.less_1 #test.less_4,#test.less_1:hover,a.test #test.less_4,a.test:hover{color:#00a}
+</code></pre>
+
+<p>On that second line, the fourth selector ("a.test:hover") is the only one that has any direct use; it is what the original source would have been compiled to. The first three selectors ("#test.less_1 #test.less_4", "#test.less_1:hover" and "a.test #test.less_4") are <em>not</em> of direct use but the selector element "#test.less_4" <em>is</em> useful since it indicates where in the source that the original selector originated. So most of the content in those first three selectors can be discarded and replaced only with "#test.less_4".</p>
+
+<p>This is what the <strong>InjectedIdTidyingLoader</strong> is for. If the component is initialised with</p>
+
+<pre><code>var styleSheetLoader = new CachingLoader(
+  new MinifyingLoader(
+    new InjectedIdTidyingLoader(
+      new DotLessCompilingLoader(
+        new ImportFlatteningLoader(
+          new SourceMappingMarkerInjectingLoader(
+            new FromDiskLoader()
+          )
+        )
+      )
+    )
+  )
+);
+</code></pre>
+
+<p>then the web dev tools show something more like</p>
+
+<p><img alt="Minified Content with Source Mapping Marker Ids" src="Content/Images/Posts/StylesWithMarkerIds.png" class="NoBorder AlwaysFullWidth" /></p>
+
+<p>Much more useful! Each style block still shows "<strong>Styles.less (line 1)</strong>" in big bold text, but each selector set includes ids to indicate the source filename and line number. While this content will bloat the uncompressed file size of the generated CSS, the filenames will likely be duplicated over and over, which lends itself very well to gzip'ing. (You can inspect the styles on this blog for an example of this process in action).</p>
+
+<h3>Performance problems</h3>
+
+<p>There is a problem, though. When the LESS source files start to get large and - more significantly - increasingly deeply-nested, the content that the <strong>DotLessCompilingLoader</strong> generates from the nested "Source Mapping Marker Ids" balloons. In one case, I had 116kb (which, granted, is <em>a lot</em> of rules) explode past 6mb. That's a huge amount of CSS that needs parsing and unnecessary selectors trimming from.</p>
+
+<p>Incidentally, the size of the delivered CSS (with "tidied" markers ids) was 119kb, an overhead of 17%. When gzip'd, the content without marker ids was 15.6kb while the content <em>with</em> marker ids was 18.9kb, an overhead of 20%. </p>
+
+<h3>Is this necessary at all?</h3>
+
+<p>As an aside, I expect that one day we will have well-integrated cross-browser <a href="https://developers.google.com/chrome-developer-tools/docs/css-preprocessors">Source Mapping</a> support that will make these injected markers unnecessary but it still seems to be early days on this front. It seems like the compile-to-JavaScript languages are making a lot of use of the Source Mapping support that some browsers have (CoffeeScript, for example) but for LESS it seems a lot patchier (for the .net component, anyway; less.js has <a href="https://twitter.com/addyosmani/status/380820562794131456/photo/1">this</a>). SASS seems better still (see <a href="http://snugug.com/musings/debugging-sass-source-maps">Debugging SASS with Source Maps</a>).</p>
+
+<p>But these solutions still need browser support. The recent builds of Chrome and Firefox will be fine. But with IE, even with the just-released IE11, you're going to be out of luck.</p>
+
+<p>So while these "Source Mapping Marker Ids" add overhead to the delivered content (and processing overhead, but I'm about to talk about improving that significantly) they do at least work across all browsers.</p>
+
+<h3>Addressing the performance problems</h3>
+
+<p>My last post was about my first stabs at optimising the id-tidying process (see <a href="optimising-the-css-processor-ants-and-algorithms.html">Optimising the CSS Processor - ANTS and algorithms</a>). I made some good strides but I wasn't happy with all of the approaches that I took and it still didn't perform as well as I would haved liked with source files that contained many deeply-nested selectors.</p>
+
+<p>If the problem I was trying to solve was that the LESS compiler was emitting too much content, maybe what I really needed to do was work <em>with it</em> rather than tidying up after it. The <a href="https://github.com/dotless/dotless">code is on GitHub</a> so I figured I'd dive in and see what I could find!</p>
+
+<h3>dotLess Plugins</h3>
+
+<p>After downloading the code and building it locally, I found the "Plugins" folder under dotLess / src / dotLess.Core. Seeing this was an indication that the author had developed the project with a view to making it extensible without having to change its own source.</p>
+
+<p>Searching for "dotLess plugins" will first lead you to people writing "function plugins" (a way to declare new functions that the parser will process as if they had been built into the core system) but digging deeper there are mentions of "visitor plugins". I found this article very useful: <a href="http://www.scottlogic.com/blog/2012/11/16/the-world-of-less.html">The world of LESS</a>. The phrase "visitor plugins" refers to the <a href="http://en.wikipedia.org/wiki/Visitor_pattern">Visitor Design Pattern</a>. In terms of dotLess, it allows you to intercept every instantiation of a LESS structure and either allow it through or replace it with something of your own. You can do this either before or after "evaluation" (where LESS mixins and values are replaced with CSS styles and nested selectors are flattened).</p>
+
+<p>What I wanted to do was write a visitor plugin that would take post-evaluation content and rewrite <strong>Ruleset</strong> instances whose selector sets needed tidying.</p>
+
+<p>A post-evaluation <strong>Ruleset</strong> is essentially a set of selectors (such as "#test.less_1 #test.less_4, #test.less_1:hover, a.test #test.less_4, a.test:hover") and a set of rules (such as "color: #00a;").</p>
+
+<p>So I want to grab these <strong>Ruleset</strong> instances and replace them with instances whose selector sets have been tidied where necessary. So "#test.less_1 #test.less_4, #test.less_1:hover, a.test #test.less_4, a.test:hover" will become "#test.less_4, a.test:hover".</p>
+
+<p>Digging further through the code, it turns out that there are some types that inherit from <strong>Ruleset</strong> that shouldn't be messed with, such as the top-level "<strong>Root</strong>" type. So the plugin will need to target specific <strong>Ruleset</strong> types, not just any instances that inherits it.</p>
+
+<p>So what I come up with is</p>
+
+<pre><code>private class SelectorRewriterVisitorPlugin : VisitorPlugin
+{
+  private readonly InsertedMarkerRetriever _markerIdRetriever;
+  public SelectorRewriterVisitorPlugin(InsertedMarkerRetriever markerIdRetriever)
+  {
+    if (markerIdRetriever == null)
+      throw new ArgumentNullException("markerIdRetriever");
+
+    _markerIdRetriever = markerIdRetriever;
+  }
+
+  public override VisitorPluginType AppliesTo
+  {
+    get { return VisitorPluginType.AfterEvaluation; }
+  }
+
+  public override Node Execute(Node node, out bool visitDeeper)
+  {
+    visitDeeper = true;
+    if (node.GetType() == typeof(Ruleset))
+    {
+      var ruleset = (Ruleset)node;
+      if (ruleset != null)
+      {
+        return new MarkerIdTidyingRuleset(ruleset.Selectors, ruleset.Rules, _markerIdRetriever)
+        {
+          Location = ruleset.Location
+        };
+      }
+    }
+    return node;
+  }
+}
+
+/// &lt;summary&gt;
+/// This should never return null, nor a set containing any null or blank entries - all markers
+/// should be of the format "#id.class"
+/// &lt;/summary&gt;
+public delegate IEnumerable&lt;string&gt; InsertedMarkerRetriever();
+</code></pre>
+
+<p>The <strong>MarkerIdTidyingRuleset</strong> is a class that inherits from <strong>Ruleset</strong> and rewrites its own selectors to remove the ones it doesn't need. The code isn't particularly complex or innovative, but it's too long to include here. It in the CSSMinifier project, though, so if you want to see it then you can find it on Bitbucket <a href="https://bitbucket.org/DanRoberts/cssminifier/src/727611baa56acb70c659094245a3a20dc3efeb65/CSSMinifier/FileLoaders/DotLessCssCssLoader.cs">here</a> (it's a nested class of the <strong>DotLessCssCssLoader</strong> so it's in that linked file somewhere!).</p>
+
+<p>The <strong>VisitorPlugin</strong> class, that the <strong>SelectorRewriterVisitorPlugin</strong> inherits, is in the dotLess source and makes writing visitor plugins easy.</p>
+
+<p>The only part that isn't <em>as</em> easy is registering the plugin. There isn't a collection that you can add an <strong>IPlugin</strong> implementation directly to, but <strong>LessEngine</strong> instances have a "Plugins" set whose elements are of type <strong>IPluginConfigurator</strong> - these are classes that know how to instantiate particular plugins.</p>
+
+<p>So I had to write:</p>
+
+<pre><code>private class SelectorRewriterVisitorPluginConfigurator : IPluginConfigurator
+{
+  private readonly InsertedMarkerRetriever _markerIdRetriever;
+  public SelectorRewriterVisitorPluginConfigurator(InsertedMarkerRetriever markerIdRetriever)
+  {
+    if (markerIdRetriever == null)
+      throw new ArgumentNullException("markerIdRetriever");
+
+    _markerIdRetriever = markerIdRetriever;
+  }
+
+  public IPlugin CreatePlugin() { return new SelectorRewriterVisitorPlugin(_markerIdRetriever); }
+  public IEnumerable&lt;IPluginParameter&gt; GetParameters() { return new IPluginParameter[0]; }
+  public void SetParameterValues(IEnumerable&lt;IPluginParameter&gt; parameters) { }
+  public string Name { get { return "SelectorRewriterVisitorPluginConfigurator"; } }
+  public string Description { get { return Name; } }
+  public Type Configurates { get { return typeof(SelectorRewriterVisitorPlugin); } }
+}
+</code></pre>
+
+<p>and then instantiate a <strong>LessEngine</strong> with</p>
+
+<pre><code>var engine = new LessEngine();
+engine.Plugins = new[] { 
+  new SelectorRewriterVisitorPluginConfigurator(_markerIdRetriever)
+};
+</code></pre>
+
+<h3>WINNING!</h3>
+
+<p>Since I started writing this article, a big project at work has used this component and the final size of the combined output is over 200kb. I said earlier that 116kb of minified content is a lot of styles, well this clearly tops that! In fairness, it's a large and complex site and it's chock full of responsive goodness to make it render beautifully on mobiles tiny and large, tablets and desktop.</p>
+
+<p>Before the id-tidying was handled with a dotLess visitor plugin (where there was an entirely separate processing step to tidy up the unnecessary marker-id selectors) the build process was taking almost 20 seconds. Not acceptable. <em>With</em> the visitor plugin approach, this is now just over 3 seconds. Much more palatable. And, like I found in the last post, it's another example of how changing the algorithm can sometimes have dramatic improvements over trying to micro-optimise the current approach. Or, perhaps, a reminder that the quickest way to do something might be not to do it!</p>
+
+<h3>Show me the code..</h3>
+
+<p>If you want to get at the code, it's all on Bitbucket: The <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a>. There's a "CSSMinifierDemo" (ASP.net MVC) project in there that has a <strong><a href="https://bitbucket.org/DanRoberts/cssminifier/src/46930a68eec0e047af44a54cb900bff57b2ee7af/CSSMinifierDemo/Controllers/CSSController.cs">CSSController</a></strong> class that import-flattens, injects pseudo-source-mapping marker ids, compiles LESS down to vanilla CSS, minifies, caches to memory and disk (invalidating when source files change), deals with 304s and with supporting gzip'ing responses.</p>
+
+<p>The primary project that utilises this at work doesn't use ASP.net but I do use MVC for this blog and it also seemed like a natural way to construct a full demonstration.</p>
+
+<h3>Mild disclaimer</h3>
+
+<p>I've become a bit of a dotLess advocate over the last year or so and dipping into the code here coincided with a colleague at work complaining about dotLess not working with Bootstrap 3. Finding the code approachable (and not being happy with this bad-mouthing I was hearing of my beloved dotLess!), I've fixed most of the problems and had pull requests merged into the <a href="https://github.com/dotless/dotless/commits/master">master repository</a>. And now a NuGet package is available (see <a href="http://www.tigraine.at/2013/12/10/dotless-v14-released">dotless v1.4 released</a>). This has been my first foray into contributing to an open source project and, especially considering some of the stories I've heard about people being ignored or rejected, it's been an absolute joy. I might have to look for more projects that I care about that I can help!</p>
+<p class="PostTime">Posted at 22:41</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="cross-browser-pseudo-source-mapping-with-less.html#disqus_thread" data-disqus-identifier="66">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">11 November 2013</h3><h2><a id="Post65"></a><a href="optimising-the-css-processor-ants-and-algorithms.html">Optimising the CSS Processor (ANTS and algorithms)</a></h2>
+
+<p>The Production Team at work have started using my best-practices-rules-validating LESS CSS Processor (which utilises <a href="http://www.dotlesscss.org/">dotLess</a>). This is excellent news for me! And frankly, I think it's excellent news for them! :D</p>
+
+<p>This all ties in with a post I wrote at the start of the year (<a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a>), a set of rules to write maintainable and genuinely reusable stylesheets. I gave a presentation on it at work and one of the Lead Devs on Production recently built the first site using the processor (I've used it for this blog but the styling here is hardly the most complex). Now that it's been proven, it's being used on another build. And a high-profile one, at that. Like I said, exciting times!</p>
+
+<p>However, during the site-build process there are periods where the routine goes tweak styles, refresh, tweak styles, refresh, tweak styles, lather, rinse, repeat. And when the full set of stylesheets starts getting large, the time to regenerate the final output (and perform all of the other processing) was getting greater and making this process painful.</p>
+
+<p>The good news is that now that the project is being used in work, I can use some of work's resources and toys to look into this. We allocated a little time this sprint to profile the component and see if there are any obvious bottlenecks that can be removed. The golden rule is <strong>you don't optimise until you have profiled</strong>. Since we use <a href="http://www.red-gate.com/products/dotnet-development/ants-performance-profiler/">ANTS Performance Profiler</a> at work, this seemed like an excellent place to start.</p>
+
+<h3>March of the ANTS</h3>
+
+<p>The ANTS Performance Profile is a great bit of kit for this sort of thing. I prepared an executable to test that would compile stylesheets from the new site in its current state. This executable had a depedency on the processor code - the idea is I choose something to optimise, rebuild the processor, rebuild the test executable and re-run the profiler.</p>
+
+<p>Things take much longer to run in the profiler than they would otherwise (which is to be expected, the profiler will be tracking all sorts of metrics as the code runs) but performance improvements should mean that the execution time decreases on subsequent runs. And, correspondingly, the component will run more quickly when <em>not</em> in the profiler, which is the whole point of the exercise!</p>
+
+<p>So I point the profiler at the executable and the results look like the following..</p>
+
+<p><img src="Content/Images/Posts/ProfilingTheProcessor.png" alt="ANTS Performance Profiler in action" title="ANTS Performance Profiler in action" /></p>
+
+<p><em>(I shrank the screenshot to get it to fit on the page properly, if you can't read it then don't worry, I'm about to explain the highlights)</em>.</p>
+
+<p>What we're looking at is a drilling-down of the most expensive methods. I've changed the Display Options to show "All Methods" (the default is "Only methods with source") so I can investigate as deep as I want to*. This view shows method calls as a hierarchy, so Tester.Program.Main is at the top and that calls other methods, the most expensive of which is the <strong>NonCascadingCSSRulesEnforcer.CSSMinifierIntegration.RulesEnforcingCssFileLoader.Load</strong> call. While the call to Main accounted for 99.254% of the total work, the call to this Load method accounted for 98.667% (looking at the "Time With Children (%)" column). This means that Main's own work and any other method calls it made account for a very small amount of total work done.</p>
+
+<p>* <em>(If the PDB files from a build are included in the executable folder then the profiler can use these to do line-by-line analysis in a window underneath the method call display shown above. To do this, "line-level and method-level timings" have to be selected when starting the profiling and the source code files will have to be available to the profiler - it will prompt for the location when you double-click on a method. If you don't have the PDB files or the source code then methods can be decompiled, but line level details will not be available).</em></p>
+
+<p>Method calls are ordered to show the most expensive first, the "HOT" method. This is why that Load method appears first inside the results for Main, it accounts for most of the work that Main does.</p>
+
+<p>So the first easy thing to do is to look for methods whose "HOT" method's "Time With Children" is much lower, this could be an indication that the method itself is quite expensive. It could also mean that it calls several methods which are all quite expensive, but this can still often be a good way to find easy wins.</p>
+
+<p>What jumps out at me straight away is the the <strong>CharacterProcessorResult..ctor</strong> (the class constructor) and its children account for 24.005% of the total run time, with <strong>Enum.IsDefined</strong> (and its children) accounting for 19.776%. The <strong>Enum.IsDefined</strong> call is to ensure that a valid enum value is passed to the constructor. <strong>Enum.IsDefined</strong> uses reflection if you look far enough down, I believe. A few calls to this method should be no big deal, but an instance of this class is used for every stylesheet character that is parsed - we can see that the constructor is called 5,772,750 times (the "Hit Count"). So replacing <strong>Enum.IsDefined</strong> with if statements for all of the possible enum options should speed things up considerably. Incidentally, 5,772,750 seems like a <em>lot</em> of character parse attempts, it's certainly a lot more content than exists in the source stylesheets, I'll address this further down..</p>
+
+<p>Looking at the screenshot above, there are two other "jumps" in "Time With Children" - one going from <strong>ProcessedCharacterGrouped+<getstring>d__0.MoveNext</getstring></strong> to <strong>SelectorOrStyleSegment.Process</strong> and from there to the <strong>CharacterProcessorResult..ctor</strong>. I've ignored the first one for now since that cryptically-named first method relates to how the C# compiler represents enumerable data and I know that the loop in that method uses the "yield" keyword which may complicate an investigation. I've also ignored <strong>SelectorOrStyleSegment.Process</strong> for now since that's probably the biggest method in the parsing code and so is likely to spread its load over multiple calls to other methods, it doesn't feel as likely that there will be any single particular area within the method itself that will be causing excessive work. At this point, I'm looking for easy wins to see how far that can get me.</p>
+
+<h3>More easy optimisations</h3>
+
+<p>After making the change outlined above (removing the <strong>Enum.IsDefined</strong> call from the <strong>CharacterProcessorResult</strong> constructor), the profiler is re-run to see if I can find any more small-change / big-payoff alterations to make. I did this a few times and identified (and addressed) the following -</p>
+
+<p>The <strong>StringNavigator.CurrentCharacter</strong> property was being marked as taking a lot of time. This was surprising to me since it doesn't do much, it only returns a character with a particular index from the content string that is being examined. However, the hit count was enormous as this could be called multiple times for each character being examined - so if there were nearly 6m character results, there were many more <strong>StringNavigator.CurrentCharacter</strong> requests. I changed the string to a character array internally thinking that access to it might be quicker but it didn't make a lot of difference. What <em>did</em> make a difference was to extract the <strong>CurrentCharacter</strong> value in the <strong>StringNavigator</strong>'s constructor and return that value directly from the property, reducing the number of character array accesses required. What made it even better was to find any method that requested the <strong>CurrentCharacter</strong> multiple times and change them to request it once, store it in a local variable and use that for subsequent requests. Although each property access is very cheap individually, signficantly reducing the total number of property requests resulted in faster-running code. This is the sort of thing that would have felt like a crazy premature optimisation if I didn't have the profiler highlighting the cost!</p>
+
+<p>The <strong>InjectedIdTidyingTextFileLoader</strong>'s <strong>TidySelectorContent</strong> method spent a lot of its time in a LINQ "Any" call. The same enumerable data was being looped through many times - changing it to a <strong>HashSet</strong> (and using the <strong>HashSet</strong>'s Contains method) made this much more efficient. (The <strong>HashSet</strong> uses the same technique as the <strong>Dictionary</strong>'s key lookup which, as I've written about before in <a href="the-net-dictionary-is-fast.html">The .Net Dictionary is FAST!</a>, has impressive performance).</p>
+
+<p>The <strong>CategorisedCharacterString</strong>'s constructor also had an <strong>Enum.IsDefined</strong> call. While this class is instantiated much less often than the <strong>CharacterProcessorResult</strong>, it was still in the hundreds of thousands range, so it was worth changing too.</p>
+
+<p>The <strong>StringNavigator</strong> had a method "TryToGetCharacterString" which would be used to determine whether the current selector was a media query (does the current position in the content start with "@media") or whether a colon character was part of a property declaration or part of a pseudo class in a selector (does the current position in the content start with ":hover", ":link", etc..) - but in each case, we didn't really want the next <em>n</em> characters, we just wanted to know whether they were "@media", ":hover" or whatever. So replacing "TryToGetCharacterString" with a "DoesCurrentContentMatch" method meant that less work would be done in the cases where no match was found (this method would exit "early" as soon as it encountered a character than didn't match what it was looking for).</p>
+
+<p>Finally, the <strong>ProcessedCharactersGrouper</strong> has an array of "CharacterTypesToNotGroup". This class groups adjacent characters that have the same <strong>CharacterCategorisationOptions</strong> into strings - so if there are characters 'a', '.', 't', 'e', 's', 't' which are all of type "SelectorOrStyleProperty" then these can be grouped into a string "a.test" (with type "SelectorOrStyleProperty"). However, multiple adjacent "}" characters are not combined since they represent the terminations of different style blocks and are not related to each other. So "CloseBrace" is one of the "CharacterTypesToNotGroup" entries. There were only three entries in this array (CloseBrace, OpenBrace and SemiColon). When deciding whether to group characters of the same categorisation together, replacing the LINQ "Contains" method call with three if statements for the particular values improved the performance. I believe that having a named array of values made the code more "self documenting" (it is effectively a label that describes <em>why</em> these three values are being treated differently) but in this case the performance is more important.</p>
+
+<p>The end result of all of these tweaks (all of which were easy to find with ANTS and easy to implement in the code) was a speed improvement of about 3.7 times (measuring the time to process the test content over several runs). Not too shabby!</p>
+
+<h3>Algorithms</h3>
+
+<p>I still wasn't too happy with the performance yet, it was still taking longer to generate the final rules-validated stylesheet content than I wanted.</p>
+
+<p>Before starting the profiling, I had had a quick think about whether I was doing anything too stupid, like repeating work where I didn't need to. The basic process is that</p>
+
+<ol>
+<li>Each .less file is loaded (any @imports will be "flattened" later, the referenced content is loaded at this point, though, so that it can be put in the place of the @import later on)</li>
+<li>Each file gets fed through the file-level rules validators</li>
+<li>Source Mapping Marker Ids are inserted</li>
+<li>The "@import flattening" occurs to result in a single combined content string</li>
+<li>This content is fed through the <a href="http://www.dotlesscss.org/">dotLess</a> processor (this translates LESS content into vanilla CSS and minifies the output)</li>
+<li>This is fed through the combined-content-level rules validators</li>
+<li>Any "scope-restricting html tags" are removed</li>
+<li>Source Mapping Marker Ids are tidied</li>
+</ol>
+
+<p>When each file gets fed through the file-level rules validators, the source content is parsed once and the parsed content passed through each validator. So if there are multiple validators that need to be applied to the same content, the content is only parsed once. So there's nothing obvious here.</p>
+
+<p>What <em>is</em> interesting is the "Source Mapping Marker Ids". Since the processor always returns minified content and there is no support for CSS Source Mapping across all browsers (it looks like Chrome 28+ is adding support, see <a href="http://net.tutsplus.com/tutorials/html-css-techniques/developing-with-sass-and-chrome-devtools/">Developing With Sass and Chrome DevTools</a>) I had my processor try to approximate the functionality. Say you have a file "test.css" with the content</p>
+
+<pre><code>html
+{
+  a.test
+  {
+    color: #00f;
+    &amp;:hover { color: #00a; }
+  }
+}
+</code></pre>
+
+<p>the processor rewrites this as</p>
+
+<pre><code>#test.css_1, html
+{
+  #test.css_3, a.test
+  {
+    color: #00f;
+    #test.css_6, &amp;:hover { color: #00a; }
+  }
+}
+</code></pre>
+
+<p>which will eventually result (after all of the steps outlined above have been applied) in</p>
+
+<pre><code>#test.css_3,a.test{color:#00f}
+#test.css_6,a.test:hover{color:#00a}
+</code></pre>
+
+<p>This means that when you examine the style in a browser's developer tools, each style can be traced back to where the selector was specified in the source content. A poor man's Source Mapping, if you like.</p>
+
+<p>The problem is that the LESS compiler will actually translate that source-with-marker-ids into</p>
+
+<pre><code>#test.css_1 #test.css_3,
+#test.css_1 a.test,
+html #test.css_3,
+html a.test { color: #00f; }
+
+#test.css_1 #test.css_3 #test.css_6,
+#test.css_1 #test.css_3:hover,
+#test.css_1 a.test #test.css_6,
+#test.css_1 a.test:hover,
+html #test.css_3 #test.css_6,
+html #test.css_3:hover,
+html a.test #test.css_6,
+html a.test:hover { color: #00a; }
+</code></pre>
+
+<p>That's a lot of overhead! There are many selectors here that aren't required in the final content (such as "html #test.css_3", that is neither specific enough to be helpful in the developer tools nor a real style that applies to actual elements). This is what the "Source Mapping Marker Ids are tidied" step deals with.</p>
+
+<p>And this explains why there were nearly 6 million characters being parsed in the stylesheets I've been testing! The real content is getting bloated by all of these Source Mapping Marker Ids. And every level of selector nesting makes it significantly worse.</p>
+
+<p><em>(To convince myself that I was thinking along the right lines, I ran some timed tests with variations of the processor; disabling the rules validation, disabling the source mapping marker id injection, disabling the marker id tidying.. Whether or not the rules validation was enabled made very little difference. Disabling the marker id injection and tidying made an enormous difference. Disabling just the tidying accounted for most of that difference but if marker ids were inserted and not tidied then the content was huge and full of unhelpful selectors).</em></p>
+
+<h3>Addressing the problems: Limiting Nesting</h3>
+
+<p>Since nesting selectors makes things much worse, any way to limit the nesting of selectors could be a signficant improvement. But this would largely involve pushing back the "blame" onto users of the processor, something I want to avoid. There <em>is</em> one obvious way, though. One of the rules is that all stylesheets (other than Resets and Themes sheets) must be wrapped in a "scope-restricting html tag". This means that any LESS mixins or values that are defined within a given file only exist within the scope of the current file, keeping everything self-contained (and so enabling an entire file to be shared between projects, if that file contains the styling for a particular common component, for example). Any values or mixins that should be shared across files should be declared in the Themes sheet. This "html" selector would result in styles that are functionally equivalent (eg. "html a.test:hover" is the same as "a.test:hover" as far as the browser is concerned) but the processor actually has a step to remove these from the final content entirely (so only "a.test:hover" is present in the final content instead of "html a.test:hover").</p>
+
+<p>So if these "html" wrappers will never contribute to the final content, having marker ids for them is a waste of time. And since they should be present in nearly every file, not rewriting them with marker ids should significantly reduce the size of the final content.</p>
+
+<p>Result: The test content is fully processed about 1.8x as fast (times averaged over multiple runs).</p>
+
+<h3>Addressing the problems: Shorter Marker Ids</h3>
+
+<p>Things are really improving now, but they can be better. There are no more easy ways to restrict the nesting that I can see, but if the marker ids themselves were shorter then the selectors that result from their combination would be shorter, meaning that less content would have to be parsed.</p>
+
+<p>However, the marker ids are the length they are for a reason; they need to include the filename and the line number of the source code. The only way that they could be reduced would be if the shortened value was temporary - the short ids could be used <em>until</em> the id tidying has been performed and then a replacement step could be applied to replace the short ids with the full length ids.</p>
+
+<p>To do this, I changed the marker id generator to generate the "real marker id" and stash it away and to instead return a "short marker id" based on the number of unique marker ids already generated. This short id was a base 63* representation of the number, with a "1" prefix. The reason for the "1" is that before HTML5, it was not valid for an id to begin with a number so I'm hoping that we won't have any pages that have real ids that these "short ids" would accidentally target - otherwise the replacement that swaps out the short ids for real ids on the stylesheets might mess up styles targetting real elements!</p>
+
+<p>* <em>(Base 63 means that the number may be represented by any character from the range A-Z, a-z, 0-9 or by an underscore, this means that valid ids are generated to ensure that characters are not pushed through the LESS compiler that would confuse it).</em></p>
+
+<p>The earlier example</p>
+
+<pre><code>html
+{
+  a.test
+  {
+    color: #00f;
+    &amp;:hover { color: #00a; }
+  }
+}
+</code></pre>
+
+<p>now gets rewritten as</p>
+
+<pre><code>html
+{
+  #1A, a.test
+  {
+    color: #00f;
+    #1B, &amp;:hover { color: #00a; }
+  }
+}
+</code></pre>
+
+<p>which is transformed into</p>
+
+<pre><code>html #1A,
+html a.test {
+  color: #00f;
+}
+html #1A #1B,
+html #1A:hover,
+html a.test #1B,
+html a.test:hover {
+  color: #00a;
+}
+</code></pre>
+
+<p>This is a lot better (combining the no-markers on the "html" wrapper and the shorter ids). There's still duplication present (which will get worse as styles are more deeply nested) but the size of the content is growing much less with the duplication.</p>
+
+<p>Result: The test content is fully processed about 1.2x faster after the above optimisation, including the time to replace the shortened ids with the real marker ids.</p>
+
+<h3>Conclusion</h3>
+
+<p>With the ANTS-identified optimistations and the two changes to the algorithm that processes the content, a total speed-up of about 7.9x has been achieved. This is almost an order of magnitude for not much effort!</p>
+
+<p>In real-world terms, the site style content that I was using as the basis of this test can be fully rebuilt from source in just under 2 seconds, rather than the almost 15 seconds it was taking before. When in the tweak / refresh / tweak / refresh cycle, this makes a huge difference.</p>
+
+<p>And it was interesting to see the "don't optimise before profiling" advice in action once more, along with "avoid premature optimisation". The places to optimise were not where I would have expected (well, certainly not in some of the cases) and the last two changes were not the micro-optimisations that profilers lead you directly to at all; if you blindly follow the profiler then you miss out on the "big picture" changes that the profiler is unaware of.</p>
+<p class="PostTime">Posted at 20:37</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="optimising-the-css-processor-ants-and-algorithms.html#disqus_thread" data-disqus-identifier="65">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">19 June 2013</h3><h2><a id="Post57"></a><a href="parsing-css.html">Parsing CSS</a></h2>
+
+<p>A few months ago I wrote about some <a href="extending-the-css-minifier.html">extensions to the CSS Minifer</a> to support pseudo-Source-Mapping for compiled and minified content (among other things) and I've been meaning to write about the code I used to analyse the style sheet content.</p>
+
+<h3>History Lesson</h3>
+
+<p>A long time ago I wrote some code to parse javascript to remove comments and minify the content, this was before there were a proliferation of excellent plugins and such like to do it all for you - I think the YUI Compressor might have been around but since it required java to be installed where it would be used, we couldn't use it to compile scripts on-the-fly.</p>
+
+<p>The first pass through the content would break it down into strings representing javacript code, javascript strings and comments. Strings can be quoted with either single or double quotes, single-quote-wrapped strings could contain double quotes without escaping them and vice versa, either string format could contain their own quotes so long as they were formatted. Comments could be multi-line if they were wrapped in /* and */ or single line if they started with // (terminating with a line return or end-of-file). So similar to CSS in a lot of ways! (Particularly if you consider parsing LESS which supports single line comments, unlike regular CSS).</p>
+
+<p>I wrote it in a fairly naive manner, trying to handle each case at a time, building up a primary loop which went through each character, deciding what to do with it based upon what character it was and whether the current content was a string (and what would indicate the end of the string), a comment (and what would terminate that) or javascript code. There were various variables to keep track of these items of state. It did the job but I was keen not to repeat the same approach when writing this "CSS Parser" I wanted.</p>
+
+<h3>Employing Immutability (what a surprise!)</h3>
+
+<p>Keeping track of the changing state in this way meant that at any point in time there was a lot to hold in my head while I was trying to understand what was going on if something appeared to be misbehaving and made each change to add new functionality increasingly difficult. But reducing the places where state change is a large part of the <a href="Search.html?term=immutable">immutability obsession</a> I've got going on so I figured there must be a better way.</p>
+
+<p>The idea was to start with two interfaces</p>
+
+<pre><code>public interface IProcessCharacters
+{
+  CharacterProcessorResult Process(IWalkThroughStrings stringNavigator);
+}
+
+public interface IWalkThroughStrings
+{
+  char? CurrentCharacter { get; }
+  IWalkThroughStrings Next { get; }
+}
+</code></pre>
+
+<p>with corresponding class and enum</p>
+
+<pre><code>public class CharacterProcessorResult
+{
+  public CharacterProcessorResult(
+    CharacterCategorisationOptions characterCategorisation,
+    IProcessCharacters nextProcessor)
+  {
+    if (!Enum.IsDefined(typeof(CharacterCategorisationOptions), characterCategorisation))
+      throw new ArgumentOutOfRangeException("characterCategorisation");
+    if (nextProcessor == null)
+      throw new ArgumentNullException("nextProcessor");
+
+    CharacterCategorisation = characterCategorisation;
+    NextProcessor = nextProcessor;
+  }
+
+  public CharacterCategorisationOptions CharacterCategorisation { get; private set; }
+  public IProcessCharacters NextProcessor { get; private set; }
+}
+
+public enum CharacterCategorisationOptions
+{
+  Comment,
+  CloseBrace,
+  OpenBrace,
+  SemiColon,
+  SelectorOrStyleProperty,
+  StylePropertyColon,
+  Value,
+  Whitespace
+}
+</code></pre>
+
+<p>such that a given string can be traversed character-by-character with a processor returning the type of that character and providing a processor appropriate to the next character.</p>
+
+<p>The clever part being each processor will have very tightly-scoped behaviour and responsibility. For example, if a string is encountered that starts with double quotes then a processor whose entire job is string-handling would be used. This processor would know what quote character would terminate the string and that processing should go back to the previous processor when the string has terminated. All characters encountered within the string would be identified as the same type (generally this will be of type <strong>Value</strong> since strings are most commonly used in style properties - eg. a url string as part of a background property - so if a semi-colon is encountered it would be identified as type <strong>Value</strong> despite a semi-colon having more significant meaning when not part of a string value). Handling escape characters becomes very simple if a skip-characters processor is used; when a backslash is encountered, the quoted-section processor hands off to a processor that returns a fixed type for the next character and then returns control back to the quoted-section processor. This means that the quoted-section processor doesn't need to maintain any state such as even-if-the-next-character-is-the-terminating-quote-character-do-not-terminate-the-string-yet-as-it-is-being-escaped.</p>
+
+<p>Comment sections can be handled in a very similar manner, with different processors for multiline comments than single line since the termination manners are different (and this helps keep things really easy).</p>
+
+<p>There is a primary processor which is a bit meatier than I'd like (but still only 320-odd commented lines) that looks out for the start of string or comments and hands off processing appropriately, but also identifies single signficant characters such as opening or closing braces, colons (usually indicating the a separator between a style property name and its value but sometimes a pseudo-class indicator - eg. in "a:hover") and semi-colons.</p>
+
+<p>Parsing is made more challenging as I wanted to support <a href="http://lesscss.org/">LESS</a> which allows for nesting of rules whereas the only nesting that regular CSS supports is selectors within media queries. CSS 2.1 only allows for a single media query to wrap a selector while CSS 3 <em>may</em> support nesting media rules - see this answer on Stack Overflow: <a href="http://stackoverflow.com/questions/11746581/nesting-media-rules-in-css/11747166#11747166">Nesting @media rules in CSS</a>.</p>
+
+<p>As a bit of a cop-out, I don't differentiate between a selector and a property name in the <strong>CharacterCategorisationOptions</strong> enum, they are both rolled into the value <strong>SelectorOrStyleProperty</strong> (similarly, media query content is classified as a <strong>SelectorOrStyleProperty</strong>). While this feels lazy on the one hand, on the other I wanted to make this pass through the content as cheap and clean as possible and accurately determining whether a given character is a selector or a property name could involve significant reading back and forth through the content to find out for sure.</p>
+
+<p>This way, not only is the implementation easier to follow but it enables the main loop to parse only as much content as required to enumerate as far through the content as the caller requires.</p>
+
+<p>To explain what I mean, I need to introduce the class that wraps <strong>IProcessCharacters</strong> and <strong>IWalkThroughStrings</strong> -</p>
+
+<pre><code>public interface ICollectStringsOfProcessedCharacters
+{
+  IEnumerable&lt;CategorisedCharacterString&gt; GetStrings(
+    IWalkThroughStrings contentWalker,
+    IProcessCharacters contentProcessor
+  );
+}
+</code></pre>
+
+<p>and its return type..</p>
+
+<pre><code>public class CategorisedCharacterString
+{
+  public CategorisedCharacterString(
+    string value,
+    int indexInSource,
+    CharacterCategorisationOptions characterCategorisation)
+  {
+    if (string.IsNullOrEmpty(value))
+      throw new ArgumentException("Null/blank value specified");
+    if (indexInSource &lt; 0)
+      throw new ArgumentOutOfRangeException("indexInSource", "must be zero or greater");
+    if (!Enum.IsDefined(typeof(CharacterCategorisationOptions), characterCategorisation))
+      throw new ArgumentOutOfRangeException("characterCategorisation");
+
+    Value = value;
+    IndexInSource = indexInSource;
+    CharacterCategorisation = characterCategorisation;
+  }
+
+  public string Value { get; private set; }
+
+  public int IndexInSource { get; private set; }
+
+  public CharacterCategorisationOptions CharacterCategorisation { get; private set; }
+}
+</code></pre>
+
+<p>The default <strong>ICollectStringsOfProcessedCharacters</strong> implementation will traverse through the <strong>IWalkThroughStrings</strong> content and group together characters of the same <strong>CharacterCategorisationOptions</strong> into a single <strong>CategorisedCharacterString</strong>, using <a href="http://msdn.microsoft.com/en-us/library/vstudio/9k7k7cf0.aspx">yield return</a> to return the values.</p>
+
+<p>This means that</p>
+
+<pre><code>/* Test */ .Content { color: black; }
+</code></pre>
+
+<p>would return content identified as</p>
+
+<pre><code>"/* Test */"     Comment
+" "              Whitespace
+".Content"       SelectorOrStyleProperty
+" "              Whitespace
+"{"              OpenBrace
+" "              Whitespace
+"color"          SelectorOrStyleProperty
+":"              StylePropertyColon
+" "              Whitespace
+"black"          Value
+";"              SemiColon
+" "              Whitespace
+"}"              CloseBrace
+</code></pre>
+
+<p>But if the enumeration of the data returned from the <strong>GetStrings</strong> method stopped after the ".Content" string was returned then no more parsing of the CSS would be carried out. If accurate differentiation of selectors, media queries and style property names was required at this point then a lot more parsing may be required to ensure that that string (".Content") was indeed a selector.</p>
+
+<p>Another benefit arises if a large amount of content is to be parsed; an <strong>IWalkThroughStrings</strong> implementation that wraps a <strong>TextReader</strong> may be used so the content could be loaded from disk in chunks and as much or as little parsed as desired, using relatively few resources.</p>
+
+<h3>No Read-ahead at <em>all</em>??</h3>
+
+<p>Having just jabbered on about how amazing it is that this <strong>SelectorOrStyleProperty</strong> categorisation requires absolutely zero reading ahead in order to categorise any given character (so long as all of the preceeding characters have been parsed), there are a couple of exceptions to this rue:</p>
+
+<ol>
+<li>When a @media rule is encountered, all of the following content needs to be considered to be either <strong>Whitespace</strong> or <strong>SelectorOrStyleProperty</strong> until the opening brace for the rule is encountered, since the rule may contain otherwise-significant characters such as colon (eg. the ":" in "@media (min-width:500px)" is part of the media query and does not signify the separator symbol between a property name and a property value), so when a "@" is encountered, the next characters are read to determine whether it's a media rule or not</li>
+<li>A colon in a pseudo class should also not be identified as a <strong>StylePropertyColon</strong>, it should be considered part of the <strong>SelectorOrStyleProperty</strong>, so if a colon is encountered while processing what is thought to be a selector then some reading ahead is done to try to determine whether the content indicates that it is indeed a psuedo-class selector and not a separator between a property name and its value</li>
+</ol>
+
+<p>To make this easier, the <strong>IWalkThroughStrings</strong> interface has an additional method</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will try to extract a string of length requiredNumberOfCharacters from the current
+/// position in the string navigator. If there are insufficient characters available, then
+/// a string containing all of the remaining characters will be returned. This will be an
+/// empty string if there is no more content to deliver. This will never return null.
+/// &lt;/summary&gt;
+string TryToGetCharacterString(int requiredNumberOfCharacters);
+</code></pre>
+
+<p>I contemplated making this an extension method since the data can always be retrieved using the CurrentCharacter and Next properties, but depending upon the implementation there may be more efficient ways to retrieve the data and so it became an interface method.</p>
+
+<h3>An original idea?</h3>
+
+<p>I'm really happy with the way this approach to the problem has influenced the final design. There were a few issues that I hadn't foreseen when I started (the complications with pseudo classes giving different meaning to the colon character, for example, as outlined above, had somehow slipped my mind entirely when I got going) but extending it to cover these cases wasn't particularly difficult as keeping all of the complicated bits as segregated as possible made it easy to reason about where changes needed to be made and whether they could have any unpleasant side effects.</p>
+
+<p>I don't think I can take credit for the originality of the idea, though. The overarching plan is to have a processor instance which is posed to start processing content, at this point it has produced no results and is in an uninitialised state. This is the first <strong>IProcessCharacters</strong> instance. When its <strong>Process</strong> method is called, the first character from the <strong>IWalkThroughStrings</strong> is taken and a <strong>CharacterProcessorResult</strong> returned which identifies the type of that first character and specifies an <strong>IProcessCharacters</strong> instance to process the next character. That character triggered the change in state. The next call to <strong>Process</strong> might return a result with a different type of <strong>IProcessCharacters</strong> and/or a different <strong>CharacterCategorisationOptions</strong>.</p>
+
+<p>The point is that for any current state, there are a finite number of states that can be moved to next (since there are a limited number of <strong>CharacterCategorisationOptions</strong> values and <strong>IProcessCharacters</strong> implementations) and a finite number of triggers for each change in state (since there are only so many possible characters, even if we do consider the huge extended alphabets available). This puts me in mind of a Finite State Machine which is a well-documented concept.. the article on <a href="https://en.wikipedia.org/wiki/Finite-state_machine">Wikipedia</a> is thorough and there's another article on <a href="http://learnyousomeerlang.com/finite-state-machines">learn you some Erlang for great good!</a> which I haven't read all of, but I've heard good things about that site so intend to read that article properly before hopefully reading and following more of the tutorials on there.</p>
+
+<h3>Overview of processors</h3>
+
+<p>Just to emphasise how this approach made things easier and spread much of the logic across self-contained components, I'll spin through the processors which loop through the content, passing control back and forth as appropriate.</p>
+
+<p>The first is always the <strong>SelectorOrStylePropertySegment</strong>, which is actually the one that has to deal with the most different circumstances. By default it will identify each character as being of type <strong>SelectorOrStyleProperty</strong> unless it encounters any one-offs like an <strong>OpenBrace</strong> or a <strong>SemiColon</strong> or anything that consititues <strong>Whitespace</strong>. If it encounters the ":" character then it has to do a little reading ahead to try to determine whether that indicates that a delimiter between a Style Property Name and the Property Value or whether it's part of a pseudo class (eg. ":hover"). If it's a Property Value then it hands off to the <strong>StyleValueSegment</strong> class which walks through content, marking it as either type <strong>Value</strong> or <strong>Whitespace</strong> until it hits a ";" and returns control back to the <strong>SelectorOrStylePropertySegment</strong>.</p>
+
+<p>If the <strong>StyleValueSegment</strong> encounters a quote character then it hands off control to a <strong>QuotedSegment</strong> instance which walks through the content marking it as type <strong>Value</strong> until it encounters the closing quote and returns control back to where it came from. The <strong>QuotedSegment</strong> has a constructor argument for the termination character (the closing quote) so doesn't have to do anything complicated other than wait for that character to show up!</p>
+
+<p>The <strong>SelectorOrStylePropertySegment</strong> does something similar to handing off to the <strong>StyleValueSegment</strong> when it encounters an opening square bracket as that indicates the start of an attribute selector (eg. "a[href]") - control is given to a <strong>BracketedSelectorSegment</strong> which identifies all content as being type <strong>SelectorOrStyleProperty</strong> until the closing "]" character is encountered.</p>
+
+<p>All three of <strong>SelectorOrStylePropertySegment</strong>, <strong>StyleValueSegment</strong> and <strong>BracketedSelectorSegment</strong> have to make exceptions for comments. When a "/" is encountered, they will look ahead to see if the next is either "/" or "<em>" and hand off to a <strong>SingleLineCommentSegment</strong> or <strong>MultiLineCommentSegment</strong>, respectively. The first simply has to mark everything as <strong>Comment</strong> content until passing back control when a line break is encountered. The second marks content as <strong>Comment</strong> until it encounters a "</em>" which the character after is a "/". When this "*" is encountered it hands off to a <strong>SkipCharactersSegment</strong> which marks the next character as <strong>Comment</strong> as well and then hands back to whatever handed control to the <strong>MultiLineCommentSegment</strong>. Only a single character can be identified at once, hence the use of the <strong>SkipCharactersSegment</strong>, but even this small hoop is only a small one to jump through. These three classes are very minor specialisation of a shared base class so that this logic is shared.</p>
+
+<p>The <strong>QuotedSegment</strong> doesn't inherit from the same since <em>all</em> content should be identified as being of a particular type, comment-like content within a quoted string does not constitute an actual comment. The <strong>QuotedSegment</strong> class takes a constructor argument to indicate the type of content that it will be representing since a quoted section while processing <strong>Value</strong> content should be identified as type <strong>Value</strong> while a quoted section in <strong>SelectorOrStyleProperty</strong> content (eg. in "input[type='text']") should also be identified as type <strong>SelectorOrStyleProperty</strong>.</p>
+
+<p>So essentially it all boils down to is-the-current-processor-ok-for-this-character? If yes, then continue to use it. If a condition is encountered where the processor should change (either handing control to a new processor or handing control <em>back</em> to a previous processor) then do that and let it continue.</p>
+
+<p>When I started writing it, I somehow forgot all about attribute selectors (there's a fair argument that more planning might have been beneficial but I wanted to do it an exercise in jumping in with this approach and then hoping that the entire design would lend itself well to "changing requirements" - aka. me overlooking things!). If this had been processed in some contorted single loop full of complicated interacting conditions - like that javascript parser of my past - then adding that extra set of conditions would have filled me with dread. With this approach, it was no big deal.</p>
+
+<h3>The Processor Factory</h3>
+
+<p>There was only one thing that struck me with the idea of all of these processor instances being created left, right and centre; that there could be a lot of churn. That if there was content being processed then there could thousands of <strong>MultiLineCommentSegment</strong> instances being created, for instance, when they're nearly all to perform the same task - record comment content and pass back to the primary <strong>SelectorOrStylePropertySegment</strong> processor. If these instances could be shared then the churn could be reduced. And since each processor is immutable there is no state to worry about and so they are inherently shareable.</p>
+
+<p>To achieve this, an <strong>IGenerateCharacterProcessors</strong> is passed as a constructor argument to classes that need to instantiate other processors. The simplest implementation of this is to spin up a new instance of the requested processor type, passing the provided constructor arguments. This is what the <strong>CharacterProcessorsFactory</strong> class does. But the <strong>CachingCharacterProcessorsFactory</strong> class will wrap this and keep a record of everything it's instantiated and return a previous reference if it has the same type and constructor arguments as the request specifies. This enables the reuse that I had in mind.</p>
+
+<p>I will admit that there is a slight air of premature optimisation around this, worrying about churn with no evidence that it's a problem, but I intend for these processors to be used on substantial sized chunks of CSS / LESS - and when the <strong>IWalkThroughStrings</strong> interface allows for a class to be written backed onto a <strong>TextReader</strong> (as described earlier) so that only the minimum content need be held in memory at any one time, then this extra work to reuse processor instances seems to make sense.</p>
+
+<h3>Deeper Analysis</h3>
+
+<p>Ok, that explanation of how simple everything was ended up longer and quite possibly more detailed than I'd originally expected but there's one more thing I want to address!</p>
+
+<p>All of the code described above really only allows for quite a simplistic representation of the data. But it paves the way for more complicated processing.</p>
+
+<p>What I really needed was a way to analyse the structure of LESS content - this is all looping back to the idea of "linting" stylesheets to see if they adhere to the rules in the <a href="noncascading-css-a-revolution.html">Non-cascading CSS Post</a>. A simple example is being able to determine whether all content in a stylesheet (that has been identified as not being one of the Resets or Themes sheets) should have the content wrapped in a html tag which limits the scope of any declared mixins or values.</p>
+
+<p>A naive way approach would be trim the raw string content and see if it starts with "html {" or some variation with whitespace, hoping that there is no comment content that needs to be ignored. A better way is to use the CSS Processor as-is and skip over any leading comment and whitespace content and look for a html tag at the start of the content. However, more work would have to be done to ensure that that html tag isn't closed and then followed with more content which may or may not be wrapped in a scope-restricting html tag.</p>
+
+<p>To deal with cases like this which require "deep analysis", the "ExtendedLESSParser" project has a class, the <strong>LessCssHierarchicalParser</strong>, which takes the output from the CSSParser (a <strong>CategorisedCharacterString</strong> set) and tranforms it into hierarhical data describing selectors, media queries, import statements, style property names and style property values. Selectors and media queries are containers that have child "fragments" (these could be style properties or they could be nested selectors). All mention of whitespace and comments are removed and just a representation of the raw style data remains.</p>
+
+<pre><code>// Example 
+html
+{
+  h1
+  {
+    color: black;
+    background: white url("background.jpg") no-repeat top left;
+  }
+  p.Intro { padding: 8px; }
+}
+</code></pre>
+
+<p>becomes something like</p>
+
+<pre><code>html
+  h1
+    color
+      black
+    background
+      white
+      url("background.jpg")
+      no-repat
+      top
+      left
+  p.Intro
+    padding
+      8px
+</code></pre>
+
+<p><em>(Above: "html" represent a <strong>Selector</strong> instance with a ChildFragments property containing <strong>Selector</strong> instances for the "h1" and "p", each with ChildFragments data made up of <strong>StylePropertyValue</strong> and <strong>StylePropertyValue</strong> instances. These classes implement <strong>ICSSFragment</strong> as do the <strong>Import</strong> and <strong>MediaQuery</strong>, which aren't present in the example here).</em></p>
+
+<p>To ensure that content is wrapped in scope-restricting html tags, what must be done is that the output from the <strong>LessCssHierarchicalParser</strong> (a set of <strong>ICSSFragment</strong> implementations) must be considered and it be asserted that they are either <strong>Import</strong> instances or <strong>Selector</strong> instances whose <strong>Selectors</strong> property indicates that the selector in the source content was only "html". An implementation can be found in my <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/">NonCascadingCSSRulesEnforcer</a> project on Bitbucket, specifically the file <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/src/1c997d6a25d4cee7dcd64fc451eda4fa7c17ca80/NonCascadingCSSRulesEnforcer/Rules/HtmlTagScopingMustBeAppliedToNonResetsOrThemesSheets.cs">HtmlTagScopingMustBeAppliedToNonResetsOrThemesSheets.cs</a>.</p>
+
+<p>Unfortunately, since this level of analysis requires that the entire content be considered before the structure can be described, this is not as lightweight a process as the CSSProcessor's parsing. However, it is much more powerful in enabling you to drill down into the structure of a stylesheet. The <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/">NonCascadingCSSRulesEnforcer</a> has code to enforce nearly all of the rules in my original <a href="noncascading-css-a-revolution.html">Non-cascading CSS Post</a>, along with an <strong>ITextFileLoader</strong> implementation which allows the rules validation to be integrated with my <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> project which I've been using to rebuild a real site (not just my blog) with these rules. It's been going really well and I intend to put up a concluding post to this "Non-cascading CSS" mini-series with any final insights and any evidence I can present for and against trying to apply them to all builds I'm involved with in the future.</p>
+<p class="PostTime">Posted at 21:50</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Immutability.html" title="12 Posts">Immutability</a></li></ul></div>
+						<p class="Comments">
+							<a href="parsing-css.html#disqus_thread" data-disqus-identifier="57">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">12 March 2013</h3><h2><a id="Post50"></a><a href="css-minifier-caching.html">CSS Minifier - Caching</a></h2>
+
+<p>A week or so ago I wrote about <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a> and some new facilities in my project on Bitbucket (the imaginatively-named <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a>). Particularly the <strong>EnhancedNonCachedLessCssLoaderFactory</strong> which you can use to get up and running with all of the fancy new features in no time!</p>
+
+<p>However, I didn't mention anything about the caching mechanisms, which are important when there's potentially so much processing required.</p>
+
+<p>This won't take long, but it's worth blasting through. It's also worth noting that the example code in the CSSMinifierDemo is the solution does all of this, so if you want to see it all one place then that's a good place to start (in the CSSController).</p>
+
+<h3>Last-modified-dates</h3>
+
+<p>The <strong>EnhancedNonCachedLessCssLoaderFactory</strong> utilises the <strong>SameFolderImportFlatteningCssLoader</strong> which will run through the CSS / LESS files and pull in any content fom "import" statements inline - effectively flattening them all into one chunk of stylesheet content.</p>
+
+<p>A built-in (and intentional) limitation of this class is that all imports must come from the same folder as the source file. This means you can't import stylesheets from any other folder or any server (if you were going to load a resets sheet from a CDN, perhaps).</p>
+
+<p>The benefit of this restriction is that there is a cheap "short cut" that can be taken to determine when any cached representations of the data should be expired; just take the most recent last-modified-date of any file in that folder.</p>
+
+<p>This has the disadvantage that a file in that folder may be updated that isn't related to the stylesheet being loaded but that a cache expiration will still be performed. The advantage, though, is that we don't have to fully process a file (and all of its imports) in order to determine when any of the files that it imports actually <em>was</em> updated!</p>
+
+<p>This last-modified-date can be used for returning 304 responses when the Client already has the up-to-date content and may also be used to cache stylesheet processing results on the server for Clients without the content in their browser caches.</p>
+
+<h3>In-memory caching</h3>
+
+<p>The simplest caching mechanism uses the <strong>CachingTextFileLoader</strong> which wraps a content loader (that returned by the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>, for example) and takes references to an <strong>ILastModifiedDateRetriever</strong> and <strong>ICanCacheThingsWithModifiedDates&lt;TextFileContents&gt;</strong>.</p>
+
+<pre><code>public interface ILastModifiedDateRetriever
+{
+  DateTime GetLastModifiedDate(string relativePath);
+}
+
+// Type param must be a class (not a value type) so that null may be returned from the getter to indicate
+// that the item is not present in the cache
+public interface ICacheThingsWithModifiedDates&lt;T&gt; where T : class, IKnowWhenIWasLastModified
+{
+  T this[string cacheKey] { get; }
+  void Add(string cacheKey, T value);
+  void Remove(string cacheKey);
+}
+
+public interface IKnowWhenIWasLastModified
+{
+  DateTime LastModified { get;  }
+}
+</code></pre>
+
+<p>If you're using the <strong>SameFolderImportFlatteningCssLoader</strong> then the <strong>SingleFolderLastModifiedDateRetriever</strong> will be ideal for the first reference. It requires an <strong>IRelativePathMapper</strong> reference, but so does the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>, and an ASP.Net implementation is provided below. An example ICacheThingsWithModifiedDates implementation for ASP.Net is also provided:</p>
+
+<pre><code>// The "server" reference passed to the constructor may be satisfied with the Server reference available
+// in an ASP.Net MVC Controller or a WebForms Page's Server reference may be passed if it's wrapped
+// in an HttpServerUtilityWrapper instance - eg. "new HttpServerUtilityWrapper(Server)"
+public class ServerUtilityPathMapper : IRelativePathMapper
+{
+  private HttpServerUtilityBase _server;
+  public ServerUtilityPathMapper(HttpServerUtilityBase server)
+  {
+    if (server == null)
+      throw new ArgumentNullException("server");
+
+    _server = server;
+  }
+
+  public string MapPath(string relativePath)
+  {
+    if (string.IsNullOrWhiteSpace(relativePath))
+      throw new ArgumentException("Null/blank relativePath specified");
+
+    return _server.MapPath(relativePath);
+  }
+}
+
+// The "cache" reference passed to the constructor may be satisfied with the Cache reference available
+// in an ASP.Net MVC Controller or a WebForms Page's Cache reference. There is no time-based expiration
+// of cache items (DateTime.MaxValue is passed for the cache's Add method's absoluteExpiration argument
+// since the CachingTextFileLoader will call Remove to expire entries if their source files have been
+// modified since the cached data was recorded.
+public class NonExpiringASPNetCacheCache : ICacheThingsWithModifiedDates&lt;TextFileContents&gt;
+{
+  private Cache _cache;
+  public NonExpiringASPNetCacheCache(Cache cache)
+  {
+    if (cache == null)
+      throw new ArgumentNullException("cache");
+
+    _cache = cache;
+  }
+
+  public TextFileContents this[string cacheKey]
+  {
+    get
+    {
+      var cachedData = _cache[cacheKey];
+      if (cachedData == null)
+        return null;
+
+      var cachedTextFileContentsData = cachedData as TextFileContents;
+      if (cachedTextFileContentsData == null)
+      {
+        Remove(cacheKey);
+        return null;
+      }
+
+      return cachedTextFileContentsData;
+    }
+  }
+
+  public void Add(string cacheKey, TextFileContents value)
+  {
+    _cache.Add(
+      cacheKey,
+      value,
+      null,
+      DateTime.MaxValue,
+      Cache.NoSlidingExpiration,
+      CacheItemPriority.Normal,
+      null
+    );
+  }
+
+  public void Remove(string cacheKey)
+  {
+    _cache.Remove(cacheKey);
+  }
+}
+</code></pre>
+
+<p>The <strong>CachingTextFileLoader</strong> will look in the cache to see if it has data for the specified relativePath. If so then it will try to get the last-modified-date for any of the source files. If the last-modified-date on the cached entry is current then the cached data is returned. Otherwise, the cached data is removed from the cache, the request is processed as normal, the new content stored in cache and then returned.</p>
+
+<h3>Disk caching</h3>
+
+<p>The <strong>DiskCachingTextFileLoader</strong> class is slightly more complicated, but not much. It works on the same principle of storing cache data then retrieving it and returning it for requests if none of the source files have changed since it was cached, and rebuilding and storing new content before returning if the source files <em>have</em> changed.</p>
+
+<p>Like the <strong>CachingTextFileLoader</strong>, it requires a content loader to wrap and an <strong>ILastModifiedDateRetriever</strong>. It also requires a <strong>CacheFileLocationRetriever</strong> delegate which instructs it where to store cached data on disk. A simple approach is to specify</p>
+
+<pre><code>relativePath =&gt; new FileInfo(relativePathMapper.MapPath(relativePath) + ".cache")
+</code></pre>
+
+<p>which will create a file alongside the source file with the ".cache" extension (for when "Test1.css" is processed, a file will be created alongside it called "Test1.css.cache").</p>
+
+<p>This means that we need to ignore these cache files when looking at the last-modified-dates of files, but the <strong>SingleFolderLastModifiedDateRetriever</strong> conveniently has an optional constructor parameter to specify which extensions should be considered. So it can be instantiated with</p>
+
+<pre><code>var lastModifiedDateRetriever = new SingleFolderLastModifiedDateRetriever(
+  relativePathMapper,
+  new[] { "css", "less" }
+);
+</code></pre>
+
+<p>and then you needn't worry about the cache files interfering.</p>
+
+<p>There are some additional options that must be specified for the <strong>DiskCachingTextFileLoader</strong>; whether exceptions should be raised or swallowed (after logging) for IO issues and likewise if the cache file has invalid content (the cached content will have a CSS comment injected into the start of the content that records the relative path of the original request and the last-modified-date, without these a TextFileContents instance could not be accurately recreated from the cached stylesheets - the TextFileContents could have been binary-serialised and written out as the cached data but I prefered that the cached data be CSS).</p>
+
+<h3>Bringing it all together</h3>
+
+<p>This is the updated version of the CSSController from the post last year: <a href="onthefly-css-minification.html">On-the-fly CSS Minification</a>. It incorporates functionality to deal with 304 responses, to cache in-memory and on disk, to flatten imports, compile LESS, minify the output and all of the other advanced features covered in <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a>.</p>
+
+<p>This code is taken from the CSSMinifiedDemo project in the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> repository, the only difference being that I've swapped out the <strong>DefaultNonCachedLessCssLoaderFactory</strong> for the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>. If you don't want the source mapping, the media-query grouping and the other features then you might stick with the <strong>DefaultNonCachedLessCssLoaderFactory</strong>. If you wanted something in between then you could just take the code from either factory and tweak to meet your requirements!</p>
+
+<pre><code>using System;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Web;
+using System.Web.Mvc;
+using CSSMinifier.Caching;
+using CSSMinifier.FileLoaders;
+using CSSMinifier.FileLoaders.Factories;
+using CSSMinifier.FileLoaders.LastModifiedDateRetrievers;
+using CSSMinifier.Logging;
+using CSSMinifier.PathMapping;
+using CSSMinifierDemo.Common;
+
+namespace CSSMinifierDemo.Controllers
+{
+  public class CSSController : Controller
+  {
+    public ActionResult Process()
+    {
+      var relativePathMapper = new ServerUtilityPathMapper(Server);
+      var relativePath = Request.FilePath;
+      var fullPath = relativePathMapper.MapPath(relativePath);
+      var file = new FileInfo(fullPath);
+      if (!file.Exists)
+      {
+        Response.StatusCode = 404;
+        Response.StatusDescription = "Not Found";
+        return Content("File not found: " + relativePath, "text/css");
+      }
+
+      try
+      {
+        return Process(
+          relativePath,
+          relativePathMapper,
+          new NonExpiringASPNetCacheCache(HttpContext.Cache),
+          TryToGetIfModifiedSinceDateFromRequest()
+        );
+      }
+      catch (Exception e)
+      {
+        Response.StatusCode = 500;
+        Response.StatusDescription = "Internal Server Error";
+        return Content("Error: " + e.Message);
+      }
+    }
+
+    private ActionResult Process(
+      string relativePath,
+      IRelativePathMapper relativePathMapper,
+      ICacheThingsWithModifiedDates&lt;TextFileContents&gt; memoryCache,
+      DateTime? lastModifiedDateFromRequest)
+    {
+      if (string.IsNullOrWhiteSpace(relativePath))
+        throw new ArgumentException("Null/blank relativePath specified");
+      if (memoryCache == null)
+        throw new ArgumentNullException("memoryCache");
+      if (relativePathMapper == null)
+        throw new ArgumentNullException("relativePathMapper");
+
+      var lastModifiedDateRetriever = new SingleFolderLastModifiedDateRetriever(
+        relativePathMapper,
+        new[] { "css", "less" }
+      );
+      var lastModifiedDate = lastModifiedDateRetriever.GetLastModifiedDate(relativePath);
+      if ((lastModifiedDateFromRequest != null)
+      &amp;&amp; AreDatesApproximatelyEqual(lastModifiedDateFromRequest.Value, lastModifiedDate))
+      {
+        Response.StatusCode = 304;
+        Response.StatusDescription = "Not Modified";
+        return Content("", "text/css");
+      }
+
+      var errorBehaviour = ErrorBehaviourOptions.LogAndContinue;
+      var logger = new NullLogger();
+      var cssLoader = (new EnhancedNonCachedLessCssLoaderFactory(
+        relativePathMapper,
+        errorBehaviour,
+        logger
+      )).Get();
+
+      var diskCachingCssLoader = new DiskCachingTextFileLoader(
+        cssLoader,
+        relativePathRequested =&gt; new FileInfo(relativePathMapper.MapPath(relativePathRequested) + ".cache"),
+        lastModifiedDateRetriever,
+        DiskCachingTextFileLoader.InvalidContentBehaviourOptions.Delete,
+        errorBehaviour,
+        logger
+      );
+      var memoryAndDiskCachingCssLoader = new CachingTextFileLoader(
+        diskCachingCssLoader,
+        lastModifiedDateRetriever,
+        memoryCache
+      );
+
+      var content = memoryAndDiskCachingCssLoader.Load(relativePath);
+      if (content == null)
+        throw new Exception("Received null response from Css Loader - this should not happen");
+      if ((lastModifiedDateFromRequest != null)
+      &amp;&amp; AreDatesApproximatelyEqual(lastModifiedDateFromRequest.Value, lastModifiedDate))
+      {
+        Response.StatusCode = 304;
+        Response.StatusDescription = "Not Modified";
+        return Content("", "text/css");
+      }
+      SetResponseCacheHeadersForSuccess(content.LastModified);
+      return Content(content.Content, "text/css");
+    }
+
+    /// &lt;summary&gt;
+    /// Try to get the If-Modified-Since HttpHeader value - if not present or not valid (ie. not
+    /// interpretable as a date) then null will be returned
+    /// &lt;/summary&gt;
+    private DateTime? TryToGetIfModifiedSinceDateFromRequest()
+    {
+      var lastModifiedDateRaw = Request.Headers["If-Modified-Since"];
+      if (lastModifiedDateRaw == null)
+        return null;
+
+      DateTime lastModifiedDate;
+      if (DateTime.TryParse(lastModifiedDateRaw, out lastModifiedDate))
+        return lastModifiedDate;
+
+      return null;
+    }
+
+    /// &lt;summary&gt;
+    /// Dates from HTTP If-Modified-Since headers are only precise to whole seconds while files'
+    /// LastWriteTime are granular to milliseconds, so when
+    /// comparing them a small grace period is required
+    /// &lt;/summary&gt;
+    private bool AreDatesApproximatelyEqual(DateTime d1, DateTime d2)
+    {
+      return Math.Abs(d1.Subtract(d2).TotalSeconds) &lt; 1;
+    }
+
+    /// &lt;summary&gt;
+    /// Mark the response as being cacheable and implement content-encoding requests such that gzip is
+    /// used if supported by requester
+    /// &lt;/summary&gt;
+    private void SetResponseCacheHeadersForSuccess(DateTime lastModifiedDateOfLiveData)
+    {
+      // Mark the response as cacheable
+      // - Specify "Vary" "Content-Encoding" header to ensure that if cached by proxies that different
+      //   versions are stored for different encodings (eg. gzip'd vs non-gzip'd)
+      Response.Cache.SetCacheability(System.Web.HttpCacheability.Public);
+      Response.Cache.SetLastModified(lastModifiedDateOfLiveData);
+      Response.AppendHeader("Vary", "Content-Encoding");
+
+      // Handle requested content-encoding method
+      var encodingsAccepted = (Request.Headers["Accept-Encoding"] ?? "")
+        .Split(',')
+        .Select(e =&gt; e.Trim().ToLower())
+        .ToArray();
+      if (encodingsAccepted.Contains("gzip"))
+      {
+        Response.AppendHeader("Content-encoding", "gzip");
+        Response.Filter = new GZipStream(Response.Filter, CompressionMode.Compress);
+      }
+      else if (encodingsAccepted.Contains("deflate"))
+      {
+        Response.AppendHeader("Content-encoding", "deflate");
+        Response.Filter = new DeflateStream(Response.Filter, CompressionMode.Compress);
+      }
+    }
+  }
+}
+</code></pre>
+
+<p>Following a few bug fixes which I've made recently to the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> and <a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser</a>, I don't have any other major features to add to these projects until I make time to complete a rules validator so that the <a href="noncascading-css-a-revolution.html">Non-cascading CSS</a> guidelines can optionally be enforced. I'm still working on these and trying to get them into as much use as possible since I still believe they offer a real turning point for the creation of maintainable stylesheets!</p>
+<p class="PostTime">Posted at 16:45</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li></ul></div>
+						<p class="Comments">
+							<a href="css-minifier-caching.html#disqus_thread" data-disqus-identifier="50">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">2 March 2013</h3><h2><a id="Post47"></a><a href="extending-the-css-minifier.html">Extending the CSS Minifier</a></h2>
+
+<p>I have a <a href="https://bitbucket.org/DanRoberts/cssminifier">CSS Minifier project hosted on Bitbucket</a> which I've used for some time to compile and minify the stylesheet contents for this blog but I've recently extended its functionality after writing the <a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a> post.</p>
+
+<p>The original, fairly basic capabilities were to flatten imports into a single request and then to remove comments and minify the content to reduce bandwidth requirements in delivery. The CSSMinifierDemo project in solution above also illustrated implementing support for 304 responses (for when the Client already has the latest content in their browser cache) and compression (gzip or deflate) handling. I wrote about this in the <a href="onthefly-css-minification.html">On-the-fly CSS Minification</a> post.</p>
+
+<p>Some time after that I incorporated LESS support by including a reference to <a href="http://www.dotlesscss.org/">dotLess</a>.</p>
+
+<p>However, now I think it has some features which aren't quite as bog standard and so it's worth talking about again!</p>
+
+<h3>Source Mapping</h3>
+
+<p>One of the difficulties with "debugging" styles in large and complex sheets when they've been combined and minified (and compiled, in the case of LESS content) is tracking down precisely where a given still originated from when you're looking at it in Firebug or any of the other web developer tools in the browsers.</p>
+
+<p>With javascript - whether it be minified, compiled from CoffeeScript or otherwise manipulated before being delivered the Client - there is support in modern browsers for "Source Mapping" where metadata is made available that can map anywhere in the processed content back to the original. Clever stuff. (There's a decent started article on HTML5 Rocks: <a href="http://www.html5rocks.com/en/tutorials/developertools/sourcemaps/">Introduction to Javascript Source Maps</a>).</p>
+
+<p>However, there's (currently, if I'm being optimistic) no such support for CSS.</p>
+
+<p>So I've come up with a workaround!</p>
+
+<p>If I have a file Test1.css</p>
+
+<pre><code>@import "Test2.css";
+
+body
+{
+  margin: 0;
+  padding: 0;
+}
+</code></pre>
+
+<p>and Test2.css</p>
+
+<pre><code>h2
+{
+  color: blue;
+
+  a:hover
+  {
+    text-decoration: none;
+  }
+}
+</code></pre>
+
+<p>then these would be compiled (since Test2.css uses LESS nested selectors) down to</p>
+
+<pre><code>body{margin:0;padding:0}
+h2{color:blue}
+h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>(I've added line breaks between style blocks for readability);</p>
+
+<p>My approach is to inject additional pseudo selectors into the content that indicate which file and line number a style block came from in the pre-processed content. The selectors will be valid for CSS but shouldn't relate to any real elements in the markup.</p>
+
+<pre><code>#Test1.css_3,body{margin:0;padding:0}
+#Test2.css_1,h2{color:blue}
+#Test2.css_5,h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>Now, when you look at any given style in the web developer tools you can immediately tell where in the source content to look!</p>
+
+<p>The <strong>LessCssLineNumberingTextFileLoader</strong> class takes two constructor arguments; one is the file loader reference to wrap and the second is a delegate which takes a relative path (string) and a line number (int) and returns a string that will be injected into the start of the selector.</p>
+
+<p>This isn't quite without complications, unfortunately, when dealing with nested styles in LESS content. For example, since this</p>
+
+<pre><code>#Test2.css_1,h2
+{
+  color: blue;
+
+  #Test2.css_5,a:hover
+  {
+    text-decoration: none;
+  }
+}
+</code></pre>
+
+<p>is translated by the compiler into (disabling minification)</p>
+
+<pre><code>#Test2.css_1, h2
+{
+  color: blue;
+}
+
+#Test2.css_1 #Test2.css_5,
+#Test2.css_1 a:hover,
+h2 #Test2.css_5
+h2 a:hover
+{
+  text-decoration: none;
+}
+</code></pre>
+
+<p>The LESS translator has had to multiply out the comma separated selectors "#Test2.css_1" and "h2" across the nested selectors "#Test2.css_5" and "a:hover" since this is the only way it <em>can</em> be translated into CSS and be functionality equivalent.</p>
+
+<p>But this isn't as helpful when it comes to examining the styles to trace back to the source. So additional work is required to add another processing step to remove any unnecessary markers. This can be dealt with by the <strong>InjectedIdTidyingTextFileLoader</strong> but it requires that you keep track of all of the markers inserted with the <strong>LessCssLineNumberingTextFileLoader</strong> (which isn't a massive deal if the delegate that is passed to the <strong>LessCssLineNumberingTextFileLoader</strong> also records the markers it has provided).</p>
+
+<p>The good news is that the class <strong>CSSMinifier.FileLoaders.Factories.EnhancedNonCachedLessCssLoaderFactory</strong> in the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSS Minifier repo</a> will instantiate a LESS file loader / processor that will apply all of the functionality that I'm going to cover in this post (including this source mapping) so if it's not clear from what I've described here how to implement it, you can either use that directly or look at the code to see how to configure it.</p>
+
+<h3>Body-scope overhead removing</h3>
+
+<p>Rule 5 in <a href="noncascading-css-a-revolution.html">Non-cascading CSS</a> states that</p>
+
+<blockquote>
+  <p>All files other than the reset and theme sheets should be wrapped in a body "scope"</p>
+</blockquote>
+
+<p>This is so that LESS values and mixins can be declared in self-contained files that can be safely included alongside other content, safe in the knowledge that the values and mixins are restricted in the scope to the containing file. (See that post for more details).</p>
+
+<p>The disadvantage of this is the overhead of the additional body tag included in all of the resulting selectors. If we extend the earlier example</p>
+
+<pre><code>body
+{
+  h2
+  {
+    color: blue;
+
+    a:hover
+    {
+      text-decoration: none;
+    }
+  }
+}
+</code></pre>
+
+<p>it will compile down to</p>
+
+<pre><code>body h2{color:blue}
+body h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>The <strong>LessCssOpeningBodyTagRenamer</strong> will parse the file's content to determine if it is wrapped in a body tag (meaning that the only content outside of the body tag is whitespace or comments) and replace the text "body" of the tag with a given value. So we may get it translated into</p>
+
+<pre><code>REPLACEME
+{
+  h2
+  {
+    color: blue;
+
+    a:hover
+    {
+      text-decoration: none;
+    }
+  }
+}
+</code></pre>
+
+<p>and consequently</p>
+
+<pre><code>REPLACEME h2{color:blue}
+REPLACEME h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>This allows the <strong>ContentReplacingTextFileLoader</strong> to remove all references to "REPLACEME " when the LESS processing and minification has been completed. Leaving just</p>
+
+<pre><code>h2{color:blue}
+h2 a:hover{text-decoration:none}
+</code></pre>
+
+<p>The string "REPLACEME" and "REPLACEME " (with the trailing space) are specified as constructor arguments for the <strong>LessCssOpeningBodyTagRenamer</strong> and <strong>ContentReplacingTextFileLoader</strong> so different values may be used if you think something else would be more appropriate.</p>
+
+<p><strong>Update (4th June):</strong> I've replaced <strong>LessCssOpeningBodyTagRenamer</strong> with <strong>LessCssOpeningHtmlTagRenamer</strong> since trimming out the body tag will prevent stylesheets being written where selectors target classes on the body, which some designs I've worked with rely upon being able to do.</p>
+
+<h3>Media Query Grouping</h3>
+
+<p>In order to follow <a href="noncascading-css-a-revolution.html">Non-cascading CSS</a> Rule 3</p>
+
+<blockquote>
+  <p>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur within a nested selector so long as child selectors are strictly used)</p>
+</blockquote>
+
+<p>media queries must be nested inside style blocks rather than existing in separate files that rearrange elements for different breakpoints (which is a common pattern I've seen used). This makes the maintenance of the styles much easier as the styles for a given element are arranged together but it means that there may end up being many media-query-wrapped sections in the final content where many sections have the same criteria (eg. "@media screen and (max-width:35em)").</p>
+
+<p>I'm sure that I've read somewhere* that on some devices, having many such sections can be expensive since they all have to evaluated. I think it mentioned a particular iPhone model but I can't for the life of me find the article now! But if this is a concern then we can take all styles that are media-query-wrapped and merge any media queries whose criteria are identical using the <strong>MediaQueryGroupingCssLoader</strong>.</p>
+
+<p>Note that this will move all of the media query sections to the end of the style content. If your styles rely on them appearing in the final output in the same order as they appear in the source then this may pose a problem. But this is one of the issues addressed by the <a href="noncascading-css-a-revolution.html">Non-cascading CSS</a> rules, so if they're followed then this manipulation will always be safe.</p>
+
+<p>* <strong>Update (4th June):</strong> It finally found what I was thinking of but couldn't find - it was <a href="http://alwaystwisted.com/post.php?s=2012-05-05-everyday-im-bubbling-with-media-queries-and-less#comment-537669505">this comment</a> on the artible <a href="http://alwaystwisted.com/post.php?s=2012-05-05-everyday-im-bubbling-with-media-queries-and-less">Everyday I'm Bubbling. With Media Queries and LESS</a>.</p>
+
+<h3>More to come!</h3>
+
+<p>As part of this work, I've written a CSS / LESS parser which can be found on Bitbucket: <a href="https://bitbucket.org/DanRoberts/cssparser">CSS Parser</a>. It will lazily evaluate the content, so if you only need to examine the first few style declarations of a file then only the work required to parse those styles will be performed. It's used by the <strong>LessCssOpeningBodyTagRenamer</strong> (<strong>4th June</strong>: Now the <strong>LessCssOpeningHtmlTagRenamer</strong>) and I intend to use it to write a validator that will check which of my Non-cascading CSS rules are or aren't followed by particular content. I might write more about the parser then.</p>
+
+<p>In the meantime, if you want to give it a go for any reason then clone that repository and call</p>
+
+<pre><code>CSSParser.Parser.ParseLESS(content);
+</code></pre>
+
+<p>giving it a string of content and getting back an IEnumerable&lt;CategorisedCharacterString&gt;.</p>
+
+<pre><code>public class CategorisedCharacterString
+{
+  public CategorisedCharacterString(
+    string value,
+    int indexInSource, 
+    CharacterCategorisationOptions characterCategorisation);
+
+  public CharacterCategorisationOptions CharacterCategorisation { get; }
+
+  // Summary: This is the location of the start of the string in the source data
+  public int IndexInSource { get; }
+
+  // Summary: This will never be null or an empty string
+  public string Value { get; }
+}
+
+public enum CharacterCategorisationOptions
+{
+  Comment,
+  CloseBrace,
+  OpenBrace,
+  SemiColon,
+
+  // Summary: Either a selector (eg. "#Header h2") or a style property (eg. "display")
+  SelectorOrStyleProperty,
+
+  // Summary: This is the colon between a Style Property and Value (not any colons that may exist in a
+  // media query, for example)
+  StylePropertyColon,
+
+  Value,
+  Whitespace
+}
+</code></pre>
+
+<p>The content is parsed as that enumerable set is iterated through, so when you stop enumerating it stops processing.</p>
+
+<p><strong>Update (12th March):</strong> I've posted a follow-up to this about various caching mechanism so that all of this processing need be performed as infrequently as possible! See <a href="css-minifier-caching.html">CSS Minifier - Caching</a>.</p>
+
+<p><strong>Update (4th June):</strong> I've also started writing up a bit about how I implemented the parsing, there's a few interesting turns (at least I think there are!) so check it out at <a href="more-caching-mechanisms.html">Parsing CSS</a>.</p>
+<p class="PostTime">Posted at 15:02</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li></ul></div>
+						<p class="Comments">
+							<a href="extending-the-css-minifier.html#disqus_thread" data-disqus-identifier="47">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">2 March 2013</h3><h2><a id="Post46"></a><a href="noncascading-css-the-followup.html">Non-cascading CSS: The follow-up</a></h2>
+
+<p>This is related to the post <a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution</a>. In that I talked about 9 proposed rules to write genuinely reusable and maintainable CSS (inspired by <a href="http://www.lispcast.com/cascading-separation-abstraction">www.lispcast.com/cascading-separation-abstraction</a>):</p>
+
+<ol>
+<li>A standard (html5-element-supporting) reset sheet is compulsory, only bare selectors may be specified in it</li>
+<li>A single "common" or "theme" sheet will be included with a minimum of default styles, only bare selectors may be specified in it</li>
+<li>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur within a nested selector so long as child selectors are strictly used)</li>
+<li>Stylesheets are broken out into separate files, each with a well-defined purpose</li>
+<li>All files other than the reset and theme sheets should be wrapped in a body "scope"</li>
+<li>No selector may be repeated in the rules</li>
+<li>All measurements are described in pixels</li>
+<li>Margins, where specified, must always be fully-defined</li>
+<li>Border and Padding may not be combined with Width</li>
+</ol>
+
+<p>Shortly after that I re-wrote the styling for this blog to ensure that the principles held sound (since I've started keeping my blog in BitBucket, you can find it <a href="https://bitbucket.org/DanRoberts/blog">here</a>). And I'm happy to say that they did! In fact, after a very short adjustment period, it felt very natural and somewhat reassuring with its structure. It felt like writing good code rather than the CSS I've written before that left functional but somewhat lacking.. something. (And trust me, I've written a <em>lot</em> over the years).</p>
+
+<p>Each file felt comfortably self-contained and logical. I was particularly happy with how simple the layout.less file was, despite handling the media queries to render the content differently on smaller screens.</p>
+
+<h3>Amendments</h3>
+
+<p>Having talked to more people and considered the uses in the context of particular scenarios I still feel confident that they nearly all hold firm. With one exception..</p>
+
+<blockquote>
+  <p>All measurements are described in pixels</p>
+</blockquote>
+
+<p>This rule has so much promise and is able to deliver so much if it can be applied everywhere. As outlined in the <a href="noncascading-css-a-revolution.html">original post</a>, it solves the compound issue with percentages or ems being applied to multiple layers (so a paragraph's font-size of 80% will be affected by its parent div element's font-size of 90%, for example).</p>
+
+<p>It has the potential to make some responsive designs I've seen easier to implement. Some current accepted wisdom is that all dimensions should be specified in percentages so that the design is "fluid". Using the example of a page split into two columns such that there's a main content area and a side bar, in many cases it's entirely possible to have the sidebar be fixed width and then leave the main content area to fill the remaining width.</p>
+
+<p><img src="Content/Images/Posts/FluidLayouts.png" alt="Fixed Width Sidebar Fluid Design" title="Fixed Width Sidebar Fluid Design" /></p>
+
+<p>This has the benefit that the narrower side bar controls can be styled more predictably - they don't have to deal with as much jiggling about as the available horizontal resolution varies. And often in scenarios like this, the space and element arrangement of side bars can be quite tight. If there is a search image button, for example, you must make sure that it can't become too wide to fit into the available width as the width is reduced with a fluid-width side bar. The content area, on the other hand, is more likely to lend itself to flexibility due to its wider nature.</p>
+
+<p>For common breakpoints less-than-480px, up-to-600px, up-to-768px, up-to-900px and greater-than-900px, there may be a fluid layout between 600px and 900px. Below 600px the design may have most elements full width (similar to this blog in reduced-width formatting) and above 900px it's common to be fixed width to prevent content areas from becoming too wide and lines of text becoming too long. If the side bar is 250px wide, say, the the content area will vary between 350px and and 650px but the formatting of the side bar need not vary. There may be an argument to have a mid-way point for the side bar to be 300px wide when the horizontal resolution is greater than 768px whilst 200px wide between 600px and 768px. Now there are two variations for the side bar formatting but the content width only varies between 400px and 600px.</p>
+
+<p>I think there's a lot of mileage to be had from this joint fixed-width / fluid-layout combination.</p>
+
+<p>BTW, if you haven't read the classic "A List Apart" article <a href="http://alistapart.com/article/negativemargins">Creating Liquid Layouts with Negative Margins</a> (from 2004!) then be sure to check it out - when I came to actually trying to implement fixed width side bar(s) with a fluid width main column I came a bit unstuck until I rooted this out and refreshed my memory on what is basically the definitive way to do it.</p>
+
+<p>However, there is one point at which I've become stuck. I've seen designs which have a horizontal gallery of items: imagine a row of images with captions beneath them. In a similar design to that shown above, these would appear below the content area - so within the 400-600px wide region. The design requires that four items be displayed within the gallery at all times. The current approach I've seen to implementing this is for a wrapper around the gallery to effectively be 100% of the available width and then for each of the four items to have a width of 25%. This means that they resize as the available width changes. The image for each item has a width of 100% which ensures that it fills the space it has <em>within</em> the 25% section.</p>
+
+<p><img src="Content/Images/Posts/FluidLayoutsGallery.png" alt="Fluid Width Gallery Problem" title="Fluid Width Gallery Problem" /></p>
+
+<p>I don't really like this because in order for the image to fit within its gallery item container, it <em>has</em> to specify this 100% width. But I can't see any way other than this approach to make it work. I'd like a way to specify a fixed width for the gallery items and for them to arrange themselves with horizontal whitespace to stretch across the whole width, possibly with a change to the fixed width at the 768px breakpoint as suggested for side bar above. This would make styling the items much simpler and predictable. But unfortunately I haven't quite managed to come up with a way to do this in CSS yet! So I might have to admit to relaxing this rule in some cases. That's not to say that I've completely given up on a way to work round this, at which point maybe the rule can be promoted again!</p>
+
+<p>One other note about "pixels everywhere"; I'm definitely onboard with the idea with the principle of specifying media queries in ems, as mentioned in my first post about this (and as taken straight from here: <a href="http://blog.cloudfour.com/the-ems-have-it-proportional-media-queries-ftw/">The EMs have it: Proportional Media Queries FTW!</a>). I've done that with the breakpoint in my blog formatting so that it's not a pixel width that I break at but 35em. This means that if the browser font size is increased sufficiently that the breakpoint will be passed and the formatting changed. I've noticed that Firefox will do this immediately when the font size becomes large enough but with Chrome the page has to be refreshed after increasing the font the blog, then the reduced-width layout would be used).</p>
+
+<h3>Return of the CSS Minifier</h3>
+
+<p>I'm going to write another post now about some changes to the CSS Minifier project that I've written about before (<a href="onthefly-css-minification.html">On-the-fly CSS Minification</a>). Some time ago I included a reference to <a href="http://www.dotlesscss.org/">dotLess</a> to enable the compilation of LESS but I've now added further functionality such as a form of source mapping (indicating where styles in compiled output originated from), a way to address the overhead of Rule 5: <em>All files other than the reset and theme sheets should be wrapped in a body "scope"</em> and a way to automatically group media queries. See <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a>.</p>
+<p class="PostTime">Posted at 13:48</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li></ul></div>
+						<p class="Comments">
+							<a href="noncascading-css-the-followup.html#disqus_thread" data-disqus-identifier="46">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">8 January 2013</h3><h2><a id="Post42"></a><a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a></h2>
+
+<h4>("Barely-cascading CSS: A revolution!", "Barely-cascading CSS: A revolution??")</h4>
+
+<p>This post was inspired by what I read at <a href="http://www.lispcast.com/cascading-separation-abstraction">www.lispcast.com/cascading-separation-abstraction</a> who in turn took some inspiration from <a href="http://37signals.com/svn/posts/3003-css-taking-control-of-the-cascade">37signals.com/svn/posts/3003-css-taking-control-of-the-cascade</a>.</p>
+
+<p>Part of what really clicked for me was this</p>
+
+<blockquote>
+  <p>The value of a CSS property is determined by these factors:</p>
+  
+  <ul>
+  <li>The order of CSS imports</li>
+  <li>The number of classes mentioned in the CSS rule</li>
+  <li>The order of rules in a particular file</li>
+  <li>Any inherits settings</li>
+  <li>The tag name of the element</li>
+  <li>The class of the element</li>
+  <li>The id of the element</li>
+  <li>All of the element's ancestors in the HTML tree</li>
+  <li>The default styles for the browser</li>
+  </ul>
+</blockquote>
+
+<p>combined with</p>
+
+<blockquote>
+  <p>By using nested LESS rules and child selectors, we can avoid much of the pain of cascading rules. Combining with everything else, we define our styles as mixins (and mixins of mixins)..</p>
+</blockquote>
+
+<p>and then the guidelines</p>
+
+<blockquote>
+  <ol>
+  <li>Only bare (classless + non-nested) selectors may occur in the reset.</li>
+  <li>No bare selectors may occur in the LESS rules.</li>
+  <li>No selector may be repeated in the LESS rules.</li>
+  </ol>
+</blockquote>
+
+<p>along with</p>
+
+<blockquote>
+  <p>The box model sucks.. And what happens when I set the width to 100%? What if a padding is cascaded in? Oops.</p>
+  
+  <p>I propose to boycott the following properties: ..</p>
+</blockquote>
+
+<p>I must admit that when I first read the whole article I thought it was quite interesting but it didn't fully grab me immediately. But it lingered in the back of my mind for a day or two and the more I thought about it, the more it took hold and I started to think this could offer a potentially huge step forward for styling. Now, I wish <em>I'd</em> put it all together!</p>
+
+<p>What I really think it could possibly offer as the holy grail is the ability to re-use entire chunks of styling across sites. At work this is something that has been posited many times in the past but it's never seemed realistic because the styles are so intermingled between layout specific to one site and the various elements of a control. So even in cases where the basic control and its elements are similar between sites, it's seemed almost implausible to consistently swap style chunks back and forth and to expect them to render correctly, no matter how careful and thoughtful you are with constructing the styles. But I realise now that this is really due almost entirely to the complex cascading rules and its many knock-on effects!</p>
+
+<p>So I'm going to present my interpretation of the guidelines. Now, these aren't fully road-tested yet, I intend to put them to use in a non-trivial project as soon as I get the chance so this is just my initial plan-of-attack..</p>
+
+<h3>My interpretation</h3>
+
+<p>I'm going to stick with <a href="http://lesscss.org">LESS</a> as the CSS processor since I've used it in the past.</p>
+
+<ol>
+<li><p>A standard (html5-element-supporting) reset sheet is compulsory, only bare selectors may be specified in it</p></li>
+<li><p>A single "common" or "theme" sheet will be included with a <em>minimum</em> of default styles, only bare selectors may be specified in it</p></li>
+<li><p>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur <em>within</em> a nested selector so long as child selectors are strictly used)</p></li>
+<li><p>Stylesheets are broken out into separate files, each with a well-defined purpose</p></li>
+<li><p>All files other than the reset and theme sheets should be wrapped in a body "scope"</p></li>
+<li><p>No selector may be repeated in the rules</p></li>
+<li><p>All measurements are described in pixels</p></li>
+<li><p>Margins, where specified, must always be fully-defined</p></li>
+<li><p>Border and Padding may not be combined with Width</p></li>
+</ol>
+
+<p><img src="Content/Images/Posts/MassivelyCascadingStyles.png" alt="Massively Cascading Styles" title="Massively Cascading Styles" /></p>
+
+<p><em>(Above) This is what I'm trying to avoid!</em></p>
+
+<h4>A standard (html5-element-supporting) reset sheet is compulsory</h4>
+
+<p>This is really to take any browser variation out of the equation. You can start by thinking it's something along the lines of "* { margin: 0; padding: 0; }" and then think some more about it and then just go for Eric Meyer's html5-supporting reset. That's my plan at least! :)</p>
+
+<h4>A single "common" or "theme" sheet will be included with a <em>minimum</em> of default styles, only bare selectors may be specified in it</h4>
+
+<p>I was almost in two minds about this because it feels like it <em>is</em> inserting a layer of cascading back in, but I think there should be one place to declare the background colour and margin for the body, to set the default font colour, to set "font-weight: bold" on strong tags and to set shared variables and mixins.</p>
+
+<h4>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur <em>within</em> a nested selector so long as child selectors are strictly used)</h4>
+
+<p>Bare selectors (eg. "div" rather than "div.AboutMe", or even "div.AboutMe div") are too generic and will almostly certainly end up polluting another element's style cascade, which we're trying to avoid.</p>
+
+<p>The reason for the exception around child selectors is that this may be used in places where classes don't exist on all of the elements to be targeted. Or if the bullet point type for a particular list is to be altered, we wouldn't expect to have to rely upon classes - eg.</p>
+
+<pre><code>&lt;div class="ListContainer"&gt;
+  &lt;ul&gt;
+    &lt;li&gt;Item&lt;/li&gt;
+    &lt;li&gt;Another Item&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>may be styled with</p>
+
+<pre><code>div.ListContainer
+{
+  &gt; ul &gt; li { list-style-type: square; }
+}
+</code></pre>
+
+<p>This would <em>not</em> affect the second level of items. So if the markup was</p>
+
+<pre><code>&lt;div class="ListContainer"&gt;
+  &lt;ul&gt;
+    &lt;li&gt;
+      Item
+      &lt;ul&gt;
+        &lt;li&gt;Sub Item&lt;li&gt;
+      &lt;/ul&gt;
+    &lt;/li&gt;
+    &lt;li&gt;Another Item&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>then "Sub Item" will not get the "square" bullet point from the above styles. And this is progress! This is what we want, for styles to have to be explicit and not possibly get picked up from layer after layer of possible style matches. If we didn't use child selectors and we didn't want the nested list to have square markers then we'd have to add another style to undo the square setting.</p>
+
+<p>Or, more to point (no pun intended!), if we want to specify a point style for the nested list then adding this style will not be overriding the point style from the outer list, it will be specifying it for the first time (on top of the reset style only), thus limiting the number of places where the style may have come from.</p>
+
+<p>In order for the inner list to have circle markers we need to extend the style block to</p>
+
+<pre><code>div.ListContainer
+{
+  &gt; ul &gt; li
+  {
+    list-style-type: square;
+    &gt; ul &gt; li
+    {
+      list-style-type: circle
+    }
+  }
+}
+</code></pre>
+
+<h4>Stylesheets are broken out into separate files, each with a well-defined purpose</h4>
+
+<p>This is for organisational purposes and I imagine that it's a fairly common practice to an extent, but I think it's worth taking a step further in terms of granularity and having each "chunk" or control in its own file. Since pre-processing is going to be applied to combine all of the files together, why not have loads of them if it makes styles easier to organise and find!</p>
+
+<p><img src="Content/Images/Posts/AmazonBreakdownExample.png" alt="Amazon Home Page" title="Amazon Home Page" />
+I've just had a quick look at Amazon to pick out examples. I would go so far as to have one file <em>NavTopBar.less</em> for the navigation strip across the top, distinct from the <em>NavShopByDepartment.less</em> file. Then a LayoutHomePage file would arrange these elements, with all of the other on that page.</p>
+
+<p>The more segregated styles are, the more chance (I hope!) that these file-size chunks could be shared between projects.</p>
+
+<p>One trick I've been toying with at work is to inject "source ids" into the generated css in the pre-processing step so that when the style content is all combined, LESS-compiled and minified, it's possible to determine where the style originally came from.</p>
+
+<p>For example, I might end up with style in the final output like</p>
+
+<pre><code>#AboutMe.css_6,div.ListContainer&gt;ul&gt;li{list-style-type:square}
+</code></pre>
+
+<p>where the "#AboutMe.css_6" id relates not to an element but line 6 of the "AboutMe.css" file. It's a sort of poor man's version of Source Mapping which I don't believe is currently available for CSS (which is a pity.. there's a Mozilla feature request for it, though: <a href="https://wiki.mozilla.org/DevTools/Features/CSSSourceMap">CSSSourceMap</a>).</p>
+
+<p>I haven't decided yet whether this should be some sort of debug option or whether the overhead of the additional bytes in the final payload are worth the benefit for debugging. There's an argument that if the styles are broken into files and all have tightly targeted selectors then it should be relatively easy to find the source file and line, but sometimes this doesn't feel like the case when you go back to a project six months after you last looked at it!</p>
+
+<p>Another example of a file with a "well-defined purpose" might be to apply a particular grid layout to a particular template, say "CheckoutPageLayout". This would arrange the various elements, but each <em>of</em> the elements within the page would have their own files.</p>
+
+<h4>All files other than the reset and theme sheets should be wrapped in a body scope</h4>
+
+<p>This is inspired by the Immediately Invoked Function Expression pattern used in Javascript to forcibly contain the scope of variables and functions within. Since we can do the same thing with LESS values and mixins, I thought it made sense to keep them segregated, this way if the same name is used for values or mixins in different files, they won't trample on each other toes.</p>
+
+<p>The idea is simply to nest all statements within a file inside a "body { .. }" declaration - ie.</p>
+
+<pre><code>body
+{
+
+  // All the content of the file goes here..
+
+}
+</code></pre>
+
+<p>This will mean that the resulting styles will all be preceded with the "body" tag which adds some bloat to the final content, but I think it's worth it to enable this clean scoping of values and mixins. Any values and mixins that <em>should</em> be shared across files should be defined in the "common" / "theme" sheet.</p>
+
+<p>Just as a quick reminder, the following LESS</p>
+
+<pre><code>@c = red;
+.e1 { color: @c; }
+body
+{
+  @c = blue;
+  .e2 { color: @c; }
+}
+.e3 { color: @c; }
+</code></pre>
+
+<p>will generate this CSS</p>
+
+<pre><code>.e1 { color: red; }
+body .e2 { color: blue; }
+.e3 { color: red; }
+</code></pre>
+
+<p>The @c value inside the body scope applies within that scope and overrides the @c value outside of the scope while inside the scope. Once back out of the scope (after the "body { .. }" content), @c still has the value "red".</p>
+
+<p>It's up for debate whether this definitely turns out to be a good idea. Interesting, so far I've not come across it anywhere else, but it really seems like it would increase the potential for sharing files (that are tightly scoped to particular controls, or other unit of layout / presentation) between projects.</p>
+
+<p><strong>Update (4th June 2013)</strong>: I've since updated this rule to specify the use of the html tag rather than body as I've written a processor that will strip out the additional tags injected (see <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a>) and stripping out body tags would mean that selectors could not be written that target elements in a page where a particular class is specified on the body tag.</p>
+
+<h4>No selector may be repeated in the rules</h4>
+
+<p>In order to try to ensure that no element gets styles specified in more places than it should (that means it should be set no more frequently than in the resets, in the "common" / "theme" sheet and then at most by one other specific selector), class names should not be repeated in the rules.</p>
+
+<p>With segregation of styles in various files, it should be obvious which single file any given style belongs in. To avoid duplicating a class name, LESS nesting should be taken advantage of, so the earlier example of</p>
+
+<pre><code>div.ListContainer
+{
+  border: 1px solid black;
+
+  &gt; ul &gt; li { list-style-type: square; }
+}
+</code></pre>
+
+<p>is used instead of</p>
+
+<pre><code>div.ListContainer { border: 1px solid black; }
+
+div.ListContainer &gt; ul &gt; li { list-style-type: square; }
+</code></pre>
+
+<p>and where previously class names might have been repeated in a CSS stylehset because similar properties were being set for multiple elements, this should now be done with mixins - eg. instead of</p>
+
+<pre><code>div.Outer, div.Inner
+{
+  float: left;
+  width: 100%;
+}
+
+div.Inner { border: 1px solid black; }
+</code></pre>
+
+<p>we can use</p>
+
+<pre><code>.FullWidthFloat ()
+{
+  float: left;
+  width: 100%;
+}
+
+div.Outer
+{
+  .FullWidthFloat;
+}
+
+div.Inner
+{
+  .FullWidthFloat;
+  border: 1px solid black;
+}
+</code></pre>
+
+<p>This is clearly straight from lispcast's post, it's a direct copy-and-paste of their guideline 2!</p>
+
+<p>We have to accept that this still can't prevent a given element from having styles set in multiple places, because it's feasible that multiple selectors could point to the same element (if an element has multiple classes then there could easily be multiple selectors that all target it) but this is definitely a good way to move towards the minimum number of rules affecting any one thing.</p>
+
+<h4>All measurements are described in pixels</h4>
+
+<p>I've been all round the houses in the last few years with measurement units. Back before browsers all handled content-resizing with zoom functionality (before Chrome was even released by Google to shake up the web world) I did at least one full site where <em>every</em> single measurement was in em's - not just the font sizes, but the layout measurements, the borders, the image dimensions, <em>everything</em>! This mean that when the font was sized up or down by the browser, the current zooming effect we all have now was delivered. In all browsers. Aside from having to do some lots of divisions to work out image dimensions (and remembering what the equivalent of 1px was for the borders!), this wasn't all <em>that</em> difficult most of the time.. but where it <em>would</em> become awkward was if a containing element had a font-size which would affect the effective size of an em such that the calculations from pixel to em changed. In other words, cascading styles bit me again!</p>
+
+<p><img src="Content/Images/Posts/MixedUnitMeasurements.png" alt="Mixing measurement units is confusing" title="Mixing measurement units is confusing" />
+In more common cases, I've combined pixels and ems - using ems in most places but pixels for particular layout arrangements and images.</p>
+
+<p>But with the current state of things, with the browsers handling zooming of the content regardless of the units specified, I'm seriously suggesting using pixels <em>exclusively</em>. For one thing, it will make width calculations, where required, much <em>much</em> simpler; there can't be any confusion when trying to reason about distances in mixed units!</p>
+
+<p>I'm going to try to pixels-only and see how it goes!</p>
+
+<p>One pattern that I've seen used is to combine "float: left;" and "width: 100%;" when an element has children that are floated, but the element must expand to fully contain all of those children. In the majority of cases I see it used in site builds where I work, the elements that have been floated could have had "display: inline-block" applied instead to achieve the same layout - the use of floats is left over from having to fully support IE6 which wouldn't respect "inline-block" (it was less than a year ago that we managed to finally shackle those IE6 chains! Now it's a graceful-degradation-only option, as I think it should be).</p>
+
+<p>So there's a chance that some allowances will have to be made for 100% widths, but I'm going to start off optimistic and hope that it's not the case until I'm proven wrong (either by myself or someone else trying these rules!).</p>
+
+<p><strong>Update (22nd January 2013)</strong>: Although I'm currently still aiming for all-pixel measurements for elements, after reading this article <a href="http://blog.cloudfour.com/the-ems-have-it-proportional-media-queries-ftw/">The EMs have it: Proportional Media Queries FTW!</a> I think I might get sold on the idea of using em's in media queries.. it seems like it would be an ideal to work with browsers that have been zoomed in sufficiently that they'd look better moving the next layout break point. I need to do some testing with mobile or tablet devices, but it sounds intriguing!</p>
+
+<h4>Margins, where specified, must always be fully-defined</h4>
+
+<p>This is straight from the lispcast post; it just means that if you specify a margin property that you should use the <em>"margin"</em> property and not "margin-left", "margin-top", etc.. The logic being that if you specify only "margin-left", for example, then the other margin sizes are inherited from the previous declaration that was applied (even if that's only the reset files). The point is that the style is split over multiple declarations and this is what we're trying to avoid.</p>
+
+<p>So instead of</p>
+
+<pre><code>margin-left: 4px;
+</code></pre>
+
+<p>specify</p>
+
+<pre><code>margin: 0 0 0 4px;
+</code></pre>
+
+<p>If you require a 4px margin top, bottom, left and right then</p>
+
+<pre><code>margin: 4px;
+</code></pre>
+
+<p>is fine, the point is to ensure that every dimension is specified at once (which the above will do), specifying the dimensions individually within a single margin value is only required if different sides need different margin sizes!</p>
+
+<h4>Border and Padding may not be combined with Width</h4>
+
+<p>This is also heavily inspired by the lispcast post, it's intended to avoid box model confusion. When I first read it, I had a blast-from-the-past shiver go through me from the dark days where we had to deal with different box models between IE and other browsers but this hasn't been an issue with the proper doc types since IE...6?? So what really concerns us is if we have</p>
+
+<pre><code>&lt;div class="outer"&gt;
+  &lt;div class="inner"&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>and we have the styles</p>
+
+<pre><code>.outer { width: 300px; margin: 0; border: 1px solid black; padding: 0; }
+.inner { width: 300px; margin: 0; border: 1px solid black; padding: 10px; }
+</code></pre>
+
+<p>then we could be forgiven for wanting both elements to be rendered with the same width, but we'll find the "inner" element to appear wider than the "outer" since the width within the border is the content width (as specified by the css style) and <em>then</em> the padding width on top of that.</p>
+
+<p>Another way to illustrate would be the with the styles</p>
+
+<pre><code>.outer { width: 300px; margin: 0; border: 1px solid black; padding: 0; }
+.inner { width: 100%;  margin: 0; border: 1px solid black; padding: 10px; }
+</code></pre>
+
+<p>Again, the "inner" element juts out of the "outer" since the padding is applied around the 100% width (in this example, the 100% equates to the 300px total width of the "outer" element) which seems counter-intuitive.</p>
+
+<p><img src="Content/Images/Posts/BoxModel.png" alt="Box Model Example" title="Box Model Example" /></p>
+
+<p>So what if we don't use padding at all?</p>
+
+<p>In an ideal world - in terms of the application of styling rules - where an element requires both an explicit width <em>and</em> a padding, this could be achieved with <em>two</em> elements; where the outer element has the width assigned and the inner element has the padding. But, depending upon how we're building content, we mightn't have the ability to insert extra elements. There's also a fair argument that we'd adding elements solely for presentation rather than semantic purpose. So, say we have something like</p>
+
+<pre><code>&lt;div class="AboutMe"&gt;
+  &lt;h3&gt;About&lt;/h3&gt;
+  &lt;p&gt;Content&lt;/p&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>instead of specifying</p>
+
+<pre><code>div.AboutMe { width: 200px; padding: 8px; }
+</code></pre>
+
+<p>maybe we could consider</p>
+
+<pre><code>div.AboutMe { width: 200px; }
+div.AboutMe &gt; h3 { margin: 8px 8px 0 8px; }
+div.AboutMe &gt; p { margin: 0 8px 8px 8px; }
+</code></pre>
+
+<p>This would achieve a similar effect but there is a certain complexity overhead. I've used child selectors to indicate the approach that might be used if there were more complicated content; if one of the child elements was a div then we would want to be certain that this pseudo-padding margin <em>only</em> applied to the child div and not one of <em>its</em> descendent divs (this ties in with rule 3's "a bare selector may occur within a nested selector so long as child selectors are strictly used" proviso).</p>
+
+<p>And the border issue hasn't been addressed; setting a border can extend the total rendered width beyond the width specified by css as well! (Also indicated in the example image above).</p>
+
+<p>So I'm tentatively suggesting just not having any styles apply to any element that specifies width <em>and</em> padding and/or border.</p>
+
+<p>This is one of the rules that I feel least confident about and will be considering retracting when I manage to get these into use in a few projects. If the benefit isn't sufficient to outweigh the cost of thinking around it, then it may have to be put out to pasture.</p>
+
+<h3>Linting</h3>
+
+<p>As I've said, I'm yet to fully use all of these rules in anger on a real, sizable project. But it's something I intend to do very soon, largely to see how well they do or don't all work together.</p>
+
+<p>Something I'm contemplating looking into is adding a pre-processing "lint" step that will try to confirm that all of these rules have been followed. Inspired by <a href="http://www.jslint.com">Douglas Crockford's JsLint</a> (and I've only just found out that "lint" is a generic term, I didn't know until now where it came from! See <a href="http://en.wikipedia.org/wiki/Lint_(software)">"Lint" on Wikipedia</a>).</p>
+
+<p>It could be configured such that if a rule was identified to have not been followed, then an error would be returned in place of any style content - that would ensure that I didn't ignore it!</p>
+
+<p>I'm not sure yet how easy it will or won't be to check for all of these rules, but I'm definitely interested in finding out!</p>
+
+<p>Hopefully I'll post back with a follow-up at some point, possibly with any interesting pre-processing code to go along with it. I think the only way to determine the validity of these rules is with the eating of a whole lot of my own dog food :)</p>
+
+<p><strong>Update (4th June 2013):</strong> I've written a couple of related posts - see the <a href="noncascading-css-the-followup.html">Non-cascading CSS: The follow-up</a> and <a href="extending-the-css-minifier.html">Extending the CSS Minifier</a>. The first has a couple of amendments I've made to these rules after putting them into practice and the second has information about how my <a href="https://bitbucket.org/DanRoberts/cssminifier">CSS Minifier</a> project now has support for injecting into the compiled output the "source ids" mentioned in this post, along with a way to implement rule 5 (html-tag-scoping). I also intend to write a few posts about the mechanisms used to implement these processing steps starting with <a href="parsing-css.html">Parsing CSS</a>.</p>
+<p class="PostTime">Posted at 23:04</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+						<p class="Comments">
+							<a href="noncascading-css-a-revolution.html#disqus_thread" data-disqus-identifier="42">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">26 January 2012</h3><h2><a id="Post21"></a><a href="css-minification-regular-expressions.html">CSS Minification Regular Expressions</a></h2>
+
+<h3>I don't like regular expressions (most of the time)</h3>
+
+<blockquote>
+  <p>Some people, when confronted with a problem, think "I know, I'll use regular expressions." Now they have two problems.</p>
+</blockquote>
+
+<p>Using this quote when talking about regular expressions is not exactly original, <a href="http://www.codinghorror.com/blog/2008/06/regular-expressions-now-you-have-two-problems.html">I know</a> but I do have a long-standing mistrust and borderline disdain for regular expressions which may well have a relation to the fact that they are not exactly my forte. But unfortunately they also seem to be frequently used by people whose forte they also are not! Often the times I come across them they don't cover all the edge cases that the writer originally either expected them to or didn't expect at all - and then they sort of mutate over time into barely-readable strings of symbols that are more difficult to comprehend and maintain (and slower) than a set of functionally-equivalent string manipulation procedures. Don't even get me started on the fact that commenting them seems to be bypassed every time.. since the regex itself is so small the comment would dwarf it, and that would be stupid right? <a href="http://twitter.com/#!/quepimquepam/statuses/141976977061068801">Wrong</a>.</p>
+
+<p>Everyone knows the classic email validation example which is frequently brought out as a case against regular expressions but I've got two other stories I suffered through first hand:</p>
+
+<h4>The CSS comment-extracing regular expression fail</h4>
+
+<p>I wrote a CSS minimiser for use in a Classic ASP Javascript app some years ago using a regular expression to strip the comments out before further processing was done, thus:</p>
+
+<pre><code>return strContent.replace(/\/\*(.|[\r\n])*?\*\//g, "");
+</code></pre>
+
+<p>I did my research on the old t'interwebs and this seemed to be well recommended and would do just what I wanted. It worked fine for a few weeks until - out of the blue - IIS was flatlining the CPU and requests were timing out. I don't even remember how we tracked this down but it eventually arose that a stylesheet had an unclosed comment in it. Appending "/**/" to the content before performing the replacement made the problem disappear.</p>
+
+<h4>The Availability Component regular expression fail</h4>
+
+<p>The second example was a component I was given to integrate with at work, part of whose job was to query a Hotel Availablity Web Service. The response xml was always passed through a regular expression that would ensure no credit card details appeared in the content. The xml returned often described detailed information from many Suppliers and could be several megabytes of text so when these calls were taking over 60 seconds and pegging the cpu I was told that it must be the weight of data and the deserialisation causing it. Watching the data move back and forth in Fiddler, though, it was clear that these requests would complete in around 6 seconds.. further investigation by the component writer eventually confirmed that the deserialisation took very little time or resources (well, "very little" in relation to a 60 seconds / 100% cpu event) but the regular expression scanning for the card details was creating all the work. The best part being that these response would <em>never</em> contain any credit card details, its just that this expression had been applied to <em>all</em> responses for "consistency".</p>
+
+<p>It could well be argued that none of these cases are really the fault of regular expressions themselves - the email example is misuse of a tool, the CSS comment removal could be the regex engine implementation (possibly?!) and the availability issue was entirely unnecessary work. But the fact that these issues are lurking out there (waiting to strike!) makes me wary - which is <em>not</em> a reason in isolation not to use something, but it definitely makes me think that my understanding not only of how they can be written but the implications of how they will be processed could do with serious improvement. But I think this needs to go for anyone else writing these regular expressions - if you don't know how they're being worked out, how do you know whether or not they'll scale to text more than a few lines long? Will they scale linearly or exponentially or in some completely different manner?? Again, these are not exactly original thoughts and Joel Spolsky's <a href="http://www.joelonsoftware.com/articles/LeakyAbstractions.html">Leaky Abstractions</a> article is basically saying (much more eloquently) that you should understand at least one layer below the current abstraction you're using.</p>
+
+<h3>Fighting my fears</h3>
+
+<p>But so many people will tell you that regular expressions are a valuable tool to have on hand. And I've used ISAPI Rewriter before to deal with friendly urls and that was great. (Not that I can say I miss it when I use ASP.Net MVC Routing instead though :) And there are definite occassion where regular expressions look like the <em>ideal</em> tool to use - the ones I "borrowed" to write the CSS minifier in my <a href="onthefly-css-minification.html">last post</a> were <em>so</em> convenient and much nicer than the idea of parsing all that content manually. And so I'm off to try and expand my knowledge and experience by extending the minifier to deal with "@import" statements in the stylesheets..</p>
+
+<p>This is what I've cobbled together for now. It probably looks to an experienced regular expression writer like it was written by a noob.. er, yeah, there's a good reason for that! :D And I'm not sure if the way I've tried to combine the various import formats using String.Join makes for more readable code or for code that looks like nonsense. Not to mention that they all start and end exactly the same - is this duplication something I want to hide away (<a href="http://en.wikipedia.org/wiki/Don't_repeat_yourself">DRY</a>) or will that harm the readability which is also very important??</p>
+
+<pre><code>private static Regex ImportDeclarationsMatcher = new Regex(
+    String.Join("|", new[]
+    {
+        // @import url("test.css") screen;
+        "@import\\s+url\\(\"(?&lt;filename&gt;.*?)\"\\)\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)",
+
+        // @import url("test.css") screen;
+        "@import\\s+url\\('(?&lt;filename&gt;.*?)'\\)\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)",
+
+        // @import url(test.css) screen;
+        "@import\\s+url\\((?&lt;filename&gt;.*?)\\)\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)",
+
+        // @import "test.css" screen;
+        "@import\\s+\"(?&lt;filename&gt;.*?)\"\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)",
+
+        // @import 'test.css' screen;
+        "@import\\s+'(?&lt;filename&gt;.*?)'\\s*(?&lt;media&gt;.*?)\\s*(?:;|\r|\n)"
+    }),
+    RegexOptions.Compiled | RegexOptions.IgnoreCase
+);
+
+/// &lt;summary&gt;
+/// This will never return null nor any null instances. The content should be stripped of
+/// comments before being passed in since there is no parsing done to ensure that the
+/// imports matched exist in active (ie. non-commented-out) declarations.
+/// &lt;/summary&gt;
+public static IEnumerable&lt;StylesheetImportDeclaration&gt; GetImports(string content)
+{
+    if (content == null)
+        throw new ArgumentNullException("content");
+    if (content.Trim() == "")
+        return new NonNullImmutableList&lt;StylesheetImportDeclaration&gt;();
+
+    // Note: The content needs a line return appending to the end just in case the last line
+    // is an import doesn't have a trailing semi-colon or line return of its own (the Regex
+    // won't pick it up otherwise)
+    var imports = new List&lt;StylesheetImportDeclaration&gt;();
+    foreach (Match match in ImportDeclarationsMatcher.Matches(content + "\n"))
+    {
+        if (match.Success)
+        {
+            imports.Add(new StylesheetImportDeclaration(
+                match.Value,
+                match.Groups["filename"].Value,
+                match.Groups["media"].Value
+            ));
+        }
+    }
+    return imports;
+}
+
+public class StylesheetImportDeclaration
+{
+    public StylesheetImportDeclaration(
+        string declaration,
+        string filename,
+        string mediaOverride)
+    {
+        if (string.IsNullOrWhiteSpace(declaration))
+            throw new ArgumentException("Null/blank declaration specified");
+        if (string.IsNullOrWhiteSpace(filename))
+            throw new ArgumentException("Null/blank filename specified");
+
+        Declaration = declaration.Trim();
+        Filename = filename.Trim();
+        MediaOverride = string.IsNullOrWhiteSpace(mediaOverride)
+            ? null
+            : mediaOverride.ToString();
+    }
+
+    /// &lt;summary&gt;
+    /// This will never be null or empty
+    /// &lt;/summary&gt;
+    public string Declaration { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or empty
+    /// &lt;/summary&gt;
+    public string Filename { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This may be null but it will never be empty
+    /// &lt;/summary&gt;
+    public string MediaOverride { get; private set; }
+}
+</code></pre>
+
+<p>This will hopefully match imports of the various supported formats</p>
+
+<pre><code>@import url("test.css")
+@import url("test.css")
+@import url(test.css)
+@import "test.css"
+@import 'test.css'
+</code></pre>
+
+<p>all terminated with either semi-colons or line returns, all with optional media types / media queries, all with variable whitespace between the elements. That is all done in a <em>lot</em> less code that if I was going to try to parse that content myself. Which is nice!</p>
+
+<h3>So..</h3>
+
+<p>I think this little foray has been a success! But now I've got the syntax down (for this case at least), I need to stop being a hypocrit and go off and try to find out how exactly these expressions are processed. As far as I know these might run fine on content up to a certain size and then go batshit crazy on anything bigger! Or they might run like finely honed algorithmic masterpieces on anything thrown at them* - I guess I won't know until I find out more!</p>
+
+<p>* No, I don't believe that either! :)</p>
+<p class="PostTime">Posted at 22:30</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li><li><a href="Archive/Tag/RegEx.html" title="2 Posts">RegEx</a></li></ul></div>
+						<p class="Comments">
+							<a href="css-minification-regular-expressions.html#disqus_thread" data-disqus-identifier="21">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">21 January 2012</h3><h2><a id="Post20"></a><a href="onthefly-css-minification.html">On-the-fly CSS Minification</a></h2>
+
+<p>I've been experimenting with minifying javascript and stylesheet content on-the-fly with an ASP.Net MVC project where different pages may have different combinations of javascript and stylesheets - not just to try to minimise the quantity of data transmitted but because some of the stylesheets may conflict.</p>
+
+<p>If this requirement was absent and <em>all</em> of the stylesheets or javascript files from a given folder could be included, I'd probably wait until this becomes available (I'm sure I read somewhere it would be made available for .Net 4.0 as well, though I'm struggling now to find a link to back that up!) -</p>
+
+<p><a href="http://weblogs.asp.net/scottgu/archive/2011/11/27/new-bundling-and-minification-support-asp-net-4-5-series.aspx">New Bundling and Minification Support (ASP.NET 4.5 Series)</a></p>
+
+<p>However, mostly due to this special requirement (and partly because I'll still be learning thing even if this doesn't turn out being as useful as I'd initially hoped :) I've pushed on with investigation.</p>
+
+<h3>The proof-of-concept</h3>
+
+<p>I'm going to jump straight to the first code I've got in use. There's a controller..</p>
+
+<pre><code>public class CSSController : Controller
+{
+    public ActionResult Process()
+    {
+        var filename = Server.MapPath(Request.FilePath);
+
+        DateTime lastModifiedDateOfData;
+        try
+        {
+            var file = new FileInfo(filename);
+            if (!file.Exists)
+                throw new FileNotFoundException("Requested file does not exist", filename);
+
+            lastModifiedDateOfData = file.LastWriteTime;
+        }
+        catch (Exception e)
+        {
+            Response.StatusCode = 500;
+            Response.StatusDescription = "Error encountered";
+            return Content(
+                String.Format(
+                    "/* Unable to determine LastModifiedDate for file: {0} [{1}] */",
+                    filename,
+                    e.Message
+                ),
+                "text/css"
+            );
+        }
+
+        var lastModifiedDateFromRequest = TryToGetIfModifiedSinceDateFromRequest();
+        if ((lastModifiedDateFromRequest != null) &amp;&amp;
+        (Math.Abs(
+            lastModifiedDateFromRequest.Value.Subtract(lastModifiedDateOfData).TotalSeconds)
+         &lt; 2))
+        {
+            // Add a small grace period to the comparison (if only because
+            // lastModifiedDateOfLiveData is granular to milliseconds while
+            // lastModifiedDate only considers seconds and so will nearly
+            // always be between zero and one seconds older)
+            Response.StatusCode = 304;
+            Response.StatusDescription = "Not Modified";
+            return Content("", "text/css");
+        }
+
+        // Try to retrieve from cache
+        var cacheKey = "CSSController-" + filename;
+        var cachedData = HttpContext.Cache[cacheKey] as TextFileContents;
+        if (cachedData != null)
+        {
+            // If the cached data is up-to-date then use it..
+            if (cachedData.LastModified &gt;= lastModifiedDateOfData)
+            {
+                SetResponseCacheHeadersForSuccess(lastModifiedDateOfData);
+                return Content(cachedData.Content, "text/css");
+            }
+
+            // .. otherwise remove it from cache so it can be replaced with current data below
+            HttpContext.Cache.Remove(cacheKey);
+        }
+
+        try
+        {
+            var content = MinifyCSS(System.IO.File.ReadAllText(filename));
+
+            SetResponseCacheHeadersForSuccess(lastModifiedDateOfData);
+
+            // Use DateTime.MaxValue for AbsoluteExpiration (since we're considering the
+            // file's LastModifiedDate we don't want this cache entry to expire
+            // on a separate time based scheme)
+            HttpContext.Cache.Add(
+                cacheKey,
+                new TextFileContents(filename, lastModifiedDateOfData, content),
+                null,
+                DateTime.MaxValue,
+                System.Web.Caching.Cache.NoSlidingExpiration,
+                System.Web.Caching.CacheItemPriority.Normal,
+                null
+            );
+
+            return Content(content, "text/css");
+        }
+        catch (Exception e)
+        {
+            Response.StatusCode = 500;
+            Response.StatusDescription = "Error encountered";
+
+            return Content("/* Error: " + e.Message + " */", "text/css");
+        }
+    }
+
+    /// &lt;summary&gt;
+    /// Try to get the If-Modified-Since HttpHeader value - if not present or not valid
+    /// (ie. not interpretable as a date) then null will be returned
+    /// &lt;/summary&gt;
+    private DateTime? TryToGetIfModifiedSinceDateFromRequest()
+    {
+        var lastModifiedDateRaw = Request.Headers["If-Modified-Since"];
+        if (lastModifiedDateRaw == null)
+            return null;
+
+        DateTime lastModifiedDate;
+        if (DateTime.TryParse(lastModifiedDateRaw, out lastModifiedDate))
+            return lastModifiedDate;
+
+        return null;
+    }
+
+    /// &lt;summary&gt;
+    /// Mark the response as being cacheable and implement content-encoding requests such
+    /// that gzip is used if supported by requester
+    /// &lt;/summary&gt;
+    private void SetResponseCacheHeadersForSuccess(DateTime lastModifiedDateOfLiveData)
+    {
+        // Mark the response as cacheable
+        // - Specify "Vary" "Content-Encoding" header to ensure that if cached by proxies
+        //   that different versions are stored for different encodings (eg. gzip'd vs
+        //   non-gzip'd)
+        Response.Cache.SetCacheability(System.Web.HttpCacheability.Public);
+        Response.Cache.SetLastModified(lastModifiedDateOfLiveData);
+        Response.AppendHeader("Vary", "Content-Encoding");
+
+        // Handle requested content-encoding method
+        var encodingsAccepted = (Request.Headers["Accept-Encoding"] ?? "")
+            .Split(',')
+            .Select(e =&gt; e.Trim().ToLower())
+            .ToArray();
+        if (encodingsAccepted.Contains("gzip"))
+        {
+            Response.AppendHeader("Content-encoding", "gzip");
+            Response.Filter = new GZipStream(Response.Filter, CompressionMode.Compress);
+        }
+        else if (encodingsAccepted.Contains("deflate"))
+        {
+            Response.AppendHeader("Content-encoding", "deflate");
+            Response.Filter = new DeflateStream(Response.Filter, CompressionMode.Compress);
+        }
+    }
+
+    /// &lt;summary&gt;
+    /// Represent a last-modified-date-marked text file we can store in cache
+    /// &lt;/summary&gt;
+    [Serializable]
+    private class TextFileContents
+    {
+        public TextFileContents(string filename, DateTime lastModified, string content)
+        {
+            if (string.IsNullOrWhiteSpace(filename))
+                throw new ArgumentException("Null/blank filename specified");
+            if (content == null)
+                throw new ArgumentNullException("content");
+
+            Filename = filename.Trim();
+            LastModified = lastModified;
+            Content = content.Trim();
+        }
+
+        /// &lt;summary&gt;
+        /// This will never be null or empty
+        /// &lt;/summary&gt;
+        public string Filename { get; private set; }
+
+        public DateTime LastModified { get; private set; }
+
+        /// &lt;summary&gt;
+        /// This will never be null but it may be empty if the source file had no content
+        /// &lt;/summary&gt;
+        public string Content { get; private set; }
+    }
+
+    /// &lt;summary&gt;
+    /// Simple method to minify CSS content using a few regular expressions
+    /// &lt;/summary&gt;
+    private string MinifyCSS(string content)
+    {
+        if (content == null)
+            throw new ArgumentNullException("content");
+
+        content = content.Trim();
+        if (content == "")
+            return "";
+
+        content = HashSurroundingWhitespaceRemover.Replace(content, "#");
+        content = ExtraneousWhitespaceRemover.Replace(content, "");
+        content = DuplicateWhitespaceRemover.Replace(content, " ");
+        content = DelimiterWhitespaceRemover.Replace(content, "$1");
+        content = content.Replace(";}", "}");
+        content = UnitWhitespaceRemover.Replace(content, "$1");
+        return CommentRemover.Replace(content, "");
+    }
+
+    // Courtesy of http://madskristensen.net/post/Efficient-stylesheet-minification-in-C.aspx
+    private static readonly Regex HashSurroundingWhitespaceRemover
+        = new Regex(@"[a-zA-Z]+#", RegexOptions.Compiled);
+    private static readonly Regex ExtraneousWhitespaceRemover
+        = new Regex(@"[\n\r]+\s*", RegexOptions.Compiled);
+    private static readonly Regex DuplicateWhitespaceRemover
+        = new Regex(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex DelimiterWhitespaceRemover
+        = new Regex(@"\s?([:,;{}])\s?", RegexOptions.Compiled);
+    private static readonly Regex UnitWhitespaceRemover
+        = new Regex(@"([\s:]0)(px|pt|%|em)", RegexOptions.Compiled);
+    private static readonly Regex CommentRemover
+        = new Regex(@"/\*[\d\D]*?\*/", RegexOptions.Compiled);
+}
+</code></pre>
+
+<p>.. and some route configuration:</p>
+
+<pre><code>// Have to set this to true so that stylesheets (for example) get processed rather than
+// returned direct
+routes.RouteExistingFiles = true;
+routes.MapRoute(
+    "StandardStylesheets",
+    "{*allwithextension}",
+    new { controller = "CSS", action = "Process" },
+    new { allwithextension = @".*\.css(/.*)?" }
+);
+</code></pre>
+
+<h3>The minification</h3>
+
+<p>I've used a very straight-forward minification approach that I borrowed from this fella -</p>
+
+<p><a href="http://madskristensen.net/post/Efficient-stylesheet-minification-in-C.aspx">Efficient stylesheet minification in C#</a></p>
+
+<h3>Caching / 304'ing</h3>
+
+<p>The minified content is cached along with the last-modified-date of the file so that the http headers can be used to prevent unnecessary work (and bandwidth) by returning a 304 ("Not Modified") response (which doesn't require content). When a browser requests a "hard refresh" it will leave this header out of the request and so will get fresh content.</p>
+
+<h3>Compression / Encoding</h3>
+
+<p>So far there have been no real surprises but I came across a problem for which I'm still not completely sure where to point the blame. When hosted in IIS (but not the "Visual Studio Development [Web] Server" or IIS Express) there would be responses with the minified content returned to "hard refresh" requests that would appear corrupted. Fiddler would pop up a "The content could not be decompressed. The magic number in GZip header is not correct. Make sure you are passing in a GZIP stream" message. If the css file was entered into the url bar in Firefox, it would display "Content Encoding Error".</p>
+
+<p>Successful requests (for example, where the cache is either empty or the file has been modified since the cache entry was recorded), the request and response headers would be of the form:</p>
+
+<pre><code>GET http://www.productiverage.com/Content/Default.css HTTP/1.1
+Host: www.productiverage.com
+User-Agent: Mozilla/5.0 (Windows NT 5.1; rv:6.0.2) Gecko/20100101 Firefox/6.0.2
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept-Language: en-gb,en;q=0.5
+Accept-Encoding: gzip, deflate
+Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7
+Connection: keep-alive
+
+HTTP/1.1 200 OK
+Cache-Control: public
+Content-Type: text/css; charset=utf-8
+Last-Modified: Thu, 19 Jan 2012 23:03:37 GMT
+Vary: Accept-Encoding
+Server: Microsoft-IIS/7.0
+X-AspNetMvc-Version: 3.0
+X-AspNet-Version: 4.0.30319
+X-Powered-By: ASP.NET
+Date: Thu, 19 Jan 2012 23:08:55 GMT
+Content-Length: 4344
+
+html{background:url("/Content/Images/Background-Repeat.jpg") repeat-x #800C0E}body,td{ ...
+</code></pre>
+
+<p>while the failing requests would be such:</p>
+
+<pre><code>GET http://www.productiverage.com/Content/Default.css HTTP/1.1
+Host: www.productiverage.com
+User-Agent: Mozilla/5.0 (Windows NT 5.1; rv:6.0.2) Gecko/20100101 Firefox/6.0.2
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept-Language: en-gb,en;q=0.5
+Accept-Encoding: gzip, deflate
+Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7
+Connection: keep-alive
+Pragma: no-cache
+Cache-Control: no-cache
+
+HTTP/1.1 200 OK
+Cache-Control: public
+Content-Type: text/css; charset=utf-8
+Content-Encoding: gzip
+Last-Modified: Thu, 19 Jan 2012 23:03:37 GMT
+Vary: Accept-Encoding
+Server: Microsoft-IIS/7.0
+X-AspNetMvc-Version: 3.0
+X-AspNet-Version: 4.0.30319
+X-Powered-By: ASP.NET
+Date: Thu, 19 Jan 2012 23:07:52 GMT
+Content-Length: 4344
+
+html{background:url("/Content/Images/Background-Repeat.jpg") repeat-x #800C0E}body,td{ ...
+</code></pre>
+
+<p>The only differences in the request being the cache-disabling "Pragma" and "Cache-Control" headers but in the failing response a "Content-Encoding: gzip" header has been added but the content itself is in its raw form - ie. <em>not</em> gzip'd.</p>
+
+<p>That explains the gzip error - the content is being reported as compressed when in actual fact it isn't!</p>
+
+<p>I presume that the compression settings in IIS are somehow interfering here but unfortunately I've not been able to definitively find the cause or if I should do anything in configuration. My Google-fu is failing me today :(</p>
+
+<p>However, the solution in the above code is to handle the response compression in the CSSController. In the SetResponseCacheHeadersForSuccess method the "Accept-Encoding" request header is tested for gzip and deflate and will return content accordingly by setting the Response.Filter to be either a GZipStream or DeflateStream. This has solved the problem! And so I'm going to leave my root-cause investigation for another day :)</p>
+
+<p><strong>Note:</strong> You can find the source code to this in one of my repositories at Bitbucket: <a href="https://bitbucket.org/DanRoberts/cssminifier">The CSS Minifier</a>.</p>
+<p class="PostTime">Posted at 16:56</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li><li><a href="Archive/Tag/RegEx.html" title="2 Posts">RegEx</a></li></ul></div>
+						<p class="Comments">
+							<a href="onthefly-css-minification.html#disqus_thread" data-disqus-identifier="20">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,232 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">13 September 2012</h3><h2><a id="Post34"></a><a href="ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40.html">Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0</a></h2>
+
+<p>It's got to the point with a Web Service I'm developing at work to run it through some stress tests and try to work out what kind of load we can handle with the hardware we have in mind for its hosting environment. We also have an arbitrary concept of the load we'd <em>like</em> it to be able to handle, so we need to see if the hardware solution we have in mind is even in the right ballpark.</p>
+
+<p>It's a WCF Web Service running against .Net 4.0 but it's going to be hosted in IIS 6; the Web Servers our Infrastructure Team provide us with are all Server 2003 and although there are mid-term plans to start upgrading to 2008 and IIS 7 this isn't going to happen before this service needs to be live.</p>
+
+<p>The Web Service effectively backs on to a Data Service we already have for our own private use that handles querying and caching of data and metadata, so this Web Service's primary job is to expose this data in a saner manner than the internal interface (which was built some years back and has a lot of legacy features, exposes too much craziness from the backing database which evolved over the best part of a decade and the internal service is communicates over .Net Remoting as it was originally written against .Net 2.0!). So all we're really doing is translating requests from the Web Service model into the internal format and then performing a similar act on the responses, there won't be too many caching concerns, any direct db access or much file IO; the bulk of its time I expect will be waiting on the internal service.</p>
+
+<h3>Gotcha Number One</h3>
+
+<p>To kick things off, I wanted to get an idea of how much load the internal service could handle on a single server and then see how things changed when I put a Web Server in front of it, hosting the new Service. To cut a long story short, I was able to reproduce requests to the internal service from the busiest few hours the night before and serialise them all to disk so that they could be replayed at any time against the stress-testing environment. The optimistic plan being to ramp up the speed at which the requests are replayed and see where the bottlenecks start appearing and at what sort of loads!</p>
+
+<p>The first problem I encountered was when replaying these from a test app on my computer to the data service in the load test environment. As the Web Service requests were ramping up the request times were getting longer and longer. I looked on the Web Server and found that it was doing <em>very</em> little; CPU and memory use was low and looking at the "Web Service"* performance counters it was not only dealing with very few requests but there weren't any queuing up which had been my initial thought.</p>
+
+<p>* (The "Web Service" in this context relates to the service in IIS, it's not a Web Service in the context of an ASP.Net Web Service, for example).</p>
+
+<p>Some googling revealed that outgoing http requests are limited by default in .Net applications, so the requests were getting queued up locally and weren't even getting to the server! It seemed like only two concurrent requests were being handled though I'm sure documentation suggested that it should have been 16. Not that it matters, really, that would have way been too low as well!</p>
+
+<p>Adding this to the app.config sorted it out:</p>
+
+<pre><code>&lt;system.net&gt;
+    &lt;connectionManagement&gt;
+        &lt;add address="*" maxconnection="65535" /&gt;
+    &lt;/connectionManagement&gt;
+&lt;/system.net&gt;
+</code></pre>
+
+<p>The "*" means that this will be applied to any endpoint. The 65535 was what I found in the example and I've been struggling to find a definitive answer as to whether this is the maximum value that it can be or not! :S</p>
+
+<h3>Server Settings: Thread Counts</h3>
+
+<p>So now I was able to overload the server with more concurrents requests than it could handle at once and they were getting queued up. The performance counters are just invaluable here; there are some available for the "Web Service" - which tells us about what's happening at the IIS level - and for "ASP.Net" - which tells us about what's getting into .Net framework. So there could theoretically be limits in IIS that need to be overcome and/or limits in ASP.Net, keeping an eye on these counters gives an insight into where the bottlenecks might be.</p>
+
+<p>I ramped up the request replay rate and it seemed like the maximum concurrent connections that I could achieve was around 250. The CPU load was low, around 15%, and the memory usage was fairly meagre. Most of the time in the requests was waiting for the data service to respond, so threads were just hanging around. Not enough threads for my liking! I wanted to use more of the resources on the box and be able to deal with more requests.</p>
+
+<p>I spent <em>aaaages</em> trying to find information about whether this 250 was a limit set in IIS somewhere or if it was somehow related to the default maximum of 250 threads per CPU in a .Net ThreadPool or just where to find the knob in IIS that I can turn up to eleven! And my conclusion is that it's <em>very</em> difficult to find a definitive resource; so much of the information is for different versions of IIS (5 or 7, usually) and they usually do <em>not</em> make clear which settings are applicable to which versions and which changes I could expect to help me.</p>
+
+<p>So I'm just going to cut to the chase here. For IIS 6 (six!) I needed to do two things.</p>
+
+<p>Firstly, edit the machine.config for applicable ASP.Net version (I'm running against 4.0 and IIS is currently set up to run as 32-bit since to enable 64-bit I believe that <em>all</em> of the applications must be 64-bit and where we're going to host this Web Service I can't be sure that this will be the case):</p>
+
+<pre><code>&lt;system.web&gt;
+    &lt;processModel maxWorkerThreads="100" maxIoThreads="100" minWorkerThreads="50"/&gt;
+</code></pre>
+
+<p>"100" is the maximum value that maxWorkerThreads and maxIoThreads can take. "50" was the value I found in the examples I encountered, presumably this lower bound is set so t hat bursty behaviour is more easily handled as a base number of threads are always spun up (starting up a load of threads is expensive and if a patch of high traffic hits the service then having to do this can result in requests being queued). These were the settings for which there is so much apparently contradictory information out there; some people will tell you the default values are 50 or 12 x the number of CPUs or 5000 depending upon the version of IIS (but infrequently saying which version they were talking about) or the version of ASP.Net (but infrequently saying which version they were talking about!) or.. I don't know.. what day of the week it is!</p>
+
+<p>The second was to increase the number of processes that were used by the Web Service's App Pool. This is done by going into the Performance tab on the App Pool's properties page and increasing the "Maximum number of worker processes" upwards from 1.</p>
+
+<p>There are considerations to bear in mind with increasing the number of worker processes; the first that often jumps out in documentation is issues with Session - any Session data must be maintained in a manner such that multiple processes can access it, since requests from the same Client may not always be handled by the same process, and so an in-process Session would be no good. The Service I was working with had no need for maintaining Session data, so I could happily ignore this entirely.</p>
+
+<p>With these changes, I was able to ramp up the requests until I was max'ing out the CPU in a variety of circumstances; I set up different tests ranging from requests that could be completed very quickly (within, say 20ms) to requests that would artificially delay the response to see how concurrent requests would build up. Without trying too hard I was able to get around 500 requests / second with the quick responses and handle 4000 concurrent requests happily enough with the long-running ones.</p>
+
+<p>This is hardly crazy internet-scale traffic, but it's well in excess of the targets that I was originally trying to see if I could handle. And since the "hardware" is a virtualised box with two cores I'm fairly happy with how it's working out!</p>
+
+<h3>Server Settings: Bandwidth considerations</h3>
+
+<p>Something we have to consider in exposing this data to external Clients is just how <em>much</em> data we may be passing around. The internal Data Service that is essentially be wrapped is just that; internal. This means that not only will all the data be passed around internal network connections to the requesting Web Server (that will use that data in rendering the site) but also that we can format that data however we like (ie. binary rather than xml) and take all sorts of crazy shortcuts and liberties if we need to as we have to understand the data implicitly to work efficiently with it. For the Web Service, the data's going to be broadcast as xml and we want to make the compromise of exposing a consistent and predictable data model with a simple API. This means that we'll be dealing with much larger quantities of data and we have to pass them out of our private network, out into the real world <em>where we have to pay for transfers</em>.</p>
+
+<p>This really struck home when, during the load tests, I was max'ing out the network utilisation of my connection to the server. My connection to the office network runs at 100Mbps (100 mega<em>bits</em>, not bytes) - other people get 1Gb but I get 100 meg, cos I'm really lucky :) This was in tests where a large response was being returned with a high rate of handled requests. To try to push these tests closer to the limits I had to borrow some other workstations and run requests through wcat (<a href="http://www.iis.net/downloads/community/2007/05/wcat-63-(x86)">http://www.iis.net/downloads/community/2007/05/wcat-63-(x86)</a>).</p>
+
+<p>So I figured the obvious first step was to look into whether the response were being compressed and, if not, make them.</p>
+
+<h3>WCF Compression with IIS 6 and .Net 4.0</h3>
+
+<p>I examined a request in Fiddler. No "Accept-Encoding: gzip" to be found. A flash of recollection from the past reminded me of the EnableDecompression property available on the Client proxy generated by Web References. I set it to true before making the request and looked at the request in Fiddler.</p>
+
+<p>Success! The http header for gzip support was passed.</p>
+
+<p>But fail! It didn't make the slightest bit of difference to the response content.</p>
+
+<p>Further googling implied that I was going to be in for some hurt configuring this on IIS 6. The good news is that WCF with .Net 4.0 <em>would</em> support compression of the data natively unlike 3.5 and earlier which required workarounds (I got as far as looking at this <a href="http://stackoverflow.com/questions/1741768/wcf-gzip-compression-request-response-processing">Stack Overflow question</a> before being glad I didn't have to worry about it).</p>
+
+<p>This blog post was a lifesaver: <a href="http://weblogs.asp.net/owscott/archive/2004/01/12/57916.aspx">IIS Compression in IIS6.0</a>.</p>
+
+<p>To summarise:</p>
+
+<ol>
+<li>In the IIS Admin tool you need to right-click on "Web Sites", click "Service" and click "Compress application files" (we don't care about static content for this particular change, and the temporary disk location is only required for static content - "application files" are always compressed on the fly). </li>
+<li>Open the IIS MetaBase file in notepad (C:\WINDOWS\system32\inetsrv\MetaBase.xml, take a backup first - getting this wrong is going to cause problems!) and search for the string "IIsCompressionScheme"; include the "svc" extension into the "HcScriptFileExtensions" section (being careful to maintain the same formatting when inserting the new extension) and then setting "HcDynamicCompressionLevel" to "9" (see that blog post for more information)</li>
+<li>Ensure that any software on the server that may try to process the requests is disabled for the "svc" extension (we have something call "IISXpress" on our Web Servers which is supposed to help with compression but which I couldn't get to work!)</li>
+<li>Restart IIS</li>
+</ol>
+
+<p>After this, the response were being successfully compressed! As it's xml content it's fairly well compressible and I was getting the data trimmed down to approximately an 8th of the previous size. Another result!</p>
+
+<p>Of course, there's always a compromise. And here it's the additional load on the CPU. For the sort of traffic we were looking to support, it seemed like it would be a good trade off; this CPU load overhead in exchange for the reduction in the size of the transmitted data.</p>
+
+<p>Incidentally, Hanselman has a post here <a href="http://www.hanselman.com/blog/EnablingDynamicCompressionGzipDeflateForWCFDataFeedsODataAndOtherCustomServicesInIIS7.aspx">Enabling dynamic compression (gzip, deflate) for WCF Data Feeds, OData and other custom services in IIS7</a> illustrating just how much easier it is in IIS 7. If you've got a server hosted by that, good times! :)</p>
+
+<h3>Checking for gzip support</h3>
+
+<p>I'm actually contemplating <em>requiring</em> gzip support for all requests made to the service to ensure we keep public traffic bandwidth in check. Since it's just an http header that specifies that the Client supports it, we can check for it from the Service code:</p>
+
+<pre><code>var acceptsGzip =
+    (WebOperationContext.Current.IncomingRequest.Headers["Accept-Encoding"] ?? "")
+        .Split(',')
+        .Select(v =&gt; v.Trim())
+        .Contains("gzip", StringComparer.InvariantCultureIgnoreCase);
+</code></pre>
+
+<p>And if we decide that Client gzip support <em>is</em> required then an error response indicating an invalid request can be returned if this header is not present.</p>
+
+<h3>Bonus note on handling concurrent requests</h3>
+
+<p>This is probably going to sound really obvious but it caught me out when I did some testing with high numbers of concurrent requests; be careful how you deal with file locking when you have to read anything in!</p>
+
+<p>I have a config file for the Service which has various settings for different API Keys. The data in this file is cached, the cache entry being invalidated when the file changes. So for the vast majority of requests, the cached data is returned. But when it's contents are changed (or the Service is restarted), the file's contents are read fresh from disk and if there are a multiple requests arriving at the same time there may well be simultaneous requests to that file.</p>
+
+<p>I had previously been using the following approach to retrieve the file's content:</p>
+
+<pre><code>using (var stream = File.Open(filename, FileMode.Open, FileAccess.Read))
+{
+    // Do stuff
+}
+</code></pre>
+
+<p>but the default behaviour is to lock the file while it's being read, so if concurrent read requests are to be supported, the following form should be used:</p>
+
+<pre><code>using (var stream = File.Open(filename, FileMode.Open, FileAccess.Read, FileShare.Read))
+{
+    // Do stuff
+}
+</code></pre>
+
+<p>This way, the file can be opened simultaneously by multiple threads or processes. Hooray! :)</p>
+<p class="PostTime">Posted at 22:56</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="dependency-injection-with-a-wcf-service.html">Dependency Injection with a WCF Service</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="consuming-a-wcf-web-service-from-php.html">Consuming a WCF Web Service from PHP</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/ASP.Net.html" title="3 Posts">ASP.Net</a></li><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "34";
+							var disqus_title = "Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

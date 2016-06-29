@@ -1,0 +1,272 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - If you can keep your head when all about you are losing theirs and blaming it on VBScript</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">22 December 2014</h3><h2><a id="Post79"></a><a href="if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript.html">If you can keep your head when all about you are losing theirs and blaming it on VBScript</a></h2>
+
+<p>I've been migrating an old VBScript app to .net and some of those old idiosyncracies of VBScript have been rearing their head again. For a language that is intended to make things simple (and, in fairness, for many use cases it does), it really does have some confusing and complicated rules hidden behind its facade of ease!</p>
+
+<p>Language design quite interests me, there's always a view into someone's way of thinking, about how things should be done. And there's always compromises (like all programming). Is it really true that languages like <a href="http://stackoverflow.com/a/1937434">Smalltak have no "if" statement</a>? Why did the features that got into C# 6 get in and why didn't other candidates? Should languages make immutable structures simple, or should these be difficult because immutability is expensive (yes, no and it's not - if you ask me)?</p>
+
+<p>Anyway, if you're not similarly interested <em>and</em> you're not just happy to point and laugh, not only at some of the decisions* made in VBScript, but also that someone <em>is still using it in this day and age</em> then this post might not be for you..</p>
+
+<p>* I'm not really having a go at VBScript (tempting as it might be), its design comes from a difficult place in that it was supposed to be backwards compatible with VB6 where possible and "<a href="http://blogs.msdn.com/b/ericlippert/archive/2004/08/25/error-handling-in-vbscript-part-three.aspx">it was designed for simple administration and web scripts, where often 'muddle on through' is exactly what you want it to do</a>". This quotes certainly goes some way to explaining its error model, along with why it can be so troublesome to write large, reliable applications in it (since this was never an intended use).</p>
+
+<h3>If This = That Then</h3>
+
+<p>To remain focused, I'm just going to talk about the "IF" statement today.</p>
+
+<p>Simple, right?</p>
+
+<p>Well, this one is..</p>
+
+<pre><code>a = 1
+b = 2
+If (a = b) Then
+  ' No
+End If
+</code></pre>
+
+<p>The values <em>a</em> and <em>b</em> obviously are not the same, so this condition is not met.</p>
+
+<pre><code>a = 1
+b = "1"
+If (a = b) Then
+  ' No
+End If
+</code></pre>
+
+<p>Here, the values <em>a</em> and <em>b</em> would appear similar - if they were rendered to the screen or console, they would be appear as "1". But they're not the same; one's a number and one's a string. And because they are different, the condition that compares their values returns false.</p>
+
+<p>How about this one, then?</p>
+
+<pre><code>a = "1"
+If (a = 1) Then
+  ' Yes
+End If
+</code></pre>
+
+<p>This condition <em>is</em> entered. er, what?! Isn't this the same as the example before it? A string "1" is being compared to a number 1 and we know that they're aren't the same.</p>
+
+<p>It turns out that if one side of a comparison is a numeric constant, then the other side will be converted into a number and these two values compared. So here, the string "1" on the left-hand side is converted into the number 1 and this, unsurprisingly, is found to match the number 1 on the right-hand side.</p>
+
+<p>Which explains this..</p>
+
+<pre><code>a = "aa"
+If (a = 1) Then
+  ' Error! ("Type mismatch")
+End If
+</code></pre>
+
+<p>Here, the value on the left-hand side <em>can't</em> be converted into a number and so the process falls apart.</p>
+
+<p>This is talked about in an Eric Lippert post (the second I've linked to from here): <a href="http://blogs.msdn.com/b/ericlippert/archive/2004/07/30/202432.aspx">Typing Hard Can Trip You Up</a>, where he explains that some compile-time constants (such as the number 1 in the example above, but <em>not</em> a variable which is known to have a value of the number 1) enable special handling in comparisons. He refers to these literals as having "hard types", despite the "fact" that everything in VBScript is a variant. This was for consistency with VB6 - though in VB6, not everything had to be a variant, so maybe it made more sense there(??).</p>
+
+<p>So what about something like this?</p>
+
+<pre><code>a = "aa"
+If (a = (1+0)) Then
+  ' No
+End If
+</code></pre>
+
+<p>Although the right-hand side is clearly a numeric value (something that <em>could</em> be quite easily determined when the script is interpreted), this does not trigger the same behaviour as the right-hand side is a calculated expression and not a simple literal. So what about..</p>
+
+<pre><code>a = "aa"
+If (a = (1)) Then
+  ' Error! ("Type mismatch")
+End If
+</code></pre>
+
+<p>The right-hand side is a bracketed value, but the interpreter ignores the unnecessary bracketing and sees it as a literal - and so applies the convert-to-number logic.</p>
+
+<h3>String theory</h3>
+
+<p>But number literals aren't the only ones that bring in their own magic. Strings do it too.</p>
+
+<pre><code>a = 1
+If (a = "1") Then
+  ' Yes
+End If
+</code></pre>
+
+<p>Isn't this example just like the <em>(a = b)</em> example we saw where <em>a</em> was the number 1 and <em>b</em> the string "1"?? Well, no. Here, the string literal on the right-hand side introduces a behaviour where the other side of the comparison is converted into a string and then considered. So the number 1 becomes the string "1", which does in fact match the right-hand side string literal "1". Crazy.</p>
+
+<h3>True for booleans?</h3>
+
+<p>So what about that last type of VBScript primitive type; the boolean?</p>
+
+<pre><code>a = "aa"
+If (a = False) Then
+  ' No
+End If
+</code></pre>
+
+<p>You might have expected that the boolean literal False in the condition would result in the left-hand side being converted to a boolean - something which the string "aa" can not be. But no "Type mismatch" error is raised, the condition just isn't met. This is also explained by the <a href="http://blogs.msdn.com/b/ericlippert/archive/2004/07/30/202432.aspx">Typing Hard Can Trip You Up</a> post - it's a bug! As if the whole system wouldn't have been confusing enough had there been an internal consistency for all primitive types, <em>this</em> comes along! When I first noticed the oddity with the numeric literals when examining some code, I poked around and came up with a whole variety of test cases and did a fairly good job of deducing the rules around numeric and string literals, it was only later that I found that Lippert post - had I not, I mighn't have realised about the booleans since they had slipped my mind while writing the examples. It seems crazy to me to think that that post was written more than ten years ago now, who would have thought that VBScript projects would still be clinging on for dear life (much as I'm slowly cutting the cords on the work projects) so far on? And I wonder how many people with VBScript experience actually know these rules - I've worked on projects using it over the last decade or so and normally things seem to just work (maybe that's a <em>slight</em> exaggeration!) and it's only when you dig deep into the edge cases that you realise there's such layers of crazy hiding down there.</p>
+
+<h3>Objects?</h3>
+
+<p>Comparisons such as "=" are not for objects (there is the "IS" comparison for object equality).</p>
+
+<p>If an object reference appears on either side of an "=" comparison (or "&lt;", ">", etc..) then it must have a parameter-less default property or method - this will be called and then the standard rules apply (if there is no such default then an "Object doesn't support this property of method" error will be raised - it's looking for a default property or method on the object and can't find one, so this kinda makes sense).</p>
+
+<p>If the default property or method returns another object then a "Type mismatch" error is raised. It doesn't matter if this object itself has a default member, the try-to-access-default-member logic does not apply recursively.</p>
+
+<p>There can be some minor complications when interacting with non-VBScript objects that are communicated with over IDispatch, since these may have additional rules of their own. But that's out of scope for today.</p>
+
+<h3>To err is human, but to really foul things up you need VBScript</h3>
+
+<p>We're so close to being VBScript "IF" gurus now (it's probably best not to worry about what is being pushed out of your brain to make space for this information!) - but there's another spanner in the works yet: <strong>On Error Resume Next</strong>, the error-handling mechanism that just isn't quite what you'd expect in oh, so many cases.</p>
+
+<p>Let's try this one; a variation of one of the earlier number literal examples from above:</p>
+
+<pre><code>On Error Resume Next
+a = "aa"
+If (a = 1) Then
+  ' Yes
+End If
+</code></pre>
+
+<p>Without "On Error Resume Next" this results in an error as <em>aa</em> can not be converted into a number. <em>With</em> "On Error Resume Next", I would have expected the error to result in the entire conditional structure being skipped over. In other words, I would have expected this <em>not</em> to consider the condition met. But VBScript has other ideas. If a condition is considered and causes an error and "On Error Resume Next" is in play, then the condition is found to be met.</p>
+
+<p>We don't even need any of the number literal behaviour to trigger this, the following does the same</p>
+
+<pre><code>On Error Resume Next
+If (1/0) Then
+  ' Yes
+End If
+</code></pre>
+
+<p>The "Division by zero" error with "On Error Resume Next" results in the condition being considered met. I really hadn't seen that one coming.</p>
+
+<p>The C# that I had imagined to be equivalent would be something like</p>
+
+<pre><code>try
+{
+    if (1/0)
+    {
+        // Don't enter here, 1/0 throws an exception!
+    }
+}
+catch { }
+</code></pre>
+
+<p>.. but that's just not the case. VBScript's idea of "proceed to the next statement" does not follow the same logic as C#.</p>
+
+<p>I said that it's only "if a condition is considered and causes an error" that this occurs, so in the following example the first condition is met (as you would expect) and so the second condition is not even considered, and so its error-raising behaviour will not result in its content block being executed.</p>
+
+<pre><code>On Error Resume Next
+If (1 = 1) Then
+  ' Yes
+ElseIf (1/0) Then
+  ' No
+End If
+</code></pre>
+
+<h3>That's enough for today (my head hurts)</h3>
+
+<p>Was I the only one surprised by all this? I presume that all of this weirdness can be linked back to some use cases where these rules made code look like it was doing "the right thing" but it's like one leaky abstraction after another!</p>
+
+<p>As I said at the start, though, I'm really not trying to take cheap shots at VBScript - the very fact that I looked into all this while migrating an important application written in it says a lot about it; that large production applications were able to be written in it and maintained until the present day does sort of speak quite highly about it. Or maybe it just harks to the eternal difficulty of the dreaded rewrite! While I feel a bit unfair slating it, let's put it this way - I'm not going to miss it when this transition is complete and it's finally gone! :)</p>
+<p class="PostTime">Posted at 22:35</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="locating-todo-comments-with-roslyn.html">Locating TODO comments with Roslyn</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="typescript-classes-for-react-flux-actions.html">TypeScript classes for (React) Flux actions</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "79";
+							var disqus_title = "If you can keep your head when all about you are losing theirs and blaming it on VBScript";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

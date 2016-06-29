@@ -1,0 +1,286 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - August 2012</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">12 August 2012</h3><h2><a id="Post33"></a><a href="dependency-injection-with-a-wcf-service.html">Dependency Injection with a WCF Service</a></h2>
+
+<p>Following recently discovering how easy it is to implement Dependency Injection into ASP.Net MVC Controllers by rolling my own ControllerFactory I wanted to see if the same sort of thing could be done for some Web Services I'm working on - I've never seen any production code that does it but seemed like the sort of thing that should be possible!</p>
+
+<p>"Discovering" in this case only meant googling for the extension points that I'd heard were built into MVC as standard; hardly the most earth-shattering of realisations! :) In case it saves anyone time, it's as simple as having an implementation of System.Web.Mvc.IControllerFactory and specifying this as the ControllerFactory to be used in the Application_Start method (in Global.asax) -</p>
+
+<pre><code>protected void Application_Start()
+{
+    AreaRegistration.RegisterAllAreas();
+    RegisterRoutes(RouteTable.Routes);
+    ControllerBuilder.Current.SetControllerFactory(new ControllerFactory());
+}
+</code></pre>
+
+<p>The most basic implementation runs along the lines of:</p>
+
+<pre><code>using System;
+using System.Web.Mvc;
+using System.Web.Routing;
+using System.Web.SessionState;
+
+namepsace Demo
+{
+    public class ControllerFactory : IControllerFactory
+    {
+        public IController CreateController(
+            RequestContext requestContext,
+            string controllerName)
+        {
+            // Return appropriate controller here, using whatever factory class or dependency
+            // injection method is appropriate to the solution..
+        }
+
+        public SessionStateBehavior GetControllerSessionBehavior(
+            RequestContext requestContext,
+            string controllerName)
+        {
+            return SessionStateBehavior.Default;
+        }
+
+        public void ReleaseController(IController controller) { }
+    }
+}
+</code></pre>
+
+<p>where requestContext exposes an HttpContext property so Cache, Request, Response and Server can be accessed.</p>
+
+<p>All very straight forward (which made me wish I'd gotten around to looking into this long ago!).</p>
+
+<h3>WCF Services</h3>
+
+<p>I wasn't as confident that it would be as simple to construct an equivalent for a WCF Web Service as I think there was quite a culture shift from the Microsoft that created WCF for .Net 3.5 and that which wrote the MVC framework, that tried to make use of existing standards, that included jQuery with the framework and that released the framework code under an open source license! But it couldn't hurt to try!</p>
+
+<p>In the Service's ServiceHost declaration a Factory may be specified which will be used to instantiate the Service type instead of the default being taken, which is to try to find a public parameter-less constructor and to call that.</p>
+
+<pre><code>&lt;%@ ServiceHost
+    Language="C#"
+    Debug="true"
+    Service="Demo.ExampleWebService"
+    Factory="Demo.ExampleWebServiceHostFactory"
+    CodeBehind="ExampleWebService.svc.cs"
+%&gt;
+</code></pre>
+
+<p>The factory needs to inherit from the WebServiceHostFactory class. A given factory implementation may handle the instantiation of various Service types but for my purposes, and for the example here, I'm going to work on the basis that there is one factory per service (if different services are to be handled by a single factory then the "serviceType" argument passed around can be consulted to alter the behaviour as required).</p>
+
+<p>The instantiation process follows theses steps:</p>
+
+<ol>
+<li>The CreateServiceHost method on the factory specified in the Service declaration is called (this is a method of WebServiceHostFactory that must be overridden)</li>
+<li>This returns a class that inherits from ServiceHost which registers a "Instance Provider" that will be used to instantiate the actual Service type (this Instance Provider must implement IContractBehaviour, so that it may be added tohe Behaviours collection, and implement IInstanceProvider to mark it as being able to instantiate the target type)</li>
+<li>The GetInstance method (which is part of the IInstanceProvider interface) is called; this must return an instance of the Service class to handle the request</li>
+</ol>
+
+<p>Example code may make this clearer!</p>
+
+<pre><code>using System;
+using System.ServiceModel;
+using System.ServiceModel.Activation;
+using System.ServiceModel.Channels;
+using System.ServiceModel.Description;
+using System.ServiceModel.Dispatcher;
+
+namespace Demo
+{
+    public class ExampleWebServiceHostFactory : WebServiceHostFactory
+    {
+        protected override ServiceHost CreateServiceHost(
+            Type serviceType,
+            Uri[] baseAddresses)
+        {
+            return new ExampleWebServiceHost(serviceType, baseAddresses);
+        }
+
+        private class ExampleWebServiceHost : ServiceHost
+        {
+            public ExampleWebServiceHost(
+                Type serviceType,
+                params Uri[] baseAddresses) : base(serviceType, baseAddresses)
+            {
+                foreach (var cd in this.ImplementedContracts.Values)
+                {
+                    cd.Behaviors.Add(new ExampleWebServiceProvider());
+                }
+            }
+        }
+
+        private class ExampleWebServiceProvider : IInstanceProvider, IContractBehavior
+        {
+            public object GetInstance(InstanceContext instanceContext)
+            {
+                // TODO: Return service instance here
+            }
+
+            public object GetInstance(InstanceContext instanceContext, Message message)
+            {
+                return this.GetInstance(instanceContext);
+            }
+
+            public void ReleaseInstance(InstanceContext instanceContext, object instance) { }
+
+            public void AddBindingParameters(
+                ContractDescription contractDescription,
+                ServiceEndpoint endpoint,
+                BindingParameterCollection bindingParameters) { }
+
+            public void ApplyClientBehavior(
+                ContractDescription contractDescription,
+                ServiceEndpoint endpoint,
+                ClientRuntime clientRuntime) { }
+
+            public void ApplyDispatchBehavior(
+                ContractDescription contractDescription,
+                ServiceEndpoint endpoint,
+                DispatchRuntime dispatchRuntime)
+            {
+                dispatchRuntime.InstanceProvider = this;
+            }
+
+            public void Validate(
+                ContractDescription contractDescription,
+                ServiceEndpoint endpoint) { }
+        }
+    }
+}
+</code></pre>
+
+<p>Ta-da! The only thing to fill in is the actual instantiation of the service type; this could be handled with a Ninject or other Dependency Injection Framework call or it could be a good old-fashioned factory class which pulls in all the various dependencies and returns a ready-to-rumble Service instance.</p>
+
+<h3>Some workarounds for removing ASP.Net dependencies</h3>
+
+<p>When I've used WCF to build Web Services in the past, before using this method of dependency inversion, I've been happy enough using the ASP.Net Cache and Request references but now that I'm working with Dependency-Injected classes I've wanted to extract these dependencies so that the Service class can be tested outside of the ASP.Net environment.</p>
+
+<h4>Cache</h4>
+
+<p>The first thing to approach was that I wanted to pass a generic cache reference from the factory. The current thinking (for .Net 4.0 onwards at least) seems to favour the use of the MemoryCache found in System.Runtime.Caching (<a href="http://www.codeproject.com/Articles/290935/Using-MemoryCache-in-Net-4-0">this Code Project article</a> is a reasonable introduction). So wrote an implementation of ICache (which is internal to my project) that makes use of the MemoryCache. Job done!</p>
+
+<h4>Client IP Address</h4>
+
+<p>Something else I struggled with initially was getting the IP Address of the client making the request (information that I include in the Request logging). This was easy when accessing the ASP.Net Request directly but proved more challenging without it. As usual, some Googling and experimentation yielded an answer. This method may be added to the ExampleWebServiceProvider from the above example:</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This may return an IPv4 or IPv6 format address. It will return null if unable to retrieve
+/// this information.
+/// &lt;/summary&gt;
+private string TryToGetClientIpAddress()
+{
+    var currentOperationContext = OperationContext.Current;
+    if (currentOperationContext == null)
+        return null;
+    object nameMessagePropertyRaw;
+    if (!currentOperationContext.IncomingMessageProperties.TryGetValue(
+        RemoteEndpointMessageProperty.Name,
+        out nameMessagePropertyRaw)
+    )
+        return null;
+    var nameMessageProperty = nameMessagePropertyRaw as RemoteEndpointMessageProperty;
+    if (nameMessageProperty == null)
+        return null;
+    var ipAddress = nameMessageProperty.Address;
+    if (string.IsNullOrWhiteSpace(ipAddress))
+        return null;
+    return ipAddress.Trim();
+}
+</code></pre>
+
+<p>These are the two biggest things that struck me when moving over to the new Service instantiation approach, I'm sure there will be similar cases but it's reassuring to know that it seems like in most cases the .net Framework has us covered one way or another, it's just a case of finding a different place to look for the data!</p>
+<p class="PostTime">Posted at 16:42</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/ASP.Net.html" title="3 Posts">ASP.Net</a></li><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<p class="Comments">
+							<a href="dependency-injection-with-a-wcf-service.html#disqus_thread" data-disqus-identifier="33">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

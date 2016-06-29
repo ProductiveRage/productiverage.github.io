@@ -1,0 +1,494 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - June 2014</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">26 June 2014</h3><h2><a id="Post71"></a><a href="wcf-cors-plus-json-rest-complete-example.html">WCF CORS (plus JSON &amp; REST) - Complete Example</a></h2>
+
+<p>Someone asked me the other day if I knew how to enable CORS (<a href="http://en.wikipedia.org/wiki/Cross-origin_resource_sharing">Cross Origin Resource Sharing</a> for a WCF service. This is commonly used to enable AJAX requests from a web page to retrieve content from a domain outside of the domain that delivered the page that the JavaScript is executing from. For a number of reasons, this is not allowed by default by web browsers but the security measure may be relaxed in modern browsers if the data is delivered with certain headers in the response:</p>
+
+<pre><code>Access-Control-Allow-Origin: *
+Access-Control-Request-Method: POST,GET,PUT,DELETE,OPTIONS
+Access-Control-Allow-Headers: X-Requested-With,Content-Type
+</code></pre>
+
+<p>There's information about this on the "Enable CORS" website: <a href="http://enable-cors.org/server_wcf.html">CORS on WCF</a>.</p>
+
+<p>My friend had found this information and struggled to make it work. It looked like it should be simple enough to me, so I thought I'd give it a go.</p>
+
+<p>I did not find it simple.</p>
+
+<p>But I cracked it in the end! So I'm recording the necessary steps here for posterity.. or for when I might need it in the future. Truth be told, there's no <em>one</em> thing that's mind-blowingly difficult, it's just a case of trying to remember how WCF ties things together when you've not dealt with it for a little while.</p>
+
+<h3>Modern WCF configuration - so easy to get started!</h3>
+
+<p>When Visual Studio 2010 and .net 4 were released, one of the things they introduced was cleaner web.config files that used nice defaults to prevent the bloat that had been added over time. (ScottGu talked about it at <a href="http://weblogs.asp.net/scottgu/clean-web-config-files-vs-2010-and-net-4-0-series">Clean Web.Config Files</a> - there he uses a web application rather than a WCF service as an example, but works was done on the WCF side too).</p>
+
+<p>The initial web.config you get when you go to New Project / WCF / WCF Service Application in VS 2013 is:</p>
+
+<pre><code>&lt;?xml version="1.0"?&gt;
+&lt;configuration&gt;
+  &lt;appSettings&gt;
+    &lt;add key="aspnet:UseTaskFriendlySynchronizationContext" value="true" /&gt;
+  &lt;/appSettings&gt;
+  &lt;system.web&gt;
+    &lt;compilation debug="true" targetFramework="4.5" /&gt;
+    &lt;httpRuntime targetFramework="4.5"/&gt;
+  &lt;/system.web&gt;
+  &lt;system.serviceModel&gt;
+    &lt;behaviors&gt;
+      &lt;serviceBehaviors&gt;
+        &lt;behavior&gt;
+          &lt;serviceMetadata httpGetEnabled="true" httpsGetEnabled="true"/&gt;
+          &lt;serviceDebug includeExceptionDetailInFaults="false"/&gt;
+        &lt;/behavior&gt;
+      &lt;/serviceBehaviors&gt;
+    &lt;/behaviors&gt;
+    &lt;protocolMapping&gt;
+      &lt;add binding="basicHttpsBinding" scheme="https"/&gt;
+    &lt;/protocolMapping&gt;
+    &lt;serviceHostingEnvironment aspNetCompatibilityEnabled="true" multipleSiteBindingsEnabled="true"/&gt;
+  &lt;/system.serviceModel&gt;
+  &lt;system.webServer&gt;
+    &lt;modules runAllManagedModulesForAllRequests="true"/&gt;
+    &lt;directoryBrowse enabled="true"/&gt;
+  &lt;/system.webServer&gt;
+&lt;/configuration&gt;
+</code></pre>
+
+<p>(I removed a couple of XML comments to make it more succint but didn't change anything else).</p>
+
+<p>This is great when you want to get cracking with the default settings but when you want to apply customisations it's not always clear where to start. The Enable CORS documentation says that you have to</p>
+
+<ol>
+<li>Create a couple of classes</li>
+<li>"Register new behavior in web.config"</li>
+<li>"Add new behavior to endpoint behavior configuration"</li>
+<li>"Configure endpoint"</li>
+</ol>
+
+<p>I'm going to take an example project and apply all of these steps, explaining what each one means (largely because when I first read them, I couldn't remember what each one meant in the context of WCF configuration!).</p>
+
+<p>If you want to follow along at home, create a new WCF Service Application project and call it "CORSExample". This will create the files IService1.cs, Service1.svc and Web.config. Change IService1.cs's content to</p>
+
+<pre><code>using System.ServiceModel;
+using System.ServiceModel.Web;
+
+namespace CORSExample
+{
+  [ServiceContract]
+  public interface IService1
+  {
+    [OperationContract]
+    ServiceResponse GetData(string value);
+  }
+}
+</code></pre>
+
+<p>and change Service1.svc to</p>
+
+<pre><code>using System;
+using System.ServiceModel.Activation;
+
+namespace CORSExample
+{
+  public class Service1 : IService1
+  {
+    public ServiceResponse GetData(string value)
+    {
+      return new ServiceResponse
+      {
+        ReceivedAt = DateTime.Now,
+        Value = string.Format("You entered: {0}", value)
+      };
+    }
+  }
+}
+</code></pre>
+
+<p>Then add a new file "ServiceResponse.cs" and set its content to</p>
+
+<pre><code>using System;
+using System.Runtime.Serialization;
+
+namespace CORSExample
+{
+  [DataContract]
+  public class ServiceResponse
+  {
+    [DataMember]
+    public DateTime ReceivedAt { get; set; }
+
+    [DataMember]
+    public string Value { get; set; }
+  }
+}
+</code></pre>
+
+<p>This gives us the outline of a very basic service. You could start this project up and then create a WCF client to communicate with it. It's the most basic example you can likely imagine that takes any form of input and returns a non-primitive-type response. I wanted a "complex response type" to show how responses may be JSON-serialised very easily.. but that comes later, we're not returning JSON at the moment!</p>
+
+<h3>Laying the groundwork</h3>
+
+<p>Starting with the code on the <a href="http://enable-cors.org/server_wcf.html">CORS on WCF</a> page, I took the two classes and combined them into one, removing some potentially-customisable code and replacing it with something that does just the job at hand. This results in a smaller surface area of exposed "new code" and means that I have less to confuse myself with!</p>
+
+<pre><code>using System;
+using System.Collections.Generic;
+using System.ServiceModel;
+using System.ServiceModel.Channels;
+using System.ServiceModel.Configuration;
+using System.ServiceModel.Description;
+using System.ServiceModel.Dispatcher;
+
+namespace CORSExample
+{
+  public class CORSEnablingBehavior : BehaviorExtensionElement, IEndpointBehavior
+  {
+    public void AddBindingParameters(
+      ServiceEndpoint endpoint,
+      BindingParameterCollection bindingParameters) { }
+
+    public void ApplyClientBehavior(ServiceEndpoint endpoint, ClientRuntime clientRuntime) { }
+
+    public void ApplyDispatchBehavior(ServiceEndpoint endpoint, EndpointDispatcher endpointDispatcher)
+    {
+      endpointDispatcher.DispatchRuntime.MessageInspectors.Add(
+        new CORSHeaderInjectingMessageInspector()
+      );
+    }
+
+    public void Validate(ServiceEndpoint endpoint) { }
+
+    public override Type BehaviorType { get { return typeof(CORSEnablingBehavior); } }
+
+    protected override object CreateBehavior() { return new CORSEnablingBehavior(); }
+
+    private  class CORSHeaderInjectingMessageInspector : IDispatchMessageInspector
+    {
+      public object AfterReceiveRequest(
+        ref Message request,
+        IClientChannel channel,
+        InstanceContext instanceContext)
+      {
+        return null;
+      }
+
+      private static IDictionary&lt;string, string&gt; _headersToInject = new Dictionary&lt;string, string&gt;
+      {
+        { "Access-Control-Allow-Origin", "*" },
+        { "Access-Control-Request-Method", "POST,GET,PUT,DELETE,OPTIONS" },
+        { "Access-Control-Allow-Headers", "X-Requested-With,Content-Type" }
+      };
+
+      public void BeforeSendReply(ref Message reply, object correlationState)
+      {
+        var httpHeader = reply.Properties["httpResponse"] as HttpResponseMessageProperty;
+        foreach (var item in _headersToInject)
+          httpHeader.Headers.Add(item.Key, item.Value);
+      }
+    }
+  }
+}
+</code></pre>
+
+<p>So add a file "CORSEnablingBehavior.cs" to the project and populate it with the above content.</p>
+
+<p>This will, if we can attach it to the right thing in the right place at the right time, inject the response headers that we require.</p>
+
+<p>To do so, we're going to have to add a "services" section to the web.config (within "system.serviceModel"). This config section is optional and so is not present in the bare bones config that Visual Studio created for us. We need to add it because we need to override some options -</p>
+
+<pre><code>&lt;services&gt;
+  &lt;service name="CORSExample.Service1"&gt;
+    &lt;endpoint address="" binding="webHttpBinding" contract="CORSExample.IService1" /&gt;
+  &lt;/service&gt;
+&lt;/services&gt;
+</code></pre>
+
+<p>It's important that we specify the "webHttpBinding" since the <strong>CORSEnablingBehavior</strong> implementation will fail without it.</p>
+
+<p>Having created this section, we must then fully populate it. The <em>address</em> attribute can stay blank (changing this alters the URLs that we make requests through - changing it to "something" would mean that requests from a client would have to POST their xml to "/Service1.svc/something" instead of just "/Service1.svc"). The <em>contract</em> attribute must match the type name (including namespace) of the interface precisely and the service <em>name</em> attribute must match the implementation class' type name (including namespace) precisely. If either of these are incorrect then Visual Studio is nice enough to draw your attention to this fact with a blue wobbly underline (the warning message "The Enumeration Constraint failed" could be friendlier, but this is basically what it means).</p>
+
+<p>Now we need to configure the "webHttpBinding". The default is "basicHttpBinding" and that works out of the box. But if we tried to call the service having only made the change above, we'd be presented with a <strong>ProtocolException</strong> stating</p>
+
+<blockquote>
+  <p>The content type application/xml; charset=utf-8 of the response message does not match the content type of the binding (text/xml; charset=utf-8). If using a custom encoder, be sure that the IsContentTypeSupported method is implemented properly.</p>
+</blockquote>
+
+<p>At least, that's what you'd get if you had a debugger attached to the process making the request. If you were making a request from a web application you would get a yellow screen of death showing something like</p>
+
+<p><img alt="ProtocolException Yellow Screen Of Death" src="Content/Images/Posts/WCFProtocolException.png" class="NoBorder AlwaysFullWidth" /></p>
+
+<p>So we need to add another section (this time within "behaviors")</p>
+
+<pre><code>&lt;endpointBehaviors&gt;
+  &lt;behavior&gt;
+    &lt;webHttp /&gt;
+  &lt;/behavior&gt;
+&lt;/endpointBehaviors&gt;
+</code></pre>
+
+<p>If we go back to this fictional WCF client that I'm assuming you're testing the service with for now, you'll need to update the service reference since there's a different binding mechanism.</p>
+
+<p>Then you're in for another treat. When configuring a Service Reference to a WCF service that uses basicHttpBinding, the client's web.config will be populated with information describing how to connect. Excellent, no problem. When the service uses webHttpBinding, however, it does not. This is explained in the post <a href="http://blogs.msdn.com/b/carlosfigueira/archive/2012/03/26/mixing-add-service-reference-and-wcf-web-http-a-k-a-rest-endpoint-does-not-work.aspx">Mixing Add Service Reference and WCF Web HTTP endpoint does not work</a>.</p>
+
+<p>We can work around it for now by manually adding some content into the client's web.config (we'll be changing this service to work with JSON soon, and so probably not be consuming it through a generated WCF client - at that point we won't have to worry about this client web.config issue).</p>
+
+<pre><code>&lt;?xml version="1.0"?&gt;
+&lt;!-- This is the CLIENT web.config (required to consume a WCF service that uses webHttpBinding) --&gt;
+&lt;configuration&gt;
+
+   &lt;!-- This is default web.config content --&gt;
+  &lt;system.web&gt;
+    &lt;compilation debug="true" targetFramework="4.5" /&gt;
+    &lt;httpRuntime targetFramework="4.5" /&gt;
+  &lt;/system.web&gt;
+
+  &lt;!-- This is the content that needs adding to consume the service--&gt;
+  &lt;system.serviceModel&gt;
+    &lt;behaviors&gt;
+      &lt;endpointBehaviors&gt;
+        &lt;behavior name="webhttp"&gt;
+          &lt;webHttp/&gt;
+        &lt;/behavior&gt;
+      &lt;/endpointBehaviors&gt;
+    &lt;/behaviors&gt;
+    &lt;bindings&gt;
+      &lt;webHttpBinding&gt;
+        &lt;binding name="WebHttpBinding_IService1" /&gt;
+      &lt;/webHttpBinding&gt;
+    &lt;/bindings&gt;
+    &lt;client&gt;
+      &lt;endpoint name="WebHttpBinding_IService1" contract="CORSExample.IService1"
+        binding="webHttpBinding" bindingConfiguration="WebHttpBinding_IService1"
+        address="http://localhost:51192/Service1.svc"
+        behaviorConfiguration="webhttp" /&gt;
+    &lt;/client&gt;
+  &lt;/system.serviceModel&gt;
+
+&lt;/configuration&gt;
+</code></pre>
+
+<p><em>Note that the 51192 port in the endpoint address may vary for your test project. If you go to the project's properties page you should be able to find the port there.</em></p>
+
+<h3>Enables the CORS!</h3>
+
+<p>Right, we're really getting there now! Now we need to introduce the <strong>CORSEnablingBehavior</strong> class. In the service's web.config we need to add a new section (inside "system.servicemodel") -</p>
+
+<pre><code>&lt;extensions&gt;
+  &lt;behaviorExtensions&gt;
+    &lt;add
+      name="crossOriginResourceSharingBehavior"
+      type="CORSExample.CORSEnablingBehavior, CORSExample, Version=1.0.0.0, Culture=neutral" /&gt;
+  &lt;/behaviorExtensions&gt;
+&lt;/extensions&gt;
+</code></pre>
+
+<p>and then change the "endpointBehaviors" content we added before to</p>
+
+<pre><code>&lt;endpointBehaviors&gt;
+  &lt;behavior&gt;
+    &lt;webHttp /&gt;
+    &lt;crossOriginResourceSharingBehavior /&gt;
+  &lt;/behavior&gt;
+&lt;/endpointBehaviors&gt;
+</code></pre>
+
+<p><em>Note: Doing this results in the "crossOriginResourceSharingBehavior" node being squiggly-underlined as an "invalid child element" - this is normal and may be ignored. Also note that the "crossOriginResourceSharingBehavior" string is arbitrary and may be any value so long as it is consistent between the two places in which it is used (the "name" attribute in the "behaviorExtensions" section and the actual node name in "endpointBehaviors"). However, the "type" attribute must match the type name (including namespace) precisely of the <strong>CORSEnablingBehavior</strong> class that we added earlier.</em></p>
+
+<p>So <em>now</em> if you make a request from your WCF client the response will contain the required headers!</p>
+
+<p>Success!!</p>
+
+<p>Right now you only have my word for it, since Visual Studio doesn't show the raw messages that are passed in a WCF request. At times like this, I always turn to the trusty <a href="http://www.telerik.com/fiddler">Fiddler</a>. If you're not familiar with it, get familiar - it's fantastic! :) If you <em>are</em> familiar with it then you may well know that it doesn't register web requests made to "localhost". The easiest thing to do is to change the URL of the request so that "localhost" is replaced with "localhost.fiddler" (do this in the web.config of the client). Then Fiddler <em>will</em> show the details of the exchange. Just be aware that when Fiddler <em>isn't</em> connected that "localhost.fiddler" won't work.</p>
+
+<p>As a recap, here's the complete WCF service web.config we've built for the "CORSExample" project:</p>
+
+<pre><code>&lt;?xml version="1.0"?&gt;
+&lt;configuration&gt;
+
+  &lt;appSettings&gt;
+    &lt;add key="aspnet:UseTaskFriendlySynchronizationContext" value="true" /&gt;
+  &lt;/appSettings&gt;
+
+  &lt;system.web&gt;
+    &lt;compilation debug="true" targetFramework="4.5" /&gt;
+    &lt;httpRuntime targetFramework="4.5"/&gt;
+  &lt;/system.web&gt;
+
+  &lt;system.serviceModel&gt;
+    &lt;extensions&gt;
+      &lt;behaviorExtensions&gt;
+        &lt;add
+          name="crossOriginResourceSharingBehavior"
+          type="CORSExample.CORSEnablingBehavior, CORSExample, Version=1.0.0.0, Culture=neutral" /&gt;
+      &lt;/behaviorExtensions&gt;
+    &lt;/extensions&gt;
+
+    &lt;behaviors&gt;
+      &lt;serviceBehaviors&gt;
+        &lt;behavior&gt;
+          &lt;serviceMetadata httpGetEnabled="true" httpsGetEnabled="true"/&gt;
+          &lt;serviceDebug includeExceptionDetailInFaults="true"/&gt;
+        &lt;/behavior&gt;
+      &lt;/serviceBehaviors&gt;
+      &lt;endpointBehaviors&gt;
+        &lt;behavior&gt;
+          &lt;webHttp /&gt;
+          &lt;crossOriginResourceSharingBehavior /&gt;
+        &lt;/behavior&gt;
+      &lt;/endpointBehaviors&gt;
+    &lt;/behaviors&gt;
+
+    &lt;services&gt;
+      &lt;service name="CORSExample.Service1"&gt;
+        &lt;endpoint address="" binding="webHttpBinding" contract="CORSExample.IService1" /&gt;
+      &lt;/service&gt;
+    &lt;/services&gt;
+
+  &lt;/system.serviceModel&gt;
+
+  &lt;system.webServer&gt;
+    &lt;modules runAllManagedModulesForAllRequests="true"/&gt;
+    &lt;directoryBrowse enabled="true"/&gt;
+  &lt;/system.webServer&gt;
+
+&lt;/configuration&gt;
+</code></pre>
+
+<h3>A JSON endpoint</h3>
+
+<p>As I said at the start, I think that the most common use case for CORS-enabled services such as this is to make AJAX requests from JavaScript on a web page. To this end, it would be great if we didn't have to rely upon XML messages. It would be much better to be able to make the requests in some sort of RESTful manner (where the request is essentially represented by the URL, rather than a POST'd XML-serialised message) and to have the response expressed as JSON.</p>
+
+<p>I'm going to leave thinking any deeper about the nitty gritty of what it means to be RESTful for another day (it can be a contentious issue!) and just make the current example communicate through a GET request that passes the "value" parameter as part of the URL.</p>
+
+<p>This is actually extraordinarily easy at this point. The only change required is to the <strong>IService1</strong> interface, it should now read</p>
+
+<pre><code>using System.ServiceModel;
+using System.ServiceModel.Web;
+
+namespace CORSExample
+{
+  [ServiceContract]
+  public interface IService1
+  {
+    [WebGet(UriTemplate = "GetData/{value}", ResponseFormat = WebMessageFormat.Json)]
+    [OperationContract]
+    ServiceResponse GetData(string value);
+  }
+}
+</code></pre>
+
+<p>This allows requests to be made such as</p>
+
+<pre><code>http://localhost:51192/Service1.svc/GetData/123
+</code></pre>
+
+<p>from the browser and for the response to be visible as serialised JSON</p>
+
+<pre><code>{"ReceivedAt":"\/Date(1403736100464+0100)\/","Value":"You entered: 123"}
+</code></pre>
+
+<p>Being in the browser, you don't even need Fiddler to see the response headers, you can use built-in developer tools and see that the headers are present.</p>
+
+<p>Note that there was no change required to the service implementation nor to the response class - in the same way that it can be serialised to XML, the service can serialise the response to JSON.</p>
+
+<p>There is one thing I maybe cheated on a little bit, though. My GetData method's argument is conveniently a string. If this is changed to anything else (an int, for example) then the service will not start up and throw an exception</p>
+
+<blockquote>
+  <p>Operation 'GetData' in contract 'IService1' has a path variable named 'value' which does not have type 'string'.  Variables for UriTemplate path segments must have type 'string'.</p>
+</blockquote>
+
+<p>But getting into all of the ins and outs of configuring requests for JSON are outside the scope of this post, I think. The aim was to enable CORS - and explain every part of what was required in doing so - and I think I've done that well enough for today. Enjoy!</p>
+<p class="PostTime">Posted at 21:35</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<p class="Comments">
+							<a href="wcf-cors-plus-json-rest-complete-example.html#disqus_thread" data-disqus-identifier="71">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

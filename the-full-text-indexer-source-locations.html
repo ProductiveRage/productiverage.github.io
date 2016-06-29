@@ -1,0 +1,205 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - The Full Text Indexer: Source Locations</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/the-full-text-indexer-source-locations" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">28 March 2013</h3><h2><a id="Post53"></a><a href="the-full-text-indexer-source-locations.html">The Full Text Indexer: Source Locations</a></h2>
+
+<p>After adding the <a href="the-full-text-indexer-structured-queries.html">Structured Queries</a> functionality to my <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer</a> project I've been looking back at the mechanism for matching runs of tokens - eg. matching</p>
+
+<blockquote>
+  <p>"penguins are the best"</p>
+</blockquote>
+
+<p>not just to results that contain the words "penguins", "are", "the", "best" but results that contain them in a string, as a run of consecutive tokens.</p>
+
+<p>I'd previously addressed this functionality with the <strong>ConsecutiveTokenCombiningTokenBreaker</strong> - this can wrap another token breaker so that during Index generation the Index will be populated with tokens that are not just individual words but also runs of words strung back together. (There's more details in the <a href="the-full-text-indexer-token-breaker-and-string-normaliser-variations.html">Token Breaker and String Normaliser variations</a> post).</p>
+
+<p>There are some issues that I've encountered with this when I've used it with real data, however. Firstly, the Index generation time expands greatly since so much more work is done in terms of generating the tokens and also building the Index with all of this additional token data. Secondly, all of this additional data takes up a lot more space (whether persisting the Index to disk or just maintaining it in memory). An Index generated with the use of a <strong>ConsecutiveTokenCombiningTokenBreaker</strong> will likely be several times larger, feasibly ten times as large. And finally, the token breaker takes a constructor argument "maxNumberOfTokens" which caps how many tokens will be strung together in any given run. This puts a limit on the length of input search strings, based on the number of tokens it would be broken down into ("penguins are the best" would be a run of four words. If a maxNumberOfTokens value of three was specified, then the string couldn't be matched in any content).</p>
+
+<h3>Source Locations</h3>
+
+<p>Something I've been thinking about adding is "Source Location" information to the match data. I believe that Lucene can be configured to record where in the source content that a particular token was extracted from, which can be used for search term highlighting. I've implemented search term highlighting on my blog but that tries to match search terms to content after the Index has identified which posts match the search. And it doesn't use the same string normaliser as the Index so it doesn't realise that "cat" and "cats" will be considered the same by the Index.</p>
+
+<p>So in the back of my mind I've thought about adding this source location data to token matches so that I could use it to implement more consistent search term highlighting (consistent in that the same token matches identified by the Index will be considered by the search term highlighter).</p>
+
+<p>But it struck me that I should be able to use the same data to search for consecutive runs of token matches after the Index has been generated, rather than requiring additional processing to generate the Index in the first place.</p>
+
+<p>If all of the string data for a source data entry was extracted out into one long string then each "Source Location" instance would need a start index and a length for the segment of that string that was extracted for a particular token. However, this isn't how the string data is extracted for data types that have multiple properties to extract from, each is considered a separate field. So the source location would require a field index as well as the content start index and length. (If the source data type represents articles, for example, then different fields may be Title, Description, Author, etc..).</p>
+
+<p>If, in addition to this, we record the "token index" for each source location then we would have the data required to identify consecutive runs. If a source data instance had a single text property with the content</p>
+
+<blockquote>
+  <p>"penguins are the best, penguins!"</p>
+</blockquote>
+
+<p>this could be extracted into source locations with</p>
+
+<pre><code>{ 0, 0, 0,  8 }, // FieldIndex, TokenIndex, ContentIndex, ContentLength
+{ 0, 1, 9,  3 }, // FieldIndex, TokenIndex, ContentIndex, ContentLength
+{ 0, 2, 13, 3 }, // FieldIndex, TokenIndex, ContentIndex, ContentLength
+{ 0, 3, 17, 4 }, // FieldIndex, TokenIndex, ContentIndex, ContentLength
+{ 0, 4, 23, 8 }  // FieldIndex, TokenIndex, ContentIndex, ContentLength
+</code></pre>
+
+<p>(They would all have FieldIndex zero since there is only a single field to extract from).</p>
+
+<p>The search for "penguins are the best" could be performed by searching for each of the four words and then analysing the match data and its source locations to only consider token matches that are arranged in the content as part of a consecutive run. The second instance of "penguins" could be ignored as there is no match for the word "are" that has the same FieldIndex but a TokenIndex one greater.</p>
+
+<p>This logic is incorporated into the new "GetConsecutiveMatches" extension method. Its signature is similar to "GetPartialMatches" - it takes a search term which is expected to be multiple tokens according to the token breaker which must also be provided. It then requires <em>two</em> weight combiners where GetPartialMatches only requires one.</p>
+
+<pre><code>// There are alternate signatures that take less arguments in favour of sensible defaults
+public static NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetConsecutiveMatches&lt;TKey&gt;(
+    this IIndexData&lt;TKey&gt; index,
+    string source,
+    ITokenBreaker tokenBreaker,
+    IndexGenerator.WeightedEntryCombiner weightCombinerForConsecutiveRuns,
+    IndexGenerator.WeightedEntryCombiner weightCombinerForFinalMatches
+)
+</code></pre>
+
+<p>GetPartialMatches will combine matches for each of the individual words in the search term, regardless of where they appear in the source content. There is only one combination of match data for any given result. GetConsecutiveMatches has to break down the match data back into individual occurences in the source data because some occurences of a word may be valid for the returned data (if they are part of a consecutive run of search terms) while other occurences may <em>not</em> be valid (if they <em>aren't</em> part of a consecutive run). In the above example, the word "penguin" appears as a match with two source locations but only the first source location is valid as that is the only one that is part of a consecutive run of tokens that match "penguins are the best".</p>
+
+<p>GetConsecutiveMatches will identify distinct runs of tokens represented by WeightedEntry instances with a single SourceLocation each. The first weight combiner will be called with these sets of tokens (where each set represents a single run that matches the entire search term) and must return a weight that represents the entire run. This run of tokens will be reduced to a single WeightedEntry instance with a single SourceLocation that spans from the start of the first token in the run to the end of the last one. A reasonable implementation of a weight combiner for this purpose would be one that sums together the weights of each token in the run and then applies a multiplier based on the length of the run (how many tokens are in it), this way longer token runs are awarded a greater match weight.</p>
+
+<p>The second weight combiner is responsible for determing the final match weight for a result where the run of tokens is identified multiple times. If the source data in the earlier example had other data where the phrase "penguins are the best" appeared then a single WeightedEntry for that result for the string "penguins are the best" is required, its weight will be an aggregate of the weights of the individual matches. This process is exactly the same as that which takes place as part of the Index generation; when a token is found multiple times for the same result a combined weight for that token must be determined. The exact same delegate (the <strong>IndexGenerator.WeightedEntryCombiner</strong>) is used by the <strong>IndexGenerator</strong>'s constructor and for the weight combiners for GetConsecutiveMatches.</p>
+
+<h3>Hurrah for defaults</h3>
+
+<p>That's the detail about the source locations data that enabled the GetConsecutiveMatches extension method to be written, and the detail about how to call it where you need to specify all of its behaviour. But following the convenience of the <strong>AutomatedIndexGeneratorFactory</strong> (see <a href="the-full-text-indexer-automating-index-generation.html">Automating Index Generation</a>) I've included some method signatures which provide defaults for the weight combiners and the token breaker. So you can get results with the much simpler</p>
+
+<pre><code>var results = index.GetConsecutiveMatches("penguins are the best");
+</code></pre>
+
+<p>The default token breaker is a <strong>WhiteSpaceExtendingTokenBreaker</strong> that treats common puncuation characters as whitespace (such as square, round, curly or triangular brackets, commas, full stops, colons and some others). This is the same token breaker that the <strong>AutomatedIndexGeneratorFactory</strong> will use unless a token break override is specified.</p>
+
+<p>The default weight-combiner-for-consecutive-runs will sum the weights of tokens in the consecutive run and then multiply by two to the power number-of-tokens-minus-one (so x2 if there are two tokens that make up the run, x4 if there are three, x8 if there are four, etc..). The default weight-combiner-for-all-of-a-results-consecutive-runs will sum the weights of the tokens (which is the default weight combiner used by the <strong>AutomatedIndexGeneratorFactoryBuilder</strong>).</p>
+
+<p>While I was doing this, I added similar alternate method signatures to GetPartialMatches as well, so now the bare minimum it needs is</p>
+
+<pre><code>var results = index.GetPartialMatches("penguins are the best");
+</code></pre>
+
+<p>The default token break is the same as described above and the default weight combiner is one that sums the weights so long as all of the search terms are present for the result somewhere in its content. Any result that contains the words "penguins", "are" and "the" but not "best" would not be included in the results.</p>
+
+<h3>More data but reduced disk space requirements</h3>
+
+<p>For my blog, I persist the search index data to disk so that it doesn't need to be rebuilt if the application is reset (it stores a last-modified date alongside the index data which can be compared to the last-modified date of any post, so it's rebuilt when the source data changes rather than when a memory cache entry arbitrarily expires).</p>
+
+<p>I was concerned that this additional source location data would make a significant difference to the size of this stored data, which could be inconvenient because I tend to build it before uploading changes to the web server (so smaller is better). And, to be honest, I had already been somewhat surprised that the data I persist to disk was several megabytes. (Even though that also contains all of the raw Post contents, along with the AutoComplete content extracted from analysing the Posts, it was still larger than my gut instinct suspected it would be). So I didn't want to make it any worse!</p>
+
+<p>I've used the bog standard <strong>BinaryFormatter</strong> to serialise the data and <strong>GZipStream</strong> to compress it. To see how much overhead was added by this approach compared to writing a custom serialisation method for the <strong>IndexData</strong>, I wrote the <strong>IndexDataSerialiser</strong>. This only works with <strong>IndexData</strong> (the specific implemenation of <strong>IIndexData</strong> rather than <em>any</em> <strong>IIndexData</strong> implementation) which means that there are assumptions that can be made (eg. that all of the source locations will be instances of the <strong>SourceFieldLocation</strong> class and not another class derived from it). And it's reduced the size of the data for the Index that my blog content generates to about 10% of what it was before. Win!</p>
+
+<p>The <strong>IndexDataSerialiser</strong> is a static class with two methods:</p>
+
+<pre><code>void IndexDataSerialiser.Serialise(IndexData&lt;TKey&gt; source, Stream stream);
+
+IndexData&lt;TKey&gt; IndexDataSerialiser.Deserialise(Stream stream);
+</code></pre>
+
+<p>It doesn't compress the data at all, so there will be advantages to using a <strong>GZipStream</strong>. It uses the <strong>BinaryWriter</strong> to write out the bare minimum content required to describe the data when serialising and then the <strong>BinaryReader</strong> to read the data back out and instantiate a new <strong>IndexData</strong> from it. It has to rebuild the <strong>TernarySearchTreeDictionary</strong> that the <strong>IndexData</strong> takes as a constructor argument but my feeling is that the processing required to do this is less than deserialising an already-populated <strong>IndexData</strong> using the <strong>BinaryFormatter</strong>. (I've not compared them thorough but in preliminary testing it seemed to take longer to deserialise with the <strong>BinaryFormatter</strong> when the data was loaded into a <strong>MemoryStream</strong> than the <strong>IndexDataSerialiser</strong> deserialisation took when loading from disk).</p>
+
+<p>I might write another day about how I implemented the search term highlighting on this blog but I think this post has already gone on long enough! <strong>Update (9th April):</strong> See <a href="the-full-text-indexer-search-term-highlighting-with-source-locations.html">Search Term Highlighting with Source Locations</a>.</p>
+
+<p>For more information on this project, see the <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up</a>.</p>
+<p class="PostTime">Posted at 23:29</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="publishing-rss.html">Publishing RSS</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="the-full-text-indexer-search-term-highlighting-with-source-locations.html">The Full Text Indexer: Search Term Highlighting with Source Locations</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "53";
+							var disqus_title = "The Full Text Indexer: Source Locations";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

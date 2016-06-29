@@ -1,0 +1,474 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - React and Flux with DuoCode</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/react-and-flux-with-duocode" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">26 May 2015</h3><h2><a id="Post85"></a><a href="react-and-flux-with-duocode.html">React and Flux with DuoCode</a></h2>
+
+<p>Back in January, I heard about <a href="http://duoco.de/">DuoCode</a> and signed up to be part of the beta program when they started it. It takes C# code, analyses it with Roslyn and then generates JavaScript to run in the browser. It promises to offer all of the benefits of statically-typed C# in Visual Studio for writing browser code. I didn't actually get round to doing any more than installing an early version during the closed beta period, but recently they opened up the beta product to the general public and I got around to trying it out properly. Trying to not go over the top here.. it's absolutely fantastic!</p>
+
+<p>The compilation process has been really fast on the (admittedly small) projects I've been trying out and the translation itself seems faultless - I've tried to catch it out in a variety of ways, seeing if it could handle "ref" or "out" arguments, for example (since JavaScript has no concept of this), playing with generics, trying out LINQ statements, generating anonymous types.. it really does seem to do it all! Suffice to say, I'm very impressed with what I've seen.</p>
+
+<p>But.. (there's always a but).. they currently say on their FAQ page, under "How much does DuoCode cost?" -</p>
+
+<blockquote>
+  <p>A pricing model will be introduced in the future, after the Beta period is over.</p>
+</blockquote>
+
+<p>This is quite a concern since there's literally no indication as to whether they will be expecting to charge for personal use, for commercial use, per-seat or per-company for commercial use, whether there will be a freemium model where the "basics" are free but additional features are paid-for.. or something else entirely. And there's also no indication of when the beta period will actually be over. Bummer. Particularly since I'm so excited by it that I seriously want to push it for a project at work, but if it's going to be prohibitively expensive or if its stability is going to be a problem (or if there's a chance that it will never reach 1.0) then it's going to be difficult to do some in good conscience.</p>
+
+<p>But let's brush all that aside for now and get back to some positives. Like I said, the way that this all works is phenomenal (even the JavaScript itself that is generated is really good - both from the source code you write <em>and</em> in the support library that recreates System, System.Collections, System.Linq, etc..) and I wanted to try it out in a few scenarios.. particularly with my other current technical loves; React and Flux.</p>
+
+<p><strong>Spoiler alert: DuoCode and React are an incredible match and I can't recommend highly enough that you try them out!</strong></p>
+
+<h3>Building blocks</h3>
+
+<p>I've written previously about using TypeScript with React (in <a href="typescript-es6-classes-for-react-components-without-the-hacks.html">TypeScript / ES6 classes for React components</a> and <a href="typescript-classes-for-react-flux-actions.html">TypeScript classes for (React) Flux actions</a>) so I've got some experience that I'd hoped to be able to apply. Integrating React with TypeScript, there are two major challenges: Firstly, creating a base "React Component" class that may be derived from to create custom components. And secondly, getting TypeScript definitions for the React library.</p>
+
+<p>The same two challenges apply to working with React from DuoCode.</p>
+
+<p>The biggest issue with using classes as React components is that React's render methods all expect a React "Element" and <em>not</em> just a generic instance of <em>whatever</em>. So we can't just define a class with a "render" method and pass it into React; the React library's "createElement" method must be used to prepare an instance for use as a React component.</p>
+
+<p>In TypeScript, I addressed this by having each component file be an AMD module that defined a class for the component model but that actually exported a "Factory" function that would instantiate the class, given the "props" reference it would need - eg.</p>
+
+<pre><code>import React = require('react');
+
+interface Props { name: string; role: string; }
+
+class PersonDetailsComponent extends React.Component&lt;Props&gt; {
+  constructor(props: Props) {
+    super(props);
+  }
+  public render() {
+    return React.DOM.div(null, this.props.name + " is a " + this.props.role);
+  }
+}
+
+function Factory(props: Props) {
+  return React.createElement(PersonDetailsComponent, props);
+}
+
+export = Factory;
+</code></pre>
+
+<p>The "React.Component" class that it is derived from is a class within the React library, exposed as a generic class (whose type parameter is the data type of the "props" reference for the component). This base class is accessible due to the third party TypeScript definition (I'll talk about this more shortly).</p>
+
+<p>The gist is that React library function "createElement" must be used to initialise Components - it gets passed the Component class' constructor and the "props" reference to pass into the constructor, but the actually calling of that constructor is <em>not</em> performed explicitly.</p>
+
+<p>Doing exactly this in C# would be.. challenging. And not particularly idiomatic.</p>
+
+<p>What I've ended up with instead is the following:</p>
+
+<pre><code>public class ExampleComponent : ComponentWrapper&lt;ExampleComponent.Props&gt;
+{
+  public static Element New(Props props) { return Ele.Props(props).As&lt;ExampleComponent&gt;(); }
+  private ExampleComponent(ComponentProps&lt;Props&gt; props) : base(props) { }
+
+  public override Element Render()
+  {
+    return DOM.div(null, props.Props.Name);
+  }
+
+  public class Props
+  {
+    public string Name;
+  }
+}
+</code></pre>
+
+<p>A Component class that inherits from a base class, again with a generic type parameter for the "props" type. The constructor is private since it will never be called directly from consuming code - instead there is a static "New" function that does.. magic. There's actually several things to walk through here, so let me take it one step at a time.</p>
+
+<p>The "ComponentWrapper" is a DuoCode binding, meaning it's not a class that the DuoCode compiler has to translate into JavaScript. Instead, it's a way to tell the type system about a type that will be available at runtime. It looks like this:</p>
+
+<pre><code>[Js(Extern = true, Name = "ReactComponentWrapper")]
+public abstract class ComponentWrapper&lt;TProps&gt;
+{
+  protected readonly ComponentProps&lt;TProps&gt; props;
+  protected ComponentWrapper(ComponentProps&lt;TProps&gt; props) { }
+
+  [Js(Name = "render")]
+  public abstract Element Render();
+}
+
+[Js(Extern = true, Name = "ReactComponentWrapper")]
+public static class ComponentWrapper
+{
+  [Js(OmitGenericArgs = true)]
+  public extern static Element GetElement&lt;TProps&gt;(Type componentType, TProps props);
+}
+</code></pre>
+
+<p>The C# extern keyword "<a href="https://msdn.microsoft.com/en-us/library/e59b22c5.aspx">is used to declare a method that is implemented externally</a>" - usually this is used to import functions from dlls, but here it's used to indicate that it will be implemented by runtime JavaScript. The "Js" attribute is a DuoCode construct that allows structures to be identified as being implemented externally; in other words, that the DuoCode compiler need not try to generate corresponding JavaScript. It also allows for a different reference name to be used at runtime than the class would otherwise indicate - so instead of "MyDuoCodeProject.ComponentWrapper", it will use the name "ReactComponentWrapper" in the final JavaScript.</p>
+
+<p>So what is this "ReactComponentWrapper" class that will be present at runtime? Well, you'll have to reference an additional JavaScript file in your index.html, with the following content:</p>
+
+<pre><code>window.ReactComponentWrapper = (function (_super) {
+  function Component(props) {
+    _super.call(this, props, null);
+  }
+  Component.ctor = Component;
+  Component.GetElement = function (componentType, props) {
+    return React.createElement(componentType.self.ctor, { Props: props });
+  };
+  return Component;
+})(React.Component);
+</code></pre>
+
+<p>This base class hooks up the C# Component class so that it inherits from the "React.Component" class in the React library, just like how the TypeScript class is derived from the React.Component library class. There are two things to note; when DuoCode generates JavaScript that instantiates classes, it always does it through a "ctor" function, so a "ctor" is required on the "ReactComponentWrapper" that is an alias onto its primary constructor. And a "GetElement" function is defined that takes a DuoCode Component class and the props reference that should be passed into a constructor on that type - from these it returns a React "Element" by calling the library's "createElement" method. This method is also declared in the "ComponentWrapper" binding.</p>
+
+<p>With all this, it would be possible to create a React "Element" from the Component class by calling</p>
+
+<pre><code>var element = ComponentWrapper.GetElement&lt;ExampleComponent.Props&gt;(
+  typeof(ExampleComponent),
+  new ExampleComponent.Props { Name = "test" }
+);
+</code></pre>
+
+<p>.. but I thought that would be a bit unwieldy every time it was required - it needs "ExampleComponent" to be typed three times!</p>
+
+<p>To make it a little less arduous, I've created a helper class -</p>
+
+<pre><code>public static class Ele
+{
+  public static ElementFactory&lt;TProps&gt; Props&lt;TProps&gt;(TProps props)
+  {
+    if (props == null)
+      throw new ArgumentNullException("props");
+    return new ElementFactory&lt;TProps&gt;(props);
+  }
+
+  public class ElementFactory&lt;TProps&gt;
+  {
+    private readonly TProps _props;
+    public ElementFactory(TProps props)
+    {
+      if (props == null)
+        throw new ArgumentNullException("props");
+      _props = props;
+    }
+    public Element As&lt;TComponent&gt;() where TComponent : ComponentWrapper&lt;TProps&gt;
+    {
+      return ComponentWrapper.GetElement(typeof(TComponent), _props);
+    }
+  }
+}
+</code></pre>
+
+<p>C# supports generic type parameter inference in method calls, so long as only a single type parameter needs to be resolved. This means that the call</p>
+
+<pre><code>Ele.Props&lt;TProps&gt;(props)
+</code></pre>
+
+<p>can be reduced to</p>
+
+<pre><code>Ele.Props(props)
+</code></pre>
+
+<p>and "TProps" will be inferred to be whatever the type of "props" is. Then the call</p>
+
+<pre><code>Ele.Props(props).As&lt;TComponent&gt;()
+</code></pre>
+
+<p>will know that "TProps" in the type constaint "TComponent : ComponentWrapper&lt;TProps&gt;" is whatever the type of "props" was.</p>
+
+<p>It's a bit back-to-front, specifying the "props" before declaring the type of the Component class, but it's succinct at least! And it's what allows the Component classes' static "New" factory methods to be declared thusly:</p>
+
+<pre><code>public class ExampleComponent : ComponentWrapper&lt;ExampleComponent.Props&gt;
+{
+  public static Element New(Props props) { return Ele.Props(props).As&lt;ExampleComponent&gt;(); }
+  private ExampleComponent(ComponentProps&lt;Props&gt; props) : base(props) { }
+
+  // .. rest of the Component goes here ..
+</code></pre>
+
+<p>In other words, instead of having to type "ExampleComponent" three times, you only to do so once :)</p>
+
+<h3>Component compromises</h3>
+
+<p>On the whole, I've found this to be a really good system. But there are a couple of small compromises. You need to explicitly reference the "ReactComponentWrapper.js" file in your page. I wish that there was a way to declare some JavaScript within .net code that will be included in the final output unaltered, this would make it really easy to have a separate project (or to create a NuGet package) for the React integration containing the base "ReactComponentWrapper" JavaScript class, the C# "ComponentWrapper" class, the helper classes (such as "Ele") and the bindings to the React library (again, more on this coming up). I haven't found a way to do this yet, though.</p>
+
+<p>Secondly, due to the way that the "createElement" function works in the React library, the Component class constructors may <em>only</em> take a single argument (the "props" data). This means that <em>all</em> configuration data must be included in the "props" type (but this is the standard arrangement for React component classes, so it's no biggie).</p>
+
+<p>The third and final compromise is that the "createElement" function does something a bit wonky with the "props" reference handed to it, it basically strips it down and rebuilds it, maintaning only properties declared on the object itself and <em>not</em> on a prototype of that object. So if your props object was a class with fields - eg.</p>
+
+<pre><code>public class Props
+{
+  public string Name { get; set; }
+}
+</code></pre>
+
+<p>then you would have problems, since DuoCode will generate a JavaScript object with get_Name and set_Name functions on the Props <em>prototype</em> (which is best practices for JavaScript, it means that the functions themselves are shared between all instance of the class, rather than there being identical copies of the functions present on every Props instance) - "createElement" will loop over the properties and anything that doesn't return true for "hasOwnProperty" will be lost, so the "get_Name" and "set_Name" functions will go astray. This will only become clear when code in your C# Components tries to access the Name property and fails at runtime.</p>
+
+<p>The workaround for this is to wrap the "props" reference in a container object, since "createElement" only enumerates (and interferes with!) the top level properties. That's why the "GetElement" function in the "ReactComponentWrapper" looks like this:</p>
+
+<pre><code>Component.GetElement = function (componentType, props) {
+  return React.createElement(componentType.self.ctor, { Props: props });
+};
+</code></pre>
+
+<p>It gets a "props" reference and it wraps it up so that React doesn't try to hurt it. And that's why the C# "ComponentWrapper" exposes the "props" data through a protected property thusly:</p>
+
+<pre><code>// Note: The "props" property is a wrapped ComponentProps&lt;TProps&gt; instance,
+// rather than just being TProps
+protected readonly ComponentProps&lt;TProps&gt; props;
+</code></pre>
+
+<p>The "ComponentProps" class looks like this:</p>
+
+<pre><code>[Js(Extern = true)]
+public sealed class ComponentProps&lt;T&gt;
+{
+  private ComponentProps() { }
+
+  [Js(Extern = true, Name = "Props")]
+  public T Props { get; }
+}
+</code></pre>
+
+<p>It's just a way to tell the C# type system about this level of indirection around the "props" data, and it's why the "render" method in the example Component above looks like this:</p>
+
+<pre><code>public override Element Render()
+{
+  return DOM.div(null, props.Props.Name);
+}
+</code></pre>
+
+<p>But, really, you don't need to worry about this! With this system in place, you can just take it for granted that it works, and if you forget that you need to access "props.Props.Name" instead of "props.Name" then the compiler will give you an error reminding you that you've made a mistake! I do love static analysis :)</p>
+
+<h3>React library bindings</h3>
+
+<p>If you've got through the above, then you can probably imagine where I'm going next. We can define and create Components now, but we haven't got any way to actually call "React.render" or to use any of the builtin Component initialisers, such as "React.DOM.div".</p>
+
+<p>To do this, more "bindings" are required - these are the classes and functions marked as "extern" / "[Js(extern = true)]" that tell the C# type system how to connect to JavaScript that is known to be present at runtime. As I said before, they're basically the equivalent of TypeScript <a href="https://github.com/borisyankov/DefinitelyTyped">type definitions</a> but with the added bonus that it's possible to give the classes and functions aliases so that they fit more neatly into your project structure and naming convention (the DuoCode compiler will ensure that these aliases are mapped back to the original function names in the final JavaScript).</p>
+
+<p>So let's deal with the most obvious one first:</p>
+
+<pre><code>[Js(Extern = true, Name = "React")]
+public static class React
+{
+  [Js(Extern = true, Name = "render")]
+  public extern static void Render(Element element, HTMLElement container);
+}
+</code></pre>
+
+<p>There's a few things to talk about here. I've named the function "Render" and used the "Js" attribute to map it back on to the library function "render" - note the change in case. In the code that I write, C# functions are pascal-cased, so I wanted to be able to call "Render" from my C# code, rather than "render". The "HTMLElement" type is a DuoCode class, used to describe DOM elements (if you call "Global.window.document.getElementById(x)" then you get one of these back). This is just what React wants for the second argument of the "render" call; a DOM element, so that's great. But for the first argument, the "Element" type is a React type that needs a binding -</p>
+
+<pre><code>[Js(Extern = true)]
+public sealed class Element
+{
+  private Element() { }
+  public extern static implicit operator Element(string text);
+}
+</code></pre>
+
+<p />This is not something that we're ever going to instantiate directly, so it is sealed and its constructor is private. This is used to describe the return type of the "createElement" function, and so is used as the return type from the "Ele.Props(props).As<twhatever>" factory method shown earlier. It is required only as a way to tell the type system what may be used where.<p />
+
+<p>There <em>is</em> one other way that it comes into play, however - there is an implicit conversion from the string type. This is required because strings are frequently used as child elements in React - eg.</p>
+
+<pre><code>React.DOM.span({ className: "greeting" }, "Hi!")
+</code></pre>
+
+<p>The implicit operator here, as part of an "extern" class, simply serves to tell the compiler that it's ok to use a string anywhere that a React Element is required - it doesn't have to do anything special, it just has to allow it. The consistency of the DuoCode translation process and the flexibility of the C# language really play together beautifully here and I was delighted to see how easily it was possible to dictate this to the type system.</p>
+
+<p>Speaking of the React.Dom class.. So far, I've only covered a fraction of the total library, but hopefully it's enough to make it clear how it may be expanded on (and I intend to add support for element types as and when I need them).</p>
+
+<pre><code>[Js(Extern = true, Name = "React.DOM")]
+public static class DOM
+{
+  public extern static Element div(HTMLAttributes properties, params Element[] children);
+  public extern static Element h1(HTMLAttributes properties, params Element[] children);
+  public extern static Element input(InputAttributes properties, params Element[] children);
+  public extern static Element span(HTMLAttributes properties, params Element[] children);
+}
+
+public class HTMLAttributes
+{
+  public string className;
+}
+
+public class InputAttributes : HTMLAttributes
+{
+  public Action&lt;FormEvent&lt;InputEventTarget&gt;&gt; onChange;
+  public string value;
+}
+
+[Js(Extern = true)]
+public class FormEvent&lt;T&gt; : FormEvent where T : EventTarget
+{
+  [Js(Name = "target")]
+  public new T target;
+}
+
+[Js(Extern = true)]
+public class FormEvent : SyntheticEvent
+{
+  [Js(Name = "target")]
+  public EventTarget target;
+}
+
+[Js(Extern = true)]
+public class SyntheticEvent
+{
+  public bool bubbles;
+  public bool cancelable;
+  public bool defaultPrevented;
+  public Action preventDefault;
+  public Action stopPropagation;
+  public string type;
+}
+
+[Js(Extern = true)]
+public class InputEventTarget : EventTarget
+{
+  public string value;
+}
+
+[Js(Extern = true)]
+public class EventTarget { }
+</code></pre>
+
+<p>Note that some of these types are external and some aren't. The simple rule is that if they must be explicitly created by C# code then they are not external, and if they are only received by C# code then the <em>are</em> external. To illustrate:</p>
+
+<pre><code>DOM.input(new InputAttributes {
+  className = "message", 
+  onChange = ev =&gt; Global.console.log("Input.onChange: " + ev.target.value)
+})
+</code></pre>
+
+<p />The "InputAttributes" class is explicitly instantiated by this C# code and so "InputAttributes" must not be an external class, it requires that there be an "InputAttributes" class generated as JavaScript for use at runtime. In the "onChange" callback, "ev" is an instance of "FormEvent<inputeventtarget>" but it was only <em>received</em> by the callback, it was not explicitly created - as such, it is declared as an external type; there is no need to generate any JavaScript for the class.<p />
+
+<p>The reasoning behind the "FormEvent&lt;T&gt;" / "FormEvent" / "SyntheticEvent" hierarchy is that I thought it would make sense to try to imitate the TypeScript React definitions, and they use types with these names.</p>
+
+<p>However, one of things that I dislike about the TypeScript version is that the typing could be even stronger. For example, in the "onChange" callback from a React input element in TypeScript, the "ev.target" has the non-specific type of "EventTarget" and so you have to skirt around the type system to access to input's value property:</p>
+
+<pre><code>// TypeScript
+React.DOM.input({
+  className = "message", 
+  onChange = ev =&gt; console.log("Input.onChange: " + (&lt;any&gt;ev.target).value)
+})
+</code></pre>
+
+<p>With the DuoCode bindings above, the "ev.target" reference in the "onChange" callback is known to be an "InputEventTarget" and so the "value" property is explicitly declared as a string. This is significant improvement, I feel!</p>
+
+<h3>Possible gotchas</h3>
+
+<p>When I was first investigating all this, I encountered a problem with trying to have a "Props" class nested within the "ExampleComponent" class - it seemed to be a very specific combination of a class (Props) nested within another class (ExampleComponent) that was a non-generic specialisation of a generic base class (ComponentWrapper&lt;TProps&gt;). It's perfectly valid C# and there were no compiler / translation errors, but it would fail at runtime. I found that if I went to "Managed NuGet package" for my project and added the "DuoCode Compiler" package (selecting "Include Prelease", rather than "Stable Only", since DuoCode is still in beta) then a new version of the compiler was installed (0.6.1253.0 instead of 0.3.878.0). This gave me a confusing compile error that was cleared by closing the solution and opening it again. But rebuilding it <em>then</em> resulted in the problem going away, so clearly this is something that was fixed in the compiler at some point.</p>
+
+<p>I just tried to recreate this earlier in order to get the precise error, but it seems that creating a new DuoCode project <em>now</em> gets the newer version of the compiler immediately, so I was unable to reproduce. It's possible that this was an artifact of an earlier installation of DuoCode that wasn't cleared properly - thinking about it now, it was a different PC where I had the problem, so this seems very feasible. I do kinda wish there was a more detailed changelog available for DuoCode - maybe they will be freer with details once they decide upon their licensing model!</p>
+
+<p>One other oddity is that when I go to add a new C# class to a project, I have two options for "Class" - one is described as being "An empty class declaration" and one as an "An empty class definition". I'm not sure why I've got two, it may well be <em>another</em> leftover from something I've installed in the past. The annoying thing, though, is that one of them always tries to add the "System" reference to the project. When this happens, the project will no longer build since</p>
+
+<blockquote>
+  <p>Referenced assembly 'System' is not compatible with DuoCode</p>
+</blockquote>
+
+<p>This error is entirely reasonable and descriptive, DuoCode translates C# into JavaScript but can't translate just any arbitrary .net binary. And the System library is re-implemented in the DuoCode "mscorlib" which <em>does</em> get translated into JavaScript. All you have to do, if you suffer this problem too, is remove the System reference from the project - and try to remember to use the "correct" C# class option next time! :)</p>
+
+<h3>A sample project</h3>
+
+<p>If all of this sounds interesting to you, but you don't want to go through the hard work of piecing together the various code snippets in this article, then check out my sample <a href="https://bitbucket.org/DanRoberts/reactduocode">ReactDuoCode</a> Bitbucket project. It's a Visual Studio 2013 solution (the DuoCode site mentions Visual Studio 2015 in a few places but it's not a requirement).</p>
+
+<p>Not only does it demonstrate using React with DuoCode but it also illustrates how you could use the Flux architecture! There's an implementation of a Dispatcher (which was incredibly easy using C# events, which are translated perfectly by DuoCode) and some actions implemented as C# classes. Then all changes to state are handled in a one-way-message-passing arrangement. There's a reason that this is the architecture recommended by Facebook for use with React; because it's awesome! :D I've not seen <em>any</em> other framework, library or approach which really makes such a concerted effort to manage state as this - it's why I've been going on about <a href="Search.html?term=Immutability">immutability</a> all these years, since it's a way to keep the accidental complexity down since the <em>essential</em> complexity is hard enough work on its own. And now there's a well-used and well-supported UI framework based around this gaining real traction! Being able to use it with the C# language and with Visual Studio for the tooling just might make it the perfect combination.</p>
+
+<p>But maybe I'm getting a bit carried away.. why don't you give it a try and let me know what you think :)</p>
+<p class="PostTime">Posted at 11:42</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="writing-a-brackets-extension-in-typescript-in-brackets.html">Writing a Brackets extension in TypeScript, in Brackets</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="throwing-exceptions-through-com.html">Throwing exceptions through COM</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/React.html" title="11 Posts">React</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "85";
+							var disqus_title = "React and Flux with DuoCode";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</inputeventtarget></twhatever></div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

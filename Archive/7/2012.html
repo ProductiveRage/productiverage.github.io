@@ -1,0 +1,1053 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - July 2012</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">26 July 2012</h3><h2><a id="Post32"></a><a href="the-full-text-indexer-going-international.html">The Full Text Indexer - Going International!</a></h2>
+
+<p>Pushing on with the Full Text Indexer series I'm been posting about (see <a href="the-full-text-indexer.html">Full Text Indexer</a> and <a href="the-full-text-indexer-adding-and-subtracting.html">Full Text Indexer - Adding and Subtracting</a>) I want to demonstrate how it can work with multi-lingual content (or other content variations - for example, with the data at my day job Products have different delivery "channels" for which different descriptions may be recorded, <em>as well</em> as being in multiple languages).</p>
+
+<p><strong>A heads-up:</strong> This post is going to be largely code with a few explanatory paragraphs. There's nothing particularly complex going on and I think the code will - for the most part - speak for itself!</p>
+
+<h3>Setting the scene</h3>
+
+<p>In the previous examples, the TKey type of the IIndexData was an int representing an item's unique id. One way to extend this would be to specify as TKey the following:</p>
+
+<pre><code>public interface ILanguageScopedId : IEquatable&lt;ILanguageScopedId&gt;
+{
+    int Id { get; }
+    bool IsApplicableForLanguage(int language);
+}
+</code></pre>
+
+<p>Where two simple implementations might be:</p>
+
+<pre><code>public sealed class LanguageScopedId : ILanguageScopedId
+{
+    public LanguageScopedId(int id, int language)
+    {
+        Id = id;
+        Language = language;
+    }
+
+    public int Id { get; private set; }
+
+    public int Language { get; private set; }
+
+    public bool IsApplicableForLanguage(int language)
+    {
+        return (language == Language);
+    }
+
+    public bool Equals(ILanguageScopedId obj)
+    {
+        var objLanguageScopedId = obj as LanguageScopedId;
+        if (objLanguageScopedId == null)
+            return false;
+
+        return ((objLanguageScopedId.Id == Id) &amp;&amp; (objLanguageScopedId.Language == Language));
+    }
+
+    public override bool Equals(object obj)
+    {
+        return Equals(obj as ILanguageScopedId);
+    }
+
+    public override int GetHashCode()
+    {
+        // Since the overridden ToString method will consistently encapsulate all of the
+        // information for this instance we use it to override the GetHashCode method,
+        // consistent with the overridden Equals implementation
+        return ToString().GetHashCode();
+    }
+
+    public override string ToString()
+    {
+        return String.Format("{0}:{1}-{2}", base.ToString(), Id, Language);
+    }
+}
+
+public sealed class : ILanguageScopedId
+{
+    public NonLanguageScopedId(int id)
+    {
+        Id = id;
+    }
+
+    public int Id { get; private set; }
+
+    public bool IsApplicableForLanguage(int language)
+    {
+        return true;
+    }
+
+    public bool Equals(ILanguageScopedId obj)
+    {
+        var objLanguageScopedId = obj as NonLanguageScopedId;
+        if (objLanguageScopedId == null)
+            return false;
+
+        return (objLanguageScopedId.Id == Id);
+    }
+
+    public override bool Equals(object obj)
+    {
+        return Equals(obj as ILanguageScopedId);
+    }
+
+    public override int GetHashCode()
+    {
+        // Since the overridden ToString method will consistently encapsulate all of the
+        // information for this instance we use it to override the GetHashCode method,
+        // consistent with the overridden Equals implementation
+        return ToString().GetHashCode();
+    }
+
+    public override string ToString()
+    {
+        return String.Format("{0}:{1}", base.ToString(), Id);
+    }
+}
+</code></pre>
+
+<p>There are two implementations to account for it's feasible that not <em>all</em> content will be multi-lingual (see the Article class further down). I only really included IEquatable&lt;ILanguageScopedId&gt; in the ILanguageScopedId so that it would be easy to write the KeyComparer that the IndexGenerator requires (this was the same motivation for having implementations being sealed, since they can't be inherited from the type comparisons are easier in the Equals methods) -</p>
+
+<pre><code>/// &lt;summary&gt;
+/// As the ILanguageScopedId interface implements IEquatable ILanguageScopedId, this class
+/// has very little work to do
+/// &lt;/summary&gt;
+public class LanguageScopedIdComparer : IEqualityComparer&lt;ILanguageScopedId&gt;
+{
+    public bool Equals(ILanguageScopedId x, ILanguageScopedId y)
+    {
+        if ((x == null) &amp;&amp; (y == null))
+            return true;
+        else if ((x == null) || (y == null))
+            return false;
+        return x.Equals(y);
+    }
+
+    public int GetHashCode(ILanguageScopedId obj)
+    {
+        if (obj == null)
+            throw new ArgumentNullException("obj");
+
+        return obj.GetHashCode();
+    }
+}
+</code></pre>
+
+<p>The previous posts used an Article class as an illustration. Here I'll expand that class such that the Title and Content have content that may vary across different languages (represented by the MultiLingualContent class, also below) while Author will not (and so is just a string) -</p>
+
+<pre><code>public class Article
+{
+    public Article(
+        int id,
+        DateTime lastModified,
+        MultiLingualContent title,
+        string author,
+        MultiLingualContent content)
+    {
+        if (title == null)
+            throw new ArgumentNullException("title");
+        if (string.IsNullOrWhiteSpace(author))
+            throw new ArgumentException("Null/blank author specified");
+        if (content == null)
+            throw new ArgumentNullException("content");
+
+        Id = id;
+        LastModified = lastModified;
+        Title = title;
+        Author = author.Trim();
+        Content = content;
+    }
+
+    public int Id { get; private set; }
+
+    public bool IsActive { get; private set; }
+
+    public DateTime LastModified { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null
+    /// &lt;/summary&gt;
+    public MultiLingualContent Title { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    public string Author { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null
+    /// &lt;/summary&gt;
+    public MultiLingualContent Content { get; private set; }
+}
+
+public class MultiLingualContent
+{
+    private string _defaultContent;
+    private ImmutableDictionary&lt;int, string&gt; _languageOverrides;
+    public MultiLingualContent(
+        string defaultContent,
+        ImmutableDictionary&lt;int, string&gt; languageOverrides)
+    {
+        if (string.IsNullOrWhiteSpace(defaultContent))
+            throw new ArgumentException("Null/blank defaultContent specified");
+        if (languageOverrides == null)
+            throw new ArgumentNullException("languageOverrides");
+        if (languageOverrides.Keys.Select(key =&gt; languageOverrides[key]).Any(
+            value =&gt; string.IsNullOrWhiteSpace(value))
+        )
+            throw new ArgumentException("Null/blank encountered in languageOverrides data");
+
+        _defaultContent = defaultContent.Trim();
+        _languageOverrides = languageOverrides;
+    }
+
+    /// &lt;summary&gt;
+    /// This will never return null or blank. If there is no language-specific content for
+    /// the specified language then the default will be returned.
+    /// &lt;/summary&gt;
+    public string GetContent(int language)
+    {
+        if (_languageOverrides.ContainsKey(language))
+            return _languageOverrides[language].Trim();
+        return _defaultContent;
+    }
+}
+</code></pre>
+
+<p><strong>Note:</strong> The ImmutableDictionary (along with the NonNullImmutableList and the ToNonNullImmutableList extension method which are seen elsewhere in the code) can be found in the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer repo on Bitbucket</a>.</p>
+
+<h3>Generating and querying the new Index format</h3>
+
+<p>For the purposes of this example, I'm going to assume that all of the possible languages are known upfront (if not then each time an Index is built, it's feasible that the source Article data could be analysed each time to determine which languages are present but for now I'm going to go with the easier case of knowledge of all options beforehand).</p>
+
+<p>As we've seen before, we need to prepare an IndexGenerator (this time IndexGenerator&lt;ArticleI, LanguageScopedId&gt; instead of IndexGenerator&lt;ArticleI, int&gt; since the key type of the IIndexData that will be produced is no longer an int) with Content Retrievers, a Key Comparer, Token Breaker, Weighted Entry Combiner and Logger. Here there are more Content Retrievers as the multi-lingual content must be requested for each supported language (though the non-multi-lingual content - the Author field on Article instances - only needs a single retriever).</p>
+
+<pre><code>var languages = new[] { 1, 2, 3 };
+
+var contentRetrievers = 
+    new[]
+    {
+        new ContentRetriever&lt;Article, ILanguageScopedId&gt;(
+            article =&gt; new PreBrokenContent&lt;ILanguageScopedId&gt;(
+                new NonLanguageScopedId(article.Id),
+                article.Author
+            ),
+            token =&gt; 1f
+        )
+    }
+    .Concat(
+        languages.SelectMany(language =&gt; new[]
+        {
+            new ContentRetriever&lt;Article, ILanguageScopedId&gt;(
+                article =&gt; new PreBrokenContent&lt;ILanguageScopedId&gt;(
+                    new LanguageScopedId(article.Id, language),
+                    article.Title.GetContent(language)
+                ),
+                token =&gt; 5f
+            ),
+            new ContentRetriever&lt;Article, ILanguageScopedId&gt;(
+                article =&gt; new PreBrokenContent&lt;ILanguageScopedId&gt;(
+                    new LanguageScopedId(article.Id, language),
+                    article.Content.GetContent(language)
+                ),
+                token =&gt; 1f
+            )
+        }
+    ));
+
+var indexGenerator = new IndexGenerator&lt;Article, ILanguageScopedId&gt;(
+    contentRetrievers.ToNonNullImmutableList(),
+    new LanguageScopedIdComparer(),
+    new DefaultStringNormaliser(),
+    new WhiteSpaceTokenBreaker(),
+    weightedValues =&gt; weightedValues.Sum(),
+    new NullLogger()
+);
+
+var index = indexGenerator.Generate(new NonNullImmutableList&lt;Article&gt;(new[]
+{
+    new Article(
+        1,
+        new DateTime(2012, 7, 24),
+        new ContentBuilder("One").AddLanguage(2, "Un").Get(),
+        "Terrence",
+        new ContentBuilder("First Entry").AddLanguage(2, "Première entrée").Get()
+    ),
+    new Article(
+        2,
+        new DateTime(2012, 8, 24),
+        new ContentBuilder("Two").AddLanguage(2, "Deux").Get(),
+        "Jeroshimo",
+        new ContentBuilder("Second Entry").AddLanguage(2, "Deuxième entrée").Get()
+    )
+}));
+</code></pre>
+
+<p>Finally, there's a slight change to the querying mechanism. We have to perform a lookup for all keys that match a given token and then filter out any entries that we're not interested in. And since there are multiple key types which can relate to content in the same language (because a request for content in language 1 should combine keys of type LanguageScopedId which are marked as being for language 1 alongside keys of type NonLanguageScopedId), we may have to group and combine some of the results.</p>
+
+<pre><code>var resultsEntryInLanguage1 = index.GetMatches("Entry")
+    .Where(weightedMatch =&gt; weightedMatch.Key.IsApplicableForLanguage(language))
+    .GroupBy(weightedMatch =&gt; weightedMatch.Key.Id)
+    .Select(weightedMatchGroup =&gt; new WeightedEntry&lt;int&gt;(
+        weightedMatchGroup.Key,
+        weightedMatchGroup.Sum(weightedMatch =&gt; weightedMatch.Weight)
+    ));
+</code></pre>
+
+<p>The earlier code uses a "ContentBuilder" to prepare the MultiLingualContent instances, just because it removes some of the clutter from the code. For the sake of completeness, that can be seen below:</p>
+
+<pre><code>private class ContentBuilder
+{
+    private string _defaultContent;
+    private ImmutableDictionary&lt;int, string&gt; _languageOverrides;
+
+    public ContentBuilder(string defaultContent)
+        : this(defaultContent, new ImmutableDictionary&lt;int, string&gt;()) { }
+
+    private ContentBuilder(
+        string defaultContent,
+        ImmutableDictionary&lt;int, string&gt; languageOverrides)
+    {
+        if (string.IsNullOrWhiteSpace(defaultContent))
+            throw new ArgumentException("Null/blank defaultContent specified");
+        if (languageOverrides == null)
+            throw new ArgumentNullException("languageOverrides");
+
+        _defaultContent = defaultContent;
+        _languageOverrides = languageOverrides;
+    }
+
+    public ContentBuilder AddLanguage(int language, string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            throw new ArgumentException("Null/blank content specified");
+        if (_languageOverrides.ContainsKey(language))
+            throw new ArgumentException("Duplicate language: " + language);
+
+        return new ContentBuilder(
+            _defaultContent,
+            _languageOverrides.AddOrUpdate(language, content)
+        );
+    }
+
+    public MultiLingualContent Get()
+    {
+        return new MultiLingualContent(_defaultContent, _languageOverrides);
+    }
+}
+</code></pre>
+
+<h3>Extended Key Types</h3>
+
+<p>This approach to supporting multi-lingual data is just one way of using the generic TKey type of the IndexGenerator / IndexData classes. I mentioned at the top that the data I deal with at my real job also varies descriptive data over multiple delivery channels, this could be implemented in a similar manner to the above by extending the ILanguageScopedId interface to:</p>
+
+<pre><code>public interface ILanguageScopedId : IEquatable&lt;ILanguageScopedId&gt;
+{
+    int Id { get; }
+    bool IsApplicableFor(int language, int channel);
+}
+</code></pre>
+
+<p>And, in the same way as the above code has both the LanguageScopedId and NonLanguageScopedId, there could be various implementations for content that does/doesn't vary by language and/or does/doesn't vary by delivery channel.</p>
+
+<p>In fact, since there must be a Key Comparer passed in as a constructor argument to the IndexGenerator, any kind of key can be used with the index so long as an appropriate comparer is available!</p>
+
+<h3>Performance</h3>
+
+<p>The downside to this sort of approach is, predictably, increased resource requirements in the index generation. I say predictably because it should be clear that specifying more Content Retrievers (which we are; they have to increase as the number languages of increases) means that more work will be done when an index is generated from input data.</p>
+
+<p>Also in the above example, more storage space will be required to store the results as more content is being extracted and stored in the index - it's feasible that source data could be present which doesn't have any multi-lingual data and so returns the default values from the MultiLingualContent.GetContent(language) call for every language. For each token that is recorded for the data, keys for each of the languages will be recorded in the index - each with duplicate weight data, repeated for each language. It's possible that a more intelligent key structure could reduce that amount of space taken up in these cases but that's outside the scope of this post I think (plus no solution springs immediately to mind at this time of night! :)</p>
+
+<p>The good news is that the retrieval time shouldn't be significantly increased; the additional work is to filter the matched keys and group them together on the underlying id, the lookup should still be very quick. The additional load that the filtering and grouping will incur will depend upon the structure of the key class.</p>
+
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 23:56</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-full-text-indexer-going-international.html#disqus_thread" data-disqus-identifier="32">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">23 July 2012</h3><h2><a id="Post31"></a><a href="the-full-text-indexer-adding-and-subtracting.html">The Full Text Indexer - Adding and Subtracting</a></h2>
+
+<p>The <a href="the-full-text-indexer.html">Full Text Indexer</a> that I talked about last time took a definition for an Index Generator for a specific TSource type and produced an IndexData instance, using that generator, for a TSource set.</p>
+
+<p>In the example shown there, it created an IndexGenerator for IArticle and then generated an Index for an IArticle list. The IIndexData&lt;int&gt; (TKey is an int in this case as the key on IArticle is its Id field, which is an int). This IIndexData&lt;int&gt; is an immututable data structure and so it may not be immediately obvious how to update it when the source data has changed.</p>
+
+<p>Last time I mentioned that IIndexData&lt;TKey&gt; has this method:</p>
+
+<pre><code>public interface IIndexData&lt;TKey&gt;
+{
+    /// &lt;summary&gt;
+    /// This will throw an exception for null or blank input. It will never return null.
+    /// If there are no matches then an empty list will be returned.
+    /// &lt;/summary&gt;
+    NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetMatches(string source);
+}
+</code></pre>
+
+<p>but the full interface is:</p>
+
+<pre><code>public interface IIndexData&lt;TKey&gt;
+{
+    /// &lt;summary&gt;
+    /// This will throw an exception for null or blank input. It will never return null.
+    /// If there are no matches then an empty list will be returned.
+    /// &lt;/summary&gt;
+    NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetMatches(string source);
+
+    /// &lt;summary&gt;
+    /// This will return a new instance that combines the source instance's data with the
+    /// data other IndexData instances using the specified weight combiner. In a case where
+    /// there are different TokenComparer implementations on this instance and on any of the
+    /// indexesToAdd, the comparer from the current instance will be used. It is recommended
+    /// that a consistent TokenComparer be used at all times. An exception will be thrown
+    /// for null dataToAdd or weightCombiner references.
+    /// &lt;/summary&gt;
+    IIndexData&lt;TKey&gt; Combine(
+        NonNullImmutableList&lt;IIndexData&lt;TKey&gt;&gt; indexesToAdd,
+        IndexGenerators.IndexGenerator.WeightedEntryCombiner weightCombiner
+    );
+
+    /// &lt;summary&gt;
+    /// This will return a new instance without any WeightedEntry values whose Keys match
+    /// the removeIf predicate. If tokens are left without any WeightedEntry values then
+    /// the token will be excluded from the new data. This will never return null. It
+    /// will throw an exception for a null removeIf.
+    /// &lt;/summary&gt;
+    IIndexData&lt;TKey&gt; Remove(Predicate&lt;TKey&gt; removeIf);
+
+    /// &lt;summary&gt;
+    /// This will never return null, the returned dictionary will have this instance's
+    /// KeyNormaliser as its comparer
+    /// &lt;/summary&gt;
+    IDictionary&lt;string, NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt;&gt; ToDictionary();
+
+    /// &lt;summary&gt;
+    /// This will never return null
+    /// &lt;/summary&gt;
+    NonNullOrEmptyStringList GetAllTokens();
+
+    /// &lt;summary&gt;
+    /// This will never return null
+    /// &lt;/summary&gt;
+    IEqualityComparer&lt;string&gt; TokenComparer { get; }
+
+    /// &lt;summary&gt;
+    /// This will never return null
+    /// &lt;/summary&gt;
+    IEqualityComparer&lt;TKey&gt; KeyComparer { get; }
+}
+</code></pre>
+
+<p>The TokenComparer and KeyComparer are the instances passed into the IndexGenerator's constructor (a DefaultStringNormaliser and an IntEqualityComparer in last time's example). The GetAllTokens method returns a set of tokens that have matches in the IndexData (where multiple tokens are present in the data that are considered equivalent, only one will be in the set returned by GetAllTokens - the example used the DefaultStringNormaliser which ignores case, so if data for the tokens "Token" and "TOKEN" is present, and encountered in that order, then only "Token" would be in the GetAllTokens set, "TOKEN" wouldn't have been added as a distint value as it is equivalent to "Token").</p>
+
+<p>The interesting methods in this context are Combine and Remove.</p>
+
+<h3>Remove</h3>
+
+<p>Remove is the simpler of the two so I'll address that first: A predicate is passed to it which filters which key values should be allowed through, data which passes this filtering will be used to form a new IIndexData instance which will be returned from the method. The original IndexData instance remains unaltered while a filtered version is provided which meets the particular criteria.</p>
+
+<h3>Combine</h3>
+
+<p>The Combine method will take one or more additional IIndexData instances (for the same TKey type) and bring all of the content from these and the original index into a new instance describing aggregated data. Where data for the same keys appear in the indexes, the match weights will be combined using a specified "WeightedEntryCombiner" (which just takes a set of floats and returns a single value representing them all; the most common case is to sum the values but they could be averaged or the greatest value taken - whatever's most appropriate!).</p>
+
+<h3>Pulling an example together</h3>
+
+<p>To show these methods in action I've extended the IArticle IndexGenerator concept that I showed in the <a href="the-full-text-indexer.html">previous post</a> by wrapping it in another class that maintains an index based upon changing data by keeping a "source data summary" of what keys were used to generate the current data and what the last modified dates of the source data was. I'm aiming to come up with an "IndexBuilder" that will expose the following:</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will never return null
+/// &lt;/summary&gt;
+public IIndexData&lt;TKey&gt; Index { get; }
+
+/// &lt;summary&gt;
+/// This will never return null, it will throw an exception for null input
+/// &lt;/summary&gt;
+public IIndexData&lt;TKey&gt; UpdateIndex(NonNullImmutableList&lt;TSource&gt; values);
+</code></pre>
+
+<p>All the same types will be required in the IndexBuilder constructor that the IndexGenerator required last time (the Content Retrievers, Key Comparer, Token Comparer, Weighted Entry Combiner and Logger) along with one additional dependency; a "Source Item Status Retriever". This is just a delegate that takes an instance of the generic type parameter TSource and returns a SourceDataSummary instance that reports its Key and a LastModifiedDate (so hardly rocket science!). This will enable the IndexBuilder to maintain a summary of the input data that was used to build the current index and so determine what work (if any) is required when UpdateIndex is called.</p>
+
+<p>If the example code last time didn't look too scary, then neither should this:</p>
+
+<pre><code>// Instantiate an IndexBuilder that will index IArticles (which have ints as their Keys).
+// - Content Retrievers describe how to extract data from each IArticle, there is a delegate
+//   to retrieve Key and LastModifiedDate from IArticle (the "Source Item Status Retriever"),
+//   there's a Token Breaker which breaks up the content, there's a String Normaliser which
+//   compares the resulting Tokens to group them together, there's a "Weighted Entry
+//   Combiner" which creates an aggregate weight for Tokens that are grouped,
+//   there's an IntEqualityComparer that acts as a Key Comparer and there's
+//   a Logger. See; nothing to it! :D
+
+var indexBuilder = new IndexBuilder&lt;IArticle, int&gt;(
+    new NonNullImmutableList&lt;ContentRetriever&lt;IArticle, int&gt;&gt;(new []
+    {
+        // Additional weight is given to words matched in the Title
+        new ContentRetriever&lt;IArticle, int&gt;(
+            article =&gt; new PreBrokenContent&lt;int&gt;(article.Id, article.Title),
+            token =&gt; 5f
+        ),
+        new ContentRetriever&lt;IArticle, int&gt;(
+            article =&gt; new PreBrokenContent&lt;int&gt;(article.Id, article.Content),
+            token =&gt; 1f
+        )
+    }),
+    article =&gt; new IndexBuilder&lt;IArticle, int&gt;.SourceDataSummary(
+        article.Id,
+        article.LastModified
+    ),
+    new IntEqualityComparer(),
+    new WhiteSpaceTokenBreaker(),
+    new DefaultStringNormaliser(),
+    weightedValues =&gt; weightedValues.Sum(),
+    new NullLogger()
+);
+</code></pre>
+
+<p>Instead of instantiating an IndexGenerator directly we're going to use the IndexBuilder that I'm describing, and we'll pass data to it thusly:</p>
+
+<pre><code>var articles = new[]
+{
+    new Article(1, new DateTime(2012, 7, 21, 0, 0, 1), "One", "One Content"),
+    new Article(2, new DateTime(2012, 8, 21, 0, 0, 1), "Two", "Two Content"),
+    new Article(3, new DateTime(2012, 9, 21, 0, 0, 1), "Three", "Three Content")
+};
+var index = indexBuilder.UpdateIndex(new NonNullImmutableList&lt;IArticle&gt;(articles));
+</code></pre>
+
+<p>The source data types are not very interesting and are here only for completeness of the example, to be honest! </p>
+
+<pre><code>public class Article : IArticle
+{
+    public Article(int id, DateTime lastModified, string title, string content)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            throw new ArgumentException("Null/blank title specified");
+        if (string.IsNullOrWhiteSpace(content))
+            throw new ArgumentException("Null/blank content specified");
+
+        Id = id;
+        LastModified = lastModified;
+        Title = title.Trim();
+        Content = content.Trim();
+    }
+
+    public int Id { get; private set; }
+
+    public DateTime LastModified { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    public string Title { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    public string Content { get; private set; }
+}
+
+public interface IArticle
+{
+    int Id { get; }
+
+    DateTime LastModified { get; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    string Title { get; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    string Content { get; }
+}
+</code></pre>
+
+<p>And finally (<em>finally!</em>) the IndexBuilder itself. The constructor takes up a chunk of space, validating all of the input. Then there's a few lines taken up by the definition of the SourceItemStatusRetriever and SourceDataSummary class. At the end there's the UpdateIndex method which determines what work needs to be done to get its IndexData instance to match the new source data - and <em>it</em> uses the Remove and Combine methods to synchronise the index with the data:</p>
+
+<pre><code>using System;
+using System.Collections.Generic;
+using System.Linq;
+using Common.Lists;
+using Common.Logging;
+using FullTextIndexer.Indexes;
+using FullTextIndexer.Indexes.TernarySearchTree;
+using FullTextIndexer.IndexGenerators;
+using FullTextIndexer.TokenBreaking;
+
+namespace FullTextIndexerDemo
+{
+    public class IndexBuilder&lt;TSource, TKey&gt; where TSource : class
+    {
+        private List&lt;ContentRetriever&lt;TSource, TKey&gt;&gt; _contentRetrievers;
+        private SourceItemStatusRetriever _sourceItemStatusRetriever;
+        private IEqualityComparer&lt;TKey&gt; _keyComparer;
+        private ITokenBreaker _tokenBreaker;
+        private IStringNormaliser _stringNormaliser;
+        private IndexGenerator.WeightedEntryCombiner _weightedEntryCombiner;
+        private IIndexGenerator&lt;TSource, TKey&gt; _indexGenerator;
+        private IIndexData&lt;TKey&gt; _index;
+        private Dictionary&lt;TKey, DateTime&gt; _sourceDataSummary;
+        private object _writeLock;
+        public IndexBuilder(
+            NonNullImmutableList&lt;ContentRetriever&lt;TSource, TKey&gt;&gt; contentRetrievers,
+            SourceItemStatusRetriever sourceItemStatusRetriever,
+            IEqualityComparer&lt;TKey&gt; keyComparer,
+            ITokenBreaker tokenBreaker,
+            IStringNormaliser stringNormaliser,
+            IndexGenerator.WeightedEntryCombiner weightedEntryCombiner,
+            ILogger logger)
+        {
+            if (contentRetrievers == null)
+                throw new ArgumentNullException("contentRetrievers");
+            if (!contentRetrievers.Any())
+                throw new ArgumentException("No contentRetrievers specified");
+            if (sourceItemStatusRetriever == null)
+                throw new ArgumentNullException("sourceItemStatusRetriever");
+            if (keyComparer == null)
+                throw new ArgumentNullException("keyComparer");
+            if (tokenBreaker == null)
+                throw new ArgumentNullException("tokenBreaker");
+            if (stringNormaliser == null)
+                throw new ArgumentNullException("stringNormaliser");
+            if (weightedEntryCombiner == null)
+                throw new ArgumentNullException("weightedEntryCombiner");
+            if (logger == null)
+                throw new ArgumentNullException("logger");
+
+            var contentRetrieversTidied = new List&lt;ContentRetriever&lt;TSource, TKey&gt;&gt;();
+            foreach (var contentRetriever in contentRetrievers)
+            {
+                if (contentRetriever == null)
+                    throw new ArgumentException("Null encountered in contentRetrievers set");
+                contentRetrieversTidied.Add(contentRetriever);
+            }
+            if (!contentRetrieversTidied.Any())
+                throw new ArgumentException("No contentRetrievers specified");
+
+            _contentRetrievers = contentRetrieversTidied;
+            _sourceItemStatusRetriever = sourceItemStatusRetriever;
+            _keyComparer = keyComparer;
+            _tokenBreaker = tokenBreaker;
+            _stringNormaliser = stringNormaliser;
+            _weightedEntryCombiner = weightedEntryCombiner;
+            _sourceDataSummary = new Dictionary&lt;TKey, DateTime&gt;(keyComparer);
+            _writeLock = new object();
+
+            _indexGenerator = new IndexGenerator&lt;TSource, TKey&gt;(
+                contentRetrieversTidied.ToNonNullImmutableList(),
+                keyComparer,
+                stringNormaliser,
+                tokenBreaker,
+                weightedEntryCombiner,
+                logger
+            );
+            _index = _indexGenerator.Generate(new NonNullImmutableList&lt;TSource&gt;());
+        }
+
+        /// &lt;summary&gt;
+        /// This will never be called with a null source reference, it must never return null
+        /// &lt;/summary&gt;
+        public delegate SourceDataSummary SourceItemStatusRetriever(TSource source);
+        public class SourceDataSummary
+        {
+            public SourceDataSummary(TKey key, DateTime lastModified)
+            {
+                if (key == null)
+                    throw new ArgumentNullException("key");
+
+                Key = key;
+                LastModified = lastModified;
+            }
+            public TKey Key { get; private set; }
+            public DateTime LastModified { get; private set; }
+        }
+
+        /// &lt;summary&gt;
+        /// This will never return null
+        /// &lt;/summary&gt;
+        public IIndexData&lt;TKey&gt; Index
+        {
+            get
+            {
+                // Since the index is an immutable data type we don't need to worry about
+                // locking it for read access
+                return _index;
+            }
+        }
+
+        /// &lt;summary&gt;
+        /// This will never return null, it will throw an exception for null input
+        /// &lt;/summary&gt;
+        public IIndexData&lt;TKey&gt; UpdateIndex(NonNullImmutableList&lt;TSource&gt; values)
+        {
+            if (values == null)
+                throw new ArgumentNullException("values");
+
+            var newIndexSummary = values
+                .Select(value =&gt; _sourceItemStatusRetriever(value))
+                .GroupBy(
+                    summary =&gt; summary.Key,
+                    _keyComparer
+                )
+                .ToDictionary(
+                    group =&gt; group.Key,
+                    group =&gt; group.Max(summary =&gt; summary.LastModified),
+                    _keyComparer
+                );
+
+            lock (_writeLock)
+            {
+                // No source data, so just generate an empty index
+                if (!newIndexSummary.Any())
+                {
+                    _sourceDataSummary = newIndexSummary;
+                    _index = _indexGenerator.Generate(new NonNullImmutableList&lt;TSource&gt;());
+                    return _index;
+                }
+
+                // There will (probably) be some keys to remove entirely, some that have to
+                // be removed so that they can be replaced with updated content and some that
+                // are not present in the existing data. First determine which keys fall into
+                // which category (if any).
+                var keysToRemove = new HashSet&lt;TKey&gt;(
+                    _sourceDataSummary
+                        .Select(summary =&gt; summary.Key)
+                        .Except(newIndexSummary.Select(summary =&gt; summary.Key)),
+                    _keyComparer
+                );
+                var keysToUpdate = new HashSet&lt;TKey&gt;(
+                    _sourceDataSummary
+                        .Where(summary =&gt;
+                        {
+                            DateTime newSummaryLastModified;
+                            if (!newIndexSummary.TryGetValue(
+                                summary.Key, out newSummaryLastModified))
+                            {
+                                return false;
+                            }
+                            return newSummaryLastModified &gt; summary.Value;
+                        })
+                        .Select(summary =&gt; summary.Key),
+                    _keyComparer
+                );
+                var keysToAdd = new HashSet&lt;TKey&gt;(
+                    newIndexSummary.Keys.Except(_sourceDataSummary.Keys),
+                    _keyComparer
+                );
+                if (!keysToAdd.Any() &amp;&amp; !keysToRemove.Any() &amp;&amp; !keysToUpdate.Any())
+                {
+                    // If there are no actions to take then don't do any work!
+                    return _index;
+                }
+
+                // Prepare the new data to insert
+                var indexDataToUpdate = _indexGenerator.Generate(
+                    values
+                        .Where(value =&gt;
+                        {
+                            var key = _sourceItemStatusRetriever(value).Key;
+                            return keysToUpdate.Contains(key) || keysToAdd.Contains(key);
+                        })
+                        .ToNonNullImmutableList()
+                );
+
+                // Update the index content by removing keys and combining in the newly
+                // generated content
+                _index = _index
+                    .Remove(key =&gt; keysToRemove.Contains(key) || keysToUpdate.Contains(key))
+                    .Combine(
+                        new[] { indexDataToUpdate }.ToNonNullImmutableList(),
+                        _weightedEntryCombiner
+                    );
+
+                // All that's left is to update the source data summary and return the
+                // new data!
+                _sourceDataSummary = newIndexSummary;
+                return _index;
+            }
+        }
+    }
+}
+</code></pre>
+
+<p>In case this class needs to be used in a multi-threaded environment there is a write-lock used for any calls to UpdateIndex but requests for the Index property for reading only will require no locks since the IndexData is an immutable structure! (This includes the case where index data may be cached in memory and shared between web requests which is an implicit multi-threading scenario rather than an explicit situation where you may dealing with Threads / ThreadPools / whatever yourself).</p>
+
+<p>(If we were nitpicking then we could be concerned that there's no way to ensure that the TKey type is immutable and so the weighted entries described by the IndexData could feasibly change - but in this case they're ints, so there's nothing to worry about, and in other cases I would strongly suggest an immutable type be used for TKey at all times. Next time I'm going to cover more complex TKey possibilities in <a href="the-full-text-indexer-going-international.html">The Full Text Indexer - Going International!</a>).</p>
+
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 21:37</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-full-text-indexer-adding-and-subtracting.html#disqus_thread" data-disqus-identifier="31">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">17 July 2012</h3><h2><a id="Post30"></a><a href="the-full-text-indexer.html">The Full Text Indexer</a></h2>
+
+<p>I started out on a journey a few months ago being frustrated by the <a href="http://incubator.apache.org/lucene.net/">Lucene.net</a> integration we had with one of our products at work (I'm not badmouthing the Lucene project, I'm wholeheartedly blaming the integration I inherited!) and wondering just how difficult it would be to write a Full Text Indexer which could analyse generic content and generate some form of structure which could look up strings and assign weights to the source material, offering the best matches.</p>
+
+<p>And now I've got it to the point that I've tried the resulting solution out in a variety of configurations and am using it to handle searches on this blog and incorporating an autocomplete functionality (that may or may not benefit from some more tweaking yet) to go with it. I'm quite proud of it!</p>
+
+<p>Before I say any more, this was written to deal with the search tasks I needed and as such is not a direct replacement for Lucene, it's just an alternative I wanted to explore (for example I know that Lucene makes big claims about the number of documents it can maintain, I'm in no position right now to make any sorts of boasts on that scale!).</p>
+
+<p>Here's a really basic example that would analyse data from:</p>
+
+<pre><code>public interface IArticle 
+{
+    int Id { get; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    string Title { get; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    string Content { get; }
+}
+</code></pre>
+
+<p>and generate an IIndexData&lt;int&gt; instance which has this method (among others, but this is all we need for this first example):</p>
+
+<pre><code>public interface IIndexData&lt;TKey&gt;
+{
+    /// &lt;summary&gt;
+    /// This will throw an exception for null or blank input. It will never return null.
+    /// If there are no matches then an empty list will be returned.
+    /// &lt;/summary&gt;
+    NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetMatches(string source);
+}
+</code></pre>
+
+<p>by defining <strong>"Content Retrievers"</strong> (which extract sections of keyed content; meaning content that is associated with a Key that represents each source data item), a <strong>"Key Comparer"</strong> (which defines which keyed content instances belong to the same data item in order to group results together), a <strong>"Token Breaker"</strong> (which reduces content strings into individual words), a <strong>"String Normaliser"</strong> (which compares individual words in order to group them together but will also be used to compare values passed to the GetMatches method shown above) and <strong>"Weighted Entry Combiner"</strong> (which describes how tokens that appear multiple times for the same data item should have their weights combined):</p>
+
+<pre><code>using System;
+using System.Collections.Generic;
+using System.Linq;
+using Common.Lists;
+using Common.Logging;
+using FullTextIndexer.Indexes;
+using FullTextIndexer.Indexes.TernarySearchTree;
+using FullTextIndexer.IndexGenerators;
+using FullTextIndexer.TokenBreaking;
+
+namespace FullTextIndexerDemo
+{
+    public class Example
+    {
+        public IIndexData&lt;int&gt; GetIndex(NonNullImmutableList&lt;IArticle&gt; articles)
+        {
+            if (articles == null)
+                throw new ArgumentNullException("articles");
+
+            return GetIndexGenerator().Generate(articles);
+        }
+
+        private IIndexGenerator&lt;IArticle, int&gt; GetIndexGenerator()
+        {
+            var contentRetrievers = new List&lt;ContentRetriever&lt;IArticle, int&gt;&gt;
+            {
+                new ContentRetriever&lt;IArticle, int&gt;(
+                    article =&gt; new PreBrokenContent&lt;int&gt;(article.Id, article.Title),
+                    token =&gt; 5f
+                ),
+                new ContentRetriever&lt;IArticle, int&gt;(
+                    article =&gt; new PreBrokenContent&lt;int&gt;(article.Id, article.Content),
+                    token =&gt; 1f
+                )
+            };
+
+            return new IndexGenerator&lt;IArticle, int&gt;(
+                contentRetrievers.ToNonNullImmutableList(),
+                new IntEqualityComparer(),
+                new DefaultStringNormaliser(),
+                new WhiteSpaceTokenBreaker(),
+                weightedValues =&gt; weightedValues.Sum(),
+                new NullLogger()
+            );
+        }
+
+        private class IntEqualityComparer : IEqualityComparer&lt;int&gt;
+        {
+            public bool Equals(int x, int y) { return (x == y); }
+            public int GetHashCode(int obj) { return obj; }
+        }
+    }
+}
+</code></pre>
+
+<p>That was a lot of jargon that took more work to write than the code example! :)</p>
+
+<h4>Content Retrievers</h4>
+
+<p>These describe describe two simple things; a method to extract a particular content string from an item (along with a Key for that item) and a method to assign a weight to each token that is extracted from that content after it's been passed through a Token Breaker. In this example, more weight is given to "tokens" (for the time being we can take this to refer to a single word) matched in the Article Title than in the Article Content. Each Content Retriever can return null for a given Article if there is no content to retrieve for that instance - eg. if IArticle had an optional property for CategoryName for an instance then a Content Retriever might return null if the instance has no Category assigned to it.</p>
+
+<h4>Key Comparer</h4>
+
+<p>Here, the Key uniquely representing each Article is the Id value so the Key Comparer for this example is just an IEqualityComparer&lt;int&gt; implementation that compares integers - easy.</p>
+
+<h4>Token Breakers</h4>
+
+<p>This example uses a "WhiteSpaceTokenBreaker" which will take the string content from the Content Retrievers and break it into individual words by splitting on whitespace characters. Straight forward!</p>
+
+<h4>String Normaliser</h4>
+
+<p>The String Normaliser is essentially an IEqualityComparer&lt;string&gt; and will be used to generate a lookup of tokens and compare them against values passed into the GetMatches method. The DefaultStringNormaliser will remove all punctuation, exchange all non-latin characters for latin equivalents and lower-case them all. For the most basic lookups I had in mind, this does the hard work.</p>
+
+<h4>Weighted Entry</h4>
+
+<p>The Weighted Entry is a combination of a Key that identifies a data item and a numeric weight indicating the quality of the match; always positive and the higher the better.</p>
+
+<h4>Weighted Entry Combiner</h4>
+
+<p>This takes a set of match weights for a given token and must return a single value representing their combined total. In the example here I've just taken a sum of them, so if an Article has the word "giraffe" once in the Title and three times in the Content and "giraffe" was searched for, then match weights 5, 1, 1, 1 would be combined into 8 but it may be equally valid to take the maximum weight instead of considering Articles to be a better match if they have the same word more times (in which case "weightedValues => weightedValues.Max()" would be specified).</p>
+
+<h4>The Logger</h4>
+
+<p>While the index is being generated, status messages may be logged such as "Work completed: x%". This example ignores all log messages by passing a NullLogger to the index generator.</p>
+
+<h3>Customisation / Variations</h3>
+
+<p>This is a very basic example but it can be extended easily to handle other requirements or data structures. In general the Content Retrievers and Key Comparer are altered to deal with different input data while the Token Breakers, String Normaliser and Weighted Entry Combiner are varied to process that extracted data in a different manner.</p>
+
+<p>The "<a href="https://bitbucket.org/DanRoberts/full-text-indexer/src/4d1c288cb7f7/FullTextIndexer/Indexes/TernarySearchTree/EnglishPluralityStringNormaliser.cs">English Language Plurality String Normaliser (link to Bitbucket file)</a>" (which I've gone on about at considerable length in <a href="a-pluralityhandling-normaliser-correction.html">previous posts</a>) could replace the DefaultStringNormaliser (or wrap it, since it will take an "optionalPreNormaliser" as a constructor argument) so that the token matching is more flexible; searching for "giraffes" would now match an Article that included the word "giraffe" in the Title and/or Content even if it didn't also include "giraffes".</p>
+
+<p>Likewise, the WhiteSpaceTokenBreaker could be replaced with an alternative implementation that also breaks on commas (for content that doesn't also follow commas with spaces) or on the various bracket characters (especially useful for breaking content that includes code samples; so that "List&lt;string&gt;" is broken down into "List" and "string"). This can be done with the "WhiteSpaceExtendingTokenBreaker" class which replaces a fixed (but customisable) set of characters with spaces and then passes off processing to another Token Breaker (usually a WhiteSpaceTokenBreaker) to handle the altered content.</p>
+
+<h3>Multi-word Matching</h3>
+
+<p>With the above configuration, only single words would yield results when GetMatches is called on the index data since all of the content is broken into single words and so any multiple word "source" strings would fail to be matched without additional processing. For cases where the order of the words in a multiple word terms is not important there is an IIndexData&lt;TKey&gt; extension method:</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will break a given source string and return results based upon the combination of
+/// partial matches (so results that only match part of the source string may be included
+/// in the returned data). The token breaker and the match combiner must be specified by the
+/// caller - if the match combiner returns zero then the result will not be included in the
+/// final data. To require that all tokens in the source content be present for any returned
+/// results, the following matchCombiner could be specified:
+/// 
+///  (tokenMatches, allTokens) =&gt;
+///    (tokenMatches.Count &lt; allTokens.Count)
+///      ? 0 : tokenMatches.SelectMany(m =&gt; m.Weights).Sum()
+/// 
+/// &lt;/summary&gt;
+public static NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetPartialMatches&lt;TKey&gt;(
+    this IIndexData&lt;TKey&gt; index,
+    string source,
+    ITokenBreaker tokenBreaker,
+    MatchCombiner matchCombiner
+)
+</code></pre>
+
+<p>If this is called with the same Token Breaker as used by the index generator then the multi-word search term can be split up in the same manner and each resulting token searched for in the index. Then a combined weight must be determined for each matched token, this calculation is handled by the specified MatchCombiner. I won't go into too much detail about it here, I may do another time or you can look at the code for the nitty gritty (there's a Bitbucket link at the bottom of this post). I think the most common case is that illustrated in the summary comment in the code above; where all tokens that result from breaking the search term must be matched in order for results to be considered valid, and where the combined weight of valid matches is taken by summing the weights of all of the component matches.</p>
+
+<h3>Still to come..</h3>
+
+<p>This has still only touched on a simple use case. I'm hoping to cover in future posts how an index could handle multi-lingual content, how it could handle multi-word matching that increases the weight of the matching if tokens that are adjacent in the search term appear adjacent in the source data, how the index can be updated or have items added and removed, how the AutoComplete on this blog is generated and how the term highlighting on the search page works! Who knows, I may even go right off in the deep end and contemplate writing a search term parser that can perform searches on the index with quoted terms, boolean operators and who knows what! But that's all <em>definitely</em> for another day :)</p>
+
+<h3>The Code!</h3>
+
+<p>The code for this project is all available at Bitbucket: "<a href="https://bitbucket.org/DanRoberts/full-text-indexer">The Full Text Indexer</a>".</p>
+
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 20:33</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-full-text-indexer.html#disqus_thread" data-disqus-identifier="30">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

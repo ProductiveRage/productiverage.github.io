@@ -1,0 +1,337 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - WCF with JSON (and nullable types)</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/wcf-with-json-and-nullable-types" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">27 December 2012</h3><h2><a id="Post41"></a><a href="wcf-with-json-and-nullable-types.html">WCF with JSON (and nullable types)</a></h2>
+
+<p>I wanted to try putting together a WCF Service that would return JSON. With its configurable nature, I've heard before that it's not that big of a deal to do this.. and truth be told, it's not <em>that</em> awkward to do but it took me a while to find all the right hoops to jump through! (Another time, I might consider trying to put together a RESTful API using MVC and the JsonResult type unless there was some need to support multiple response types, such as XML <em>and</em> JSON).</p>
+
+<p>The best way to go through it is probably with an example, so here's a simple Service Contract interface, note the "WebGet" attribute and the BodyStyle and ResponseFormat values.</p>
+
+<pre><code>using System;
+using System.ServiceModel;
+using System.ServiceModel.Web;
+
+namespace WCFJSONExample
+{
+    [ServiceContract]
+    public interface IPostService
+    {
+        [OperationContract]
+        [WebGet(BodyStyle = WebMessageBodyStyle.Bare, ResponseFormat = WebMessageFormat.Json)]
+        PostResponseDetails Search(int id, DateTime postedAfter, DateTime postedBefore);
+    }
+}
+</code></pre>
+
+<p>When communicating through SOAP, the standard request method is to POST the data but for the purposes here I want to enable GET requests that return JSON. I also want the search parameters to be simple types, rather than having to support a complex SearchRequestDetails type, for example, that could specify the various criteria. There's nothing special about the PostResponseDetails type, though:</p>
+
+<pre><code>using System;
+using System.Runtime.Serialization;
+
+namespace WCFJSONExample
+{
+    [DataContract]
+    public class PostResponseDetails
+    {
+        [DataMember]
+        public StatusDetails Status { get; set; }
+
+        [DataMember]
+        public PostDetails[] Posts { get; set; }
+    }
+
+    [DataContract]
+    public class StatusDetails
+    {
+        [DataMember]
+        public bool Success { get; set; }
+
+        [DataMember]
+        public string AdditionalStatusInformation { get; set; }
+    }
+
+    [DataContract]
+    public class PostDetails
+    {
+        [DataMember]
+        public int Id { get; set; }
+
+        [DataMember]
+        public DateTime Posted { get; set; }
+
+        [DataMember]
+        public string Title { get; set; }
+
+        [DataMember]
+        public string Content { get; set; }
+    }
+}
+</code></pre>
+
+<p>We're going to get the framework to serialise the response data for us, so nothing unusual was required there.</p>
+
+<p>Where things <em>do</em> need changing from the defaults, though, are some of the settings in the web.config. Within system.serviceModel / services, we need to add the following (the "services" node won't exist if you're working with a clean web.config file - ie. a web.config as Visual Studio will generate for a new "WCF Service Application" project):</p>
+
+<pre><code>&lt;service name="WCFJSONExample.PostService"&gt;
+    &lt;endpoint
+        name="jsonEndPoint"
+        address=""
+        binding="webHttpBinding"
+        behaviorConfiguration="json"
+        contract="WCFJSONExample.IPostService"
+    /&gt;
+&lt;/service&gt;
+</code></pre>
+
+<p>And within system.serviceModel / behaviours / endpointBehaviors we need to add (again, the "behaviours" node won't exist in the clean / default web.config, just add it and the child "endpointBehaviors" node in, if required):</p>
+
+<pre><code>&lt;behavior name="json"&gt;
+    &lt;webHttp /&gt;
+&lt;/behavior&gt;
+</code></pre>
+
+<p>And that's it! Web Service calls can be made by specifying the method name as part of the url - eg.</p>
+
+<pre><code>http://localhost:62277/PostService.svc/Search?id=1
+</code></pre>
+
+<h3>Well..</h3>
+
+<p>When making requests, if any of the parameters are not included then they will be given default values - eg.</p>
+
+<pre><code>http://localhost:62277/PostService.svc/Search?id=1
+</code></pre>
+
+<p>will result in a method call with id specified as 1 and both postedAfter and postedBefore with the value default(DateTime). I wanted to be able to specify nullable types for the method arguments so that if I needed a method where I could differentiate between integer values being specified as zero and not being specified (and so appearing to be zero as that is default(int)).</p>
+
+<p>But changing the Operation Contract to</p>
+
+<pre><code>[OperationContract]
+[WebGet(BodyStyle = WebMessageBodyStyle.Bare, ResponseFormat = WebMessageFormat.Json)]
+PostResponseDetails Search(int? id, DateTime? postedAfter, DateTime? postedBefore);
+</code></pre>
+
+<p>results in the unfriendly error:</p>
+
+<blockquote>
+  <p>Operation 'GetLogData' in contract 'IPostService' has a query variable named 'fromDate' of type 'System.Nullable<code>1[System.DateTime]', but type 'System.Nullable</code>1[System.DateTime]' is not convertible by 'QueryStringConverter'.  Variables for UriTemplate query values must have types that can be converted by 'QueryStringConverter'.</p>
+</blockquote>
+
+<p>It turns out that the WebHttp behaviour uses an internal class "QueryStringConverter" that will only translate particular types. But we can use a different end point behaviour that uses a different query string converter. Most of the behaviour of the webHttp behaviour (which corresponds to the System.ServiceModel.Description.WebHttpBehavior class) is correct and we just want to extend it, so we'll create a new class that inherits from it and tweak it slightly in that manner.</p>
+
+<p>The new class looks like this:</p>
+
+<pre><code>using System;
+using System.ServiceModel.Configuration;
+using System.ServiceModel.Description;
+using System.ServiceModel.Dispatcher;
+
+namespace WCFJSONExample
+{
+    public class NullableSupportingWebHttpBehaviourExtension : BehaviorExtensionElement
+    {
+        public override Type BehaviorType
+        {
+            get
+            {
+                return typeof(NullableSupportingWebHttpBehaviour);
+            }
+        }
+
+        protected override object CreateBehavior()
+        {
+            return new NullableSupportingWebHttpBehaviour();
+        }
+
+        private class NullableSupportingWebHttpBehaviour : WebHttpBehavior
+        {
+            protected override QueryStringConverter GetQueryStringConverter(
+                OperationDescription operationDescription)
+            {
+                return new NullableSupportingQueryStringConverter();
+            }
+
+            private class NullableSupportingQueryStringConverter : QueryStringConverter
+            {
+                public override bool CanConvert(Type type)
+                {
+                    if (base.CanConvert(type))
+                        return true;
+
+                    Type nullableInnerType;
+                    return TryToGetNullableTypeInformation(type, out nullableInnerType)
+                        &amp;&amp; base.CanConvert(nullableInnerType);
+                }
+
+                public override object ConvertStringToValue(
+                    string parameter,
+                    Type parameterType)
+                {
+                    Type nullableInnerType;
+                    if (TryToGetNullableTypeInformation(parameterType, out nullableInnerType))
+                    {
+                        if (parameter == null)
+                            return null;
+                        return ConvertStringToValue(parameter, nullableInnerType);
+                    }
+
+                    return base.ConvertStringToValue(parameter, parameterType);
+                }
+
+                public override string ConvertValueToString(
+                    object parameter,
+                    Type parameterType)
+                {
+                    Type nullableInnerType;
+                    if (TryToGetNullableTypeInformation(parameterType, out nullableInnerType))
+                    {
+                        if (parameter == null)
+                            return null;
+                        return ConvertValueToString(parameter, nullableInnerType);
+                    }
+
+                    return base.ConvertValueToString(parameter, parameterType);
+                }
+
+                private bool TryToGetNullableTypeInformation(Type type, out Type innerType)
+                {
+                    if (type == null)
+                        throw new ArgumentNullException("type");
+
+                    if (!type.IsGenericType
+                    || (type.GetGenericTypeDefinition() != typeof(Nullable&lt;&gt;)))
+                    {
+                        innerType = null;
+                        return false;
+                    }
+
+                    innerType = type.GetGenericArguments()[0];
+                    return true;
+                }
+            }
+        }
+    }
+}
+</code></pre>
+
+<p>And we plumb it in by adding this to system.serviceModel / extensions / behaviorExtensions (again, the "extensions" node and its "behaviorExtensions" child node need adding in to a vanila web.config):</p>
+
+<pre><code>&lt;add
+    name="postServiceWebHttp"
+    type="WCFJSONExample.NullableSupportingWebHttpBehaviourExtension, WCFJSONExample"
+/&gt;
+</code></pre>
+
+<p>And then replace the "webHttp" node of the behaviour we added above with a "postServiceWebHttp" node, thus:</p>
+
+<pre><code>&lt;behavior name="json"&gt;
+    &lt;postServiceWebHttp /&gt;
+&lt;/behavior&gt;
+</code></pre>
+
+<p>The QueryStringConverter's CanConvert, ConvertStringToValue and ConvertValueToString methods are overridden so that we can pick up on parameters that are of the type Nullable&lt;T&amp;gt&amp;; and deal with them appropriately - returning null if a null value is stored in the type and dealing with the wrapped value if not.</p>
+
+<p>This could easily be changed to perform different translation actions, if required (it could feasibly be integrated with a JSON serialiser to deal with complex data types, for example).</p>
+<p class="PostTime">Posted at 22:46</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="the-full-text-indexer-post-roundup.html">The Full Text Indexer Post Round-up</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "41";
+							var disqus_title = "WCF with JSON (and nullable types)";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

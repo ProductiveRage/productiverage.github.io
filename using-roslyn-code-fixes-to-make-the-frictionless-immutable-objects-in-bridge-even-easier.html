@@ -1,0 +1,269 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">4 May 2016</h3><h2><a id="Post99"></a><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the "Friction-less immutable objects in Bridge" even easier</a></h2>
+
+<p>This is going to be a short post about a Roslyn (or "The .NET Compiler Platform", if you're from Microsoft) analyser and code fix that I've added to a library. I'm not going to try to take you through the steps required to create an analyser nor how the Roslyn object model describes the code that you've written in the IDE* but I want to talk about the analyser itself because it's going to be very useful if you're one of the few people using my <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a> library. Also, I feel like the inclusion of analysers with libraries is something that's going to become increasingly common (and I want to be able to have something to refer back to if I get the chance to say "told you!" in the future).</p>
+
+<p>* <em>(This is largely because I'm still struggling with it a bit myself; my current process is to start with <a href="https://msdn.microsoft.com/en-gb/magazine/dn879356.aspx">Use Roslyn to Write a Live Code Analyzer for Your API</a> and the "Analyzer with Code Fix (NuGet + VSIX)" Visual Studio template. I then tinker around a bit and try running what I've got so far, so that I can use the "Syntax Visualizer" in the Visual Studio instance that is being debugged. Then I tend to do a lot of Google searches when I feel like I'm getting close to something useful.. how do I tell if a <strong>FieldDeclarationSyntax</strong> is for a readonly field or not? Oh, good, someone else has already written some code doing something like what  I want to do - I look at the "Modifiers" property on the <strong>FieldDeclarationSyntax</strong> instance).</em></p>
+
+<p>As new .net libraries get written, some of them will have guidelines and rules that can't easily be described through the type system. In the past, the only option for such rules would be to try to ensure that the documentation (whether this be the project README and / or more in-depth online docs and / or the xml summary comment documentation for the types, methods, properties and fields that intellisense can bring to your attention in the IDE). The support that Visual Studio 2015 introduced for customs analysers* allows these rules to be communicated in a different manner.</p>
+
+<p>* <em>(I'm being English and stubborn, hence my use of "analysers" rather than "analyzers")</em></p>
+
+<p>In short, they allow these library-specific guidelines and rules to be higlighted in the Visual Studio Error List, just like any error or warning raised by Visual Studio itself (even refusing to allow the project to be built, if an error-level message is recorded).</p>
+
+<p>An excellent example that I've seen recently was encountered when I was writing some of my own analyser code. To do this, you can start with the "Analyzer with Code Fix (NuGet + VSIX)" template, which pulls in a range of NuGet packages and includes some template code of its own. You then need to write a class that is derived from <strong>DiagnosticAnalyzer</strong>. Your class will declare one of more <strong>DiagnosticDescriptor</strong> instances - each will be a particular rule that is checked. You then override an "Initialize" method, which allows your code to register for syntax changes and to raise any rules that have been broken. You must also override a "SupportedDiagnostics" property and return the set of <strong>DiagnosticDescriptor</strong> instances (ie. rules) that your analyser will cover. If the code that the "Initialize" method hooks up tries to raise a rule that "SupportedDiagnostics" did not declare, the rule will be ignored by the analysis engine. This would be a kind of (silent) runtime failure and it's something that is documented - but it's still a very easy mistake to make; you might create a new <strong>DiagnosticDescriptor</strong> instance and raise it from your "Initialize" method but forget to add it to the "SupportedDiagnostics" set.. whoops. In the past, you may not realise until runtime that you'd made a mistake and, as a silent failure, you might end up getting very frustrated and be stuck wondering what had gone wrong. But, mercifully (and I say this as I made this very mistake), there is an analyser in the "Microsoft.CodeAnalysis.CSharp" NuGet package that brings this error immediately to your attention with the message:</p>
+
+<blockquote>
+  <p>RS1005 ReportDiagnostic invoked with an unsupported DiagnosticDescriptor</p>
+</blockquote>
+
+<p>The entry in the Error List links straight to the code that called "context.ReportDiagnostic" with the unexpected rule. This is fantastic - instead of suffering a runtime failure, you are informed at compile time precisely what the problem is. Compile time is <em>always</em> better than run time (for many reasons - it's more immediate, so you don't have to <em>wait</em> until runtime, and it's more thorough; a runtime failure may only happen if a particular code path is followed, but static analysis such as this is like having <em>every possible</em> code path tested).</p>
+
+<h3>The analysers already in ProductiveRage.Immutable</h3>
+
+<p>The ProductiveRage uber-fans (who, surely exist.. yes? ..no? :D) may be thinking "doesn't the ProductiveRage.Immutable library already have some analysers built into it?"</p>
+
+<p>And they would be correct, for some time now it has included a few analysers that try to prevent some simple mistakes. As a quick reminder, the premise of the library is that it will make creating immutable types in <a href="http://www.bridge.net">Bridge.NET</a> easier.</p>
+
+<p>Instead of writing something like this:</p>
+
+<pre><code>public sealed class EmployeeDetails
+{
+  public EmployeeDetails(PersonId id, NameDetails name)
+  {
+    if (id == null)
+      throw new ArgumentNullException("id");
+    if (name == null)
+      throw new ArgumentNullException("name");
+
+    Id = id;
+    Name = name;
+  }
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public PersonId Id { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public NameDetails Name { get; private set; }
+
+  public EmployeeDetails WithId(PersonId id)
+  {
+    return Id.Equals(id) ? this : return new EmployeeDetails(id, Name);
+  }
+  public EmployeeDetails WithName(NameDetails name)
+  {
+    return Name.Equals(name) ? this : return new EmployeeDetails(Id, name);
+  }
+}
+</code></pre>
+
+<p>.. you can express it just as:</p>
+
+<pre><code>public sealed class EmployeeDetails : IAmImmutable
+{
+  public EmployeeDetails(PersonId id, NameDetails name)
+  {
+    this.CtorSet(_ =&gt; _.Id, id);
+    this.CtorSet(_ =&gt; _.Name, name);
+  }
+  public PersonId Id { get; private set; }
+  public NameDetails Name { get; private set; }
+}
+</code></pre>
+
+<p>The if-null-then-throw validation is encapsulated in the CtorSet call (since the library takes the view that no value should ever be null - it introduces an <strong>Optional</strong> struct so that you can identify properties that may be without a value). And it saves you from having to write "With" methods for the updates as <strong>IAmImmutable</strong> implementations may use the "With" extension method whenever you want to create a new instance with an altered property - eg.</p>
+
+<pre><code>var updatedEmployee = employee.With(_ =&gt; _.Name, newName);
+</code></pre>
+
+<p>The library can only work if certain conditions are met. For example, every property must have a getter and a setter - otherwise, the "CtorSet" extension method won't know how to actually set the value "under the hood" when populating the initial instance (nor would the "With" method know how to set the value on the new instance that it would create).</p>
+
+<p>If you forgot this and wrote the following (note that the "Name" property now has no setter) -</p>
+
+<pre><code>public sealed class EmployeeDetails : IAmImmutable
+{
+  public EmployeeDetails(PersonId id, NameDetails name)
+  {
+    this.CtorSet(_ =&gt; _.Id, id);
+    this.CtorSet(_ =&gt; _.Name, name);
+  }
+  public PersonId Id { get; private set; }
+  public NameDetails Name { get; }
+}
+</code></pre>
+
+<p>.. then you would see the following errors reported by Visual Studio (presuming you are using 2015 or later) -</p>
+
+<p><img src="Content/Images/Posts/ProductiveRageImmutableAnalyserError1.png" alt="Example analyser errors raised by the ProductiveRage.Immutable library" /></p>
+
+<p>.. which is one of the "common IAmImmutable mistakes" analysers identifying the problem for you.</p>
+
+<h3>Getting Visual Studio to write code for you, using code fixes</h3>
+
+<p>I've been writing more code with this library and I'm still, largely, happy with it. Making the move to assuming never-allow-null (which is baked into the "CtorSet" and "With" calls) means that the classes that I'm writing are a lot shorter and that type signatures are more descriptive. (I wrote about all this in my post at the end of last year "<a href="frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications.html">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a>" if you're curious for more details).</p>
+
+<p>However.. I <em>still</em> don't really like typing out as much code for each class as I have to. Each class has to repeat the property names four times - once in the constructor, twice in the "CtorSet" call and a fourth time in the public property. Similarly, the type name has to be repeated twice - once in the constructor and once in the property.</p>
+
+<p>This is better than the obvious alternative, which is to not bother with immutable types. I will gladly take the extra lines of code (and the effort required to write them) to get the additional confidence that a "stronger" type system offers - I wrote about this recently in my "<a href="writing-react-apps-using-bridgenet-the-dan-way-from-first-principles.html">Writing React with Bridge.NET - The Dan Way</a>" posts; I think that it's really worthwhile to bake assumptions into the type system where possible. For example, the Props types of React components are assumed, by the React library, to be immutable - so having them defined as immutable types represents this requirement in the type system. If the Props types are <em>mutable</em> then it would be possible to write code that tries to change that data and then bad things could happen (you're doing something that library expects not to happen). If the Props types are <em>immutable</em> then it's not even possible to write this particular kind of bad-things-might-happen code, which is a positive thing.</p>
+
+<p>But <em>still</em> I get a niggling feeling that things could be better. And now they are! With Roslyn, you can not only identify particular patterns but you can also offer automatic fixes for them. So, if you were to start writing the <strong>EmployeeDetails</strong> class from scratch and got this far:</p>
+
+<pre><code>public sealed class EmployeeDetails : IAmImmutable
+{
+  public EmployeeDetails(PersonId id, NameDetails name)
+  {
+  }
+}
+</code></pre>
+
+<p>.. then an analyser could identify that you were writing an <strong>IAmImmutable</strong> implementation and that you have an empty constructor - it could then offer to fix that for you by filling in the rest of the class.</p>
+
+<p>The latest version of the ProductiveRage.Immutable library (1.7.0) does just that. The empty constructor will not only be identified with a warning but a light bulb will also appear alongside the code. Clicking this (or pressing [Ctrl]-[.] while within the empty constructor, for fellow keyboard junkies) will present an option to "Populate class from constructor" -</p>
+
+<p><img src="Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix1.png" alt="Screenshot showing the analyser identifying an empty constructor on an IAmImmutable implementation" /></p>
+
+<p>Selecting the "Populate class from constructor" option -</p>
+
+<p><img src="Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix2.png" alt="Screenshot showing the code fix that may auto-populate the incomplete IAmImmutable implementation" /></p>
+
+<p>.. will take the constructor arguments and generate the "CtorSet" calls and the public properties automatically. Now you can have all of the safety of the immutable type with no more typing effort than the mutable version!</p>
+
+<pre><code>// This is what you have to type of the immutable version,
+// then the code fix will expand it for you
+public sealed class EmployeeDetails : IAmImmutable
+{
+  public EmployeeDetails(PersonId id, NameDetails name)
+  {
+  }
+}
+
+// This is what you would have typed if you were feeling
+// lazy and creating mutable types because you couldn't
+// be bothered with the typing overhead of immutability
+public sealed class EmployeeDetails
+{
+  public PersonId Id;
+  public NameDetails name;
+}
+</code></pre>
+
+<h3>To summarise</h3>
+
+<p>If you're already using the library, then all you need to do to start taking advantage of this code fix is update your NuGet reference* (presuming that you're using VS 2015 - analysers weren't supported in previous versions of Visual Studio).</p>
+
+<p>* <em>(Sometimes you have to restart Visual Studio after updating, you will know that this is the case if you get a warning in the Error List about Visual Studio not being able to load the Productive.Immutable analyser)</em></p>
+
+<p>If you're writing your own library that has any guidelines or common gotchas that you have to describe in documentation somewhere (that the users of your library may well not read unless they have a problem - at which point they may even abandon the library, if they're only having an investigative play around with it) then I highly recommend that you consider using analysers to surface some of these assumptions and best practices. While I'm aware that I've not offered much concrete advice on <em>how</em> to write these analysers, the reason is that I'm still very much a beginner at it - but that puts me in a good position to be able to say that it really is fairly easy if you read a few articles about it (such as <a href="https://msdn.microsoft.com/en-gb/magazine/dn879356.aspx">Use Roslyn to Write a Live Code Analyzer for Your API</a>) and then just get stuck in. With some judicious Google'ing, you'll be making progress in no time!</p>
+
+<p>I guess that only time will tell whether library-specific analysers become as prevelant as I imagine. It's very possible that I'm biased because I'm such a believer in static analysis. Let's wait and see*!</p>
+
+<p>* <em>Unless YOU are a library writer that this might apply to - in which case, make it happen rather than just sitting back to see what MIGHT happen! :)</em></p>
+<p class="PostTime">Posted at 22:33</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/Bridge.html" title="9 Posts">Bridge</a></li><li><a href="Archive/Tag/Immutability.html" title="12 Posts">Immutability</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "99";
+							var disqus_title = "Using Roslyn code fixes to make the \"Friction-less immutable objects in Bridge\" even easier";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

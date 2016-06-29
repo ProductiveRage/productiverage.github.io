@@ -1,0 +1,202 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Never typing an Argument Null Exception again!</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/never-typing-an-argument-null-exception-again" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">19 January 2013</h3><h2><a id="Post43"></a><a href="never-typing-an-argument-null-exception-again.html">Never typing an Argument Null Exception again!</a></h2>
+
+<p>Ever since my first post (<a href="i-love-immutable-data.html">I love Immutable Data</a>) I've recognised the overhead of the additional (and repetitive!) typing of the validation that goes with it. But for some reason, I've never actively sought out a way to try to ease this burden. I've seen some people use ReSharper templates but not extensively (and I've not given ReSharper a go yet - despite many recommendations - so until I make the time to, I can't comment on how useful it may or may not be for this).</p>
+
+<p>And then I came across a reference to something called "Code Snippets" in Visual Studio - a way to quickly insert common structures. Something that has apparently been available since VS 2005! I'm a little ashamed that this was the first time I encountered them! (I consoled myself with the fact that, from talking to some other devs, this doesn't seem to be one of the most well-known VS features.. but still).</p>
+
+<p>eg. instead of repeatedly typing something like</p>
+
+<pre><code>if (role == null)
+  throw new ArgumentNullException("role");
+</code></pre>
+
+<p>I can configure it to allow me to type "tna" and have it translated into</p>
+
+<pre><code>if (value == null)
+  throw new ArgumentNullException("value");
+</code></pre>
+
+<p>but with the first instance of "value" highlighted such that I can insert the actual parameter name (starting to type this will also use intellisense to try to match what I'm typing to something in the current scope). After I hit Enter, it will automatically populate the second instance of "value". Amazing; instant time saver!</p>
+
+<p>The easiest way to get this up and running is to copy the following content into a file somewhere called "ThrowArgumentNullException.snippet" (the filename doesn't matter other than the ".snippet" extension):</p>
+
+<pre><code>&lt;?xml version="1.0" encoding="utf-8" ?&gt;
+&lt;CodeSnippets  xmlns="http://schemas.microsoft.com/VisualStudio/2005/CodeSnippet"&gt;
+      &lt;CodeSnippet Format="1.0.0"&gt;
+    &lt;Header&gt;
+      &lt;Title&gt;Throw ArgumentNullException&lt;/Title&gt;
+      &lt;Description&gt;Throw ArgumentNullException&lt;/Description&gt;
+      &lt;Shortcut&gt;tna&lt;/Shortcut&gt;
+      &lt;SnippetTypes&gt;
+        &lt;SnippetType&gt;Expansion&lt;/SnippetType&gt;
+        &lt;SnippetType&gt;SurroundsWith&lt;/SnippetType&gt;
+      &lt;/SnippetTypes&gt;
+    &lt;/Header&gt;
+    &lt;Snippet&gt;
+      &lt;Declarations&gt;
+        &lt;Literal&gt;
+          &lt;ID&gt;arg&lt;/ID&gt;
+          &lt;Default&gt;value&lt;/Default&gt;
+        &lt;/Literal&gt;
+      &lt;/Declarations&gt;
+      &lt;Code Language="csharp"&gt;&lt;![CDATA[if ($arg$ == null)
+throw new ArgumentNullException("$arg$");
+    $end$]]&gt;
+      &lt;/Code&gt;
+    &lt;/Snippet&gt;
+  &lt;/CodeSnippet&gt;
+&lt;/CodeSnippets&gt;
+</code></pre>
+
+<p>Then import it into Visual Studio by going to Tools / Code Snippets Manager, selecting "Visual C#" as the language and clicking Import. Once you import the file, it will ask you where you want to import it into. There should be a "My Code Snippets" location which will do fine.</p>
+
+<p>When the Code Snippets Manager is closed, the snippet should become immediately available in the editor (no restarting VS, or anything crazy like that).</p>
+
+<p>So within a function with arguments, type "tna" (this string is specified by the "Shortcut" node in the snippet xml) and hit Tab twice (once for intellisense to match the "tna" string to the snippet and the second time to actually insert the snippet content). Then type in the parameter name and press Enter twice (again, it seems to be once to match what you've entered using intellisense - or not, if it doesn't match anything in scope - and the second time to end the snippet insertion and move on). It seems a bit weird to have to hit Tab and Enter twice each, but I can live with it!</p>
+
+<p>Another similar, but also common, snippet I use is to check a string argument against string.IsNullorWhiteSpace:</p>
+
+<pre><code>&lt;?xml version="1.0" encoding="utf-8" ?&gt;
+&lt;CodeSnippets  xmlns="http://schemas.microsoft.com/VisualStudio/2005/CodeSnippet"&gt;
+  &lt;CodeSnippet Format="1.0.0"&gt;
+    &lt;Header&gt;
+      &lt;Title&gt;If IsNullOrWhiteSpace Throw ArgumentException&lt;/Title&gt;
+      &lt;Description&gt;
+        Throw ArgumentException if arg reports string.IsNullOrWhiteSpace
+      &lt;/Description&gt;
+      &lt;Shortcut&gt;tnw&lt;/Shortcut&gt;
+      &lt;SnippetTypes&gt;
+        &lt;SnippetType&gt;Expansion&lt;/SnippetType&gt;
+        &lt;SnippetType&gt;SurroundsWith&lt;/SnippetType&gt;
+      &lt;/SnippetTypes&gt;
+    &lt;/Header&gt;
+    &lt;Snippet&gt;
+      &lt;Declarations&gt;
+        &lt;Literal&gt;
+          &lt;ID&gt;arg&lt;/ID&gt;
+          &lt;Default&gt;value&lt;/Default&gt;
+        &lt;/Literal&gt;
+      &lt;/Declarations&gt;
+      &lt;Code Language="csharp"&gt;&lt;![CDATA[if (string.IsNullOrWhiteSpace($arg$))
+throw new ArgumentNullException("Null/blank $arg$ specified");
+    $end$]]&gt;
+      &lt;/Code&gt;
+    &lt;/Snippet&gt;
+  &lt;/CodeSnippet&gt;
+&lt;/CodeSnippets&gt;
+</code></pre>
+
+<p>This is really only scratching the surface of what's possible and I suspect I'll end up adding more to my arsenal over time. More information can be found at <a href="http://msdn.microsoft.com/en-us/library/ms165392(v=vs.80).aspx">Creating and Using IntelliSense Code Snippets</a> on the MSDN site.</p>
+
+<p>While looking into this, I found that Visual Studio has a few useful snippets available out of the box. For example "propg" will expand to</p>
+
+<pre><code>public int MyProperty { get; private set; }
+</code></pre>
+
+<p>where "int" and "MyProperty" are insertion values; these are the defaults but after "propg" is expanded, "int" is highlighted which may be replaced with new content and then "MyProperty" moved to by hitting Tab. Handy!</p>
+<p class="PostTime">Posted at 13:15</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="idispatch-iwastedtimeonthis-but-ilearntlots.html">IDispatch (IWastedTimeOnThis but ILearntLots)</a></div></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "43";
+							var disqus_title = "Never typing an Argument Null Exception again!";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

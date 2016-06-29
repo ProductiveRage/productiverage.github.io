@@ -1,0 +1,560 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - May 2014</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">7 May 2014</h3><h2><a id="Post70"></a><a href="happy-logging.html">Happy Logging</a></h2>
+
+<p>I started a project recently and got to the point where some of the classes needed a way to write out warnings and other debug messages so I started hashing out a quick <strong>ILogEvents</strong> interface, as I've done for other projects.</p>
+
+<p>And stopped, wondering if I had half a dozen different projects with very similar logging requirements that I'd written similar code for. There are some reasons that I've allowed this duplication of effort to occur; some code was for internal work projects whereas some was for my personal projects. Some projects had specific requirements like writing requests and responses into particular columns in a database.. but most of the time, general purpose logging-this-or-that boils down to the same sorts of things.</p>
+
+<p>Now, in fairness, through writing this "same sort of thing" over various iterations in varios scenarios, I've refined it down somewhat - which is good - but now I'm past the point where it changes significantly from implementation to implementation. The time for churning this code out over and over for my general purpose logging needs has been and gone!</p>
+
+<h3>What do I really want from a logger?</h3>
+
+<p>Although it seems obvious at a first glance what a logger should do (log messages, duh) there are some requirements - or maybe ideals - that I'd like.</p>
+
+<ol>
+<li><p>Each message should have a Log Level (so that I can filter messages to only include Warnings and Errors, if that seems appropriate at the time)</p></li>
+<li><p>There should be delayed evaluation of messages' contents (so that it's possible to generate detailed and expensive-to-generate messages - eg. serialised object graphs - with almost zero cost if those log messages don't end up being recorded anywhere)</p></li>
+<li><p>I want a way to buffer messages so that writes to disk, for example, can be batched up (ideally having a single "write thread" to avoid file locking issues) - in some scenarios this could probably be considered equivalent to saying that it should be possible for the logging to be asynchronous so that callers never have to wait for log requests to succeed before carrying on with their real work (just push the messages onto the buffer and move on)</p></li>
+<li><p>Convenience methods should exist for the most common logging calls, including calls that will ignore any logging errors (if a call to log a warning failed, what am I going to do with a warning about logging the warning.. try to log it?!)</p></li>
+<li><p>The framework should be simple-to-use, without any magic (I had to integrate with a library that used log4net once, I didn't like the static references or how incredibly difficult it seemed to be to configure it programatically)</p></li>
+</ol>
+
+<p>A follow-on from points 3 (about batching) and 4 (about error handling) is that it should to try to log as much as possible if things go wrong. For example, if a batch of six log messages are to be written and it turns out that one of those messages throws an exception when its message content is evaluated, then that one message should be ignored and the others written. This is a bit different to how I would normally like to write code (fail as fast as possible and identify what failed) but for logging it feels like it makes sense.</p>
+
+<h3>The Interface</h3>
+
+<p>So this is my solution. I call it "Happy Logging" since it seems almost impossible to come up with a name for a logging framework that is neither boring nor generic. Instead I thought I'd come up with something cheery and memorable! (You can find <a href="https://bitbucket.org/DanRoberts/happylogging">"Happy Logging" on Bitbucket</a>).</p>
+
+<p>The core interface itself is very simple, a logger implementation needs to be able to deal with a set of messages. There may be zero, one or multiple entries in that set, but it's considered an error condition to pass a null <em>messages</em> reference (the implementation should raise an exception).</p>
+
+<pre><code>public interface ILogEvents
+{
+  /// &lt;summary&gt;
+  /// This should throw an exception for a null messages set. Whether exceptions are
+  /// thrown due to any other issues (eg. null references within the messages set,
+  /// messages whose ContentGenerator delegates throw exceptions, file or database
+  /// exceptions if file-writing or database-access is attempted while recording
+  /// the messages, etc..) will vary depending upon the implementation.
+  /// &lt;/summary&gt;
+  void Log(IEnumerable&lt;LogEventDetails&gt; messages);
+}
+
+public class LogEventDetails
+{
+  public LogEventDetails(
+    LogLevel logLevel,
+    DateTime logDate,
+    int managedThreadId,
+    Func&lt;string&gt; contentGenerator,
+    Exception optionalException)
+  {
+    if (!Enum.IsDefined(typeof(LogLevel), logLevel))
+      throw new ArgumentOutOfRangeException("logLevel");
+    if (contentGenerator == null)
+      throw new ArgumentNullException("contentGenerator");
+
+    LogLevel = logLevel;
+    LogDate = logDate;
+    ManagedThreadId = managedThreadId;
+    ContentGenerator = contentGenerator;
+    OptionalException = optionalException;
+  }
+
+  public LogLevel LogLevel { get; private set; }
+
+  public DateTime LogDate { get; private set; }
+
+  public int ManagedThreadId { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public Func&lt;string&gt; ContentGenerator { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This may be null as it is optional information (there is no guarantee that it
+  /// will be non-null even if the LogLevel is Error)
+  /// &lt;/summary&gt;
+  public Exception OptionalException { get; private set; }
+}
+
+public enum LogLevel
+{
+  Debug,
+  Info,
+  Warning,
+  Error
+}
+</code></pre>
+
+<p>I considered documenting this interface with stricter expected behaviour regarding null entries in the set but logger implementations have more to worry aboun that just null messages. Since the messages' <em>ContentGenerator</em> delegates aren't executed until the messages actually need to be logged, there's no way to know if they're going to throw an exception or not until that time. So it seemed to me that it was best to leave it up to the logger implementation to deal with "dodgy messages" (null references or messages whose <em>ContentGenerators</em> blow up). This way it is an explicit expectation that the logger will have to do so, and something that the implementation writer should be aware of (since it's expressed in the interface's doc comment!).</p>
+
+<p>The thing to take away from all this talk about exception-handling is that it should be something for the implementation to worry about rather than the caller. The caller should just be able to hand off some information and go about its day!</p>
+
+<p>To this end, there are a range of extension methods with two main purposes: exception-ignoring and call abbreviation. This relates to point 4 in my original list; I want to be able to write convenient log-writing code. Most of the time I don't want to have to care if the logging failed (since, again, what can I do with this information) and a lot of the time I don't want to specify a batch of fully-specified messages. I might want to just record some particular warning message text for a condition encountered - it's happened right now, so I don't want to have to specify <strong>DateTime.Now</strong> and it's happened on the current thread, so I don't want to have to specify <strong>Thread.CurrentThread.ManagedThreadId</strong>. And there was no exception so I don't have an exception reference to log information about. All I want to do is specify a log level and a content generator delegate and be done with it:</p>
+
+<pre><code>_logger.LogIgnoringAnyError(LogLevel.Warning, () =&gt; "Something strange happened");
+</code></pre>
+
+<p>These are what the extension methods are for.</p>
+
+<p>The first takes all of the information for a single log message and abbreviates the code required to log it (the caller doesn't have to create a <strong>LogEventDetails</strong> instance and wrap it in an enumerable set). But it doesn't provide any exception-hiding.</p>
+
+<p>The second method (the first of the <em>LogIgnoringAnyError</em> methods) calls the first method but wraps its in a try..catch so that any exceptions don't bubble up to the caller.</p>
+
+<p>Then there are two further variations. The first doesn't have a <em>logDate</em> argument (it passes along <strong>DateTime.Now</strong>) or a <em>managedThreadId</em> (it passes along <strong>Thread.CurrentThread.ManagedThreadId</strong>). The second doesn't take <em>logDate</em> or <em>managedThreadId</em> arguments, nor does it take an <em>exception</em> argument, it passes that along as null. This final extension method takes the bare minimum information possible (Log Level and content generator) and this is the method used in the above example.</p>
+
+<pre><code>public static class ILogEvents_Extensions
+{
+    public static void Log(
+      this ILogEvents logger,
+      LogLevel logLevel,
+      DateTime logDate,
+      int managedThreadId,
+      Func&lt;string&gt; contentGenerator,
+      Exception exception)
+    {
+        if (logger == null)
+            throw new ArgumentNullException("logger");
+
+        logger.Log(new[] { new LogEventDetails(
+          logLevel,
+          logDate,
+          managedThreadId,
+          contentGenerator,
+          exception
+        )});
+    }
+
+    public static void LogIgnoringAnyError(
+      this ILogEvents logger,
+      LogLevel logLevel,
+      DateTime logDate,
+      int managedThreadId,
+      Func&lt;string&gt; contentGenerator,
+      Exception exception)
+    {
+        if (logger == null)
+            throw new ArgumentNullException("logger");
+
+        try
+        {
+            Log(logger, logLevel, logDate, managedThreadId, contentGenerator, exception);
+        }
+        catch { }
+    }
+
+    public static void LogIgnoringAnyError(
+      this ILogEvents logger,
+      LogLevel logLevel,
+      Func&lt;string&gt; contentGenerator,
+      Exception exception)
+    {
+        if (logger == null)
+            throw new ArgumentNullException("logger");
+
+        LogIgnoringAnyError(
+          logger,
+          logLevel,
+          DateTime.Now,
+          Thread.CurrentThread.ManagedThreadId,
+          contentGenerator,
+          exception
+        );
+    }
+
+    public static void LogIgnoringAnyError(
+      this ILogEvents logger,
+      LogLevel logLevel,
+      Func&lt;string&gt; contentGenerator)
+    {
+        if (logger == null)
+            throw new ArgumentNullException("logger");
+
+        LogIgnoringAnyError(logger, logLevel, contentGenerator, null);
+    }
+}
+</code></pre>
+
+<h3>The exciting stuff, the implementations!</h3>
+
+<p>Ok, now we're through the intro, let's get to the real meat! There are implementations <strong>ConsoleLogger</strong> and <strong>TraceLogger</strong> (for when you want to write to the Console or to Trace), there's a <strong>NullLogger</strong> (for when you want to disable logging) and there's a <strong>FilteredLogger</strong> (that wraps another logger but only passes through messages with particular log levels). There's a <strong>CombinedLogger</strong> (which wraps multiple loggers and passes through messages to all of them) and there's a <strong>FileLogger</strong> (which writes messages immediately to disk). The <strong>FileLogger</strong> may either be provided a hard-coded filename or be given a delegate that generates a filename for every write (this makes it easy to write log files whose filename includes the current date and time).</p>
+
+<p>The <strong>ConsoleLogger</strong>, <strong>TraceLogger</strong> and <strong>FileLogger</strong> all write out message details in a default format that can overridden if required.</p>
+
+<p>But this is still child's play. </p>
+
+<p>I said right at the start that one of my aims was to be able to buffer messages / process them asynchronously. For scenarios like this, there is the <strong>ThrottlingLogger</strong>, which places all messages onto an internal queue and periodically flushes its queue's contents to another logger. The flushing period can be based upon a minimum frequency (in terms of time) or upon an upper limit on the number of items in the queue (or both!).</p>
+
+<p>The primary constructor for this class is</p>
+
+<pre><code>public ThrottlingLogger(
+  ILogEvents logger,
+  TimeSpan mimimumFrequency,
+  int maximumNumberOfBufferedItems,
+  ErrorBehaviourOptions individualLogEntryErrorBehaviour)
+</code></pre>
+
+<p>The <em>individualLogEntryErrorBehaviour</em> argument may take a value of either "Ignore" or "ThrowException". This is the behaviour to apply when an issue is encountered with a single message within a set, whether that be a null message reference or one whose <em>ContentGenerator</em> throws an exception. The default value should be considered to be "Ignore" for most cases.</p>
+
+<p>(Note that the <strong>ConsoleLogger</strong>, <strong>TraceLogger</strong> and <strong>FileLogger</strong> also have constructors where an <em>individualLogEntryErrorBehaviour</em> may be specified, this is not something that is specific to the <strong>ThrottlingLogger</strong>).</p>
+
+<p>Many of the loggers in the solution have alternate "shorthand" constructors, where sensible default values are used. For the <strong>ThrottlingLogger</strong> it is of the form</p>
+
+<pre><code>public ThrottlingLogger(ILogEvents logger)
+</code></pre>
+
+<p>where <em>mimimumFrequency</em> is provided with a default value of 2 seconds, <em>maximumNumberOfBufferedItems</em> a default of 50 and <em>individualLogEntryErrorBehaviour</em> a default of "Ignore".</p>
+
+<p>For a long-running service that logs its information to disk (which is one of the most comon cases that I need this sort of thing for), these seem like appropriate starting values.</p>
+
+<p>It should be noted that, for such a service, it would make most sense for a single logger reference to be used by all request threads, otherwise there could still be contention when flushing the messages to disk. The <strong>ThrottlingLogger</strong> uses a <strong>ConcurrentQueue</strong> internally and so is thread-safe for pushing messages to. If a single <strong>ThrottlingLogger</strong> is used by all threads then it will mean that only one thread will ever be writing the disk log at a time, which will avoid any "file in use" IO errors that more naive disk-writing log mechanisms may risk.</p>
+
+<p>Your favourite IoC framework can help with this, if that's what floats your boat. (Personally, I think you can go a long way before needing to rely upon a full "framework" to handle all of your dependencies, but let's not get bogged down with all that here).</p>
+
+<h3>Error BackTracking</h3>
+
+<p>Ok! So far, so good. But now I want to go one step further and support what I've heard called "opportunistic logging". One of the big problems with logging is trying to work out what to log and when. If you log <em>everything</em> then your log files get big quick (or your-favoured-persistence-mechanism takes up a lot of space quickly - maybe you're logging to SQL, for example). The CPU cost of logging may also become a factor if your detailed (ie. Debug level) messages perform complicated analysis or serialisation of complex data structures. However, if you don't log <em>enough</em>, then when things go wrong the logs don't give you enough clues!</p>
+
+<p>This is where opportunistic logging comes in, the logger will queue up messages and - when things are going well - throw most of them away. But when an Error message is recorded, the logger will flush everything out of its queue, writing away all of the information leading up to the problem. Since messages contents' are lazily-evaluated, potentially-expensive Debug messages can be prepared but the overhead of evaluating their content not be paid unless there is an error scenario in which the cost will be worth it.</p>
+
+<p>So you get compact logs when things are going well and detailed logs when things go wrong. The best of both worlds!</p>
+
+<p>The primary constructor for the <strong>ErrorWithBackTrackLogger</strong> class is:</p>
+
+<pre><code>public ErrorWithBackTrackLogger(
+  ILogEvents logger,
+  int maximumNumberOfHistoricalMessagesToMaintain,
+  int maximumNumberOfHistoricalMessagesToIncludeWithAnErrorEntry,
+  HistoryLoggingBehaviourOptions historyLoggingBehaviour,
+  ErrorBehaviourOptions individualLogEntryErrorBehaviour)
+</code></pre>
+
+<p>There <em>are</em> some complications to bear in mind. The logger is going to be maintaining a queue of messages, most of which shouldn't be required. Depending upon how many requests are being handled and how chatty (in terms of logging) the processing of these requests is, this in-memory queue could get big quickly. This is why the <strong>ErrorWithBackTrackLogger</strong> has a <em>maximumNumberOfHistoricalMessagesToMaintain</em>; to put a cap on it. But it's another balancing act around not wanting to maintain too many queued messages at any one time, weighed against the need to have enough messages in the queue that when a "backlog" is written with an error that <em>enough</em> history is written to be useful.</p>
+
+<p>In addition to this, you need to specify whether the backlog written includes <em>all</em> messages in the queue or just the messages whose <em>managedThreadId</em> matches that of the Error log message. For the more common cases that I encounter, I would specify "IncludePrecedingMessagesFromTheSameThreadOnly" for the <em>historyLoggingBehaviour</em> argument but "IncludeAllPrecedingMessages" is the alternative.</p>
+
+<p>Like the other logger implementations, this class has a shorthand constructor</p>
+
+<pre><code>public ErrorWithBackTrackLogger(ILogEvents logger)
+</code></pre>
+
+<p>which uses default values of 1000 for <em>maximumNumberOfHistoricalMessagesToMaintain</em>, 100 for <em>maximumNumberOfHistoricalMessagesToIncludeWithAnErrorEntry</em>, "IncludePrecedingMessagesFromTheSameThreadOnly" for <em>historyLoggingBehaviour</em> and "Ignore" for <em>individualLogEntryErrorBehaviour</em>. These feel like sensible starting values that may be easily tweaked if different use cases require it.</p>
+
+<p>Just to clarify: <em>maximumNumberOfHistoricalMessagesToMaintain</em> is the cap on the queue size and <em>maximumNumberOfHistoricalMessagesToIncludeWithAnErrorEntry</em> is the cap on the number of backlog messages that will be flushed out with any error. If you had a service that was only ever going to service a single request at a time or if you had a case where you wanted to flush <em>all</em> queued log messages (and not just those that originated on the same thread) with an Error message, then these two values may as well be set to the same value. However, if requests are concurrent, independent and have a dedicated (managed) thread each, then it makes sense for <em>maximumNumberOfHistoricalMessagesToMaintain</em> to be larger since it must maintain backlog information for all of the requests that are being processed at any given time.</p>
+
+<h3>Combining loggers</h3>
+
+<p>To conclude, let's look at putting some of these loggers together:</p>
+
+<pre><code>var logger = new CombinedLogger(
+  new FilteredLogger(
+    new TraceLogger(),
+    LogLevel.Info, LogLevel.Warning, LogLevel.Error
+  ),
+  new ThrottlingLogger(
+    new ErrorWithBackTrackLogger(
+      new FileLogger(
+        () =&gt; new FileInfo("Error " + DateTime.Now.ToString("yyyy-MM-dd") + ".log")
+      )
+    )
+  )
+);
+</code></pre>
+
+<p>This will write all messages with level Info, Warning and Error to the Trace (so if you have a Trace Listener attached to the process you can see most of what's happening as it happens) but it will also be on the look out for any Error messages and, when encountered, will flush a backlog of messages to an error log on disk. The error log's filename will include today's date and the log file writer backs off a <strong>ThrottlingLogger</strong> to ensure that, in the unfortunate event of multiple requests erroring at the same time, there is only a single thread trying to write to the disk. It would be bad if some of this valuable error log information could not be written to disk because multiple threads were trying to do it simultaneously and one thread prevented the others due to file locking!</p>
+
+<p>In the above example, the only log level not being passed to the <strong>TraceLogger</strong> is Debug. This is the log level that I would recommend be used for any expensive messages, such as serialised representations of requests, responses or interim state. This ensures that the work to generate those messages is not performed unless it's really useful, like when an error has occurred and we want all the information we can get (the <strong>ErrorWithBackTrackLogger</strong> writes messages for <em>all</em> log levels).</p>
+
+<p>And with that, we're done! This library is simple enough that I can happily use it with any new project that I start but it can also be easily configured to handle amost every situation I've needed a logger for that I can think of in the last few years. A lot of unusual cases can probably be dealt with by tweaking values on the current loggers or by extending the functionality by writing a new implementation (such as one to write to a persistence mechanism other than disk).</p>
+
+<p><a href="https://bitbucket.org/DanRoberts/happylogging">Happy Logging</a> indeed! :)</p>
+
+<h3>Update (8th May 2014)</h3>
+
+<p>Following feedback, I've got a couple of updates.</p>
+
+<p>Firstly, the <strong>LogEventDetails</strong> implementation I originally posted was executing the <em>contentGenerator</em> delegate to ensure that it wasn't null or blank. This is crazy, since it totally negates the effort to enable lazily-evaluated messages! So I've removed that from the code here and on Bitbucket. I also tweaked the default message formatter to deal with the case of an empty message (that code is just in the repo, it's not in this post).</p>
+
+<p>I then added another extension method for logging exceptions -</p>
+
+<pre><code>public static void LogIgnoringAnyError(this ILogEvents logger, Exception error)
+{
+  if (logger == null)
+    throw new ArgumentNullException("logger");
+
+  // If there's no error then there's nothing to log, but this method is not supposed
+  // to throw an error when operating against a logger implementation. (A null logger
+  // reference means it's NOT operating against an actual logger, which is why the
+  // ArgumentNullException above is acceptable).
+  if (error == null)
+    return;
+
+  LogIgnoringAnyError(logger, LogLevel.Error, () =&gt; "", error);
+}
+</code></pre>
+
+<p>I'm sure that someone left a comment saying that it's a bit awkward to log errors when you need to specify a content generator, but you have no content to add other than what is in the exception. Weirdly, I can't see this comment any more! I don't know if the author removed it in a manner that means I can't see that it ever existed.. Nonetheless, I thought this was a good idea!</p>
+
+<p>This method takes only an exception argument (if null is passed then no logging is performed), so now you can log in a manner such as</p>
+
+<pre><code>try
+{
+  AttemptSomething();
+}
+catch(Exception e)
+{
+  _logger.LogIgnoringError(e);
+  throw;
+}
+</code></pre>
+<p class="PostTime">Posted at 23:32</p>
+						<p class="Comments">
+							<a href="happy-logging.html#disqus_thread" data-disqus-identifier="70">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">2 May 2014</h3><h2><a id="Post69"></a><a href="vbscript-is-dim.html">VBScript is DIM</a></h2>
+
+<p>At work, we still have some projects that are are written in VBScript (aka "Classic ASP"). Projects that are important to the company and its bottom line. Which, yes, is madness.</p>
+
+<blockquote>
+  <p>I'm working in C# and C++, languages specifically designed for implementing complex software written by large teams. VBScript is not such a language -- it was designed for simple administration and web scripts</p>
+</blockquote>
+
+<p><strong>(Eric Lippert, 2004: <a href="http://blogs.msdn.com/b/ericlippert/archive/2004/08/25/error-handling-in-vbscript-part-three.aspx">Error Handling in VBScript, Part Three</a>)</strong></p>
+
+<blockquote>
+  <p>Classic ASP was replaced almost 12 years ago to the day with the platform that remains Microsoft’s framework of choice for building web sites today – ASP.NET. You could forgive someone for persevering with classic ASP a decade ago, perhaps even 5 years ago, but today? I don’t think so. If you’re running this platform today to host anything of any value whatsoever on the web, you’ve got rocks in your head.</p>
+</blockquote>
+
+<p><strong>(Troy Hunt, 2014: <a href="http://www.troyhunt.com/2014/02/heres-how-bell-was-hacked-sql-injection.html">Here’s how Bell was hacked – SQL injection blow-by-blow</a>)</strong></p>
+
+<blockquote>
+  <p>VBScript; if you thought its ass would age like wine.. if you mean it turns to vinegar, it does. If you mean it gets better with age, it don't.</p>
+</blockquote>
+
+<p><strong>(Paraphrasing of <a href="http://www.imdb.com/character/ch0001789/quotes">Marsellus Wallace</a>, Pulp Fiction)</strong></p>
+
+<p>During one particularly perverse investigation, I came to question the sanity of one of the most basic constructs in the language; the DIM statement. If you have Option Explicit enabled, you have to use DIM for all variables that you intend to access. Unless you happen to use REDIM, which can operate as a kind of implicit DIM. Even though its intention is to alter the state of a variable already declared. One of the strange things I observed about DIM is that it appears to hoist the variable declaration to the top of the current block scope, a bit like JavaScript. This is why something like the following does not result in an error (please excuse the code formatting and colouring here, the pretty-print script I use doesn't seem to like VBScript.. I'm sure it's not the only one) -</p>
+
+<pre><code>' Writes out "Empty"
+Option Explicit
+WScript.Echo TypeName(a)
+Dim a
+</code></pre>
+
+<p>It writes out "Empty" rather than <em>Variable is undefined: 'a'</em> which is the VBScript equivalent of the compile error you would get if you tried to do the same sort of thing with C#, which requires variables to be declared <em>before</em> use.</p>
+
+<p>Sidebar: When I said that REDIM can act as an "implicit DIM", I mean that that following does not raise an error </p>
+
+<pre><code>' Writes out "Variant()"
+Option Explicit
+ReDim a(0)
+WScript.Echo TypeName(a)
+</code></pre>
+
+<p>Even though <em>Option Explicit</em> is specified and even though ReDim is expected to affect an already-declared variable, this does not error as it implicitly declares the array <em>a</em> before settings its dimensions.</p>
+
+<p>Back to DIM, it's worth noting that it is raised to a form of block level scope, so that if there is a DIM statement inside an IF conditional, it will be raised to the scope of either the current function (or property) or to the top of the "outermost scope" if this is code in a script that is not in a class <em>or</em> function <em>or</em> property -</p>
+
+<pre><code>' Writes out "Empty"
+Option Explicit
+WScript.Echo TypeName(a)
+If (False) Then
+    Dim a
+End If
+</code></pre>
+
+<p>Even though the body of the conditional is never entered, the DIM is hoisted up to the top of the current scope.</p>
+
+<p>Now, to take a brief segue. The REDIM statement, as already mentioned, is primarily intended to alter an already-declared variable. The REDIM statement (being intended to resize arrays) is invalid, for example, if there are no array dimensions specified, such as with</p>
+
+<pre><code>' Throws a compilation error "Expected '('"
+ReDim a
+</code></pre>
+
+<p>or</p>
+
+<pre><code>' Throws a compilation error "Syntax error"
+ReDim a()
+</code></pre>
+
+<p>Perhaps its most common use is with something like</p>
+
+<pre><code>Dim a()
+ReDim a(1)
+WScript.Echo UBound(a)
+</code></pre>
+
+<p>Let's not worry ourselves with the fact that the target reference need not even be an array, such as with</p>
+
+<pre><code>Dim a
+ReDim a(1)
+WScript.Echo UBound(a)
+</code></pre>
+
+<p>And let's not worry for now about the fact that there are special cases for variables that were declared with a DIM that specified dimensions; they must be treated as being locked in size</p>
+
+<pre><code>' Throws a runtime error "This array is fixed or temporarily locked"
+Dim a(1)
+ReDim a(2)
+</code></pre>
+
+<p>Where I think REDIM really starts to come into its own is when we combine the facts that REDIM appears to act as if there was an implicit DIM whose variable it was affecting and the fact that DIM'd variables are hoisted to the top of the scope -</p>
+
+<pre><code>' Throws a runtime error "Variable is undefined: 'a'"
+Option Explicit
+WScript.Echo TypeName(a)
+ReDim a(0)
+</code></pre>
+
+<p>Right. Excellent. This is not what I would have expected. We are coming now to possibly my favourite. REDIM will act as an implicit DIM in only a limited way; though DIM'd variables are hoisted up in block scope, REDIM'd variables are not.</p>
+
+<p>When DIM'd variables are hoisted, they are hoisted to the top of the block scope - so IF and WHILE constructs are meaningless to a DIM (as we saw with the <em>If (False) Then</em> example earlier). REDIM, on the other hand, has other ideas -</p>
+
+<pre><code>' Throws a runtime error "Variable is undefined: 'a'"
+Option Explicit
+If (False) Then
+    ReDim a(0)
+End If
+WScript.Echo TypeName(a)
+</code></pre>
+
+<p>but</p>
+
+<pre><code>' Writes out "Variant()"
+Option Explicit
+If (True) Then
+    ReDim a(0)
+End If
+WScript.Echo TypeName(a)
+</code></pre>
+
+<p>This means that variables can actually be conditionally declared. <em>Conditionally declared!</em> Such a concept doesn't even exist in languages such as C# and JavaScript! JavaScript is hardly a paragon of virtue in terms of how it deals with declarations of variables and their scope (if we forget all about Option Explicit and DIM and REDIM then it's interesting to note that undeclared variables in VBScript are only "implicitly declared" in the current block scope, unlike JavaScript's decision to promote them to the global scope) but it doesn't <em>anything</em> quite as crazy as this.</p>
+
+<p>What's really bizarre is that VBScript's interpreter clearly has the ability to pick up on such inconsistencies. The behaviour of the following example</p>
+
+<pre><code>' Throws a compilation error "Name redefined"
+ReDim a(2)
+Dim a
+</code></pre>
+
+<p>makes sense if we consider REDIM to implicitly DIM a variable at the point at which the REDIM appears (if the variable has not already been declared). The "Name redefined" error occurs regardless of the presence or absence of "Option Explicit" - it is a compilation error whilst "Option Explicit" will only throw runtime errors*.</p>
+
+<p>* (This makes Option Explicit particularly awkward to retrofit to scripts that were not written with it from the get-go since any resulting errors are runtime errors and will only be raised if a code path is followed where an undeclared variable is accessed, unlike if static analysis was performed to identify undeclared variables before the script was run).</p>
+
+<p>Where it really gets bizarre is the following -</p>
+
+<pre><code>' ALSO throws a compilation error "Name redefined"
+If (False) Then
+    ReDim a(2)
+End If
+Dim a
+</code></pre>
+
+<p>Since this <em>is</em> a compilation error then it <em>is</em> being identified by static analysis - it is being thrown by considering the content of the script and is not an error that has occurred from <em>executing</em> the script.</p>
+
+<p>The really insane thing is that I just can't make this fit into everything else we've seen. If a REDIM would result in an implicit DIM that was hoisted to the top of the scope (like explicit DIM statements are) then this error would make perfect sense. But since we've seen that a REDIM can <em>conditionally declare</em> a variable, and the REDIM in this case is inside an unreachable code path, then surely it can't pose a problem for the DIM statement that <em>will</em> be executed! And yet it does.</p>
+
+<p>I am genuinely astonished that I've never had to look into the extent of the sheer lunacy of these constructs before now. But, on the other hand, is the fact that I've not had to and that, generally, <em>it's just worked</em>, something that says a lot about the language designers? Or am I just getting a case of Stockholm Syndrome?!</p>
+
+<p>One thing is for sure, though; next time I question the sanity of any given language or product feature and vent about how it could be much better or make more sense, I think I'll be taking a step back, a deep breath and just bearing in mind <strong>"it could be worse, it's not as bad as VBScript's (RE)DIM"</strong>.</p>
+<p class="PostTime">Posted at 23:59</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="vbscript-is-dim.html#disqus_thread" data-disqus-identifier="69">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

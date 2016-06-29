@@ -1,0 +1,300 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - JavaScript Compression (Putting my JSON Search Indexes on a diet)</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/javascript-compression-putting-my-json-search-indexes-on-a-diet" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">30 July 2013</h3><h2><a id="Post60"></a><a href="javascript-compression-putting-my-json-search-indexes-on-a-diet.html">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></h2>
+
+<p>When I wrote a couple of weeks ago about writing a way to consume <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer</a> data entirely on the client (so that I could recreate my blog's search functionality at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a> - see <a href="the-neocities-challenge-aka-the-full-text-indexer-goes-clientside.html">The Full Text Indexer goes client-side!</a>), I said that</p>
+
+<blockquote>
+  <p>Yes, the search index files are bigger than I would have liked..</p>
+</blockquote>
+
+<p>This may have been somewhat of an understatement.</p>
+
+<p>As a little refresher; there is one JSON file responsible for matching posts to search terms (<em>"oh, I see you seached for '<a href="Search.html?term=cats">cats</a>'! The posts that you want are, in descending order of match quality: 26, 28, 58, 36, 27, 53, 24"</em>). Then there is a JSON file <em>per-post</em> for all of the source location mappings. These describe precisely <em>where</em> in the posts that tokens may be matched. There's quite a lot of data to consider and it's in a fairly naive JSON structure (I used single letter property names but that was the only real attempt at size-constraining*). On top of this, there's a plain-text representation of each post so that the source location mappings can be used to generate a best match "content excerpt" for each result (à la Google's results, which highlight matched terms). And finally a JSON file for all of the titles of the posts so that the titles can be displayed when the search logic knows which posts match the query but the content exceprts generation is still being worked on in the background.</p>
+
+<p>This results in 5.8MB of JSON and plain text data.</p>
+
+<p>Now, in fairness, this is all gzip'd when it comes down the wire and this sort of data compresses really well. And the detail files for the posts are only requested when the corresponding posts are identified as being results for the current search. So in terms of what the user has to download, it's no big deal.</p>
+
+<p>However, the hosting at <a href="http://neocities.org">neocities.org</a> only offers 10MB at the moment so 5.8MB solely for searching seems a little excessive. To put it into perspective, this is several times more than the html required to render all of the actual posts!</p>
+
+<p>I hadn't actually realised just how much of a problem it was until I published my last post. When I came to re-generate the flattened content to upload to NeoCities, that last post (being <a href="autoreleasing-event-listeners.html">something of a beast</a>) pushed the storage requirements past the magic 10MB mark!</p>
+
+<p>* <em>(Very minor diversion: There was actually one potential optimisation that I did consider when first serialising the index data for use on the client. Instead of a simple associative array, I wondered if using a Ternary Search Tree would reduce the space requirements if a lot of the keys had similarities. I used a TST internally in the C# project for performance reasons and talked about it in <a href="the-net-dictionary-is-fast.html">The .Net Dictionary is FAST!</a>. Alas, when I tried it as a structure for my data, it resulted in slightly larger files).</em></p>
+
+<h3>So. Compression, yeah? In JavaScript??</h3>
+
+<p>The biggest contributors to size are the per-post search index files that contain the source locations data. Each is JSON data describing an associative array matching a "normalised" search term (to take into account plurality, case-insensitivity, etc) to a post key, weight and array of source locations. Each source location has the fields FieldIndex, TokenIndex, ContentIndex and ContentLength (read all about it at <a href="the-full-text-indexer-source-locations.html">The Full Text Indexer: Source Locations</a>).</p>
+
+<p>I know that this data <em>can</em> be compressed since, not only does textual or JSON data frequently lend itself to being effectively compressed, but I can <em>see</em> the compression that gzip achieves when the data is delivered to the browser.</p>
+
+<p>My first thought when it comes to compression is that we're dealing with binary data. Certainly, when I see gzip'd responses in <a href="http://fiddler2.com/">Fiddler</a> (before using the <em>"Response is encoded.. Click here to transform"</em> link) it looks like gobbledygook, not like any text I know!</p>
+
+<p>This reminded me of something I read some time ago about a guy creating a PNG file where the pixels are generated from bytes extracted from textual content. This PNG can be read by javascript and the pixels extracted again, and from the pixel values the textual source content can be recreated. The real benefit with PNG here is that it incorporates a lossless compression scheme. Lossless compression is really important here, it means that the decompressed content will be <em>identical</em> to the source content. JPEG is a <em>lossy</em> scheme and can achieve higher compression rates if the quality is reduced sufficiently. But it loses information when it does this. The idea is that the resulting image is either acceptably close visually to the source image or that the discrepancy is evident but thought to be a worthwhile trade-off considering the file size benefits. If we're trying to extract text data that represents javascript than "close-ish, maybe" is not going to cut it!</p>
+
+<p>The original article that I'd remembered was this: <a href="http://blog.nihilogic.dk/2008/05/compression-using-canvas-and-png.html">Compression using Canvas and PNG-embedded data</a>. The results sound impressive, he got an older version of jQuery (1.2.3) compressed down from 53kb to 17kb. Bear in mind that this is already the minified version of the code! It's quite a short article and interesting, so give it a visit (and while you're there notice that the Mario background is interactive and can be played using the cursor keys! :)</p>
+
+<p>The summary of the article, though, is that it's not suitable for mainstream use. Browser support is restricted (all modern browsers now would work, I'm sure, but I don't know how many versions of IE it would work in). And it concludes with <em>"this is meant only as thing of interest and is not something you should use in most any real life applications, where something like gzip will outperform this"</em>.</p>
+
+<p>Ok.</p>
+
+<p>Glad I looked it up again, though, since it was interesting stuff.</p>
+
+<p>On the same blog, there's also an article <a href="http://blog.nihilogic.dk/2008/05/reading-exif-data-with-javascript.html">Read EXIF data with Javascript</a>, which talks about retrieving binary data from a file and extracting the data from it. In this case, the content would have to be compressed when written and then decompressed by the javascript loading it. Unlike, the PNG approach, compression doesn't come for free. From the article, he's written the file <a href="http://www.nihilogic.dk/labs/binaryajax/binaryajax.js">binaryajax.js</a>. Unfortunately, browser support apparently is still incomplete. The original plan outlined works for Chrome and Firefox but then some dirty hacks (including rendering VBScript script tags and executing those functions) are required for IE and, at the time at least, Opera wouldn't work at all.</p>
+
+<p>Again, interesting stuff! But not quite what I want.</p>
+
+<h3>Help, Google!</h3>
+
+<p>So I had to fall back to asking google about javascript compression and trying not to end up in article after article about how to minify scripts.</p>
+
+<p>In fairness, it didn't take too long at all until a pattern was emerging where a lot of people were talking about LZ compression (info available at the <a href="http://en.wikipedia.org/wiki/LZ77_and_LZ78">Wikipedia</a> page). And I finally ended up here <a href="http://pieroxy.net/blog/pages/lz-string/index.html">lz-string: JavaScript compression, fast!</a></p>
+
+<p>From that page -</p>
+
+<blockquote>
+  <p>lz-string was designed to fulfill the need of storing large amounts of data in localStorage, specifically on mobile devices. localStorage being usually limited to 5MB, all you can compress is that much more data you can store.</p>
+  
+  <p>What about other libraries?</p>
+  
+  <p>All I could find was:</p>
+  
+  <p>- some LZW implementations which gives you back arrays of numbers (terribly inefficient to store as tokens take 64bits) and don't support any character above 255.</p>
+  
+  <p>- some other LZW implementations which gives you back a string (less terribly inefficient to store but still, all tokens take 16 bits) and don't support any character above 255.</p>
+  
+  <p>- an LZMA implementation that is asynchronous and very slow - but hey, it's LZMA, not the implementation that is slow.</p>
+  
+  <p>- a GZip implementation not really meant for browsers but meant for node.js, which weighted 70kb (with deflate.js and crc32.js on which it depends).</p>
+</blockquote>
+
+<p>This is sounding really good (and his view of the state of the other libraries available reflects my own experiences when Googling around). And he goes on to say</p>
+
+<blockquote>
+  <p>localStorage can only contain JavaScript strings. Strings in JavaScript are stored internally in UTF-16, meaning every character weight 16 bits. I modified the implementation to work with a 16bit-wide token space.</p>
+</blockquote>
+
+<p>Now, I'm not going to be using it with localStorage but it's gratifying to see that this guy has really understood the environment in which it's going to be used and how best to use that to his advantage.</p>
+
+<p>Preliminary tests went well; I was compressing this, decompressing that, testing this, testing that. It was all going swimmingly! The only problem now was that this was a clearly a custom (and clever) implementation of the algorithm so I wouldn't be able to use anything standard on the C# side to compress the data if I wanted the javascript to be able to decompress it again. And the whole point of all of this is to "flatten" my primary blog and serialise the search index in one process, such that it can be hosted on <a href="http://necities.org">NeoCities</a>.</p>
+
+<p>The javscript code is fairly concise, so I translated it into C#. When I'd translated C# classes from my Full Text Indexer into javascript equivalents, it had gone surprisingly painlessly. I'd basically just copied the C# code into an empty file and then removed types and tweaked things to work as javascript. So I thought I'd take a punt and try the opposite - just copy the javascript into an empty C# class and then try to fix it up. Adding appropriate types and replacing javascript methods with C# equivalents. This too seemed to go well, I was compressing some strings to text files, pulling them with ajax requests in javascript, decompressing them and viewing them. Success!</p>
+
+<p>Until..</p>
+
+<p>I gave it a string that didn't work. The decompress method returned null. Fail.</p>
+
+<h3>Troubleshooting</h3>
+
+<p>I figured that there's only so much that could be going wrong. If I compressed the same string with the javascript code then the javascript code could <em>decompress</em> it just fine. The data compressed with the C# version refused to be decompressed by the javascript, though. Chance are I made a mistake in the translation.</p>
+
+<p>I got the shortest reproduce string I could (it's from the titles-of-all-posts JSON that the search facility uses) -</p>
+
+<blockquote>
+  <p>{"1":"I lo</p>
+</blockquote>
+
+<p>and got both the C# and javascript code to print out a list of character codes that were generated when that string was compressed.</p>
+
+<p>These were identical. So maybe my translation <em>wasn't</em> at fault.</p>
+
+<p>Well something must be getting lost somewhere!</p>
+
+<p>This led me on to wondering if it was somehow the encoding. The compressed content is being served up as UTF8 (basically the standard on the web) but the compression algorithm is intended to compress to UTF16. Now, surely this won't make a difference? It means that the bits sent over the wire (in UTF8) will not be the exact same bits as the javascript string (UTF16) is represented by when it's received, but these encoded bits should be describing the same character codes.</p>
+
+<p>So the next step was to intercept the ajax request that the javascript client was making for the data (compressed by C# code, delivered over the wire with UTF8 encoding) and to write out the character codes at that point.</p>
+
+<p>And there was a discrepancy! The character codes received were not the same that I'd generated by the C# code and that I thought I was transmitting!</p>
+
+<p>Thinking still that this must <em>somehow</em> be encoding-related, I started playing around with the encoding options when writing the data to disk. And noticed, innocently hidden away in an alternate constructor signature, the <strong>System.Text.UTF8Encoding</strong> class has an option to "throwOnInvalidBytes". What <em>is</em> this?</p>
+
+<p>I knew how UTF8 worked, that it uses a variable number of bytes and uses the most-signicant-bits to describe how many bytes are required for the current character (the <a href="http://en.wikipedia.org/wiki/Utf8">Wikipedia</a> article explains it nicely) and thought that that was pretty much all there was to it. So how could a byte be invalid?? Well, with this constructor argument set to true, I was getting the error</p>
+
+<blockquote>
+  <p>Unable to translate Unicode character \uD900 at index 6 to specified code page.</p>
+</blockquote>
+
+<p>so clearly particular bytes <em>can</em> be invalid somehow..</p>
+
+<h3>UTF Limitations</h3>
+
+<p>With this error, it didn't actually take much searching. There's a link on www.unicode.com; <a href="http://www.unicode.org/faq/utf_bom.html#utf16-7">Are there any 16-bit valuese that are invalid?</a> that states that</p>
+
+<blockquote>
+  <p>Unpaired surrogates are invalid in UTFs. These include any value in the range D80016 to DBFF16 not followed by a value in the range DC0016 to DFFF16, or any value in the range DC0016 to DFFF16 not preceded by a value in the range D80016 to DBFF16</p>
+</blockquote>
+
+<p>I spent a little while wandering through various searches on the internet trying to decide what the best way would be to try to address this. I didn't want to have to try to find another compressor for all of the reasons that the author of the one I'm using outlined! Which made me think, maybe there's more information about this on his site.</p>
+
+<p>Lo and behold, in the <a href="http://pieroxy.net/blog/pages/lz-string/index.html">changelog</a> (at the bottom of that page), there's mention that there's a v1.3.0 available that has additional methods <em>compressToUTF16</em> and <em>decompressToUTF16</em> (<em>"version 1.3.0 now stable"</em>) that <em>"allow lz-string to produce something that you can store in localStorage on IE and Firefox"</em>.</p>
+
+<p>These new methods wrap the methods "compress" and "decompress". But the "compress" and "decompress" methods in this new version of the code look different to those in the code that I had been using (and had translated). But it's no big deal to translate the newer version (and the new methods).</p>
+
+<p>And now it works! I wish that this version had been the file you see when you go to the main <a href="https://github.com/pieroxy/lz-string">lz-string GitHub page</a> rather than being hidden in the "libs" folder. But considering how happy I am that the solution to my problem has been provided to me with little-to-no-effort, I'm really not going to complain! :)</p>
+
+<h3>Incorporating it into the solution</h3>
+
+<p>Step 1 was to alter my <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer">Blog-to-NeoCities Transformer</a> to write compressed versions of the per-post source location mappings data, along with compressed versions of the plain text post data and the JSON that has the titles for each post.</p>
+
+<p>The C# translation of the LZString code can be seen at: <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer/src/84be5b0af68305a912b4184ae579f03a548292a4/NeoCitiesTransformer/Misc/LZStringCompress.cs?at=default">LZStringCompress.cs</a>.</p>
+
+<p>Step 2 was to alter the javascript search code to handle the compressed content. Having included the 1.3.0 version of LZString.js, I needed to replace some of the $.ajax requests with calls to one of</p>
+
+<pre><code>function LoadCompressedData(strUrl, fncSuccess, fncFailure) {
+  // Note: I've seen this fail when requesting files with extension ".js" but work when the exact
+  // same file is renamed to ".txt", I'm not sure if this is in IIS that it's failing or if jQuery
+  // is requesting the data in a slightly different manner (despite the explicit dataType option),
+  // so best just ensuring that all LZ-compressed data is stored in a file with a ".txt" extension.
+  $.ajax({
+    url: strUrl,
+    dataType: "text",
+    success: function(strCompressedContent) {
+      var strContent;
+      try {
+        strContent = LZString.DecompressFromUTF16(strCompressedContent);
+      }
+      catch(e) {
+        if (fncFailure) {
+          fncFailure(e);
+        }
+        return;
+      }
+      fncSuccess(strContent);
+    }
+  });
+}
+
+function LoadCompressedJsonData(strUrl, fncSuccess, fncFailure) {
+  LoadCompressedData(
+    strUrl,
+    function(strContent) {
+      var objData;
+      try {
+        eval("objData = " + strContent);
+      }
+      catch(e) {
+        if (fncFailure) {
+          fncFailure(e);
+        }
+        return;
+      }
+      fncSuccess(objData);
+    },
+    function() {
+      if (fncFailure) {
+        fncFailure(arguments);
+      }
+    }
+  );
+}
+</code></pre>
+
+<p>Step 3 is.. there <em>is</em> no step 3! Everything was now working but taking up less space on the hosting.</p>
+
+<p>When compressed, the detailed source location mappings data is reduced from a combined 4.7MB to 1.5MB. The plain text content was reduced from 664kb to 490kb (not as much of a saving as I'd expected, to be honest). The titles JSON shrank marginally from 2.58kb to 2.36kb. The summary data JSON wasn't compressed so that the first stage of the search could be performed as quickly as possible and <em>one</em> non-compressed file on the server was no problem (it's still gzip'd when passed to the client, though, so there's no bandwidth cost). In total, 5.3MB of data was condensed into requiring less than 2MB on the server. Which I am happily marking down as a win :)</p>
+
+<p>So here's to me hopefully fitting <em>many</em> more posts (along with all of the related javascript searching data) into the NeoCities hosting limitations! I'm sure that if I ever start pushing that 10MB point again, by then the 10MB limit will have been raised - 20MB is already on the way!</p>
+<p class="PostTime">Posted at 23:22</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="autoreleasing-event-listeners.html">Auto-releasing Event Listeners</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="c-sharp-state-machines.html">C# State Machines</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li><li><a href="Archive/Tag/NeoCities.html" title="2 Posts">NeoCities</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "60";
+							var disqus_title = "JavaScript Compression (Putting my JSON Search Indexes on a diet)";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

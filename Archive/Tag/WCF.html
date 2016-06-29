@@ -1,0 +1,1430 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - WCF</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">26 June 2014</h3><h2><a id="Post71"></a><a href="wcf-cors-plus-json-rest-complete-example.html">WCF CORS (plus JSON &amp; REST) - Complete Example</a></h2>
+
+<p>Someone asked me the other day if I knew how to enable CORS (<a href="http://en.wikipedia.org/wiki/Cross-origin_resource_sharing">Cross Origin Resource Sharing</a> for a WCF service. This is commonly used to enable AJAX requests from a web page to retrieve content from a domain outside of the domain that delivered the page that the JavaScript is executing from. For a number of reasons, this is not allowed by default by web browsers but the security measure may be relaxed in modern browsers if the data is delivered with certain headers in the response:</p>
+
+<pre><code>Access-Control-Allow-Origin: *
+Access-Control-Request-Method: POST,GET,PUT,DELETE,OPTIONS
+Access-Control-Allow-Headers: X-Requested-With,Content-Type
+</code></pre>
+
+<p>There's information about this on the "Enable CORS" website: <a href="http://enable-cors.org/server_wcf.html">CORS on WCF</a>.</p>
+
+<p>My friend had found this information and struggled to make it work. It looked like it should be simple enough to me, so I thought I'd give it a go.</p>
+
+<p>I did not find it simple.</p>
+
+<p>But I cracked it in the end! So I'm recording the necessary steps here for posterity.. or for when I might need it in the future. Truth be told, there's no <em>one</em> thing that's mind-blowingly difficult, it's just a case of trying to remember how WCF ties things together when you've not dealt with it for a little while.</p>
+
+<h3>Modern WCF configuration - so easy to get started!</h3>
+
+<p>When Visual Studio 2010 and .net 4 were released, one of the things they introduced was cleaner web.config files that used nice defaults to prevent the bloat that had been added over time. (ScottGu talked about it at <a href="http://weblogs.asp.net/scottgu/clean-web-config-files-vs-2010-and-net-4-0-series">Clean Web.Config Files</a> - there he uses a web application rather than a WCF service as an example, but works was done on the WCF side too).</p>
+
+<p>The initial web.config you get when you go to New Project / WCF / WCF Service Application in VS 2013 is:</p>
+
+<pre><code>&lt;?xml version="1.0"?&gt;
+&lt;configuration&gt;
+  &lt;appSettings&gt;
+    &lt;add key="aspnet:UseTaskFriendlySynchronizationContext" value="true" /&gt;
+  &lt;/appSettings&gt;
+  &lt;system.web&gt;
+    &lt;compilation debug="true" targetFramework="4.5" /&gt;
+    &lt;httpRuntime targetFramework="4.5"/&gt;
+  &lt;/system.web&gt;
+  &lt;system.serviceModel&gt;
+    &lt;behaviors&gt;
+      &lt;serviceBehaviors&gt;
+        &lt;behavior&gt;
+          &lt;serviceMetadata httpGetEnabled="true" httpsGetEnabled="true"/&gt;
+          &lt;serviceDebug includeExceptionDetailInFaults="false"/&gt;
+        &lt;/behavior&gt;
+      &lt;/serviceBehaviors&gt;
+    &lt;/behaviors&gt;
+    &lt;protocolMapping&gt;
+      &lt;add binding="basicHttpsBinding" scheme="https"/&gt;
+    &lt;/protocolMapping&gt;
+    &lt;serviceHostingEnvironment aspNetCompatibilityEnabled="true" multipleSiteBindingsEnabled="true"/&gt;
+  &lt;/system.serviceModel&gt;
+  &lt;system.webServer&gt;
+    &lt;modules runAllManagedModulesForAllRequests="true"/&gt;
+    &lt;directoryBrowse enabled="true"/&gt;
+  &lt;/system.webServer&gt;
+&lt;/configuration&gt;
+</code></pre>
+
+<p>(I removed a couple of XML comments to make it more succint but didn't change anything else).</p>
+
+<p>This is great when you want to get cracking with the default settings but when you want to apply customisations it's not always clear where to start. The Enable CORS documentation says that you have to</p>
+
+<ol>
+<li>Create a couple of classes</li>
+<li>"Register new behavior in web.config"</li>
+<li>"Add new behavior to endpoint behavior configuration"</li>
+<li>"Configure endpoint"</li>
+</ol>
+
+<p>I'm going to take an example project and apply all of these steps, explaining what each one means (largely because when I first read them, I couldn't remember what each one meant in the context of WCF configuration!).</p>
+
+<p>If you want to follow along at home, create a new WCF Service Application project and call it "CORSExample". This will create the files IService1.cs, Service1.svc and Web.config. Change IService1.cs's content to</p>
+
+<pre><code>using System.ServiceModel;
+using System.ServiceModel.Web;
+
+namespace CORSExample
+{
+  [ServiceContract]
+  public interface IService1
+  {
+    [OperationContract]
+    ServiceResponse GetData(string value);
+  }
+}
+</code></pre>
+
+<p>and change Service1.svc to</p>
+
+<pre><code>using System;
+using System.ServiceModel.Activation;
+
+namespace CORSExample
+{
+  public class Service1 : IService1
+  {
+    public ServiceResponse GetData(string value)
+    {
+      return new ServiceResponse
+      {
+        ReceivedAt = DateTime.Now,
+        Value = string.Format("You entered: {0}", value)
+      };
+    }
+  }
+}
+</code></pre>
+
+<p>Then add a new file "ServiceResponse.cs" and set its content to</p>
+
+<pre><code>using System;
+using System.Runtime.Serialization;
+
+namespace CORSExample
+{
+  [DataContract]
+  public class ServiceResponse
+  {
+    [DataMember]
+    public DateTime ReceivedAt { get; set; }
+
+    [DataMember]
+    public string Value { get; set; }
+  }
+}
+</code></pre>
+
+<p>This gives us the outline of a very basic service. You could start this project up and then create a WCF client to communicate with it. It's the most basic example you can likely imagine that takes any form of input and returns a non-primitive-type response. I wanted a "complex response type" to show how responses may be JSON-serialised very easily.. but that comes later, we're not returning JSON at the moment!</p>
+
+<h3>Laying the groundwork</h3>
+
+<p>Starting with the code on the <a href="http://enable-cors.org/server_wcf.html">CORS on WCF</a> page, I took the two classes and combined them into one, removing some potentially-customisable code and replacing it with something that does just the job at hand. This results in a smaller surface area of exposed "new code" and means that I have less to confuse myself with!</p>
+
+<pre><code>using System;
+using System.Collections.Generic;
+using System.ServiceModel;
+using System.ServiceModel.Channels;
+using System.ServiceModel.Configuration;
+using System.ServiceModel.Description;
+using System.ServiceModel.Dispatcher;
+
+namespace CORSExample
+{
+  public class CORSEnablingBehavior : BehaviorExtensionElement, IEndpointBehavior
+  {
+    public void AddBindingParameters(
+      ServiceEndpoint endpoint,
+      BindingParameterCollection bindingParameters) { }
+
+    public void ApplyClientBehavior(ServiceEndpoint endpoint, ClientRuntime clientRuntime) { }
+
+    public void ApplyDispatchBehavior(ServiceEndpoint endpoint, EndpointDispatcher endpointDispatcher)
+    {
+      endpointDispatcher.DispatchRuntime.MessageInspectors.Add(
+        new CORSHeaderInjectingMessageInspector()
+      );
+    }
+
+    public void Validate(ServiceEndpoint endpoint) { }
+
+    public override Type BehaviorType { get { return typeof(CORSEnablingBehavior); } }
+
+    protected override object CreateBehavior() { return new CORSEnablingBehavior(); }
+
+    private  class CORSHeaderInjectingMessageInspector : IDispatchMessageInspector
+    {
+      public object AfterReceiveRequest(
+        ref Message request,
+        IClientChannel channel,
+        InstanceContext instanceContext)
+      {
+        return null;
+      }
+
+      private static IDictionary&lt;string, string&gt; _headersToInject = new Dictionary&lt;string, string&gt;
+      {
+        { "Access-Control-Allow-Origin", "*" },
+        { "Access-Control-Request-Method", "POST,GET,PUT,DELETE,OPTIONS" },
+        { "Access-Control-Allow-Headers", "X-Requested-With,Content-Type" }
+      };
+
+      public void BeforeSendReply(ref Message reply, object correlationState)
+      {
+        var httpHeader = reply.Properties["httpResponse"] as HttpResponseMessageProperty;
+        foreach (var item in _headersToInject)
+          httpHeader.Headers.Add(item.Key, item.Value);
+      }
+    }
+  }
+}
+</code></pre>
+
+<p>So add a file "CORSEnablingBehavior.cs" to the project and populate it with the above content.</p>
+
+<p>This will, if we can attach it to the right thing in the right place at the right time, inject the response headers that we require.</p>
+
+<p>To do so, we're going to have to add a "services" section to the web.config (within "system.serviceModel"). This config section is optional and so is not present in the bare bones config that Visual Studio created for us. We need to add it because we need to override some options -</p>
+
+<pre><code>&lt;services&gt;
+  &lt;service name="CORSExample.Service1"&gt;
+    &lt;endpoint address="" binding="webHttpBinding" contract="CORSExample.IService1" /&gt;
+  &lt;/service&gt;
+&lt;/services&gt;
+</code></pre>
+
+<p>It's important that we specify the "webHttpBinding" since the <strong>CORSEnablingBehavior</strong> implementation will fail without it.</p>
+
+<p>Having created this section, we must then fully populate it. The <em>address</em> attribute can stay blank (changing this alters the URLs that we make requests through - changing it to "something" would mean that requests from a client would have to POST their xml to "/Service1.svc/something" instead of just "/Service1.svc"). The <em>contract</em> attribute must match the type name (including namespace) of the interface precisely and the service <em>name</em> attribute must match the implementation class' type name (including namespace) precisely. If either of these are incorrect then Visual Studio is nice enough to draw your attention to this fact with a blue wobbly underline (the warning message "The Enumeration Constraint failed" could be friendlier, but this is basically what it means).</p>
+
+<p>Now we need to configure the "webHttpBinding". The default is "basicHttpBinding" and that works out of the box. But if we tried to call the service having only made the change above, we'd be presented with a <strong>ProtocolException</strong> stating</p>
+
+<blockquote>
+  <p>The content type application/xml; charset=utf-8 of the response message does not match the content type of the binding (text/xml; charset=utf-8). If using a custom encoder, be sure that the IsContentTypeSupported method is implemented properly.</p>
+</blockquote>
+
+<p>At least, that's what you'd get if you had a debugger attached to the process making the request. If you were making a request from a web application you would get a yellow screen of death showing something like</p>
+
+<p><img alt="ProtocolException Yellow Screen Of Death" src="Content/Images/Posts/WCFProtocolException.png" class="NoBorder AlwaysFullWidth" /></p>
+
+<p>So we need to add another section (this time within "behaviors")</p>
+
+<pre><code>&lt;endpointBehaviors&gt;
+  &lt;behavior&gt;
+    &lt;webHttp /&gt;
+  &lt;/behavior&gt;
+&lt;/endpointBehaviors&gt;
+</code></pre>
+
+<p>If we go back to this fictional WCF client that I'm assuming you're testing the service with for now, you'll need to update the service reference since there's a different binding mechanism.</p>
+
+<p>Then you're in for another treat. When configuring a Service Reference to a WCF service that uses basicHttpBinding, the client's web.config will be populated with information describing how to connect. Excellent, no problem. When the service uses webHttpBinding, however, it does not. This is explained in the post <a href="http://blogs.msdn.com/b/carlosfigueira/archive/2012/03/26/mixing-add-service-reference-and-wcf-web-http-a-k-a-rest-endpoint-does-not-work.aspx">Mixing Add Service Reference and WCF Web HTTP endpoint does not work</a>.</p>
+
+<p>We can work around it for now by manually adding some content into the client's web.config (we'll be changing this service to work with JSON soon, and so probably not be consuming it through a generated WCF client - at that point we won't have to worry about this client web.config issue).</p>
+
+<pre><code>&lt;?xml version="1.0"?&gt;
+&lt;!-- This is the CLIENT web.config (required to consume a WCF service that uses webHttpBinding) --&gt;
+&lt;configuration&gt;
+
+   &lt;!-- This is default web.config content --&gt;
+  &lt;system.web&gt;
+    &lt;compilation debug="true" targetFramework="4.5" /&gt;
+    &lt;httpRuntime targetFramework="4.5" /&gt;
+  &lt;/system.web&gt;
+
+  &lt;!-- This is the content that needs adding to consume the service--&gt;
+  &lt;system.serviceModel&gt;
+    &lt;behaviors&gt;
+      &lt;endpointBehaviors&gt;
+        &lt;behavior name="webhttp"&gt;
+          &lt;webHttp/&gt;
+        &lt;/behavior&gt;
+      &lt;/endpointBehaviors&gt;
+    &lt;/behaviors&gt;
+    &lt;bindings&gt;
+      &lt;webHttpBinding&gt;
+        &lt;binding name="WebHttpBinding_IService1" /&gt;
+      &lt;/webHttpBinding&gt;
+    &lt;/bindings&gt;
+    &lt;client&gt;
+      &lt;endpoint name="WebHttpBinding_IService1" contract="CORSExample.IService1"
+        binding="webHttpBinding" bindingConfiguration="WebHttpBinding_IService1"
+        address="http://localhost:51192/Service1.svc"
+        behaviorConfiguration="webhttp" /&gt;
+    &lt;/client&gt;
+  &lt;/system.serviceModel&gt;
+
+&lt;/configuration&gt;
+</code></pre>
+
+<p><em>Note that the 51192 port in the endpoint address may vary for your test project. If you go to the project's properties page you should be able to find the port there.</em></p>
+
+<h3>Enables the CORS!</h3>
+
+<p>Right, we're really getting there now! Now we need to introduce the <strong>CORSEnablingBehavior</strong> class. In the service's web.config we need to add a new section (inside "system.servicemodel") -</p>
+
+<pre><code>&lt;extensions&gt;
+  &lt;behaviorExtensions&gt;
+    &lt;add
+      name="crossOriginResourceSharingBehavior"
+      type="CORSExample.CORSEnablingBehavior, CORSExample, Version=1.0.0.0, Culture=neutral" /&gt;
+  &lt;/behaviorExtensions&gt;
+&lt;/extensions&gt;
+</code></pre>
+
+<p>and then change the "endpointBehaviors" content we added before to</p>
+
+<pre><code>&lt;endpointBehaviors&gt;
+  &lt;behavior&gt;
+    &lt;webHttp /&gt;
+    &lt;crossOriginResourceSharingBehavior /&gt;
+  &lt;/behavior&gt;
+&lt;/endpointBehaviors&gt;
+</code></pre>
+
+<p><em>Note: Doing this results in the "crossOriginResourceSharingBehavior" node being squiggly-underlined as an "invalid child element" - this is normal and may be ignored. Also note that the "crossOriginResourceSharingBehavior" string is arbitrary and may be any value so long as it is consistent between the two places in which it is used (the "name" attribute in the "behaviorExtensions" section and the actual node name in "endpointBehaviors"). However, the "type" attribute must match the type name (including namespace) precisely of the <strong>CORSEnablingBehavior</strong> class that we added earlier.</em></p>
+
+<p>So <em>now</em> if you make a request from your WCF client the response will contain the required headers!</p>
+
+<p>Success!!</p>
+
+<p>Right now you only have my word for it, since Visual Studio doesn't show the raw messages that are passed in a WCF request. At times like this, I always turn to the trusty <a href="http://www.telerik.com/fiddler">Fiddler</a>. If you're not familiar with it, get familiar - it's fantastic! :) If you <em>are</em> familiar with it then you may well know that it doesn't register web requests made to "localhost". The easiest thing to do is to change the URL of the request so that "localhost" is replaced with "localhost.fiddler" (do this in the web.config of the client). Then Fiddler <em>will</em> show the details of the exchange. Just be aware that when Fiddler <em>isn't</em> connected that "localhost.fiddler" won't work.</p>
+
+<p>As a recap, here's the complete WCF service web.config we've built for the "CORSExample" project:</p>
+
+<pre><code>&lt;?xml version="1.0"?&gt;
+&lt;configuration&gt;
+
+  &lt;appSettings&gt;
+    &lt;add key="aspnet:UseTaskFriendlySynchronizationContext" value="true" /&gt;
+  &lt;/appSettings&gt;
+
+  &lt;system.web&gt;
+    &lt;compilation debug="true" targetFramework="4.5" /&gt;
+    &lt;httpRuntime targetFramework="4.5"/&gt;
+  &lt;/system.web&gt;
+
+  &lt;system.serviceModel&gt;
+    &lt;extensions&gt;
+      &lt;behaviorExtensions&gt;
+        &lt;add
+          name="crossOriginResourceSharingBehavior"
+          type="CORSExample.CORSEnablingBehavior, CORSExample, Version=1.0.0.0, Culture=neutral" /&gt;
+      &lt;/behaviorExtensions&gt;
+    &lt;/extensions&gt;
+
+    &lt;behaviors&gt;
+      &lt;serviceBehaviors&gt;
+        &lt;behavior&gt;
+          &lt;serviceMetadata httpGetEnabled="true" httpsGetEnabled="true"/&gt;
+          &lt;serviceDebug includeExceptionDetailInFaults="true"/&gt;
+        &lt;/behavior&gt;
+      &lt;/serviceBehaviors&gt;
+      &lt;endpointBehaviors&gt;
+        &lt;behavior&gt;
+          &lt;webHttp /&gt;
+          &lt;crossOriginResourceSharingBehavior /&gt;
+        &lt;/behavior&gt;
+      &lt;/endpointBehaviors&gt;
+    &lt;/behaviors&gt;
+
+    &lt;services&gt;
+      &lt;service name="CORSExample.Service1"&gt;
+        &lt;endpoint address="" binding="webHttpBinding" contract="CORSExample.IService1" /&gt;
+      &lt;/service&gt;
+    &lt;/services&gt;
+
+  &lt;/system.serviceModel&gt;
+
+  &lt;system.webServer&gt;
+    &lt;modules runAllManagedModulesForAllRequests="true"/&gt;
+    &lt;directoryBrowse enabled="true"/&gt;
+  &lt;/system.webServer&gt;
+
+&lt;/configuration&gt;
+</code></pre>
+
+<h3>A JSON endpoint</h3>
+
+<p>As I said at the start, I think that the most common use case for CORS-enabled services such as this is to make AJAX requests from JavaScript on a web page. To this end, it would be great if we didn't have to rely upon XML messages. It would be much better to be able to make the requests in some sort of RESTful manner (where the request is essentially represented by the URL, rather than a POST'd XML-serialised message) and to have the response expressed as JSON.</p>
+
+<p>I'm going to leave thinking any deeper about the nitty gritty of what it means to be RESTful for another day (it can be a contentious issue!) and just make the current example communicate through a GET request that passes the "value" parameter as part of the URL.</p>
+
+<p>This is actually extraordinarily easy at this point. The only change required is to the <strong>IService1</strong> interface, it should now read</p>
+
+<pre><code>using System.ServiceModel;
+using System.ServiceModel.Web;
+
+namespace CORSExample
+{
+  [ServiceContract]
+  public interface IService1
+  {
+    [WebGet(UriTemplate = "GetData/{value}", ResponseFormat = WebMessageFormat.Json)]
+    [OperationContract]
+    ServiceResponse GetData(string value);
+  }
+}
+</code></pre>
+
+<p>This allows requests to be made such as</p>
+
+<pre><code>http://localhost:51192/Service1.svc/GetData/123
+</code></pre>
+
+<p>from the browser and for the response to be visible as serialised JSON</p>
+
+<pre><code>{"ReceivedAt":"\/Date(1403736100464+0100)\/","Value":"You entered: 123"}
+</code></pre>
+
+<p>Being in the browser, you don't even need Fiddler to see the response headers, you can use built-in developer tools and see that the headers are present.</p>
+
+<p>Note that there was no change required to the service implementation nor to the response class - in the same way that it can be serialised to XML, the service can serialise the response to JSON.</p>
+
+<p>There is one thing I maybe cheated on a little bit, though. My GetData method's argument is conveniently a string. If this is changed to anything else (an int, for example) then the service will not start up and throw an exception</p>
+
+<blockquote>
+  <p>Operation 'GetData' in contract 'IService1' has a path variable named 'value' which does not have type 'string'.  Variables for UriTemplate path segments must have type 'string'.</p>
+</blockquote>
+
+<p>But getting into all of the ins and outs of configuring requests for JSON are outside the scope of this post, I think. The aim was to enable CORS - and explain every part of what was required in doing so - and I think I've done that well enough for today. Enjoy!</p>
+<p class="PostTime">Posted at 21:35</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<p class="Comments">
+							<a href="wcf-cors-plus-json-rest-complete-example.html#disqus_thread" data-disqus-identifier="71">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">30 August 2013</h3><h2><a id="Post63"></a><a href="why-do-you-hate-my-wcf-types-php.html">Why do you hate my (WCF) types, PHP??</a></h2>
+
+<p>Last November, I was helping someone consume a WCF Web Service with PHP (in the imaginatively named <a href="consuming-a-wcf-web-service-from-php.html">Consuming a WCF Web Service from PHP</a>). After jumping through some hoops (and reading a <em>lot</em> of unhelpful and/or misleading information on the web) it was working; requests that relied on type names being specified were being accepted, gzip support was being enabled, even some useful debug information was being made available for when problems were encountered. All was well. But there was something that was bugging me for a long time that I only quite recently was able to address -</p>
+
+<p><em>Why does the PHP SoapClient so belligerently throw away the type names of response objects?</em></p>
+
+<p>It has knowledge of the type name since it must process the response data to populate the associative arrays that represent this data. But the names of the response types are apparently then cast forever into the ether, never to exposed to me. After all, I'm using PHP - I don't want no stinkin' types!</p>
+
+<h3>Is it just me?</h3>
+
+<p>I feel I should probably explain why I care so much. To be fair, I imagine that in a large number of cases the type name of the returned data really isn't important. If, for example, I'm querying the Twitter API for a set of Statuses then I know the form of the returned data (and since it returns JSON, there <em>are</em> no type names in the responses!). And for a lot of services, I imagine the form of the returned data will be identical from one result to another and, in many of the cases where the forms vary, a form of "property sniffing" will deal with it; does this result have this particular property along with all of the common ones? If so, save it or use it or do whatever with it.</p>
+
+<p>But there are cases where this isn't enough. In that <a href="consuming-a-wcf-web-service-from-php.html">earlier post</a>, the example was a web method "GetHotels" which returned hotel data for results that matched a particular set of filters (in that case, the type names were important for the <em>request</em> since an array of filters was specified, each filter was a particular WCF class - without the type names, the service couldn't deserialise the request).</p>
+
+<p>Each of the returned hotels has data such as Categories, Awards, and Facilities but only the keys of these Categories, Awards and Facilities are returned. There is a separate web method "GetMetaData" that maps these keys onto names. A language can be specified as part of the meta data request so that the names are provided in the correct language.</p>
+
+<p>Some of the meta data types may have additional data, such as an optional ImageUrl for Awards. Categories can be grouped together, so Categories such "Budget Hotel", "Boutique Hotel" and "Garden Hotel" are all considered to be part of the Category Group "Hotel" whilst "Guest House", "Farmhouse" and "Inn" are all considered part of the "Bed &amp; Breakfast" Category Group.</p>
+
+<p>The natural way to express this in a WCF Web Service (making use of wsdl-supported complex types) is something like the following -</p>
+
+<pre><code>[ServiceContract]
+public class HotelService
+{
+  [OperationContract]
+  public MetaDataEntry[] GetMetaData(MetaDataRequest request)
+  {
+    ..
+  }
+}
+
+[DataContact]
+public class MetaDataRequest
+{
+  [DataMember]
+  public string APIKey { get; set; }
+
+  [DataMember]
+  public string LanguageCode { get; set; }
+
+  [DataMember]
+  public MetaDataType[] MetaDataTypes { get; set; }
+}
+
+public enum MetaDataType
+{
+  Award,
+  Category,
+  CategoryGroup,
+  Facility
+}
+
+[KnownType(AwardMetaDataEntry)]
+[KnownType(CategoryMetaDataEntry)]
+[KnownType(CategoryGroupMetaDataEntry)]
+[KnownType(FacilityMetaDataEntry)]
+[DataContract]
+public abstract class MetaDataEntry
+{
+  [DataMember(IsRequired = true)]
+  public int Key { get; set; }
+
+  [DataMember]
+  public string Name { get; set; }
+}
+
+[DataContract]
+public class AwardMetaDataEntry : MetaDataEntry
+{
+  [DataMember]
+  public string ImageUrl { get; set; }
+}
+
+[DataContract]
+public class CategoryMetaDataEntry : MetaDataEntry
+{
+  [DataMember(IsRequired = true)]
+  public int CategoryGroup { get; set; }
+}
+
+[DataContract]
+public class CategoryGroupMetaDataEntry : MetaDataEntry { }
+
+[DataContract]
+public class FacilityMetaDataEntry : MetaDataEntry { }
+</code></pre>
+
+<p>The <strong>MetaDataRequest</strong> allows me to specify which types of meta data that I'm interested in.</p>
+
+<p>So, feasibly, if I wanted to build up a set of Categories to map the keys from the Hotels onto, I could make a request for just the meta data for the Categories. If I then want to map those Categories onto Category Groups, I could make a request for the Category Group meta data.</p>
+
+<p>But why shouldn't I be able to request <em>all</em> of the meta data types, loop through them and stash them all away for future reference <em>all in one go</em>? I could do this easily enough with a .net client. Or a Java client. But, by default, PHP refuses to allow a distinction to be made between a <strong>CategoryGroupMetaDataEntry</strong> and a <strong>FacilityMetaDataEntry</strong> since they have the same structure and PHP won't tell me type names.</p>
+
+<p>Well.. that's not strictly true. PHP <em>does</em> have some means to interrogate type names; the methods "gettype" and "get_class". If you define a class in your PHP code and pass an instance of it to the "get_class" method, you will indeed get back the name of that class. "get_class" may only be given an argument that is an object, as reported by the "gettype" method (see the <a href="http://php.net/manual/en/function.get-class.php">get_class</a> and <a href="http://php.net/manual/en/function.gettype.php">gettype</a> PHP documentation).</p>
+
+<p>But if we try this with the web service call -</p>
+
+<pre><code>$client = new SoapClient(
+  "http://webservice.example.com/hotelservice.svc?wsdl",
+  array(
+    "compression" =&gt; SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP,
+    "trace" =&gt; 1
+  )
+);
+$metaDataTypes = $client-&gt;GetMetaData(
+  array(
+    "request" =&gt; array(  
+      "ApiKey" =&gt; "TestKey",
+      "Language" =&gt; 1, 
+      "MetaDataTypes" =&gt; array(
+        "MetaDataTypeOptions" =&gt; array(
+          "Award",
+          "Category",
+          "CategoryGroup",
+          "Facility"
+        )
+      )
+    )
+  )
+);
+</code></pre>
+
+<p>we can loop through the returned data and use get_class to find out that.. they are all apparently "<strong>StdObject</strong>".</p>
+
+<p>This is what I meant by the type names being "thrown away".</p>
+
+<h3>Duck-typing (doesn't work if everything quacks and waddles)</h3>
+
+<p>In some cases we can work around this.</p>
+
+<p>For example, to guess that a result is an <strong>AwardMetaDataEntry</strong> we could try</p>
+
+<pre><code>if (property_exists($metaDataValue, "ImageUrl")) {
+</code></pre>
+
+<p>and work on the basis that if it exposes an "ImageUrl" property that it is <strong>AwardMetaDataEntry</strong>.</p>
+
+<p>But this won't work for differentiating between a <strong>CategoryGroupMetaDataEntry</strong> and a <strong>FacilityGroupMetaDataEntry</strong> since those response types have no structural differences.</p>
+
+<h3>Class Mappings</h3>
+
+<p>It turns out that the SoapClient <em>does</em> offer a way to get what we want, so long as we don't mind declaring PHP classes for every response type that we're interested in.</p>
+
+<pre><code>class MetaDataEntry
+{
+  public $Key;
+  public $Name;
+}
+
+class AwardMetaDataEntry extends MetaDataEntry
+{
+  public $ImageUrl;
+}
+
+class CategoryMetaDataEntry extends MetaDataEntry
+{
+  public $CategoryGroup;
+}
+
+class CategoryGroupMetaDataEntry extends MetaDataEntry { }
+
+class FacilityMetaDataEntry extends MetaDataEntry { }
+</code></pre>
+
+<p>As we can see in the <a href="http://php.net/manual/en/soapclient.soapclient.php">PHP SoapClient documentation</a>, one of the options that can be specified is a "classmap" -</p>
+
+<blockquote>
+  <p>This option must be an array with WSDL types as keys and names of PHP classes as values</p>
+</blockquote>
+
+<p>It's a way to say that particular response types should be mapped to particular PHP classes - eg.</p>
+
+<pre><code>$client = new SoapClient(
+  "http://webservice.example.com/hotelservice.svc?wsdl",
+  array(
+    "compression" =&gt; SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP,
+    "trace" =&gt; 1,
+    "classmap" =&gt; array(
+      "AwardMetaDataEntry" =&gt; "AwardMetaDataEntry",
+      "CategoryMetaDataEntry" =&gt; "CategoryMetaDataEntry",
+      "CategoryGroupMetaDataEntry" =&gt; "CategoryGroupMetaDataEntry",
+      "FacilityMetaDataEntry" =&gt; "FacilityMetaDataEntry"
+    )
+  )
+);
+</code></pre>
+
+<p><em>Now</em> when we loop through the response values and call get_class we get the correct names. Success!</p>
+
+<p>(In the above code I've named the PHP classes the same as the WSDL types but, since the mappings all have to be individually specified, the class names don't <em>have</em> to be the same. The properties, on the other hand, <em>do</em> have to match since there is no facility for custom-mapping them. Any classes that don't have a mapping will continue to be translated into objects of type <strong>StdObject</strong>).</p>
+
+<p>It may well be that this is far from news for many seasoned PHP Developers but when I described the situation (before finding out about the "classmap" option) to someone I was told was experienced and competent they had no suggestion in this direction.</p>
+
+<p>To be honest, I'm not sure how I came across this in the end. If you know that there exists an option to map classes with the SoapClient then it's easy to find; but with only a vague idea that I wanted it to stop throwing away type names, it took me <em>lots</em> of reading and clutching at straws with search terms. Interestingly, even <em>with</em> this knowledge, I'm still unable to find an article that describes the specific problem I've talked about here.. so maybe it really <em>is</em> just me that has encountered it or cares about it!</p>
+<p class="PostTime">Posted at 00:03</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/PHP.html" title="2 Posts">PHP</a></li><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<p class="Comments">
+							<a href="why-do-you-hate-my-wcf-types-php.html#disqus_thread" data-disqus-identifier="63">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">27 December 2012</h3><h2><a id="Post41"></a><a href="wcf-with-json-and-nullable-types.html">WCF with JSON (and nullable types)</a></h2>
+
+<p>I wanted to try putting together a WCF Service that would return JSON. With its configurable nature, I've heard before that it's not that big of a deal to do this.. and truth be told, it's not <em>that</em> awkward to do but it took me a while to find all the right hoops to jump through! (Another time, I might consider trying to put together a RESTful API using MVC and the JsonResult type unless there was some need to support multiple response types, such as XML <em>and</em> JSON).</p>
+
+<p>The best way to go through it is probably with an example, so here's a simple Service Contract interface, note the "WebGet" attribute and the BodyStyle and ResponseFormat values.</p>
+
+<pre><code>using System;
+using System.ServiceModel;
+using System.ServiceModel.Web;
+
+namespace WCFJSONExample
+{
+    [ServiceContract]
+    public interface IPostService
+    {
+        [OperationContract]
+        [WebGet(BodyStyle = WebMessageBodyStyle.Bare, ResponseFormat = WebMessageFormat.Json)]
+        PostResponseDetails Search(int id, DateTime postedAfter, DateTime postedBefore);
+    }
+}
+</code></pre>
+
+<p>When communicating through SOAP, the standard request method is to POST the data but for the purposes here I want to enable GET requests that return JSON. I also want the search parameters to be simple types, rather than having to support a complex SearchRequestDetails type, for example, that could specify the various criteria. There's nothing special about the PostResponseDetails type, though:</p>
+
+<pre><code>using System;
+using System.Runtime.Serialization;
+
+namespace WCFJSONExample
+{
+    [DataContract]
+    public class PostResponseDetails
+    {
+        [DataMember]
+        public StatusDetails Status { get; set; }
+
+        [DataMember]
+        public PostDetails[] Posts { get; set; }
+    }
+
+    [DataContract]
+    public class StatusDetails
+    {
+        [DataMember]
+        public bool Success { get; set; }
+
+        [DataMember]
+        public string AdditionalStatusInformation { get; set; }
+    }
+
+    [DataContract]
+    public class PostDetails
+    {
+        [DataMember]
+        public int Id { get; set; }
+
+        [DataMember]
+        public DateTime Posted { get; set; }
+
+        [DataMember]
+        public string Title { get; set; }
+
+        [DataMember]
+        public string Content { get; set; }
+    }
+}
+</code></pre>
+
+<p>We're going to get the framework to serialise the response data for us, so nothing unusual was required there.</p>
+
+<p>Where things <em>do</em> need changing from the defaults, though, are some of the settings in the web.config. Within system.serviceModel / services, we need to add the following (the "services" node won't exist if you're working with a clean web.config file - ie. a web.config as Visual Studio will generate for a new "WCF Service Application" project):</p>
+
+<pre><code>&lt;service name="WCFJSONExample.PostService"&gt;
+    &lt;endpoint
+        name="jsonEndPoint"
+        address=""
+        binding="webHttpBinding"
+        behaviorConfiguration="json"
+        contract="WCFJSONExample.IPostService"
+    /&gt;
+&lt;/service&gt;
+</code></pre>
+
+<p>And within system.serviceModel / behaviours / endpointBehaviors we need to add (again, the "behaviours" node won't exist in the clean / default web.config, just add it and the child "endpointBehaviors" node in, if required):</p>
+
+<pre><code>&lt;behavior name="json"&gt;
+    &lt;webHttp /&gt;
+&lt;/behavior&gt;
+</code></pre>
+
+<p>And that's it! Web Service calls can be made by specifying the method name as part of the url - eg.</p>
+
+<pre><code>http://localhost:62277/PostService.svc/Search?id=1
+</code></pre>
+
+<h3>Well..</h3>
+
+<p>When making requests, if any of the parameters are not included then they will be given default values - eg.</p>
+
+<pre><code>http://localhost:62277/PostService.svc/Search?id=1
+</code></pre>
+
+<p>will result in a method call with id specified as 1 and both postedAfter and postedBefore with the value default(DateTime). I wanted to be able to specify nullable types for the method arguments so that if I needed a method where I could differentiate between integer values being specified as zero and not being specified (and so appearing to be zero as that is default(int)).</p>
+
+<p>But changing the Operation Contract to</p>
+
+<pre><code>[OperationContract]
+[WebGet(BodyStyle = WebMessageBodyStyle.Bare, ResponseFormat = WebMessageFormat.Json)]
+PostResponseDetails Search(int? id, DateTime? postedAfter, DateTime? postedBefore);
+</code></pre>
+
+<p>results in the unfriendly error:</p>
+
+<blockquote>
+  <p>Operation 'GetLogData' in contract 'IPostService' has a query variable named 'fromDate' of type 'System.Nullable<code>1[System.DateTime]', but type 'System.Nullable</code>1[System.DateTime]' is not convertible by 'QueryStringConverter'.  Variables for UriTemplate query values must have types that can be converted by 'QueryStringConverter'.</p>
+</blockquote>
+
+<p>It turns out that the WebHttp behaviour uses an internal class "QueryStringConverter" that will only translate particular types. But we can use a different end point behaviour that uses a different query string converter. Most of the behaviour of the webHttp behaviour (which corresponds to the System.ServiceModel.Description.WebHttpBehavior class) is correct and we just want to extend it, so we'll create a new class that inherits from it and tweak it slightly in that manner.</p>
+
+<p>The new class looks like this:</p>
+
+<pre><code>using System;
+using System.ServiceModel.Configuration;
+using System.ServiceModel.Description;
+using System.ServiceModel.Dispatcher;
+
+namespace WCFJSONExample
+{
+    public class NullableSupportingWebHttpBehaviourExtension : BehaviorExtensionElement
+    {
+        public override Type BehaviorType
+        {
+            get
+            {
+                return typeof(NullableSupportingWebHttpBehaviour);
+            }
+        }
+
+        protected override object CreateBehavior()
+        {
+            return new NullableSupportingWebHttpBehaviour();
+        }
+
+        private class NullableSupportingWebHttpBehaviour : WebHttpBehavior
+        {
+            protected override QueryStringConverter GetQueryStringConverter(
+                OperationDescription operationDescription)
+            {
+                return new NullableSupportingQueryStringConverter();
+            }
+
+            private class NullableSupportingQueryStringConverter : QueryStringConverter
+            {
+                public override bool CanConvert(Type type)
+                {
+                    if (base.CanConvert(type))
+                        return true;
+
+                    Type nullableInnerType;
+                    return TryToGetNullableTypeInformation(type, out nullableInnerType)
+                        &amp;&amp; base.CanConvert(nullableInnerType);
+                }
+
+                public override object ConvertStringToValue(
+                    string parameter,
+                    Type parameterType)
+                {
+                    Type nullableInnerType;
+                    if (TryToGetNullableTypeInformation(parameterType, out nullableInnerType))
+                    {
+                        if (parameter == null)
+                            return null;
+                        return ConvertStringToValue(parameter, nullableInnerType);
+                    }
+
+                    return base.ConvertStringToValue(parameter, parameterType);
+                }
+
+                public override string ConvertValueToString(
+                    object parameter,
+                    Type parameterType)
+                {
+                    Type nullableInnerType;
+                    if (TryToGetNullableTypeInformation(parameterType, out nullableInnerType))
+                    {
+                        if (parameter == null)
+                            return null;
+                        return ConvertValueToString(parameter, nullableInnerType);
+                    }
+
+                    return base.ConvertValueToString(parameter, parameterType);
+                }
+
+                private bool TryToGetNullableTypeInformation(Type type, out Type innerType)
+                {
+                    if (type == null)
+                        throw new ArgumentNullException("type");
+
+                    if (!type.IsGenericType
+                    || (type.GetGenericTypeDefinition() != typeof(Nullable&lt;&gt;)))
+                    {
+                        innerType = null;
+                        return false;
+                    }
+
+                    innerType = type.GetGenericArguments()[0];
+                    return true;
+                }
+            }
+        }
+    }
+}
+</code></pre>
+
+<p>And we plumb it in by adding this to system.serviceModel / extensions / behaviorExtensions (again, the "extensions" node and its "behaviorExtensions" child node need adding in to a vanila web.config):</p>
+
+<pre><code>&lt;add
+    name="postServiceWebHttp"
+    type="WCFJSONExample.NullableSupportingWebHttpBehaviourExtension, WCFJSONExample"
+/&gt;
+</code></pre>
+
+<p>And then replace the "webHttp" node of the behaviour we added above with a "postServiceWebHttp" node, thus:</p>
+
+<pre><code>&lt;behavior name="json"&gt;
+    &lt;postServiceWebHttp /&gt;
+&lt;/behavior&gt;
+</code></pre>
+
+<p>The QueryStringConverter's CanConvert, ConvertStringToValue and ConvertValueToString methods are overridden so that we can pick up on parameters that are of the type Nullable&lt;T&amp;gt&amp;; and deal with them appropriately - returning null if a null value is stored in the type and dealing with the wrapped value if not.</p>
+
+<p>This could easily be changed to perform different translation actions, if required (it could feasibly be integrated with a JSON serialiser to deal with complex data types, for example).</p>
+<p class="PostTime">Posted at 22:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<p class="Comments">
+							<a href="wcf-with-json-and-nullable-types.html#disqus_thread" data-disqus-identifier="41">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">9 November 2012</h3><h2><a id="Post35"></a><a href="consuming-a-wcf-web-service-from-php.html">Consuming a WCF Web Service from PHP</a></h2>
+
+<p>For the Web Service that I've been developing at work, I was asked to support a Developer who was trying to consume it for a project. The problem being that he was developing in PHP and had never connected to a .Net Web Service before - at least not knowingly; the APIs he'd integrated with before would all communicate in JSON. The other half of the problem is that I've never developed anything in PHP! In fact I'd not written a line in my life before last week.</p>
+
+<p>From what I'm led to understand of PHP it's somewhat of a mess of 1000s of functions with inconsistent names, signatures and approaches. It's dynamically typed and may or may not have namespaces in any usable manner. But it's got an enormous set of well-established libraries available for everything under the sun. So this should be a walk in the park, right??</p>
+
+<p>Below is a simplified version of what we're working with; the idea that you could search for Hotels that meet various criteria, where the criteria can be built up with the application of multiple Filters - at least one must be specified but multiple may be, in which case Hotels must meet the criteria in all Filters in order to be returned.</p>
+
+<pre><code>[ServiceContract]
+public class HotelService
+{
+    [OperationContract]
+    public Hotel[] GetHotels(HotelSearchRequest request)
+    {
+        ..
+    }
+}
+
+[DataContact]
+public class HotelSearchRequest
+{
+    [DataMember]
+    public string APIKey { get; set; }
+
+    [DataMember]
+    public Filter[] Filters { get; set; }
+}
+
+[KnownType(CategoryFilter)]
+[KnownType(ProximityFilter)]
+[DataContract]
+public abstract class Filter { }
+
+[DataContract]
+public class CategoryFilter : Filter
+{
+    [DataMember]
+    public int[] CategoryKeys { get; set; }
+}
+
+[DataContract]
+public class ProximityFilter : Filter
+{
+    [DataMember]
+    public CoordinateDetails Centre { get; set; }
+
+    [DataMember(IsRequired = true)]
+    public int MaxDistanceInMetres { get; set; }
+}
+</code></pre>
+
+<p>We have to mess about a bit with KnownType declarations in the right place in the service contract but once that's all sorted the service is easy to consume from a .Net WCF Client, all of the inheritance is easily understood (as they're documented in the xsd that the service exposes) and queries are easy to construct.</p>
+
+<p>Getting things working in PHP is another matter, however. For someone who doesn't know what he's doing, at least! All of the basic examples suggest something along the lines of:</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array("trace" =&gt; 1)
+);
+$data = $client-&gt;GetHotels(
+    array(
+        "request" =&gt; array(    
+            "ApiKey" =&gt; "{KeyGoesHere}",
+            "Filters" =&gt; array(
+                // TODO: What to write here?!
+            )
+        )
+    )
+);
+</code></pre>
+
+<p>It seems like the SoapClient can do some sort of magic with what are presumably associative arrays to build up the web request. All looks good initially for declaring data for the "request" argument of the GetHotels method; we set the "ApiKey" property of the request to an appropriate string.. the SoapClient must be doing something clever with the wsdl to determine the xml to generate, which must include the type name of the request to specify. But if the type names are intended to be hidden, how am I going to specify them when I build the "Filters" array?? I can't just carry on with this type-name-less associated-array approach because there will be no way for the request to know that I want the CategoryFilter or the ProximityFilter (or any other Filter that might be available).</p>
+
+<p>Hmmm...</p>
+
+<p>More googling brings me to discover the SoapVar class for use with the SoapClient. If we do the following:</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array("trace" =&gt; 1)
+);
+$data = $client-&gt;GetHotels(
+    array(
+        "request" =&gt; array(    
+            "ApiKey" =&gt; "{KeyGoesHere}",
+            "Filters" =&gt; array(
+                new SoapVar(
+                    array(
+                        "CategoryKeys" =&gt; array(1, 2, 3)
+                    ), 
+                    SOAP_ENC_OBJECT,
+                    "CategoryFilter",
+                    "http://schemas.datacontract.org/2004/07/DemoService.Messages.Requests"
+                )
+            )
+        )
+    )
+);
+</code></pre>
+
+<p>Then we <em>are</em> able to include information about the type. Progress! The namespace string specified references the C# namespace of the CategoryFilter class.</p>
+
+<p>As with so many things, it looks all so easy. But I didn't know what exactly I should be searching for, getting this far took me quite a while - and the resource out there explaining this are thin on the ground! With the maturity of both PHP and WCF I would have thought that information about calling into WCF Services from PHP in this manner would be much readily available!</p>
+
+<h3>But wait; there's more</h3>
+
+<p>While I was at it, I thought I'd dig a little further. When I first communicated with this other Developer, I asked him to send me a trace of the requests that were being generated by his PHP code, using Fiddler or something. This information was not forthcoming and when I was running test PHP scripts on my local machine the requests weren't being captured by Fiddler anyway. But I found these handy methods:</p>
+
+<pre><code>$client-&gt;__getLastRequest()
+$client-&gt;__getLastRequestHeaders()
+</code></pre>
+
+<p>which will retrieve the sent content, ideal for looking into exactly what messages were being generated! These only work if the "trace" => "1" argument is specified when the SoapClient is instantiated. Which explained to me what that was for, which was nice :)</p>
+
+<h3>Enabling gzip support</h3>
+
+<p>The next issue I had was another one that I thought would be beyond easy to solve, with easy-to-follow and accurate information all over the place. I was wrong again! At least, my first searches didn't bring me immediately to the answer :(</p>
+
+<p>A <em>lot</em> of resources suggest the following:</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array(
+        "compression" =&gt; SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP | 9,
+        "trace" =&gt; 1
+    )
+);
+</code></pre>
+
+<p>and some suggest this variation (quoting the compression value):</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array(
+        "compression" =&gt; "SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP | 9",
+        "trace" =&gt; 1
+    )
+);
+</code></pre>
+
+<p>These do <em>not</em> work. The first results in a "can't uncompress compressed response" after a delay which makes me think that it's doing work. The latter does cause any error but also doesn't include the "Accept-encoding: gzip" HTTP header that I'm looking for.</p>
+
+<p>They both <em>feel</em> wrong, anyway; presumably the 9 relates to gzip compression level 9. The compression level should surely be set on the server only, not referenced by the client?? And what <em>are</em> these SOAP_COMPRESS_ACCEPT and SOAP_COMPRESSION_GZIP values? These values are just numeric constants, it turns out, which are OR'd together in the first variation. But what's the 9 for; is it supposed to be there at all; is it some other mystery constant?? And surely the quoted version is incorrect unless PHP has some mad string rules that I don't know about (totally possible with my knowledge of PHP but not the case here! :)</p>
+
+<p>The correct version is simply:</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array(
+        "compression" =&gt; SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP,
+        "trace" =&gt; 1
+    )
+);
+</code></pre>
+
+<p>Again, oh so simple yet so much harder to come to in the end than it should have been.</p>
+
+<h3>One more thing</h3>
+
+<p>A final note, that actually <em>was</em> commonly documented and pointed out, was that if you are developing against a service that is still in flux that you should disable wsdl caching in PHP. This will affect performance as the wsdl will be retrieved on each request (I presume), but it may prevent some headaches if the contract changes. I changed a value in the php.ini file but apparently it can also be done in the PHP script with:</p>
+
+<pre><code>ini_set("soap.wsdl_cache_enabled", 0);
+</code></pre>
+
+<p>(Courtesy of a <a href="http://stackoverflow.com/a/303514">StackOverflow answer</a>).</p>
+
+<h3>Conclusion</h3>
+
+<p>This may well be simple stuff to the real PHP developers out there but since I struggled, maybe this post will help others in the future with this particular problem!</p>
+<p class="PostTime">Posted at 23:03</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li><li><a href="Archive/Tag/PHP.html" title="2 Posts">PHP</a></li></ul></div>
+						<p class="Comments">
+							<a href="consuming-a-wcf-web-service-from-php.html#disqus_thread" data-disqus-identifier="35">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">13 September 2012</h3><h2><a id="Post34"></a><a href="ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40.html">Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0</a></h2>
+
+<p>It's got to the point with a Web Service I'm developing at work to run it through some stress tests and try to work out what kind of load we can handle with the hardware we have in mind for its hosting environment. We also have an arbitrary concept of the load we'd <em>like</em> it to be able to handle, so we need to see if the hardware solution we have in mind is even in the right ballpark.</p>
+
+<p>It's a WCF Web Service running against .Net 4.0 but it's going to be hosted in IIS 6; the Web Servers our Infrastructure Team provide us with are all Server 2003 and although there are mid-term plans to start upgrading to 2008 and IIS 7 this isn't going to happen before this service needs to be live.</p>
+
+<p>The Web Service effectively backs on to a Data Service we already have for our own private use that handles querying and caching of data and metadata, so this Web Service's primary job is to expose this data in a saner manner than the internal interface (which was built some years back and has a lot of legacy features, exposes too much craziness from the backing database which evolved over the best part of a decade and the internal service is communicates over .Net Remoting as it was originally written against .Net 2.0!). So all we're really doing is translating requests from the Web Service model into the internal format and then performing a similar act on the responses, there won't be too many caching concerns, any direct db access or much file IO; the bulk of its time I expect will be waiting on the internal service.</p>
+
+<h3>Gotcha Number One</h3>
+
+<p>To kick things off, I wanted to get an idea of how much load the internal service could handle on a single server and then see how things changed when I put a Web Server in front of it, hosting the new Service. To cut a long story short, I was able to reproduce requests to the internal service from the busiest few hours the night before and serialise them all to disk so that they could be replayed at any time against the stress-testing environment. The optimistic plan being to ramp up the speed at which the requests are replayed and see where the bottlenecks start appearing and at what sort of loads!</p>
+
+<p>The first problem I encountered was when replaying these from a test app on my computer to the data service in the load test environment. As the Web Service requests were ramping up the request times were getting longer and longer. I looked on the Web Server and found that it was doing <em>very</em> little; CPU and memory use was low and looking at the "Web Service"* performance counters it was not only dealing with very few requests but there weren't any queuing up which had been my initial thought.</p>
+
+<p>* (The "Web Service" in this context relates to the service in IIS, it's not a Web Service in the context of an ASP.Net Web Service, for example).</p>
+
+<p>Some googling revealed that outgoing http requests are limited by default in .Net applications, so the requests were getting queued up locally and weren't even getting to the server! It seemed like only two concurrent requests were being handled though I'm sure documentation suggested that it should have been 16. Not that it matters, really, that would have way been too low as well!</p>
+
+<p>Adding this to the app.config sorted it out:</p>
+
+<pre><code>&lt;system.net&gt;
+    &lt;connectionManagement&gt;
+        &lt;add address="*" maxconnection="65535" /&gt;
+    &lt;/connectionManagement&gt;
+&lt;/system.net&gt;
+</code></pre>
+
+<p>The "*" means that this will be applied to any endpoint. The 65535 was what I found in the example and I've been struggling to find a definitive answer as to whether this is the maximum value that it can be or not! :S</p>
+
+<h3>Server Settings: Thread Counts</h3>
+
+<p>So now I was able to overload the server with more concurrents requests than it could handle at once and they were getting queued up. The performance counters are just invaluable here; there are some available for the "Web Service" - which tells us about what's happening at the IIS level - and for "ASP.Net" - which tells us about what's getting into .Net framework. So there could theoretically be limits in IIS that need to be overcome and/or limits in ASP.Net, keeping an eye on these counters gives an insight into where the bottlenecks might be.</p>
+
+<p>I ramped up the request replay rate and it seemed like the maximum concurrent connections that I could achieve was around 250. The CPU load was low, around 15%, and the memory usage was fairly meagre. Most of the time in the requests was waiting for the data service to respond, so threads were just hanging around. Not enough threads for my liking! I wanted to use more of the resources on the box and be able to deal with more requests.</p>
+
+<p>I spent <em>aaaages</em> trying to find information about whether this 250 was a limit set in IIS somewhere or if it was somehow related to the default maximum of 250 threads per CPU in a .Net ThreadPool or just where to find the knob in IIS that I can turn up to eleven! And my conclusion is that it's <em>very</em> difficult to find a definitive resource; so much of the information is for different versions of IIS (5 or 7, usually) and they usually do <em>not</em> make clear which settings are applicable to which versions and which changes I could expect to help me.</p>
+
+<p>So I'm just going to cut to the chase here. For IIS 6 (six!) I needed to do two things.</p>
+
+<p>Firstly, edit the machine.config for applicable ASP.Net version (I'm running against 4.0 and IIS is currently set up to run as 32-bit since to enable 64-bit I believe that <em>all</em> of the applications must be 64-bit and where we're going to host this Web Service I can't be sure that this will be the case):</p>
+
+<pre><code>&lt;system.web&gt;
+    &lt;processModel maxWorkerThreads="100" maxIoThreads="100" minWorkerThreads="50"/&gt;
+</code></pre>
+
+<p>"100" is the maximum value that maxWorkerThreads and maxIoThreads can take. "50" was the value I found in the examples I encountered, presumably this lower bound is set so t hat bursty behaviour is more easily handled as a base number of threads are always spun up (starting up a load of threads is expensive and if a patch of high traffic hits the service then having to do this can result in requests being queued). These were the settings for which there is so much apparently contradictory information out there; some people will tell you the default values are 50 or 12 x the number of CPUs or 5000 depending upon the version of IIS (but infrequently saying which version they were talking about) or the version of ASP.Net (but infrequently saying which version they were talking about!) or.. I don't know.. what day of the week it is!</p>
+
+<p>The second was to increase the number of processes that were used by the Web Service's App Pool. This is done by going into the Performance tab on the App Pool's properties page and increasing the "Maximum number of worker processes" upwards from 1.</p>
+
+<p>There are considerations to bear in mind with increasing the number of worker processes; the first that often jumps out in documentation is issues with Session - any Session data must be maintained in a manner such that multiple processes can access it, since requests from the same Client may not always be handled by the same process, and so an in-process Session would be no good. The Service I was working with had no need for maintaining Session data, so I could happily ignore this entirely.</p>
+
+<p>With these changes, I was able to ramp up the requests until I was max'ing out the CPU in a variety of circumstances; I set up different tests ranging from requests that could be completed very quickly (within, say 20ms) to requests that would artificially delay the response to see how concurrent requests would build up. Without trying too hard I was able to get around 500 requests / second with the quick responses and handle 4000 concurrent requests happily enough with the long-running ones.</p>
+
+<p>This is hardly crazy internet-scale traffic, but it's well in excess of the targets that I was originally trying to see if I could handle. And since the "hardware" is a virtualised box with two cores I'm fairly happy with how it's working out!</p>
+
+<h3>Server Settings: Bandwidth considerations</h3>
+
+<p>Something we have to consider in exposing this data to external Clients is just how <em>much</em> data we may be passing around. The internal Data Service that is essentially be wrapped is just that; internal. This means that not only will all the data be passed around internal network connections to the requesting Web Server (that will use that data in rendering the site) but also that we can format that data however we like (ie. binary rather than xml) and take all sorts of crazy shortcuts and liberties if we need to as we have to understand the data implicitly to work efficiently with it. For the Web Service, the data's going to be broadcast as xml and we want to make the compromise of exposing a consistent and predictable data model with a simple API. This means that we'll be dealing with much larger quantities of data and we have to pass them out of our private network, out into the real world <em>where we have to pay for transfers</em>.</p>
+
+<p>This really struck home when, during the load tests, I was max'ing out the network utilisation of my connection to the server. My connection to the office network runs at 100Mbps (100 mega<em>bits</em>, not bytes) - other people get 1Gb but I get 100 meg, cos I'm really lucky :) This was in tests where a large response was being returned with a high rate of handled requests. To try to push these tests closer to the limits I had to borrow some other workstations and run requests through wcat (<a href="http://www.iis.net/downloads/community/2007/05/wcat-63-(x86)">http://www.iis.net/downloads/community/2007/05/wcat-63-(x86)</a>).</p>
+
+<p>So I figured the obvious first step was to look into whether the response were being compressed and, if not, make them.</p>
+
+<h3>WCF Compression with IIS 6 and .Net 4.0</h3>
+
+<p>I examined a request in Fiddler. No "Accept-Encoding: gzip" to be found. A flash of recollection from the past reminded me of the EnableDecompression property available on the Client proxy generated by Web References. I set it to true before making the request and looked at the request in Fiddler.</p>
+
+<p>Success! The http header for gzip support was passed.</p>
+
+<p>But fail! It didn't make the slightest bit of difference to the response content.</p>
+
+<p>Further googling implied that I was going to be in for some hurt configuring this on IIS 6. The good news is that WCF with .Net 4.0 <em>would</em> support compression of the data natively unlike 3.5 and earlier which required workarounds (I got as far as looking at this <a href="http://stackoverflow.com/questions/1741768/wcf-gzip-compression-request-response-processing">Stack Overflow question</a> before being glad I didn't have to worry about it).</p>
+
+<p>This blog post was a lifesaver: <a href="http://weblogs.asp.net/owscott/archive/2004/01/12/57916.aspx">IIS Compression in IIS6.0</a>.</p>
+
+<p>To summarise:</p>
+
+<ol>
+<li>In the IIS Admin tool you need to right-click on "Web Sites", click "Service" and click "Compress application files" (we don't care about static content for this particular change, and the temporary disk location is only required for static content - "application files" are always compressed on the fly). </li>
+<li>Open the IIS MetaBase file in notepad (C:\WINDOWS\system32\inetsrv\MetaBase.xml, take a backup first - getting this wrong is going to cause problems!) and search for the string "IIsCompressionScheme"; include the "svc" extension into the "HcScriptFileExtensions" section (being careful to maintain the same formatting when inserting the new extension) and then setting "HcDynamicCompressionLevel" to "9" (see that blog post for more information)</li>
+<li>Ensure that any software on the server that may try to process the requests is disabled for the "svc" extension (we have something call "IISXpress" on our Web Servers which is supposed to help with compression but which I couldn't get to work!)</li>
+<li>Restart IIS</li>
+</ol>
+
+<p>After this, the response were being successfully compressed! As it's xml content it's fairly well compressible and I was getting the data trimmed down to approximately an 8th of the previous size. Another result!</p>
+
+<p>Of course, there's always a compromise. And here it's the additional load on the CPU. For the sort of traffic we were looking to support, it seemed like it would be a good trade off; this CPU load overhead in exchange for the reduction in the size of the transmitted data.</p>
+
+<p>Incidentally, Hanselman has a post here <a href="http://www.hanselman.com/blog/EnablingDynamicCompressionGzipDeflateForWCFDataFeedsODataAndOtherCustomServicesInIIS7.aspx">Enabling dynamic compression (gzip, deflate) for WCF Data Feeds, OData and other custom services in IIS7</a> illustrating just how much easier it is in IIS 7. If you've got a server hosted by that, good times! :)</p>
+
+<h3>Checking for gzip support</h3>
+
+<p>I'm actually contemplating <em>requiring</em> gzip support for all requests made to the service to ensure we keep public traffic bandwidth in check. Since it's just an http header that specifies that the Client supports it, we can check for it from the Service code:</p>
+
+<pre><code>var acceptsGzip =
+    (WebOperationContext.Current.IncomingRequest.Headers["Accept-Encoding"] ?? "")
+        .Split(',')
+        .Select(v =&gt; v.Trim())
+        .Contains("gzip", StringComparer.InvariantCultureIgnoreCase);
+</code></pre>
+
+<p>And if we decide that Client gzip support <em>is</em> required then an error response indicating an invalid request can be returned if this header is not present.</p>
+
+<h3>Bonus note on handling concurrent requests</h3>
+
+<p>This is probably going to sound really obvious but it caught me out when I did some testing with high numbers of concurrent requests; be careful how you deal with file locking when you have to read anything in!</p>
+
+<p>I have a config file for the Service which has various settings for different API Keys. The data in this file is cached, the cache entry being invalidated when the file changes. So for the vast majority of requests, the cached data is returned. But when it's contents are changed (or the Service is restarted), the file's contents are read fresh from disk and if there are a multiple requests arriving at the same time there may well be simultaneous requests to that file.</p>
+
+<p>I had previously been using the following approach to retrieve the file's content:</p>
+
+<pre><code>using (var stream = File.Open(filename, FileMode.Open, FileAccess.Read))
+{
+    // Do stuff
+}
+</code></pre>
+
+<p>but the default behaviour is to lock the file while it's being read, so if concurrent read requests are to be supported, the following form should be used:</p>
+
+<pre><code>using (var stream = File.Open(filename, FileMode.Open, FileAccess.Read, FileShare.Read))
+{
+    // Do stuff
+}
+</code></pre>
+
+<p>This way, the file can be opened simultaneously by multiple threads or processes. Hooray! :)</p>
+<p class="PostTime">Posted at 22:56</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/ASP.Net.html" title="3 Posts">ASP.Net</a></li><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<p class="Comments">
+							<a href="ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40.html#disqus_thread" data-disqus-identifier="34">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">12 August 2012</h3><h2><a id="Post33"></a><a href="dependency-injection-with-a-wcf-service.html">Dependency Injection with a WCF Service</a></h2>
+
+<p>Following recently discovering how easy it is to implement Dependency Injection into ASP.Net MVC Controllers by rolling my own ControllerFactory I wanted to see if the same sort of thing could be done for some Web Services I'm working on - I've never seen any production code that does it but seemed like the sort of thing that should be possible!</p>
+
+<p>"Discovering" in this case only meant googling for the extension points that I'd heard were built into MVC as standard; hardly the most earth-shattering of realisations! :) In case it saves anyone time, it's as simple as having an implementation of System.Web.Mvc.IControllerFactory and specifying this as the ControllerFactory to be used in the Application_Start method (in Global.asax) -</p>
+
+<pre><code>protected void Application_Start()
+{
+    AreaRegistration.RegisterAllAreas();
+    RegisterRoutes(RouteTable.Routes);
+    ControllerBuilder.Current.SetControllerFactory(new ControllerFactory());
+}
+</code></pre>
+
+<p>The most basic implementation runs along the lines of:</p>
+
+<pre><code>using System;
+using System.Web.Mvc;
+using System.Web.Routing;
+using System.Web.SessionState;
+
+namepsace Demo
+{
+    public class ControllerFactory : IControllerFactory
+    {
+        public IController CreateController(
+            RequestContext requestContext,
+            string controllerName)
+        {
+            // Return appropriate controller here, using whatever factory class or dependency
+            // injection method is appropriate to the solution..
+        }
+
+        public SessionStateBehavior GetControllerSessionBehavior(
+            RequestContext requestContext,
+            string controllerName)
+        {
+            return SessionStateBehavior.Default;
+        }
+
+        public void ReleaseController(IController controller) { }
+    }
+}
+</code></pre>
+
+<p>where requestContext exposes an HttpContext property so Cache, Request, Response and Server can be accessed.</p>
+
+<p>All very straight forward (which made me wish I'd gotten around to looking into this long ago!).</p>
+
+<h3>WCF Services</h3>
+
+<p>I wasn't as confident that it would be as simple to construct an equivalent for a WCF Web Service as I think there was quite a culture shift from the Microsoft that created WCF for .Net 3.5 and that which wrote the MVC framework, that tried to make use of existing standards, that included jQuery with the framework and that released the framework code under an open source license! But it couldn't hurt to try!</p>
+
+<p>In the Service's ServiceHost declaration a Factory may be specified which will be used to instantiate the Service type instead of the default being taken, which is to try to find a public parameter-less constructor and to call that.</p>
+
+<pre><code>&lt;%@ ServiceHost
+    Language="C#"
+    Debug="true"
+    Service="Demo.ExampleWebService"
+    Factory="Demo.ExampleWebServiceHostFactory"
+    CodeBehind="ExampleWebService.svc.cs"
+%&gt;
+</code></pre>
+
+<p>The factory needs to inherit from the WebServiceHostFactory class. A given factory implementation may handle the instantiation of various Service types but for my purposes, and for the example here, I'm going to work on the basis that there is one factory per service (if different services are to be handled by a single factory then the "serviceType" argument passed around can be consulted to alter the behaviour as required).</p>
+
+<p>The instantiation process follows theses steps:</p>
+
+<ol>
+<li>The CreateServiceHost method on the factory specified in the Service declaration is called (this is a method of WebServiceHostFactory that must be overridden)</li>
+<li>This returns a class that inherits from ServiceHost which registers a "Instance Provider" that will be used to instantiate the actual Service type (this Instance Provider must implement IContractBehaviour, so that it may be added tohe Behaviours collection, and implement IInstanceProvider to mark it as being able to instantiate the target type)</li>
+<li>The GetInstance method (which is part of the IInstanceProvider interface) is called; this must return an instance of the Service class to handle the request</li>
+</ol>
+
+<p>Example code may make this clearer!</p>
+
+<pre><code>using System;
+using System.ServiceModel;
+using System.ServiceModel.Activation;
+using System.ServiceModel.Channels;
+using System.ServiceModel.Description;
+using System.ServiceModel.Dispatcher;
+
+namespace Demo
+{
+    public class ExampleWebServiceHostFactory : WebServiceHostFactory
+    {
+        protected override ServiceHost CreateServiceHost(
+            Type serviceType,
+            Uri[] baseAddresses)
+        {
+            return new ExampleWebServiceHost(serviceType, baseAddresses);
+        }
+
+        private class ExampleWebServiceHost : ServiceHost
+        {
+            public ExampleWebServiceHost(
+                Type serviceType,
+                params Uri[] baseAddresses) : base(serviceType, baseAddresses)
+            {
+                foreach (var cd in this.ImplementedContracts.Values)
+                {
+                    cd.Behaviors.Add(new ExampleWebServiceProvider());
+                }
+            }
+        }
+
+        private class ExampleWebServiceProvider : IInstanceProvider, IContractBehavior
+        {
+            public object GetInstance(InstanceContext instanceContext)
+            {
+                // TODO: Return service instance here
+            }
+
+            public object GetInstance(InstanceContext instanceContext, Message message)
+            {
+                return this.GetInstance(instanceContext);
+            }
+
+            public void ReleaseInstance(InstanceContext instanceContext, object instance) { }
+
+            public void AddBindingParameters(
+                ContractDescription contractDescription,
+                ServiceEndpoint endpoint,
+                BindingParameterCollection bindingParameters) { }
+
+            public void ApplyClientBehavior(
+                ContractDescription contractDescription,
+                ServiceEndpoint endpoint,
+                ClientRuntime clientRuntime) { }
+
+            public void ApplyDispatchBehavior(
+                ContractDescription contractDescription,
+                ServiceEndpoint endpoint,
+                DispatchRuntime dispatchRuntime)
+            {
+                dispatchRuntime.InstanceProvider = this;
+            }
+
+            public void Validate(
+                ContractDescription contractDescription,
+                ServiceEndpoint endpoint) { }
+        }
+    }
+}
+</code></pre>
+
+<p>Ta-da! The only thing to fill in is the actual instantiation of the service type; this could be handled with a Ninject or other Dependency Injection Framework call or it could be a good old-fashioned factory class which pulls in all the various dependencies and returns a ready-to-rumble Service instance.</p>
+
+<h3>Some workarounds for removing ASP.Net dependencies</h3>
+
+<p>When I've used WCF to build Web Services in the past, before using this method of dependency inversion, I've been happy enough using the ASP.Net Cache and Request references but now that I'm working with Dependency-Injected classes I've wanted to extract these dependencies so that the Service class can be tested outside of the ASP.Net environment.</p>
+
+<h4>Cache</h4>
+
+<p>The first thing to approach was that I wanted to pass a generic cache reference from the factory. The current thinking (for .Net 4.0 onwards at least) seems to favour the use of the MemoryCache found in System.Runtime.Caching (<a href="http://www.codeproject.com/Articles/290935/Using-MemoryCache-in-Net-4-0">this Code Project article</a> is a reasonable introduction). So wrote an implementation of ICache (which is internal to my project) that makes use of the MemoryCache. Job done!</p>
+
+<h4>Client IP Address</h4>
+
+<p>Something else I struggled with initially was getting the IP Address of the client making the request (information that I include in the Request logging). This was easy when accessing the ASP.Net Request directly but proved more challenging without it. As usual, some Googling and experimentation yielded an answer. This method may be added to the ExampleWebServiceProvider from the above example:</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This may return an IPv4 or IPv6 format address. It will return null if unable to retrieve
+/// this information.
+/// &lt;/summary&gt;
+private string TryToGetClientIpAddress()
+{
+    var currentOperationContext = OperationContext.Current;
+    if (currentOperationContext == null)
+        return null;
+    object nameMessagePropertyRaw;
+    if (!currentOperationContext.IncomingMessageProperties.TryGetValue(
+        RemoteEndpointMessageProperty.Name,
+        out nameMessagePropertyRaw)
+    )
+        return null;
+    var nameMessageProperty = nameMessagePropertyRaw as RemoteEndpointMessageProperty;
+    if (nameMessageProperty == null)
+        return null;
+    var ipAddress = nameMessageProperty.Address;
+    if (string.IsNullOrWhiteSpace(ipAddress))
+        return null;
+    return ipAddress.Trim();
+}
+</code></pre>
+
+<p>These are the two biggest things that struck me when moving over to the new Service instantiation approach, I'm sure there will be similar cases but it's reassuring to know that it seems like in most cases the .net Framework has us covered one way or another, it's just a case of finding a different place to look for the data!</p>
+<p class="PostTime">Posted at 16:42</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/ASP.Net.html" title="3 Posts">ASP.Net</a></li><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<p class="Comments">
+							<a href="dependency-injection-with-a-wcf-service.html#disqus_thread" data-disqus-identifier="33">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

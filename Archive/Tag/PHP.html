@@ -1,0 +1,467 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - PHP</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">30 August 2013</h3><h2><a id="Post63"></a><a href="why-do-you-hate-my-wcf-types-php.html">Why do you hate my (WCF) types, PHP??</a></h2>
+
+<p>Last November, I was helping someone consume a WCF Web Service with PHP (in the imaginatively named <a href="consuming-a-wcf-web-service-from-php.html">Consuming a WCF Web Service from PHP</a>). After jumping through some hoops (and reading a <em>lot</em> of unhelpful and/or misleading information on the web) it was working; requests that relied on type names being specified were being accepted, gzip support was being enabled, even some useful debug information was being made available for when problems were encountered. All was well. But there was something that was bugging me for a long time that I only quite recently was able to address -</p>
+
+<p><em>Why does the PHP SoapClient so belligerently throw away the type names of response objects?</em></p>
+
+<p>It has knowledge of the type name since it must process the response data to populate the associative arrays that represent this data. But the names of the response types are apparently then cast forever into the ether, never to exposed to me. After all, I'm using PHP - I don't want no stinkin' types!</p>
+
+<h3>Is it just me?</h3>
+
+<p>I feel I should probably explain why I care so much. To be fair, I imagine that in a large number of cases the type name of the returned data really isn't important. If, for example, I'm querying the Twitter API for a set of Statuses then I know the form of the returned data (and since it returns JSON, there <em>are</em> no type names in the responses!). And for a lot of services, I imagine the form of the returned data will be identical from one result to another and, in many of the cases where the forms vary, a form of "property sniffing" will deal with it; does this result have this particular property along with all of the common ones? If so, save it or use it or do whatever with it.</p>
+
+<p>But there are cases where this isn't enough. In that <a href="consuming-a-wcf-web-service-from-php.html">earlier post</a>, the example was a web method "GetHotels" which returned hotel data for results that matched a particular set of filters (in that case, the type names were important for the <em>request</em> since an array of filters was specified, each filter was a particular WCF class - without the type names, the service couldn't deserialise the request).</p>
+
+<p>Each of the returned hotels has data such as Categories, Awards, and Facilities but only the keys of these Categories, Awards and Facilities are returned. There is a separate web method "GetMetaData" that maps these keys onto names. A language can be specified as part of the meta data request so that the names are provided in the correct language.</p>
+
+<p>Some of the meta data types may have additional data, such as an optional ImageUrl for Awards. Categories can be grouped together, so Categories such "Budget Hotel", "Boutique Hotel" and "Garden Hotel" are all considered to be part of the Category Group "Hotel" whilst "Guest House", "Farmhouse" and "Inn" are all considered part of the "Bed &amp; Breakfast" Category Group.</p>
+
+<p>The natural way to express this in a WCF Web Service (making use of wsdl-supported complex types) is something like the following -</p>
+
+<pre><code>[ServiceContract]
+public class HotelService
+{
+  [OperationContract]
+  public MetaDataEntry[] GetMetaData(MetaDataRequest request)
+  {
+    ..
+  }
+}
+
+[DataContact]
+public class MetaDataRequest
+{
+  [DataMember]
+  public string APIKey { get; set; }
+
+  [DataMember]
+  public string LanguageCode { get; set; }
+
+  [DataMember]
+  public MetaDataType[] MetaDataTypes { get; set; }
+}
+
+public enum MetaDataType
+{
+  Award,
+  Category,
+  CategoryGroup,
+  Facility
+}
+
+[KnownType(AwardMetaDataEntry)]
+[KnownType(CategoryMetaDataEntry)]
+[KnownType(CategoryGroupMetaDataEntry)]
+[KnownType(FacilityMetaDataEntry)]
+[DataContract]
+public abstract class MetaDataEntry
+{
+  [DataMember(IsRequired = true)]
+  public int Key { get; set; }
+
+  [DataMember]
+  public string Name { get; set; }
+}
+
+[DataContract]
+public class AwardMetaDataEntry : MetaDataEntry
+{
+  [DataMember]
+  public string ImageUrl { get; set; }
+}
+
+[DataContract]
+public class CategoryMetaDataEntry : MetaDataEntry
+{
+  [DataMember(IsRequired = true)]
+  public int CategoryGroup { get; set; }
+}
+
+[DataContract]
+public class CategoryGroupMetaDataEntry : MetaDataEntry { }
+
+[DataContract]
+public class FacilityMetaDataEntry : MetaDataEntry { }
+</code></pre>
+
+<p>The <strong>MetaDataRequest</strong> allows me to specify which types of meta data that I'm interested in.</p>
+
+<p>So, feasibly, if I wanted to build up a set of Categories to map the keys from the Hotels onto, I could make a request for just the meta data for the Categories. If I then want to map those Categories onto Category Groups, I could make a request for the Category Group meta data.</p>
+
+<p>But why shouldn't I be able to request <em>all</em> of the meta data types, loop through them and stash them all away for future reference <em>all in one go</em>? I could do this easily enough with a .net client. Or a Java client. But, by default, PHP refuses to allow a distinction to be made between a <strong>CategoryGroupMetaDataEntry</strong> and a <strong>FacilityMetaDataEntry</strong> since they have the same structure and PHP won't tell me type names.</p>
+
+<p>Well.. that's not strictly true. PHP <em>does</em> have some means to interrogate type names; the methods "gettype" and "get_class". If you define a class in your PHP code and pass an instance of it to the "get_class" method, you will indeed get back the name of that class. "get_class" may only be given an argument that is an object, as reported by the "gettype" method (see the <a href="http://php.net/manual/en/function.get-class.php">get_class</a> and <a href="http://php.net/manual/en/function.gettype.php">gettype</a> PHP documentation).</p>
+
+<p>But if we try this with the web service call -</p>
+
+<pre><code>$client = new SoapClient(
+  "http://webservice.example.com/hotelservice.svc?wsdl",
+  array(
+    "compression" =&gt; SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP,
+    "trace" =&gt; 1
+  )
+);
+$metaDataTypes = $client-&gt;GetMetaData(
+  array(
+    "request" =&gt; array(  
+      "ApiKey" =&gt; "TestKey",
+      "Language" =&gt; 1, 
+      "MetaDataTypes" =&gt; array(
+        "MetaDataTypeOptions" =&gt; array(
+          "Award",
+          "Category",
+          "CategoryGroup",
+          "Facility"
+        )
+      )
+    )
+  )
+);
+</code></pre>
+
+<p>we can loop through the returned data and use get_class to find out that.. they are all apparently "<strong>StdObject</strong>".</p>
+
+<p>This is what I meant by the type names being "thrown away".</p>
+
+<h3>Duck-typing (doesn't work if everything quacks and waddles)</h3>
+
+<p>In some cases we can work around this.</p>
+
+<p>For example, to guess that a result is an <strong>AwardMetaDataEntry</strong> we could try</p>
+
+<pre><code>if (property_exists($metaDataValue, "ImageUrl")) {
+</code></pre>
+
+<p>and work on the basis that if it exposes an "ImageUrl" property that it is <strong>AwardMetaDataEntry</strong>.</p>
+
+<p>But this won't work for differentiating between a <strong>CategoryGroupMetaDataEntry</strong> and a <strong>FacilityGroupMetaDataEntry</strong> since those response types have no structural differences.</p>
+
+<h3>Class Mappings</h3>
+
+<p>It turns out that the SoapClient <em>does</em> offer a way to get what we want, so long as we don't mind declaring PHP classes for every response type that we're interested in.</p>
+
+<pre><code>class MetaDataEntry
+{
+  public $Key;
+  public $Name;
+}
+
+class AwardMetaDataEntry extends MetaDataEntry
+{
+  public $ImageUrl;
+}
+
+class CategoryMetaDataEntry extends MetaDataEntry
+{
+  public $CategoryGroup;
+}
+
+class CategoryGroupMetaDataEntry extends MetaDataEntry { }
+
+class FacilityMetaDataEntry extends MetaDataEntry { }
+</code></pre>
+
+<p>As we can see in the <a href="http://php.net/manual/en/soapclient.soapclient.php">PHP SoapClient documentation</a>, one of the options that can be specified is a "classmap" -</p>
+
+<blockquote>
+  <p>This option must be an array with WSDL types as keys and names of PHP classes as values</p>
+</blockquote>
+
+<p>It's a way to say that particular response types should be mapped to particular PHP classes - eg.</p>
+
+<pre><code>$client = new SoapClient(
+  "http://webservice.example.com/hotelservice.svc?wsdl",
+  array(
+    "compression" =&gt; SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP,
+    "trace" =&gt; 1,
+    "classmap" =&gt; array(
+      "AwardMetaDataEntry" =&gt; "AwardMetaDataEntry",
+      "CategoryMetaDataEntry" =&gt; "CategoryMetaDataEntry",
+      "CategoryGroupMetaDataEntry" =&gt; "CategoryGroupMetaDataEntry",
+      "FacilityMetaDataEntry" =&gt; "FacilityMetaDataEntry"
+    )
+  )
+);
+</code></pre>
+
+<p><em>Now</em> when we loop through the response values and call get_class we get the correct names. Success!</p>
+
+<p>(In the above code I've named the PHP classes the same as the WSDL types but, since the mappings all have to be individually specified, the class names don't <em>have</em> to be the same. The properties, on the other hand, <em>do</em> have to match since there is no facility for custom-mapping them. Any classes that don't have a mapping will continue to be translated into objects of type <strong>StdObject</strong>).</p>
+
+<p>It may well be that this is far from news for many seasoned PHP Developers but when I described the situation (before finding out about the "classmap" option) to someone I was told was experienced and competent they had no suggestion in this direction.</p>
+
+<p>To be honest, I'm not sure how I came across this in the end. If you know that there exists an option to map classes with the SoapClient then it's easy to find; but with only a vague idea that I wanted it to stop throwing away type names, it took me <em>lots</em> of reading and clutching at straws with search terms. Interestingly, even <em>with</em> this knowledge, I'm still unable to find an article that describes the specific problem I've talked about here.. so maybe it really <em>is</em> just me that has encountered it or cares about it!</p>
+<p class="PostTime">Posted at 00:03</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/PHP.html" title="2 Posts">PHP</a></li><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li></ul></div>
+						<p class="Comments">
+							<a href="why-do-you-hate-my-wcf-types-php.html#disqus_thread" data-disqus-identifier="63">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">9 November 2012</h3><h2><a id="Post35"></a><a href="consuming-a-wcf-web-service-from-php.html">Consuming a WCF Web Service from PHP</a></h2>
+
+<p>For the Web Service that I've been developing at work, I was asked to support a Developer who was trying to consume it for a project. The problem being that he was developing in PHP and had never connected to a .Net Web Service before - at least not knowingly; the APIs he'd integrated with before would all communicate in JSON. The other half of the problem is that I've never developed anything in PHP! In fact I'd not written a line in my life before last week.</p>
+
+<p>From what I'm led to understand of PHP it's somewhat of a mess of 1000s of functions with inconsistent names, signatures and approaches. It's dynamically typed and may or may not have namespaces in any usable manner. But it's got an enormous set of well-established libraries available for everything under the sun. So this should be a walk in the park, right??</p>
+
+<p>Below is a simplified version of what we're working with; the idea that you could search for Hotels that meet various criteria, where the criteria can be built up with the application of multiple Filters - at least one must be specified but multiple may be, in which case Hotels must meet the criteria in all Filters in order to be returned.</p>
+
+<pre><code>[ServiceContract]
+public class HotelService
+{
+    [OperationContract]
+    public Hotel[] GetHotels(HotelSearchRequest request)
+    {
+        ..
+    }
+}
+
+[DataContact]
+public class HotelSearchRequest
+{
+    [DataMember]
+    public string APIKey { get; set; }
+
+    [DataMember]
+    public Filter[] Filters { get; set; }
+}
+
+[KnownType(CategoryFilter)]
+[KnownType(ProximityFilter)]
+[DataContract]
+public abstract class Filter { }
+
+[DataContract]
+public class CategoryFilter : Filter
+{
+    [DataMember]
+    public int[] CategoryKeys { get; set; }
+}
+
+[DataContract]
+public class ProximityFilter : Filter
+{
+    [DataMember]
+    public CoordinateDetails Centre { get; set; }
+
+    [DataMember(IsRequired = true)]
+    public int MaxDistanceInMetres { get; set; }
+}
+</code></pre>
+
+<p>We have to mess about a bit with KnownType declarations in the right place in the service contract but once that's all sorted the service is easy to consume from a .Net WCF Client, all of the inheritance is easily understood (as they're documented in the xsd that the service exposes) and queries are easy to construct.</p>
+
+<p>Getting things working in PHP is another matter, however. For someone who doesn't know what he's doing, at least! All of the basic examples suggest something along the lines of:</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array("trace" =&gt; 1)
+);
+$data = $client-&gt;GetHotels(
+    array(
+        "request" =&gt; array(    
+            "ApiKey" =&gt; "{KeyGoesHere}",
+            "Filters" =&gt; array(
+                // TODO: What to write here?!
+            )
+        )
+    )
+);
+</code></pre>
+
+<p>It seems like the SoapClient can do some sort of magic with what are presumably associative arrays to build up the web request. All looks good initially for declaring data for the "request" argument of the GetHotels method; we set the "ApiKey" property of the request to an appropriate string.. the SoapClient must be doing something clever with the wsdl to determine the xml to generate, which must include the type name of the request to specify. But if the type names are intended to be hidden, how am I going to specify them when I build the "Filters" array?? I can't just carry on with this type-name-less associated-array approach because there will be no way for the request to know that I want the CategoryFilter or the ProximityFilter (or any other Filter that might be available).</p>
+
+<p>Hmmm...</p>
+
+<p>More googling brings me to discover the SoapVar class for use with the SoapClient. If we do the following:</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array("trace" =&gt; 1)
+);
+$data = $client-&gt;GetHotels(
+    array(
+        "request" =&gt; array(    
+            "ApiKey" =&gt; "{KeyGoesHere}",
+            "Filters" =&gt; array(
+                new SoapVar(
+                    array(
+                        "CategoryKeys" =&gt; array(1, 2, 3)
+                    ), 
+                    SOAP_ENC_OBJECT,
+                    "CategoryFilter",
+                    "http://schemas.datacontract.org/2004/07/DemoService.Messages.Requests"
+                )
+            )
+        )
+    )
+);
+</code></pre>
+
+<p>Then we <em>are</em> able to include information about the type. Progress! The namespace string specified references the C# namespace of the CategoryFilter class.</p>
+
+<p>As with so many things, it looks all so easy. But I didn't know what exactly I should be searching for, getting this far took me quite a while - and the resource out there explaining this are thin on the ground! With the maturity of both PHP and WCF I would have thought that information about calling into WCF Services from PHP in this manner would be much readily available!</p>
+
+<h3>But wait; there's more</h3>
+
+<p>While I was at it, I thought I'd dig a little further. When I first communicated with this other Developer, I asked him to send me a trace of the requests that were being generated by his PHP code, using Fiddler or something. This information was not forthcoming and when I was running test PHP scripts on my local machine the requests weren't being captured by Fiddler anyway. But I found these handy methods:</p>
+
+<pre><code>$client-&gt;__getLastRequest()
+$client-&gt;__getLastRequestHeaders()
+</code></pre>
+
+<p>which will retrieve the sent content, ideal for looking into exactly what messages were being generated! These only work if the "trace" => "1" argument is specified when the SoapClient is instantiated. Which explained to me what that was for, which was nice :)</p>
+
+<h3>Enabling gzip support</h3>
+
+<p>The next issue I had was another one that I thought would be beyond easy to solve, with easy-to-follow and accurate information all over the place. I was wrong again! At least, my first searches didn't bring me immediately to the answer :(</p>
+
+<p>A <em>lot</em> of resources suggest the following:</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array(
+        "compression" =&gt; SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP | 9,
+        "trace" =&gt; 1
+    )
+);
+</code></pre>
+
+<p>and some suggest this variation (quoting the compression value):</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array(
+        "compression" =&gt; "SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP | 9",
+        "trace" =&gt; 1
+    )
+);
+</code></pre>
+
+<p>These do <em>not</em> work. The first results in a "can't uncompress compressed response" after a delay which makes me think that it's doing work. The latter does cause any error but also doesn't include the "Accept-encoding: gzip" HTTP header that I'm looking for.</p>
+
+<p>They both <em>feel</em> wrong, anyway; presumably the 9 relates to gzip compression level 9. The compression level should surely be set on the server only, not referenced by the client?? And what <em>are</em> these SOAP_COMPRESS_ACCEPT and SOAP_COMPRESSION_GZIP values? These values are just numeric constants, it turns out, which are OR'd together in the first variation. But what's the 9 for; is it supposed to be there at all; is it some other mystery constant?? And surely the quoted version is incorrect unless PHP has some mad string rules that I don't know about (totally possible with my knowledge of PHP but not the case here! :)</p>
+
+<p>The correct version is simply:</p>
+
+<pre><code>$client = new SoapClient(
+    "http://testhotelservice.com/HotelService.svc?wsdl",
+    array(
+        "compression" =&gt; SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP,
+        "trace" =&gt; 1
+    )
+);
+</code></pre>
+
+<p>Again, oh so simple yet so much harder to come to in the end than it should have been.</p>
+
+<h3>One more thing</h3>
+
+<p>A final note, that actually <em>was</em> commonly documented and pointed out, was that if you are developing against a service that is still in flux that you should disable wsdl caching in PHP. This will affect performance as the wsdl will be retrieved on each request (I presume), but it may prevent some headaches if the contract changes. I changed a value in the php.ini file but apparently it can also be done in the PHP script with:</p>
+
+<pre><code>ini_set("soap.wsdl_cache_enabled", 0);
+</code></pre>
+
+<p>(Courtesy of a <a href="http://stackoverflow.com/a/303514">StackOverflow answer</a>).</p>
+
+<h3>Conclusion</h3>
+
+<p>This may well be simple stuff to the real PHP developers out there but since I struggled, maybe this post will help others in the future with this particular problem!</p>
+<p class="PostTime">Posted at 23:03</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/WCF.html" title="6 Posts">WCF</a></li><li><a href="Archive/Tag/PHP.html" title="2 Posts">PHP</a></li></ul></div>
+						<p class="Comments">
+							<a href="consuming-a-wcf-web-service-from-php.html#disqus_thread" data-disqus-identifier="35">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

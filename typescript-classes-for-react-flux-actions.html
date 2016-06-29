@@ -1,0 +1,422 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - TypeScript classes for (React) Flux actions</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/typescript-classes-for-react-flux-actions" />
+	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">8 January 2015</h3><h2><a id="Post80"></a><a href="typescript-classes-for-react-flux-actions.html">TypeScript classes for (React) Flux actions</a></h2>
+
+<p>I've been playing with React over the last few months and I'm still a fan. I've followed Facebook's advice and gone with the "Flux" architecture (there's so many good articles about this out there that I couldn't even decide whic one to link to) but I've been writing the code using TypeScript. So far, most of my qualms with this approach have been with TypeScript rather than React; I don't like the closing-brace formatting that Visual Studio does and doesn't let you change, its generics system is really good but <em>not quite</em> as good as I'd like (not as good as C#'s, for example, and I sometimes wish generic type params were available at runtime for testing but I do understand why they're not). I wish the "Allow implicit 'any' types" option defaulted to unchecked rather than checked (I presume this is to encourage "gradual typing" but if I'm using TypeScript I'd rather go whole-hog).</p>
+
+<p>But what I thought were going to be the big problems with it haven't been, really - type definitions and writing the components (though I am using a bit of a hack that relies upon an older version of React - I'm hoping to change this when 0.13 comes out and introduces better support for ES6 classes).</p>
+
+<p>Writing the components in "pure" TypeScript results in more code than jsx.. it's not the end of the world, but something that would combine the benefits of both (strong typing <em>and</em> succint jsx format) would be wonderful. There are various possibilities that I believe people are looking into, from <a href="https://github.com/ripieno/typescript-react-jsx">modifying the TypeScript compiler to support jsx</a> to the work that Facebook themselves are doing around "Flow" which "<a href="https://github.com/facebook/flow">Adds static typing to JavaScript to improve developer productivity and code quality</a>". Neither of these are ready for me to integrate into Visual Studio, which I'm still using since I like it so much for my other development work.</p>
+
+<p>What I want to talk about today, though, is one of the ways that TypeScript's capabilities can make a nice tweak to how the Flux architecture may be realised. Hopefully the following isn't blindly obvious and well-known, I failed to find any other posts out there explaining it so I'm going to try to take credit for it! :)</p>
+
+<h3>As recommended and apparently done by everyone..</h3>
+
+<p>Here's the diagram that everyone who's looked into Flux will have seen many times before (since I've nicked it straight from the <a href="http://facebook.github.io/react/blog/2014/07/30/flux-actions-and-the-dispatcher.html">React blog's post</a> about it) -</p>
+
+<p><img src="Content/Images/Posts/FluxDiagram.png" alt="The Flux Architecture" title="The Flux Architecture" /></p>
+
+<p>In the middle are the "Action Creators", which create objects that represent actions (and any associated data) so that the Dispatcher has something to send out. Stores listen for these actions - checking whether a given action is one that they're interested in and extracting the information from it as required.</p>
+
+<p>As a concrete example, here is how actions are created in Facebook's "TODO" example (from their <a href="https://github.com/facebook/flux/blob/master/examples/flux-todomvc/js/actions/TodoActions.js">repo on GitHub</a>):</p>
+
+<pre><code>/*
+ * Copyright (c) 2014, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * TodoActions
+ */
+
+var AppDispatcher = require('../dispatcher/AppDispatcher');
+var TodoConstants = require('../constants/TodoConstants');
+
+var TodoActions = {
+
+  /**
+   * @param  {string} text
+   */
+  create: function(text) {
+    AppDispatcher.dispatch({
+      actionType: TodoConstants.TODO_CREATE,
+      text: text
+    });
+  },
+
+  /**
+   * @param  {string} id The ID of the ToDo item
+   * @param  {string} text
+   */
+  updateText: function(id, text) {
+    AppDispatcher.dispatch({
+      actionType: TodoConstants.TODO_UPDATE_TEXT,
+      id: id,
+      text: text
+    });
+  },
+
+  /**
+   * Toggle whether a single ToDo is complete
+   * @param  {object} todo
+   */
+  toggleComplete: function(todo) {
+    var id = todo.id;
+    if (todo.complete) {
+      AppDispatcher.dispatch({
+        actionType: TodoConstants.TODO_UNDO_COMPLETE,
+        id: id
+      });
+    } else {
+      AppDispatcher.dispatch({
+        actionType: TodoConstants.TODO_COMPLETE,
+        id: id
+      });
+    }
+  },
+
+  /**
+   * Mark all ToDos as complete
+   */
+  toggleCompleteAll: function() {
+    AppDispatcher.dispatch({
+      actionType: TodoConstants.TODO_TOGGLE_COMPLETE_ALL
+    });
+  },
+
+  /**
+   * @param  {string} id
+   */
+  destroy: function(id) {
+    AppDispatcher.dispatch({
+      actionType: TodoConstants.TODO_DESTROY,
+      id: id
+    });
+  },
+
+  /**
+   * Delete all the completed ToDos
+   */
+  destroyCompleted: function() {
+    AppDispatcher.dispatch({
+      actionType: TodoConstants.TODO_DESTROY_COMPLETED
+    });
+  }
+
+};
+
+module.exports = TodoActions;
+</code></pre>
+
+<p>Every action has an "actionType" property. Some have an "id" property, some have a "text" property, some have both, some have neither. Other examples I've seen follow a similar pattern where the ActionCreator (or ActionCreator<strong>s</strong>, since sometimes there are multiple - as in the <a href="https://github.com/facebook/flux/tree/master/examples/flux-chat/js/actions">chat example</a> in that same Facebook repo) is what is responsible for knowing how data is represented by each action. Stores assume that if the "actionType" is what they expect then all of the other properties they expect to be associated with that action will be present.</p>
+
+<p>Here's a snippet I've taken from <a href="http://blog.krawaller.se/posts/react-js-architecture-flux-vs-reflux/">another post</a>:</p>
+
+<pre><code>var action = payload.action;
+switch(action.actionType){
+  case AppConstants.ADD_ITEM:
+    _addItem(payload.action.item);
+    break;
+  case AppConstants.REMOVE_ITEM:
+    _removeItem(payload.action.index);
+    break;
+  case AppConstants.INCREASE_ITEM:
+    _increaseItem(payload.action.index);
+    break;
+  case AppConstants.DECREASE_ITEM:
+    _decreaseItem(payload.action.index);
+    break;
+}
+</code></pre>
+
+<p>Some actions have an "item" property, some have an "index". The ActionCreator was responsible for correctly populating data appropriate to the "actionType".</p>
+
+<h3>Types, types, types</h3>
+
+<p>When I first start writing code like this for my own projects, it felt wrong. Wasn't I using TypeScript so that I had a nice reassuring type safety net to protect me against my own mistakes?</p>
+
+<p><em>Side note: For me, this is one of the best advantages of "strong typing", the fact the compiler can tell me if I've mistyped a property or argument, or if I want to change the name of one of them then the compiler can change all references rather than it being a manual process. The other biggie for me is how beneficial it can be in helping document APIs (both internal and external) - for other people using my code.. or just me when it's been long enough that I can't remember all of the ins and outs of what I've written! These are more important to me than getting worried about whether "static languages" can definitely perform better than "dynamic" ones (let's not open that can of worms).</em></p>
+
+<p>Surely, I asked myself, if these objects have properties that vary based upon an "actionType" magic string, these would be better expressed as actual types? Like classes?</p>
+
+<p>Working from the example above, there would be classes such as:</p>
+
+<pre><code>class AddItemAction {
+  constructor(private _index: number) { }
+  get index() {
+    return this._index;
+  }
+}
+export = AddItemAction;
+</code></pre>
+
+<p>I'm a fan of the AMD pattern so I would have a separate file per action class and then explicitly "import" (in TypeScript terms) them into Stores that reference them. The main reason I'm leaning towards the AMD pattern is that you can use require.js to load in the script required to render the first "page" and then dynamically load in additional script as more functionality of the application is used. This should avoid the risk of the dreaded multi-megabyte initial download (and the associated delays). I'm still proving this to myself - it's looking very promising so far but I haven't written any multi-megabyte applications yet!</p>
+
+<p>I also like things to be immutable, otherwise the above could have been shortened even further to:</p>
+
+<pre><code>class AddItemAction {
+  constructor(public index: number) { }
+}
+export = AddItemAction;
+</code></pre>
+
+<p>But, technically, this could lead to one Store changing data in an action, which could affect what another Store does with the data. An effect that would only happen if that first Store received the action before the second one. Yuck. I don't imagine anyone would <em>want</em> to do something like that but immutability means that it's not even possible, even by accident (<em>especially</em> by accident).</p>
+
+<p>So if there were classes for each action then the listening code would look more like this:</p>
+
+<pre><code>if (action instanceof AddItemAction) {
+  this._addItem(action);
+}
+if (action instanceof RemoveItemAction) {
+  this._removeItem(action);
+}
+if (action instanceof IncreaseItemAction) {
+  this._increaseItem(action);
+}
+if (action instanceof DecreaseItemAction) {
+  this._decreaseItem(action);
+}
+</code></pre>
+
+<p>I prefer to have the functions receive the actual action. The <strong>AddItemAction</strong> instance is passed to the "_addItem" function, for example, rather than just the "index" property value - eg.</p>
+
+<pre><code>private _addItem(action: AddItemAction) {
+  // Do whatever..
+}
+</code></pre>
+
+<p>This is at least partly because it makes the type comparing code more succinct - the "action" reference will be of type "any" (as will be seen further on in this post) and so TypeScript lets us pass it straight in to methods such as _addItem since it presumes that if it's "any" then it can be used <em>anywhere</em>, even as an function argument that has a specific type annotation. The type check that is made before _addItem is called gives us the confidence that the data is appropriate to pass to _addItem, the TypeScript compiler will then happily take our word for it.</p>
+
+<p><strong>Update (25th February 2015):</strong> A couple of people in the comments suggested that the action property on the payload should implement an interface to "mark" it as an action. This is something I considered originally but I dismissed it and I think I'm going to continue to dismiss it for the following reason: the interface would be "empty" since there is no property or method that all actions would need to share. If this were C# then every action class would have to explicitly implement this "empty interface" and so we could do things like search for all implementation of <strong>IAction</strong> within a given project or binary. In TypeScript, however, interfaces may be implemented implicitly ("<a href="http://blogs.msdn.com/b/typescript/archive/2013/01/24/interfaces-walkthrough.aspx">TypeScript is structural</a>"). This means that <em>any</em> object may be considered to have (implicitly) implemented <strong>IAction</strong>, if <strong>IAction</strong> is an empty interface. And this means that there would be no reliable way to search for implementations of <strong>IAction</strong> in a code base. You could search for classes that <em>explicitly</em> implement it, but if you have to rely upon people to follow the convention of decorating all action classes with a particular interface then you might as well rely on a simpler convention such as keeping all actions within files under an "action" folder.</p>
+
+<h3>Server vs User actions</h3>
+
+<p>Another concept that this works well with is one that I think I first read at Atlassian's blog: <a href="http://blogs.atlassian.com/2014/08/flux-architecture-step-by-step/">Flux Step By Step</a> - the idea of identifying a given action as originating from a view (from a user interaction, generally) or from the server (such as an ajax callback).</p>
+
+<p>They suggested the use of an <strong>AppDispatcher</strong> with two distinct methods, each wrapping an action up with an appropriate "source" value -</p>
+
+<pre><code>var AppDispatcher = copyProperties(new Dispatcher(), {
+
+  /**
+   * @param {object} action The details of the action, including the action's
+   * type and additional data coming from the server.
+   */
+  handleServerAction: function(action) {
+    var payload = {
+      source: 'SERVER_ACTION',
+      action: action
+    };
+    this.dispatch(payload);
+  },
+
+  /**
+   * @param {object} action The details of the action, including the action's
+   * type and additional data coming from the view.
+   */
+  handleViewAction: function(action) {
+    var payload = {
+      source: 'VIEW_ACTION',
+      action: action
+    };
+    this.dispatch(payload);
+  }
+
+});
+</code></pre>
+
+<p>Again, these are "magic string" values. I like the idea, but TypeScript has the tools to do better.</p>
+
+<p>I have a module with an enum for this:</p>
+
+<pre><code>enum PayloadSources {
+  Server,
+  View
+}
+export = PayloadSources;
+</code></pre>
+
+<p>and then an <strong>AppDispatcher</strong> of my own -</p>
+
+<pre><code>import Dispatcher = require('third_party/Dispatcher/Dispatcher');
+import PayloadSources = require('constants/PayloadSources');
+import IDispatcherMessage = require('dispatcher/IDispatcherMessage');
+
+var appDispatcher = (function () {
+  var _dispatcher = new Dispatcher();
+  return {
+    handleServerAction: function (action: any): void {
+      _dispatcher.dispatch({
+        source: PayloadSources.Server,
+        action: action
+      });
+    },
+
+    handleViewAction: function (action: any): void {
+      _dispatcher.dispatch({
+        source: PayloadSources.View,
+        action: action
+      });
+    },
+
+    register: function (callback: (message: IDispatcherMessage) =&gt; void): string {
+      return _dispatcher.register(callback);
+    },
+
+    unregister: function (id: string): void {
+      return _dispatcher.unregister(id);
+    },
+
+    waitFor: function (ids: string[]): void {
+      _dispatcher.waitFor(ids);
+    }
+  };
+} ());
+
+// This is effectively a singleton reference, as seems to be the standard pattern for Flux
+export = appDispatcher;
+</code></pre>
+
+<p>The <strong>IDispatcherMessage</strong> is very simple:</p>
+
+<pre><code>import PayloadSources = require('constants/PayloadSources');
+interface IDispatcherMessage {
+  source: PayloadSources;
+  action: any
+}
+export = IDispatcherMessage;
+</code></pre>
+
+<p>This allows me to listen for actions with code thusly -</p>
+
+<pre><code>AppDispatcher.register(message =&gt; {
+  var action = message.action;
+  if (action instanceof AddItemAction) {
+    this._addItem(action);
+  }
+  if (action instanceof RemoveItemAction) {
+    this._removeItem(action);
+  }
+  // etc..
+</code></pre>
+
+<p>Now, if I come across a good reason to rename the "index" property on the <strong>AddItemAction</strong> class, I can perform a refactor action that will fix it everywhere. If I don't use the IDE to perform the refactor, and just change the property name in one place, then I'll get TypeScript compiler errors about an "index" property that no longer exists.</p>
+
+<h3>The mysterious Dispatcher</h3>
+
+<p>One thing I skimmed over in the above is what the "third_party/Dispatcher/Dispatcher" component is. The simple answer is that I took the <a href="https://github.com/facebook/flux/blob/master/src/Dispatcher.js">Dispatcher.js</a> file from the Flux repo and messed about with it a tiny bit to get it to compile as TypeScript with my preferred disabling of the option "Allow implicit 'any' types". In case this is a helpful place for anyone to start, I've put the result up on pastebin as <a href="http://pastebin.com/wjqUty4U">TypeScript Flux Dispatcher</a>, along with the required support class <a href="http://pastebin.com/DzY3CgGD">TypeScript Flux Dispatcher - invariant support class</a>.</p>
+
+<h3>Final notes</h3>
+
+<p>I'm still experimenting with React and Flux but this is one of the areas that I've definitely been happy with. I like the Flux architecture and the very clear way in which interactions are handled (and the clear direction of flow of information). Describing the actions with TypeScript classes feels very natural to me. It might be that I start grouping multiple actions into a single module as my applications get bigger, but for now I'm fine with one per file.</p>
+
+<p>The only thing I'm only <em>mostly</em> happy with is my bold declaration in the <strong>AppDispatcher</strong> class; "This is effectively a singleton reference, as seems to be the standard pattern for Flux". It's not the class that's exported from that module, it's an instance of the <strong>AppDispatcher</strong> which is used by everything in the app. This makes sense in a lot of ways, since it needs to be used in so many places; there will be various Stores that register to listen to it but there are likely to be many, <em>many</em> React components, any one of which could accept some sort of interaction that requires an action be created (and so be sent to the <strong>AppDispatcher</strong>). One alternative approach would be to use dependency injection to pass an <strong>AppDispatcher</strong> through every component that might need it. In fact, I did try that in one early experiment but found it extremely cumbersome, so I'm happy to settle for what I've got here.</p>
+
+<p>However, the reason (one of, at least!) that singletons got such a bad name is that they can making unit testing very awkward. I'm still in the early phases of investigating what I think is the best way to test a React / Flux application (there are a lot of articles out there explaining good ways to tackle it and I'm trying to work my way through some of their ideas). One thing that I'm contemplating, particularly for testing simple React components, is to take advantage of the fact that I'm using AMD everywhere and to try changing the require.js configuration for tests - for any given test, when an <strong>AppDispatcher</strong> is requested, some sort of mock object could be provided in its place.</p>
+
+<p>This would have the two main benefits that it could expose convenient methods to confirm that a particular action was raised following a given interaction (which may be the main point of that particular test) but also that there would be no shared state that needs resetting between tests; each test would provide its own <strong>AppDispatcher</strong> stand-in. I've not properly explored this yet, it's still in the idea phase, but I think it also has promise. And - if it all goes to plan - it's another reason way for me to convince myself that AMD loading within TypeScript is the way to go!</p>
+<p class="PostTime">Posted at 22:24</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript.html">If you can keep your head when all about you are losing theirs and blaming it on VBScript</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="typescript-es6-classes-for-react-components-without-the-hacks.html">TypeScript / ES6 classes for React components - without the hacks!</a></div></div><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="writing-react-components-in-typescript.html">Writing React components in TypeScript</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/JavaScript.html" title="6 Posts">JavaScript</a></li><li><a href="Archive/Tag/TypeScript.html" title="6 Posts">TypeScript</a></li><li><a href="Archive/Tag/React.html" title="11 Posts">React</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "80";
+							var disqus_title = "TypeScript classes for (React) Flux actions";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "http://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

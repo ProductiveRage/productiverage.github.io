@@ -1,0 +1,2908 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - VBScript</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">3 February 2016</h3><h2><a id="Post94"></a><a href="using-roslyn-to-identify-unused-and-undeclared-variables-in-vbscript-wsc-components.html">Using Roslyn to identify unused and undeclared variables in VBScript WSC components</a></h2>
+
+<p><em>(<strong>Note:</strong> I had intended to keep this aside for April Fools since it's intended to be a bit tongue-in-cheek and really just an excuse to play with technology for technology's sake.. but I haven't got many other posts that I'm working on at the moment so I'm going to just unleash this now, rather than waiting!)</em></p>
+
+<p>Imagine that you maintain a project which was migrated over time from an old and fragile platform to a new and improved (C#) code base. But there are various complicated external components that have been left untouched since they were (mostly) working and the new code could continue to use them - allowing the valuable rewriting time to be spent elsewhere, on less compartmentalised areas of code.</p>
+
+<p>For some projects, these could be C++ COM components - I'm no expert on C++, but since people are still writing a lot of code in it and there are powerful IDEs to support this (such as Visual Studio), I presume that maintaining these sorts of components is possibly a little annoying (because COM) but not the worst thing in the world. For other projects, though, these could be "<a href="https://msdn.microsoft.com/en-us/library/ms524594(v=vs.90).aspx">Windows Scripting Components</a>" - these are basically COM components that are written in scripting languages, such as VBScript. They look something like the following:</p>
+
+<pre><code>&lt;?xml version="1.0" ?&gt;
+&lt;?component error="false" debug="false" ?&gt;
+&lt;package&gt;
+  &lt;component id="ExampleComponent"&gt;
+    &lt;registration progid="ExampleComponent" description="Example Component" version="1" /&gt;
+    &lt;public&gt;
+      &lt;method name="DoSomething" /&gt;
+    &lt;/public&gt;
+    &lt;script language="VBScript"&gt;
+    &lt;![CDATA[
+
+      Function DoSomething(ByVal objOutput)
+        Dim intIndex: For intIndex = 1 To 5
+          objOutput.WriteLine "Entry " &amp; iIndex
+        Next
+      End Function
+
+    ]]&gt;
+    &lt;/script&gt;
+  &lt;/component&gt;
+&lt;/package&gt;
+</code></pre>
+
+<p>Creating "Classic ASP" web projects using these components had the advantage that interfaces between components could be limited and documented, enabling a semblance of organisation to be brought to bear on large solutions.. but "Classic ASP" and VBScript are technologies that, by this point, should have long since been put to bed. They do <em>not</em> have good IDE support or debugging tools (nor do they perform well, nor is it easy to hire good people to work on your solutions that contain code in this language).</p>
+
+<p>If you have components that work and that will never be needed to change, then maybe that's no big deal. Or maybe there is something in the migration plan that says that legacy components that work (and do not require adapting or extending) will be left as-is and any components that need work will be rewritten.</p>
+
+<p>If this is the case, then it's easy enough to use these working components from C# -</p>
+
+<pre><code>var filename = "ExampleComponent.wsc";
+dynamic component = Microsoft.VisualBasic.Interaction.GetObject(
+  "script:" + new FileInfo(filename).FullName,
+  null
+);
+component.DoSomething(new ConsoleWriter());
+</code></pre>
+
+<p><em>Note: In order for the above code to run with the WSC presented further up, the C# code needs to provide a ComVisible "objOutput" reference which has a "WriteLine" method that takes a single (string) argument. The snippet above uses a <strong>ConsoleWriter</strong> class, which could be implemented as follows:</em></p>
+
+<pre><code>[ComVisible(true)]
+public class ConsoleWriter
+{
+  public void WriteLine(string value)
+  {
+    Console.WriteLine(value);
+  }
+}
+</code></pre>
+
+<p>But what if there <em>isn't</em> an agreement to rewrite any WSCs that need work and what if there are some that need bug-fixing or new functionality? Well, good luck! Error messages from these components tend to be vague and - just to really add a little extra joy to your life - they don't include line numbers. Oh, "Object expected"? Great.. will you tell me where? No. Oh, good.</p>
+
+<p>If you were so intrigued by what I've written here so far that you've actually been playing along and have saved the WSC content from the top of this post into a file and executed it using the C# above, you might have noticed another problem when you ran it. Below is what is output to the console:</p>
+
+<blockquote>
+  <p>Entry</p>
+  
+  <p>Entry</p>
+  
+  <p>Entry</p>
+  
+  <p>Entry</p>
+  
+  <p>Entry</p>
+</blockquote>
+
+<p>But, since the VBScript is performing a simple loop and writing a message that includes that loop variable in it, shouldn't it be this instead??</p>
+
+<blockquote>
+  <p>Entry 1</p>
+  
+  <p>Entry 2</p>
+  
+  <p>Entry 3</p>
+  
+  <p>Entry 4</p>
+  
+  <p>Entry 5</p>
+</blockquote>
+
+<h3>Identifying unused and undeclared variables with the VBScriptTranslator and Roslyn</h3>
+
+<p>Well, I do have a glimmer of hope for the problem above and, potentially, for other VBScript-writing pitfalls.</p>
+
+<p>What we could do is process WSC files to -</p>
+
+<ol>
+<li>Extract VBScript section(s) from them</li>
+<li>Run the VBScript content through the <a href="translating-vbscript-into-c-sharp.html">VBScriptTranslator</a> to generate C#</li>
+<li>Parse and build the resulting C# using <a href="https://github.com/dotnet/roslyn/wiki/Roslyn%20Overview">Roslyn</a></li>
+<li>Use information gleaned from steps 2 and 3 to identify errors that might otherwise not be apparent before runtime</li>
+</ol>
+
+<p>The packages we want are available through NuGet -</p>
+
+<ul>
+<li><a href="https://www.nuget.org/packages/VBScriptTranslator">https://www.nuget.org/packages/VBScriptTranslator</a></li>
+<li><a href="https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp">https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp</a></li>
+</ul>
+
+<p>Before I go through these steps, let me just explain briefly what the problem was in the VBScript sample code shown further up - just in case you're not familiar with VBScript or didn't spot it.</p>
+
+<p>The loop variable in the code</p>
+
+<pre><code>Dim intIndex: For intIndex = 1 To 5
+  objOutput.WriteLine "Entry " &amp; iIndex
+Next
+</code></pre>
+
+<p>is named "intIndex" but the line that writes out the text refers to "iIndex", which is an undeclared variable.</p>
+
+<p>In C#, if we tried to do something similar then the compiler would bring it immediately to our attention - eg.</p>
+
+<pre><code>for (var i = 1; i &lt;= 5; i++)
+  Console.WriteLine("Entry " + j);
+</code></pre>
+
+<p>Presuming that "j" was not defined elsewhere within the scope of the above code, we would be informed that</p>
+
+<blockquote>
+  <p>The name 'j' does not exist in the current context</p>
+</blockquote>
+
+<p>But VBScript doesn't care about this, declaring variables (such as with the use of "Dim intIndex") is generally optional. The "iIndex" value in the code above is never defined, which means it gets the special VBScript "Empty" value, which is treated as an empty string when introduced into a string concatenation operation.</p>
+
+<p>VBScript does support a mode that requires that variables be declared before they are referenced; "Option Explicit". If we changed the code to the following:</p>
+
+<pre><code>Option Explicit
+
+Dim intIndex: For intIndex = 1 To 5
+  objOutput.WriteLine "Entry " &amp; iIndex
+Next
+</code></pre>
+
+<p>then we would get an error at runtime:</p>
+
+<blockquote>
+  <p>Variable is undefined: 'iIndex'</p>
+</blockquote>
+
+<p>Which seems much better, but there's one big gotcha to "Option Explicit" - it is <em>not</em> enforced when the VBScript code is parsed, it is only enforced as the code is executed. This means that enabling Option Explicit and having a script run successfully does <em>not</em> mean that it contains no undeclared variables, it only means that the code path that just ran contained no undeclared variables.</p>
+
+<p>To illustrate, the following script will run successfully <em>except on Saturdays</em> -</p>
+
+<pre><code>Option Explicit
+
+Dim intIndex: For intIndex = 1 To 5
+  If IsSaturday() Then
+    objOutput.WriteLine "Entry " &amp; iIndex
+  Else
+    objOutput.WriteLine "Entry " &amp; intIndex
+  End If
+Next
+
+Function IsSaturday()
+  IsSaturday = WeekDay(Now()) = 7
+End Function
+</code></pre>
+
+<p>This is a pity. I think that it would have been much better for Option Explicit to have been enforced when the script was loaded. But that ship has <em>loooooong</em> since sailed.</p>
+
+<p>So, instead of crying about spilt milk, let's look at something positive. We've got a four step plan to crack on with!</p>
+
+<h4>1. Extracting VBScript content from a WSC</h4>
+
+<p>This is the most boring step and so I'll try not to get bogged down too much here. A WSC file is xml content and we want to identify CDATA content sections within "script" tags that have a "language" attribute with the value "VBScript".</p>
+
+<p>The below is some rough-and-ready code, taken from a project that I wrote years ago, dusted off to reuse here -</p>
+
+<pre><code>private static IEnumerable&lt;Tuple&lt;string, int&gt;&gt; GetVBScriptSections(string wscContent)
+{
+  var document = new XPathDocument(new StringReader(wscContent));
+  var nav = document.CreateNavigator();
+  if (nav.HasChildren &amp;&amp; nav.MoveToFirstChild())
+  {
+    while (true)
+    {
+      foreach (var scriptSection in TryToGetVBScriptContentFromNode(nav))
+        yield return scriptSection;
+      if (!nav.MoveToNext())
+        break;
+    }
+  }
+}
+
+private static IEnumerable&lt;Tuple&lt;string, int&gt;&gt; TryToGetVBScriptContentFromNode(XPathNavigator nav)
+{
+  if (nav.NodeType == XPathNodeType.Text)
+  {
+    var navParent = nav.Clone();
+    navParent.MoveToParent();
+    if (navParent.Name.Equals("script", StringComparison.OrdinalIgnoreCase)
+    &amp;&amp; DoesNodeHaveVBScriptLanguageAttribute(navParent))
+      yield return Tuple.Create(nav.Value, ((IXmlLineInfo)nav).LineNumber - 1);
+  }
+  if (nav.HasChildren)
+  {
+    var navChildren = nav.Clone();
+    if (navChildren.MoveToFirstChild())
+    {
+      while (true)
+      {
+        foreach (var scriptSection in TryToGetVBScriptContentFromNode(navChildren))
+          yield return scriptSection;
+        if (!navChildren.MoveToNext())
+          break;
+      }
+    }
+  }
+}
+
+private static bool DoesNodeHaveVBScriptLanguageAttribute(XPathNavigator node)
+{
+  node = node.Clone();
+  if (!node.HasAttributes || !node.MoveToFirstAttribute())
+    return false;
+
+  while (true)
+  {
+    if (node.Name.Equals("language", StringComparison.OrdinalIgnoreCase)
+    &amp;&amp; node.Value.Equals("VBScript", StringComparison.OrdinalIgnoreCase))
+      return true;
+    if (!node.MoveToNextAttribute())
+      return false;
+  }
+}
+</code></pre>
+
+<p>The "GetVBScriptSections" function will return a set of Tuples - pairs of values where the first value is the VBScript content and the second value is the line index that the content starts at in the WSC. It returns a set, rather than a single Tuple, since it is valid for WSC files to contain multiple script tags.</p>
+
+<p>The source line index will be important for identifying where in the WSC that any warnings we generate later originate.</p>
+
+<h4>2. Translate the VBScript sections</h4>
+
+<p>Now that we've got VBScript content, let's translate it into C#!</p>
+
+<p>After the <a href="https://www.nuget.org/packages/VBScriptTranslator/">VBScriptTranslator</a> NuGet package is installed, the following code may be written -</p>
+
+<pre><code>foreach (var vbscriptCodeSection in GetVBScriptSections(wscContent))
+{
+  // When translating the VBScript, add in new lines before the content so
+  // that the lines indexes in the only-VBScript content match the line
+  // indexes in the WSC
+  var lineIndexInSourceFile = vbscriptCodeSection.Item2;
+  var blankLinesToInject = string.Join(
+    "",
+    Enumerable.Repeat(Environment.NewLine, lineIndexInSourceFile)
+  );
+
+  var vbscriptContent = vbscriptCodeSection.Item1;
+  var translatedStatements = DefaultTranslator.Translate(
+    blankLinesToInject + vbscriptContent,
+    externalDependencies: new string[0],
+    warningLogger: message =&gt;
+    {
+      if (message.StartsWith("Undeclared variable:"))
+        Console.WriteLine(message);
+    }
+  );
+</code></pre>
+
+<p>This actually goes a long way to identifying my original problem - in order for the <a href="https://bitbucket.org/DanRoberts/vbscripttranslator">VBScriptTranslator</a> to do its thing, it needs to identify any undeclared variables (because it will have to create explicitly declared variables in the resulting C# code). When it encounters an undeclared variable, it will log a warning message - the code above writes to the console any warnings about undeclared variables.</p>
+
+<p>Running the above against the content at the top of this post results in the following being written out:</p>
+
+<blockquote>
+  <p>Undeclared variable: "iIndex" (line 14)</p>
+</blockquote>
+
+<p>Success! Line 14 is, indeed, the line where an undeclared variable "iIndex" was accessed.</p>
+
+<p>Now that we have a C# interpretation of the source code, though, it seems like we should be able to do more by bringing the impressive array of C# analysis tools that are now available to bear (ie. Roslyn aka "Microsoft.CodeAnalysis").</p>
+
+<p>Imagine if the original VBScript content was something more like this -</p>
+
+<pre><code>Function DoSomething(ByVal objOutput)
+  Dim intIndex, strName
+
+  ' .. loads of code
+
+  For intIndex = 1 To 5
+    objOutput.Write "Entry " &amp; iIndex
+  Next
+
+  ' .. loads more code
+
+End Function
+</code></pre>
+
+<p>Those legacy VBScript writers sure did love their huge functions with 100s of lines of code! So the "loads of code" sections above really could be <em>loads</em> of code.</p>
+
+<p>One day, someone has to change this long, long function a little bit and thinks that they've removed the only use of the "strName" variable from the function. But it's hard to be sure since the function is so long and it's got conditions nested so deeply that it's headache-inducing. The <a href="http://programmer.97things.oreilly.com/wiki/index.php/The_Boy_Scout_Rule">Boy Scout Rule</a> makes it seem attractive to remove the "strName" declaration if it's no longer used.. the problem is that this someone is not utterly, 100% confident that it's safe to remove. And it's not like they could just remove the variable declaration then re-run and rely on Option Explicit to inform them if the variable <em>is</em> still used somewhere (for the reason outlined earlier).</p>
+
+<p>One way to obtain confidence as to whether a variable is used or not is to continue to the next step..</p>
+
+<h4>3. Build the generated C# using Roslyn</h4>
+
+<p>Adding the <a href="https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp">Microsoft.CodeAnalysis.CSharp</a> NuGet package allows us to write:</p>
+
+<pre><code>private static IEnumerable&lt;Tuple&lt;string, int&gt;&gt; GetUnusedVariables(string translatedContent)
+{
+  // Inspired by code from www.tugberkugurlu.com (see http://goo.gl/HYT8eo)
+  var syntaxTree = CSharpSyntaxTree.ParseText(translatedContent);
+  var compilation = CSharpCompilation.Create(
+    assemblyName: "VBScriptTranslatedContent",
+    syntaxTrees: new[] { syntaxTree },
+    references:
+      new[]
+      {
+        // VBScriptTranslator content requires System, System.Collections, System.Runtime
+        // and one of its own libraries to run. To identify these assemblies, one type
+        // from each is identified, then its Assembly location is used to create the
+        // MetadataReferences that we need here
+        typeof(object),
+        typeof(List&lt;string&gt;),
+        typeof(ComVisibleAttribute),
+        typeof(DefaultRuntimeSupportClassFactory),
+      }
+      .Select(type =&gt; MetadataReference.CreateFromFile(type.Assembly.Location)),
+    options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+  );
+  EmitResult result;
+  using (var ms = new MemoryStream())
+  {
+    result = compilation.Emit(ms);
+  }
+  if (!result.Success)
+  {
+    var errorMessages = result.Diagnostics
+      .Where(diagnostic =&gt;
+        diagnostic.IsWarningAsError || (diagnostic.Severity == DiagnosticSeverity.Error)
+      )
+      .Select(diagnostic =&gt; $"{diagnostic.Id}: {diagnostic.GetMessage()}");
+    throw new Exception(
+      "Compilation of generated C# code failed: " + string.Join(", ", errorMessages)
+    );
+  }
+  return result.Diagnostics
+    .Where(diagnostic =&gt; diagnostic.Id == "CS0219")
+    .Select(diagnostic =&gt; Tuple.Create(
+      diagnostic.GetMessage(),
+      diagnostic.Location.GetLineSpan().StartLinePosition.Line
+    ));
+}
+</code></pre>
+
+<p>This will take the VBScriptTranslator-generated C# code and return information about any unused variables; a set of Tuples where each pair of values is a message about an unused variable and the line index of this variable's declaration.</p>
+
+<p>We'll use this information in the final step..</p>
+
+<h4>4. Use information gleaned from steps 2 and 3 to identify errors that might otherwise not be apparent before runtime</h4>
+
+<p>In the VBScriptTranslator-calling code from step 2, we got a list of translated statements. Each of these represents a single line of C# code and has the properties "Content", "IndentationDepth" and "LineIndexOfStatementStartInSource". If we so desired, we could use the "Content" and "IndentationDepth" properties to print to the console the generated C# in a nicely-indented format.</p>
+
+<p>But that's not important right now, what we really want are two things; a single string for the entirety of the generated C# content (to compile with Roslyn) and we want mappings for line index values in the C# back to line index values in the source VBScript. The C# code may have more or less lines than the VBScript (the translation process is not a simple line-to-line process), which is why these line index mappings will be important.</p>
+
+<pre><code>// Each "translatedStatements" item has a Content string and a
+// LineIndexOfStatementStartInSource value (these are used to
+// create a single string of C# code and to map each line in
+// the C# back to a line in the VBScript)
+var translatedContent = string.Join(
+  Environment.NewLine,
+  translatedStatements.Select(c =&gt; c.Content)
+);
+var lineIndexMappings = translatedStatements
+  .Select((line, index) =&gt; new { Line = line, Index = index })
+  .ToDictionary(
+    entry =&gt; entry.Index,
+    entry =&gt; entry.Line.LineIndexOfStatementStartInSource
+  );
+</code></pre>
+
+<p>Now it's a simple case of bringing things together -</p>
+
+<pre><code>foreach (var unusedVariableWarning in GetUnusedVariables(translatedContent))
+{
+  var unusedVariableWarningMessage = unusedVariableWarning.Item1;
+  var lineIndexInTranslatedContent = unusedVariableWarning.Item2;
+  var lineIndexInSourceContent = lineIndexMappings[lineIndexInTranslatedContent];
+
+  // Line index values are zero-based but warnings messages that refer to
+  // a line generally refer to a line NUMBER, which is one-based (hence
+  // the +1 operation)
+  Console.WriteLine(
+    $"{unusedVariableWarningMessage} (line {lineIndexInSourceContent + 1})"
+  );
+}
+</code></pre>
+
+<p>If this was run against our second WSC sample, then we would get a new warning reported:</p>
+
+<blockquote>
+  <p>The variable 'strname' is assigned but its value is never used (line 13)</p>
+</blockquote>
+
+<p>Which is precisely what we wanted to find out - the "strName" variable is declared but never used, so it's safe for our Boy Scout Developer to remove it!</p>
+
+<h3>Ooooooo, I'm excited! What else could I do??</h3>
+
+<p>I must admit, I haven't thought too much about what other possibilities are available when some static analysis is available for VBScript code, I was just intending to mess about with Roslyn a bit. But, thinking about it, a few ideas come to mind.</p>
+
+<p>As an example of the frankly terrible errors that you get when working with VBScript WSCs, if you took the WSC example from earlier and decided to refactor the FUNCTION into a SUB (in VBScript, a SUB is basically a FUNCTION that can not return a value) and you made the silly mistake of changing the function "header" but not its "terminator" - eg.</p>
+
+<pre><code>Sub DoSomething(ByVal objOutput)
+  Dim intIndex: For intIndex = 1 To 5
+    objOutput.Write "Entry " &amp; iIndex
+  Next
+End Function
+</code></pre>
+
+<p>Then you would get a particularly unhelpful error when trying to load the WSC into the .net runtime -</p>
+
+<blockquote>
+  <p>Cannot create ActiveX component.</p>
+</blockquote>
+
+<p>The problem is that the "END FUNCTION" should have been changed "END SUB", since the first VBScript line has had the keyword "FUNCTION" changed to "SUB". It would seem that the VBScript interpreter would have plenty of information available to it that would allow it to raise a more descriptive error. However, it chooses not to.</p>
+
+<p>If this WSC content was run through the VBScriptTranslator, though, then an exception with the following error message would be raised:</p>
+
+<blockquote>
+  <p>Encountered must-handle keyword in statement content, this should have been handled by a previous AbstractBlockHandler: "End", line 16 (this often indicates a mismatched block terminator, such as an END SUB when an END FUNCTION was expected)</p>
+</blockquote>
+
+<p>Ok.. I'll admit that this is not the friendliest error message ever formed. What exactly is a "must-handle keyword"? What is an "AbstractBlockHandler"?? But the good thing is that a line number is included along with a reference to an "END" token - and this hopefully is enough to point you at where the problem is.</p>
+
+<p>Another idea that springs to mind is to try to identify functions that have inconsistent return types, in terms of whether they are value types or object references. In VBScript, you must be aware of this distinction at all times - if calling a function that you expect to return an object, then you need to write the function call using the "SET" keyword - eg.</p>
+
+<pre><code>Set objPrice = GetPriceDetails(order)
+</code></pre>
+
+<p>But if you expect it to return a value type, then you would write it as</p>
+
+<pre><code>sngPrice = GetPriceDetails(order)
+</code></pre>
+
+<p>VBScript has a special kind of null that represents an object with no value; "Nothing". This allows you to write functions that will always return an object reference, but that may return a reference that means "no result" - eg.</p>
+
+<pre><code>Function GetPriceDetails(ByVal x)
+  If IsObject(x) Then
+    Set GetPriceDetails = x.PriceDetails
+    Exit Function
+  End If
+  Set GetPriceDetails = Nothing
+End Function
+</code></pre>
+
+<p>However, I've seen code that forgets this and returns a value type "Null" instead - eg.</p>
+
+<pre><code>Function GetPriceDetails(ByVal x)
+  If IsObject(x) Then
+    Set GetPriceDetails = x.PriceDetails
+    Exit Function
+  End If
+  GetPriceDetails = Null
+End Function
+</code></pre>
+
+<p>Now, when calling GetPriceDetails, you will get an object reference sometimes and a value type other times. How do you know whether to use "SET" when calling it if you don't know whether you are expecting an object reference or a value type back? Answer: You don't. Most likely whoever wrote the code used "SET" because they tested the "happy case" (which returns an object reference) and forgot to test the less-happy case, which returned a "Null" value type (and that would fail at runtime if called with use of "SET").</p>
+
+<p>Well, this is something else that the VBScriptTranslator can help with. Instead of using the <strong>DefaultTranslator</strong>'s "Translate" method, we can use its "Parse" method. This will return a syntax tree describing the source code. By examining this data, we can identify cases, like the one above, which are almost certainly mistakes.</p>
+
+<p>Below is a complete example. I won't go too deeply into the details, since that would send me even further off track than I am now!</p>
+
+<pre><code>static void Main(string[] args)
+{
+  var scriptContent = @"
+    Function GetPriceDetails(ByVal x)
+      If IsObject(x) Then
+        Set GetPriceDetails = x.Price
+        Exit Function
+      End If
+      GetPriceDetails = Null
+    End Function";
+
+  // Note: An "AbstractFunctionBlock" is a Function, a Sub, or a Property - they are
+  // all variations on a theme
+  var codeBlocks = DefaultTranslator.Parse(scriptContent);
+  foreach (var function in GetAllCodeBlocks(codeBlocks).OfType&lt;AbstractFunctionBlock&gt;())
+  {
+    var returnValueSetters = GetAllCodeBlocks(function.Statements)
+      .OfType&lt;ValueSettingStatement&gt;()
+      .Where(ValueSetterTargetIs(function.Name));
+    var valueTypeReturnValueSetterLineNumbers = returnValueSetters
+      .Where(v =&gt; v.ValueSetType == ValueSettingStatement.ValueSetTypeOptions.Let)
+      .Select(v =&gt; v.ValueToSet.Tokens.First().LineIndex + 1)
+      .Distinct();
+    var objectReturnValueSetterLineNumbers = returnValueSetters
+      .Where(v =&gt; v.ValueSetType == ValueSettingStatement.ValueSetTypeOptions.Set)
+      .Select(v =&gt; v.ValueToSet.Tokens.First().LineIndex + 1)
+      .Distinct();
+    if (valueTypeReturnValueSetterLineNumbers.Any()
+    &amp;&amp; objectReturnValueSetterLineNumbers.Any())
+    {
+      Console.WriteLine(
+        "{0} \"{1}\" has both LET (lines {2}) and SET (lines {3}) return values",
+        function.GetType().Name,
+        function.Name.Content,
+        string.Join(", ", valueTypeReturnValueSetterLineNumbers),
+        string.Join(", ", objectReturnValueSetterLineNumbers)
+      );
+    }
+  }
+  Console.ReadLine();
+}
+
+private static IEnumerable&lt;ICodeBlock&gt; GetAllCodeBlocks(IEnumerable&lt;ICodeBlock&gt; blocks)
+{
+  foreach (var block in blocks)
+  {
+    yield return block;
+
+    var parentBlock = codeBlock as IHaveNestedContent;
+    if (parentBlock != null)
+    {
+      foreach (var nestedBlock in GetAllCodeBlocks(parentBlock.AllExecutableBlocks))
+        yield return nestedBlock;
+    }
+  }
+}
+
+private static Func&lt;ValueSettingStatement, bool&gt; ValueSetterTargetIs(NameToken target)
+{
+  return valueSetter =&gt;
+  {
+    if (valueSetter.ValueToSet.Tokens.Count() &gt; 1)
+      return false;
+    var valueSetterTarget = valueSetter.ValueToSet.Tokens.Single();
+    return
+      (valueSetterTarget is NameToken) &amp;&amp;
+      valueSetterTarget.Content.Equals(target.Content, StringComparison.OrdinalIgnoreCase);
+  };
+}
+</code></pre>
+
+<p>This will write out the warning</p>
+
+<blockquote>
+  <p>FunctionBlock "GetPriceDetails" has both LET (lines 7) and SET (lines 4) return value setters</p>
+</blockquote>
+
+<p>Hurrah! Very helpful! No more waiting for run time execution to find out that some code paths return object references and some return value types! </p>
+
+<p>Static analysis is very valuable. It's one of the reasons why I like C# so much because there is a lot of power in static analysis - and I'm always looking out for ways to leverage it further, such as more strongly-typed classes (should a phone number really be a string or should it be a "PhoneNumber" class?) and technologies such as code contracts (which I've been meaning to look back into for about a year now.. must stop making excuses).</p>
+
+<p>But there's one other thing that could be done with VBScript WSCs and the VBScriptTranslator - instead of just translating the code to analyse it, it could be translated into C# and then <em>executed</em> as C#! This way the (very expensive) COM boundary would be removed between the .net hosting environment and the old legacy component. <em>And</em> the translated code will execute more quickly than VBScript. Double-win!</p>
+
+<p>The output from a "DefaultTranslator.Translate" call is content that may be saved into a file that will then define a class called "TranslatedProgram" (this string content is what we were earlier pushing through Roslyn for further analysis). This may be executed using a runtime library included in the <a href="https://www.nuget.org/packages/VBScriptTranslator">VBScriptTranslator</a> NuGet package (or that is available on its own, in the <a href="https://www.nuget.org/packages/VBScriptTranslator.RuntimeSupport">VBScriptTranslator.RuntimeSupport</a> NuGet package) with the following code -</p>
+
+<pre><code>// The "compatLayer" provides implementations of VBScript functions (like "CInt")
+// to the translated code, along with functions such as "CALL", which enable late-
+// bound method calls to be executed (which are then compiled into LINQ expressions
+// and cached so that subsequent calls are close in performance to hand-written C#)
+using (var compatLayer = DefaultRuntimeSupportClassFactory.Get())
+{
+  // The Runner's "Go" function returns a new instance of the translated
+  // component. The "DoSomething" method from the component may then be
+  // called. Translated names are all lower-cased, it makes the mismatch
+  // between VBScript's case insensitivity and C#'s case SENSITIVITY
+  // less important.
+  var component = new TranslatedProgram.Runner(compatLayer).Go();
+  component.dosomething(new ConsoleWriter());
+}
+</code></pre>
+
+<h3>So.. not actually <em>that</em> much Roslyn then?</h3>
+
+<p>Sticklers for accuracy may note, at this point, that there hasn't actually been <em>that</em> much use of Roslyn in a post that features that word in its title. Well.. yes, that is fair enough.</p>
+
+<p>But, then, this entire post was only intended to be a slightly silly foray into "just because I can.." that included a detour through Roslyn. Let's not take things too seriously, though - I mean, <em>really</em>, who is still even using <a href="https://www.youtube.com/watch?v=T55ArHjeR1c">VBScript in any serious production applications these days</a>??</p>
+<p class="PostTime">Posted at 23:41</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/Roslyn.html" title="2 Posts">Roslyn</a></li><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="using-roslyn-to-identify-unused-and-undeclared-variables-in-vbscript-wsc-components.html#disqus_thread" data-disqus-identifier="94">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">1 April 2015</h3><h2><a id="Post83"></a><a href="translating-vbscript-into-c-sharp.html">Translating VBScript into C#</a></h2>
+
+<h3>aka: Possibly the stupidest idea I've ever seriously attempted</h3>
+
+<p>A long time ago I wrote a VBScript parser. Most of one, at least. With this in hand, I figured it couldn't be too hard to take a parsed syntax tree and generate C# that performed the same work - VBScript is simple! It's just functions and classes, it doesn't have closures or inheritance to complicate things. It's somewhat relaxed in how it deals with type comparisons, but that's because it's somewhat relaxed about how it deals with types! It could be considered a dynamic language but that just means that a bit of reflection will be required at runtime in the emitted C#. HOW HARD COULD IT BE.</p>
+
+<p>This was a long time ago. A slightly less long time ago, I actually made a proper stab at it. At the time, we had huge swathes of code at work relying upon so called "Classic" ASP. The performance of these sites is fine.. so long as there are <em>plenty</em> of servers to spread the load over. Today, much of this is being re-written but there is <em>still</em> a lot of code that relies upon Classic ASP / VBScript and its particular performance characteristics (read: not good). If the code that was not important enough to be rewritten could be made faster "for free" or if the code that <em>was</em> good enough but that wouldn't be rewritten <em>yet</em> could be made faster by magic, how good would that be! (Very good).</p>
+
+<p>I'm willing to make certain compromises: Eval, Execute and ExecuteGlobal would result in already "dynamic" code potentially having to be re-analysed and rewritten at runtime. That sounds insanely complicated when considered in terms of a one-pass-conversion from VBScript to C# and I can live without them (I'm <em>happier</em> without them!) so they're out.</p>
+
+<p>Also, VBScript has a deterministic garbage collector, which seems to be why people in the days of yore used to slap "Set x = Nothing" calls at the end of functions - I don't think they did it <em>solely</em> to drive me mad (if you don't know what I'm talking about then you are either lucky enough never to have dealt with it or <em>you</em> were one of the ones doing it and don't realise why it's a waste of typing.. help me out Eric: <a href="http://blogs.msdn.com/b/ericlippert/archive/2004/04/28/when-are-you-required-to-set-objects-to-nothing.aspx">When are you required to set objects to Nothing</a>). Trying to emulate this perfectly would also be incredibly difficult with .net's non-determinstic GC. Maybe some sort of reference counting alternate GC could be squeezed in, but this process is going to be difficult enough without going to such lengths. (I'll make sure that all resources are disposed of after any single script / request is processed, which should be good enough).</p>
+
+<p>A final compromise is that this is <em>not</em> going to be comparable in performance to manually-written C# code - if the VBScript could be translated into C# by a real, thinking person then that would be much better! But so long as it's significantly quicker than the original VBScript, then that will be fine. Or maybe a parallel goal could be considered - if you have a Classic ASP site and the code is all translated into C# then you could host your site on Linux using Mono and not wory about Windows Server licenses!</p>
+
+<h3>From VBScript snippet to C# executable code</h3>
+
+<p><strong>Problem one:</strong> VBScript just sits around isolated in a script, waiting for a request to hit it. When this happens, it starts at the top and then only jumps around when it hits IF blocks, or FUNCTION calls or CLASS instantiations, or whatever. C# is not quite like this, C# wants a clear-cut <em>explicit</em> entry point.</p>
+
+<p>Take the following:</p>
+
+<pre><code>For i = 1 To 5
+  Response.Write "Hello world " &amp; i
+Next
+</code></pre>
+
+<p>And, instead, imagine it described by a C# class thus:</p>
+
+<pre><code>using System;
+using System.Collections;
+using System.Runtime.InteropServices;
+using CSharpSupport;
+using CSharpSupport.Attributes;
+using CSharpSupport.Exceptions;
+
+namespace TranslatedProgram
+{
+  public class Runner
+  {
+    private readonly IProvideVBScriptCompatFunctionalityToIndividualRequests _;
+    public Runner(IProvideVBScriptCompatFunctionalityToIndividualRequests compatLayer)
+    {
+      if (compatLayer == null)
+        throw new ArgumentNullException("compatLayer");
+      _ = compatLayer;
+    }
+
+    public void Go(EnvironmentReferences env)
+    {
+      if (env == null)
+        throw new ArgumentNullException("env");
+
+      for (env.i = (Int16)1; _.StrictLTE(env.i, 5); env.i = _.ADD(env.i, (Int16)1))
+      {
+        _.CALL(env.response, "Write", _.ARGS.Val(_.CONCAT("Hello world ", env.i)));
+      }
+    }
+
+    public class EnvironmentReferences
+    {
+      public object response { get; set; }
+      public object i { get; set; }
+    }
+  }
+}
+</code></pre>
+
+<p><em>Then</em> imagine that you have an entry point into a C# project (it could be a console application if the source VBScript was an admin script but for now let's assume it's an ASP.Net project). The work at this entry point could be something like:</p>
+
+<pre><code>var env = new TranslatedProgram.EnvironmentReferences
+{
+    response = Response
+};
+using (var compatLayer = CSharpSupport.DefaultRuntimeSupportClassFactory.Get())
+{
+  new TranslatedProgram.Runner(compatLayer).Go(env);
+}
+</code></pre>
+
+<p>This assumes that "Response" is a reference to an object that exposes the interface that the original script expected (which is only a "Write" method with a single property in the example above). If we're in an ASP.Net MVC Controller then we have just such a reference handily available. If we wanted to just write some test code then we could instead construct something like</p>
+
+<pre><code>public class ResponseMock
+{
+  public void Write(object value)
+  {
+    Console.Write(value);
+  }
+}
+</code></pre>
+
+<p>and then use that as the value for the <strong>TranslatedProgram.EnvironmentReferences</strong> "response" property.</p>
+
+<p>Hurrah! We've just saved the stuck-in-VBScript world! Rejoice! Let's all use this magic translation process and leave VBScript behind.</p>
+
+<p>What's that? This all sounds a bit hypothetical? Well.. take a look at the Bitbucket repo <a href="https://bitbucket.org/DanRoberts/vbscripttranslator">VBScriptTranslator</a>.</p>
+
+<p>Or, actually, don't yet. I want to take a brief foray into the madnesses of VBScript (we're not going to delve <em>right</em> into them, we may never emerge back out!). Then I'm going to make a confession. But don't skip all the excitement before hitting the bad news - it's just about to get good!</p>
+
+<h3>VBScript classes and scoping</h3>
+
+<p>Imagine another example. One that is somewhat contrived, such that it serves no genuine purpose when executed, but that manages to capture a surpring number and range of WTFs in a small number of lines of code. Something like..</p>
+
+<pre><code>On Error Resume Next
+Dim o: Set o = new C1
+Dim a: a = 1
+o.F1(a)
+If o.F2(a) Then
+  Response.Write "Hurrah! (a = " &amp; a &amp; ")&lt;br/&gt;"
+Else
+  Response.Write "Ohhhh.. sad face (a = " &amp; a &amp; ")&lt;br/&gt;"
+End If
+
+Class C1
+  Function F1(b)
+    Response.Write "b is " &amp; b &amp; " (a = " &amp; a &amp; ")&lt;br/&gt;"
+    b = 2
+    Response.Write "b is " &amp; b &amp; " (a = " &amp; a &amp; ")&lt;br/&gt;"
+  End Function
+
+  Function F2(c)
+    Response.Write "c is " &amp; c &amp; " (a = " &amp; a &amp; ")&lt;br/&gt;"
+    c = 3
+    Response.Write "c is " &amp; c &amp; " (a = " &amp; a &amp; ")&lt;br/&gt;"
+    Response.Write "Time to die: " &amp; (1/0)
+  End Function
+End Class
+</code></pre>
+
+<p>VBScript veterans pop quiz! (If anyone could bear to claim such an accolade today). What will the output of this be?</p>
+
+<p>If you guessed the following, then you might want to seek medical guidance, you've internalised the VBScriptz too deep and you may never regain your sanity:</p>
+
+<blockquote>
+  <p>b is 1 (a = 1)</p>
+  
+  <p>b is 2 (a = 1)</p>
+  
+  <p>c is 1 (a = 1)</p>
+  
+  <p>c is 3 (a = 3)</p>
+  
+  <p>Hurrah! (a = 3)</p>
+</blockquote>
+
+<p>To someone who <em>didn't</em> know VBScript, the first two lines may seem perfectly acceptable - it looks like a function F1 was called, an argument was passed, its value was changed within that function (where it is referred to as "b") but in the caller's scope the value was not affected (where it is referred to as "a"). I mean, languages tend to pass arguments "by-value", right, which is why the change to "b" did not affect "a"?</p>
+
+<p>Wrong! Oh, no no no. VBScript passes "by-ref" by default, so since the "b" argument was not declared to be either "ByVal" or "ByRef" then VBScript prefers by-ref.</p>
+
+<p>So why does it not change during the F1 call but it <em>does</em> during the F2 call? Well, when you're not interested in the return value of a function then you shouldn't wrap the arguments in brackets. In fact, when the VBScript interpreter looks at the line</p>
+
+<pre><code>o.F1(a)
+</code></pre>
+
+<p>It sees a function call where the set of arguments is <em>not</em> wrapped in brackets (because that's not allowed when the return value is not being considered) but where <em>the single value "a" is wrapped in brackets.</em> And VBScript takes this to mean pass this argument as by-value, even if the receiving function wants to take the argument by-ref.</p>
+
+<p>This is different to the line</p>
+
+<pre><code>If o.F2(a) Then
+</code></pre>
+
+<p>since we <em>do</em> consider the return value, so the brackets <em>do</em> surround the function call's argument set and are <em>not</em> a special wrapper just around "a".</p>
+
+<p>So that it's clear that there is no ambiguity, if F1 took two arguments then it would not be valid to call it and ignore the return value <em>and</em> try to wrap the arguments in brackets thusly:</p>
+
+<pre><code>o.F1(a, b)
+</code></pre>
+
+<p>This would result in a "compile error" (which is what happens when the interpreter refuses to even attempt to run the script) -</p>
+
+<blockquote>
+  <p>VBScript compilation error: Cannot use parenteses when calling a Sub</p>
+</blockquote>
+
+<p>While we're thinking about how this variable "a" is and isn't being mistreated, did you notice that it's being accessed from within the functions F1 and F2 <em>that are within the class <strong>C1</strong></em>? This would <em>not</em> be a very natural arrangement in a C# program since it means that any class instance (any instance of <strong>C1</strong> or of any other class that a program may care to define) must be able to access references and function in the "outer most scope" (which is what I call the twilight zone of code in VBScript files that "just exists", unbound by any containing class). This sounds a bit like they are static variables and functions - but if this were the case then concurrent requests would manipulate this shared state at the same time. And if I'm going to switch to C# to see a boost in performance, I don't want to be in a place where only a single request can execute at a time and the state must be reset between!</p>
+
+<p>At this point, there has been no explanation for the cheery execution of the "Hurrah" statement. There is an IF statement that guards access to the displaying of this message, and the evaluation of this IF condition involves calling the function F2, which clearly results in a division-by-zero error. Well before I shed any light on that, I want to bombard you with another crazy C# code sample -</p>
+
+<pre><code>using System;
+using System.Collections;
+using System.Runtime.InteropServices;
+using CSharpSupport;
+using CSharpSupport.Attributes;
+using CSharpSupport.Exceptions;
+
+namespace TranslatedProgram
+{
+  public class Runner
+  {
+    private readonly IProvideVBScriptCompatFunctionalityToIndividualRequests _;
+    public Runner(IProvideVBScriptCompatFunctionalityToIndividualRequests compatLayer)
+    {
+      if (compatLayer == null)
+        throw new ArgumentNullException("compatLayer");
+      _ = compatLayer;
+    }
+
+    public void Go(EnvironmentReferences env)
+    {
+      if (env == null)
+        throw new ArgumentNullException("env");
+
+      var _env = env;
+      var _outer = new GlobalReferences(_, _env);
+
+      var errOn = _.GETERRORTRAPPINGTOKEN();
+      _.STARTERRORTRAPPINGANDCLEARANYERROR(errOn);
+      _.HANDLEERROR(errOn, () =&gt; {
+        _outer.o = _.NEW(new c1(_, _env, _outer));
+      });
+      _.HANDLEERROR(errOn, () =&gt; {
+        _outer.a = (Int16)1;
+      });
+      _.HANDLEERROR(errOn, () =&gt; {
+        _.CALL(_outer.o, "F1", _.ARGS.Val(_outer.a));
+      });
+      if (_.IF(() =&gt; _.CALL(_outer.o, "F2", _.ARGS.Ref(_outer.a, v2 =&gt; { _outer.a = v2; })), errOn))
+      {
+        _.HANDLEERROR(errOn, () =&gt; {
+          _.CALL(
+            _env.response,
+            "Write",
+            _.ARGS.Val(_.CONCAT("Hurrah! (a = ", _outer.a, ")&lt;br/&gt;"))
+          );
+        });
+      }
+      else
+      {
+        _.HANDLEERROR(errOn, () =&gt; {
+          _.CALL(
+            _env.response,
+            "Write",
+            _.ARGS.Val(_.CONCAT("Ohhhh.. sad face (a = ", _outer.a, ")&lt;br/&gt;"))
+          );
+        });
+      }
+      _.RELEASEERRORTRAPPINGTOKEN(errOn);
+    }
+
+    public class GlobalReferences
+    {
+      private readonly IProvideVBScriptCompatFunctionalityToIndividualRequests _;
+      private readonly GlobalReferences _outer;
+      private readonly EnvironmentReferences _env;
+      public GlobalReferences(
+        IProvideVBScriptCompatFunctionalityToIndividualRequests compatLayer,
+        EnvironmentReferences env)
+      {
+        if (compatLayer == null)
+          throw new ArgumentNullException("compatLayer");
+        if (env == null)
+          throw new ArgumentNullException("env");
+        _ = compatLayer;
+        _env = env;
+        _outer = this;
+        o = null;
+        a = null;
+      }
+
+      public object o { get; set; }
+      public object a { get; set; }
+    }
+
+    public class EnvironmentReferences
+    {
+      public object response { get; set; }
+    }
+
+    [ComVisible(true)]
+    [SourceClassName("C1")]
+    public sealed class c1
+    {
+      private readonly IProvideVBScriptCompatFunctionalityToIndividualRequests _;
+      private readonly EnvironmentReferences _env;
+      private readonly GlobalReferences _outer;
+      public c1(
+        IProvideVBScriptCompatFunctionalityToIndividualRequests compatLayer,
+        EnvironmentReferences env,
+        GlobalReferences outer)
+      {
+        if (compatLayer == null)
+          throw new ArgumentNullException("compatLayer");
+        if (env == null)
+          throw new ArgumentNullException("env");
+        if (outer == null)
+          throw new ArgumentNullException("outer");
+        _ = compatLayer;
+        _env = env;
+        _outer = outer;
+      }
+
+      public object f1(ref object b)
+      {
+        object retVal = null;
+        _.CALL(
+          _env.response,
+          "Write",
+          _.ARGS.Val(_.CONCAT("b is ", b, " (a = ", _outer.a, ")&lt;br/&gt;"))
+        );
+        b = (Int16)2;
+        _.CALL(
+          _env.response,
+          "Write",
+          _.ARGS.Val(_.CONCAT("b is ", b, " (a = ", _outer.a, ")&lt;br/&gt;"))
+        );
+        return retVal;
+      }
+
+      public object f2(ref object c)
+      {
+        object retVal = null;
+        _.CALL(
+          _env.response,
+          "Write",
+          _.ARGS.Val(_.CONCAT("c is ", b, " (a = ", _outer.a, ")&lt;br/&gt;"))
+        );
+        b = (Int16)3;
+        _.CALL(
+          _env.response,
+          "Write",
+          _.ARGS.Val(_.CONCAT("c is ", b, " (a = ", _outer.a, ")&lt;br/&gt;"))
+          );
+        _.CALL(
+          _env.response,
+          "Write",
+          _.ARGS.Val(_.CONCAT("Time to die: ", _.DIV((Int16)1, (Int16)0)))
+        );
+        return retVal;
+      }
+    }
+  }
+}
+</code></pre>
+
+<p>This is a C# representation of the spot-the-WTFs VBScript sample above. And there's a lot to take in!</p>
+
+<p>In terms of scoping, it's interesting to note that all variables and functions that are in VBScript's "outer most scope" are wrapped in a <strong>GlobalReferences</strong> class in the C# version. This is like the <strong>EnvironmentReferences</strong> in the first example, but instead of being passed in to the <strong>Runner</strong>'s Go method, it is instantiated and manipulated solely within the translated program.</p>
+
+<p>The "Go" method sets the "o" and "a" properties of the <strong>GlobalReferences</strong> class right at the start with the lines:</p>
+
+<pre><code>_outer.o = _.NEW(new c1(_, _env, _outer));
+
+_outer.a = (Int16)1;
+</code></pre>
+
+<p>Then a reference to this <strong>GlobalReferences</strong> class is passed around any other translated classes - the class "C1" has become a C# class whose constructor takes an argument for the "compatibility layer" (that handles a lot of the nitty gritty of behaving precisely like VBScript) along with arguments for both the <strong>EnvironmentReferences</strong> and <strong>GlobalReferences</strong> instances. This <strong>GlobalReferences</strong> class is how state is shared between the outer scope and any class instances.</p>
+
+<p>The key difference between <strong>EnvironmentReferences</strong> and <strong>GlobalReferences</strong>, by the way, is that the former consists of undeclared variables - these might be external references (such as "Response"), which should be set by the calling code before executing "Go". Or they might just be variables that were never explicitly declared in the original source - why oh why was <a href="https://msdn.microsoft.com/en-us/library/y9341s4f.aspx">Option Explicit</a> something to opt <em>into</em>?? (That's a rhetorical question, it's waaaaay too late to worry about it now). Meanwhile, <strong>GlobalReferences</strong> consists of variables and functions that were explicitly declared in the source - these are not exposed to the calling code, they are only used internally within the <strong>TranslatedProgram</strong> class' execution. So they both have a purpose and they may both be required by translated classes such as "C1" - you may conveniently note that both functions "F1" and "F2" refer to "_env.response" and "_outer.a" (properties from the <strong>EnvironmentReferences</strong> and <strong>GlobalReferences</strong> instances, respectively).</p>
+
+<h3>Error-handling</h3>
+
+<p>Now let's really go crazy. VBScript's error handling is.. unusual, particularly if you are used to C# or VB.Net or JavaScript (which are just the first examples which came immediately to mind).</p>
+
+<p>In C#, the following</p>
+
+<pre><code>try
+{
+  Console.WriteLine("Go");
+  Console.WriteLine("Go!");
+  throw new Exception("Don't go");
+  Console.WriteLine("GO!");
+}
+catch { }
+</code></pre>
+
+<p>would display</p>
+
+<blockquote>
+  <p>Go</p>
+  
+  <p>Go!</p>
+</blockquote>
+
+<p>But when you tell VBScript not to stop for errors, it takes its task seriously! This code:</p>
+
+<pre><code>On Error Resume Next
+Response.Write "&lt;p&gt;Go&lt;/p&gt;"
+Response.Write "&lt;p&gt;Go!&lt;/p&gt;"
+Err.Raise vbObjectError, "Example", "Don't go!"
+Response.Write "&lt;p&gt;GO!&lt;/p&gt;"
+On Error Goto 0
+</code></pre>
+
+<p>will display</p>
+
+<blockquote>
+  <p>Go</p>
+  
+  <p>Go!</p>
+  
+  <p>GO!</p>
+</blockquote>
+
+<p>Unlike in C#, the error does <em>not</em> stop it in its path, it carries on <em>over</em> the error.</p>
+
+<p>In fact, in the IF condition in the example above, when the expression that it's evaluating throws an error (division by zero), because On Error Resume Next is hanging around, it <em>still</em> pushes on - not content to abandon the IF construct entirely, the condition-evaluation-error spurs it on to charge into the truth branch of the conditional. Which explains why it happily renders the "Hurrah" message.</p>
+
+<p>This is why every line in the C# version of the code individually gets checked for errors (through the "HANDLEERROR" compatibility method), if any of them fail then it will just march on to the next! Even the call to the "IF" function has some special handling to swallow errors and always return true if VBScript-style error handling is in play. This poses some interesting challenges - variables must not be declared in these lambdas used by HANDLEERROR, for example, since then they wouldn't be available <em>outside</em> of the lambda, which would be inconsistent with the VBScript source. There are more complications I could go into, but I think I'll leave them for another day.</p>
+
+<h3>Some burning questions about the translated code above</h3>
+
+<p><strong>Why are there no HANDLEERROR calls in the functions "f1" and "f2"?</strong> In VBScript, On Error Resume Next only affects the current scope, so enabling it in the "outer most scope" does not mean that it is enabled within functions that are then called. As soon as a line in one of these function fails, the function will terminate immediately. The On Error Resume Next in the outer most scope, however, means that this error will then be silently ignored. (If error-trapping / error-ignoring was required within the functions then distinct On Error Resume Next statements would be required <em>within</em> each function).</p>
+
+<p><strong>What's this "errOn" variable?</strong> In C#, a try..catch has a very clearly delineated sphere of influence. In VBScript, the points at which error-trapping are enabled and disabled can not be known at compile time and so the translator code has to consider anywhere that it <em>might</em> be enabled and wrap all the potentially-affected statements in a HANDLEERROR call. It then keeps track, using an "error token", of when errors really do need to be swallowed at runtime. The "STARTERRORTRAPPINGANDCLEARANYERROR" call corresponds to the On Error Resume Next statement. If there was an On Error Goto 0 (VBScript's "undo On Error Resume Next" command) then there would be a corresponding "STOPERRORTRAPPINGANDCLEARANYERROR" call. Every time HANDLEERROR is called, if the work it wraps throws an error then it checks the state of the error token - if the token says to swallow the error then it does, if the token says to let the error bloom into a beautiful ball of flames then it does.</p>
+
+<p><strong>What's up with funky method call syntax - the "<em>.ARGS.Val" and "</em>.ARGS.Ref" in particular??</strong> Firstly, method calls could not be translated into really plain and simple C#, as you might have hoped. This is for multiple reasons. The biggie is that, in VBScript, if you call a function and give it the wrong number of arguments then you get a runtime error. Not a <em>compile</em> time error (where the interpreter will refuse to even attempt to run your code). Being a runtime error, this could be swallowed if an On Error Resume Next was sticking its big nose in. But in C#, if you have a method call with the wrong number of arguments then you get a compile error and you wouldn't be able to execute code that came from runnable VBScript.</p>
+
+<p><strong>So why not use "dynamic"?</strong> It seems like an obvious choice to make would be a liberal sprinkling of the "<a href="https://msdn.microsoft.com/en-us/library/dd264741.aspx">dynamic</a>" keyword throughout the code. But that would have all sorts of problems. Imagine this code (contrived though it may be):</p>
+
+<pre><code>CallDoSomethingForValue new Incrementer, 1
+CallDoSomethingForValue new LazyBoy, 1
+
+Function CallDoSomethingForValue(o, value)
+  o.DoSomething value
+End Function
+
+Class Incrementer
+  Function DoSomething(ByRef value)
+    value = value + 1
+  End Function
+End Class
+
+Class LazyBoy
+  Function DoSomething(ByVal value)
+    ' Lazy Boy doesn't actually do anything with the value
+  End Function
+End Class
+</code></pre>
+
+<p>The line</p>
+
+<pre><code>o.DoSomething value
+</code></pre>
+
+<p>would have to become either</p>
+
+<pre><code>// This form is required when calling the LazyBoy's "DoSomething" method
+((dynamic)o).DoSomething(ref value);
+</code></pre>
+
+<p>or</p>
+
+<pre><code>// This form is required when calling the LazyBoy's "Incrementer" method
+((dynamic)o).DoSomething(value);
+</code></pre>
+
+<p>There is no way to write that line such that it will work with a "ByRef" value <em>and</em> a "ByVal" method argument; one of them will fail at runtime. The only way to deal with it is to do some runtime analysis, which is pretty much what I do. If I can be absolutely sure when translating that the argument will be passed by-val (like if it's a literal such as a number, string, boolean or builtin constant, or if it's the return value of a function, or if it's wrapped in magic make-me-ByVal brackets like I talked about earlier, etc..) then the C# looks something like</p>
+
+<pre><code>_.CALL(o, "DoSomething", _.ARGS.Val("abc"));
+</code></pre>
+
+<p>but if it may have to be passed by-ref, then it will look someting like</p>
+
+<pre><code>_.CALL(o, "DoSomething", _.ARGS.Ref(value, v =&gt; { value = v; }));
+</code></pre>
+
+<p>The "Ref" variation has to accept the input argument value and then provide a way for the "CALL" method to push a new value back on top of it. When it executes, the target function's method signature is inspected and some jiggery pokery done if it <em>is</em> a by-ref argument.</p>
+
+<p>"Val" and "Ref" may be combined if there are multiple arguments with different characteristics - eg. if a method takes three arguments where the first and last are known to be by-val but the middle one might have to be by-ref then we get this:</p>
+
+<pre><code>_.CALL(o, "DoSomethingElse", _.ARGS.Val(1).Ref(value, v =&gt; { value = v; }).Val(2));
+</code></pre>
+
+<p><strong>Runtime analysis? So it's really slow?</strong> Reflection is used to try to identify what function on a target reference should be called - and what arguments, if any, need the by-ref treatment. This is not something that is particularly quick to do in .net (or anywhere, really; reflection is hardly something associated with ultimate, extreme, mind-bending performance). However, it does then compile and cache LINQ expressions for the calls - so if you are running the same code over and over again (if, say, you were hosting a web site and basically hitting a lot of the same code paths while people browse your site) then you would not pay the "reflection toll" over and over again.</p>
+
+<p><strong>So it's really fast and you've done performance analysis and it's a tightly optimised product?</strong> No. It's not even a functionally-complete product yet. Stop getting so carried away.</p>
+
+<p><strong>Why are the class and function names lower-cased in the C# code?</strong> VBScript is a case-insensitive language. C# is not, C# <em>cares</em> about case. This means that, where direct named references exist, a consistency must be applied - for example, in the VBScript examples there was a class named "C1" which could be instantiated with</p>
+
+<pre><code>Set o1 = new C1 ' Upper case "C1"
+</code></pre>
+
+<p><em>or</em> with</p>
+
+<pre><code>Set o1 = new c1 ' Lower case "c1"
+</code></pre>
+
+<p>.. in C# there will need to be consistency, so everything is lower-cased - this includes variable names, function names, property names, class names.</p>
+
+<p>There is some magic involved with the "CALL" method, so the string arguments passed to "CALL" are <em>not</em> monkeyed about with - but it knows at runtime what sort of manipulation might have to be supported and makes it all work. This is why the functions "f1" and "f2" have lower-cased names where they are defined, but when mentioned as arguments passed to the CALL method they appear in their original form of "F1" and "F2".</p>
+
+<p>This is important since the CALL target may not actually be code that the translator has wrangled - it might be a function on a COM component, for example. Which wouldn't be a problem if the <em>only</em> possible transformations related to casing of names but there are other things to account for, such as keywords that are legal in VBScript but not in C# - these also are renamed in the translated code. (If you have a VBScript function named "Params" then it must be tweaked somehow for C# since "params" is a C# reserved keyword - so the function would be renamed in the translated code but the string "Params" would still appear in calls to CALL, since CALL can perform the same name-mappings at runtime that the translator does at translation time).</p>
+
+<h3>So it's all rainbows and unicorns thens?</h3>
+
+<p>Well... erm, no. Not quite. There's good news and bad news. The good news is that <em>a lot</em> of it <em>does</em> work. Everything described above works - you can take that VBScript example, pass it through the translator and then execute the code that it spits out. Good news part one.</p>
+
+<p>Good news part two is that I've run thousands and thousands of lines of real, production VBScript code through the translator and I've so far only found a single form of statement that trips it up. But I've got a nice succinct reproduce case put aside that I intend to use to deal with the problem soon.</p>
+
+<p>Slightly less good news is that I know of some edge cases to do with runtime error-handling that are misbehaving - resulting in the translator emitting C# that is not valid. There are similar issues to do with the propagation of by-ref function arguments; as shown above, when by-ref arguments are passed to the CALL method, they are referenced within a lambda (so that they may be overwritten, since they need to be treated as by-ref arguments). But if the variable being passed happens to be a "ref" argument of the containing function then there will be a "ref" variable referenced within a lambda, which is also not valid C#. I have a strategy to make this all work properly, though, that I've started implementing but not finished yet.</p>
+
+<p>The other bad news is that the runtime "compability library" is.. patchy, shall we say. Woefully incomplete might  be (much) more accurate. I think that all of the methods are present in the interface (though not always with the correct signatures), it's just that I need to flesh them out. So even if your real world script was translated perfectly into C#, when you tried to execute it it would probably fall over very quickly.</p>
+
+<p>A big part of the problem is just how flexible VBScript decides to be. Re-implementing its built-in functions takes care, an eye for detail and a perverse fascination with trying to work out what was going through the minds of the original authors. Take the "ROUND" function, for example. Now, a grizzled VBScripter might immediately think "<a href="http://blogs.msdn.com/b/ericlippert/archive/2003/09/26/bankers-rounding.aspx">Banker's rounding</a>"! But that's the easy bit. You might be wondering what else could be complicated about the rounding of a number.. and that would be the mistake! Who says it needs to be a number that gets passed in?! The ROUND function will take a string, if it can be parsed into a numeric value. It will accept "Empty", which is VBScript's idea of an undefined value - null in C# terms. It won't accept "Null", though. Oh, no no. "Null" in VBScript isn't actually an absence of a value, it's a <em>particular</em> value that historically people have misused to indicate an absence of a value - using it when they should have used "Empty" ("Null" is actually equivalent to "System.DBNull.Value" in .net and its purpose in VBScript really revolves around database access - say if you wanted to pass a value to an ADO command parameter to say that it must be a null value in the data, then you would use "Null".. of course, if you write old-school ever-popular-in-VBScript <em>string-concatenation</em>-based SQL queries then you would never have worried about values for command parameters; you'd be too busy being hacked through SQL injection attacks).</p>
+
+<p>Sorry, I got a bit side-tracked there. But unfortunately, I'm not finished talking about ROUND yet. What happens if you pass it an instance of a class? Surely <em>that</em> would be invalid?? Well, if that class has a default parameter-less function or readable property then ROUND will even consider <em>that</em> (and try and parse it into a numeric value if it isn't already a number).</p>
+
+<p>My point is: being as flexible as VBScript ain't easy.</p>
+
+<h3>How do you actually do the translation??????????</h3>
+
+<p>Up until this point, it's been all "if this" and "you can" that and "it should" the other (unless you already cheated and followed the Bitbucket link I told you not to go to earlier!) so I guess I need to talk about actually running the translator.</p>
+
+<p>Well here we go..</p>
+
+<pre><code>var scriptContent = "Response.Write \"I want to be C#!\"";
+
+var translatedStatements = CSharpWriter.DefaultTranslator.Translate(
+  scriptContent,
+  new[] { "Response" }
+);
+Console.WriteLine(
+  string.Join(
+    Environment.NewLine,
+    translatedStatements.Select(c =&gt; (new string(' ', c.IndentationDepth * 4)) + c.Content)
+  )
+);
+</code></pre>
+
+<p>The <strong>DefaultTranslator</strong>'s "Translate" function takes in a string of VBScript and a list of references that are expected to be present at runtime*. It gives you back a set of <strong>TranslatedStatement</strong> instances that all have "Content" and "IndentationDepth" properties, allowing you to format your new lovely auto-generated C# code using tabs <em>or</em> spaces, based upon the indentation depth of the statement and your own personal formatting opinions (I've used spaces in the example above since tabs introduce too much whitespace when viewed <em>in the console window</em> - I am not getting into tabs vs spaces debate here! :)</p>
+
+<p>The default is to create a new class called "Runner" in a new namespace called "TranslatedProgram" with an entry method called "Go". (If you look at "Translate" method's implementation then you'll be able to see how to tweak any of these values, but let's keep it simple for now).</p>
+
+<p>* <em>Note: The default configuration is for the translator to include C# comments at the top highlighting all of the undeclared variables, along with the lines on which they are accessed - to point out how naughty you've been by not using Option Explicit</em><em>. You don't want these warnings for environment references that you would never explicitly declare (such as Request, Response, etc.. if you are running in an ASP context) so the translator accepts a set of reference names that may be expected to be defined, even though there is no "DIM" statement for them.</em></p>
+
+<p>Now, as we already saw way up there somewhere, this code can be executed like so:</p>
+
+<pre><code>var env = new TranslatedProgram.EnvironmentReferences
+{
+  response = new ResponseMock()
+};
+using (var compatLayer = CSharpSupport.DefaultRuntimeSupportClassFactory.Get())
+{
+  new TranslatedProgram.Runner(compatLayer).Go(env);
+}
+</code></pre>
+
+<p>If you've <em>reallllllllllly</em> been paying attention, then you might have noticed that in the example above, the translated code to create a new instance of "C1" looks like this -</p>
+
+<pre><code>_outer.o = _.NEW(new c1(_, _env, _outer));
+</code></pre>
+
+<p>The new instance is returned via a "NEW" method, whose only job is to track object creation. When the Dispose method on the "compatLayer" instance is called, any objects that were created during that execution will also be disposed if they implement <strong>IDisposable</strong>. And any VBScript class with a "Class_Terminate" will be transformed into a C# class that implements <strong>IDisposable</strong>. So after every "script run", every applicable "Class_Terminate" is guaranteed to be run so that any releasing that they want to do may be done. Not the same as a deterministic garbage collector, but close enough for me!</p>
+
+<p>One final note: the <strong>DefaultTranslator</strong> expects to operate only on "pure" VBScript content. Which, if you're considering some old-timey admin script, is fine. But if you're looking at ASP pages, with their static markup interspersed with script, then it's a different story. The good news on that front is that all that is required is a first pass at the ASP file to deal with flattening any server-side includes and to then take all of the static markup and force it into explicit Response.Write calls.</p>
+
+<p><em>And</em> to do some manipulations with script blocks such as</p>
+
+<pre><code>&lt;% =GetName() %&gt;
+</code></pre>
+
+<p>since they <em>also</em> need to be translated into explicit Response.Write calls. In this case:</p>
+
+<pre><code>Response.Write GetName()
+</code></pre>
+
+<p>I've got something in the pipeline that will do this work, then you'll be able to reduce the translation work to this:</p>
+
+<pre><code>var translatedStatements = DefaultASPTranslator.Translate(scriptContent);
+</code></pre>
+
+<p>It will even be able to default the assume-these-are-already-declared environment references to be the ASP Application, Response, Request, Session, and Server objects - meaning there's one less thing for you, the translation maestro, to have to specify. Hooray!</p>
+
+<h3>The code</h3>
+
+<p>So there we are. I think that in both my professional and personal life, I've tackled some fairly challenging projects.. but this, undoutedly, ranks <em>way</em> up there with the toughest. I've got a lot of experience with C# and with VBScript and, while I didn't really think it would be easy, I was amazed at all the subtleties of VBScript's "flexibility" (I could think of some other adjectives) and I've really enjoyed the puzzle of trying to make it fit (at least fit <em>enough</em>) with C#.</p>
+
+<p>Not to mention that the original code I started from was old. <em>Really</em> old. People talk about looking back at code that you wrote six months ago - trying looking back on code you wrote six <em>years</em> ago. Ouch. But it was a chance to refactor where necessary, to resist refactoring where I could get away with it and then to slowly add tests to try to illustrate new functionality and fixes and offer a comforting safety net against regressions. I will freely admit that a lot of the code still is far from pretty. And the test coverage could be higher. And a lot of the tests are really kinda <em>integration</em> tests rather than unit tests - there's no external dependencies like file or DB access, but a lot of them still don't have the tight laser focus that a true <em>unit</em> test should. But then this is my own project, I'll do it however I like! :D</p>
+
+<p>It still has a long way to go but I'm getting real satisfaction out of the idea of completing something so "non-trivial". (If I'm being honest, this project is a bit of an exercise in bullheadness and wanting to see something all the way through!). Now, had I been able to do this ten years.. well it might be worth a little more to the world then just a curious insight into my mind - but better late than never, right??</p>
+
+<p>Find the <a href="https://bitbucket.org/DanRoberts/vbscripttranslator">VBScriptTranslator</a> on Bitbucket.</p>
+<p class="PostTime">Posted at 08:45</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript.html">If you can keep your head when all about you are losing theirs and blaming it on VBScript</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="translating-vbscript-into-c-sharp.html#disqus_thread" data-disqus-identifier="83">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">22 December 2014</h3><h2><a id="Post79"></a><a href="if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript.html">If you can keep your head when all about you are losing theirs and blaming it on VBScript</a></h2>
+
+<p>I've been migrating an old VBScript app to .net and some of those old idiosyncracies of VBScript have been rearing their head again. For a language that is intended to make things simple (and, in fairness, for many use cases it does), it really does have some confusing and complicated rules hidden behind its facade of ease!</p>
+
+<p>Language design quite interests me, there's always a view into someone's way of thinking, about how things should be done. And there's always compromises (like all programming). Is it really true that languages like <a href="http://stackoverflow.com/a/1937434">Smalltak have no "if" statement</a>? Why did the features that got into C# 6 get in and why didn't other candidates? Should languages make immutable structures simple, or should these be difficult because immutability is expensive (yes, no and it's not - if you ask me)?</p>
+
+<p>Anyway, if you're not similarly interested <em>and</em> you're not just happy to point and laugh, not only at some of the decisions* made in VBScript, but also that someone <em>is still using it in this day and age</em> then this post might not be for you..</p>
+
+<p>* I'm not really having a go at VBScript (tempting as it might be), its design comes from a difficult place in that it was supposed to be backwards compatible with VB6 where possible and "<a href="http://blogs.msdn.com/b/ericlippert/archive/2004/08/25/error-handling-in-vbscript-part-three.aspx">it was designed for simple administration and web scripts, where often 'muddle on through' is exactly what you want it to do</a>". This quotes certainly goes some way to explaining its error model, along with why it can be so troublesome to write large, reliable applications in it (since this was never an intended use).</p>
+
+<h3>If This = That Then</h3>
+
+<p>To remain focused, I'm just going to talk about the "IF" statement today.</p>
+
+<p>Simple, right?</p>
+
+<p>Well, this one is..</p>
+
+<pre><code>a = 1
+b = 2
+If (a = b) Then
+  ' No
+End If
+</code></pre>
+
+<p>The values <em>a</em> and <em>b</em> obviously are not the same, so this condition is not met.</p>
+
+<pre><code>a = 1
+b = "1"
+If (a = b) Then
+  ' No
+End If
+</code></pre>
+
+<p>Here, the values <em>a</em> and <em>b</em> would appear similar - if they were rendered to the screen or console, they would be appear as "1". But they're not the same; one's a number and one's a string. And because they are different, the condition that compares their values returns false.</p>
+
+<p>How about this one, then?</p>
+
+<pre><code>a = "1"
+If (a = 1) Then
+  ' Yes
+End If
+</code></pre>
+
+<p>This condition <em>is</em> entered. er, what?! Isn't this the same as the example before it? A string "1" is being compared to a number 1 and we know that they're aren't the same.</p>
+
+<p>It turns out that if one side of a comparison is a numeric constant, then the other side will be converted into a number and these two values compared. So here, the string "1" on the left-hand side is converted into the number 1 and this, unsurprisingly, is found to match the number 1 on the right-hand side.</p>
+
+<p>Which explains this..</p>
+
+<pre><code>a = "aa"
+If (a = 1) Then
+  ' Error! ("Type mismatch")
+End If
+</code></pre>
+
+<p>Here, the value on the left-hand side <em>can't</em> be converted into a number and so the process falls apart.</p>
+
+<p>This is talked about in an Eric Lippert post (the second I've linked to from here): <a href="http://blogs.msdn.com/b/ericlippert/archive/2004/07/30/202432.aspx">Typing Hard Can Trip You Up</a>, where he explains that some compile-time constants (such as the number 1 in the example above, but <em>not</em> a variable which is known to have a value of the number 1) enable special handling in comparisons. He refers to these literals as having "hard types", despite the "fact" that everything in VBScript is a variant. This was for consistency with VB6 - though in VB6, not everything had to be a variant, so maybe it made more sense there(??).</p>
+
+<p>So what about something like this?</p>
+
+<pre><code>a = "aa"
+If (a = (1+0)) Then
+  ' No
+End If
+</code></pre>
+
+<p>Although the right-hand side is clearly a numeric value (something that <em>could</em> be quite easily determined when the script is interpreted), this does not trigger the same behaviour as the right-hand side is a calculated expression and not a simple literal. So what about..</p>
+
+<pre><code>a = "aa"
+If (a = (1)) Then
+  ' Error! ("Type mismatch")
+End If
+</code></pre>
+
+<p>The right-hand side is a bracketed value, but the interpreter ignores the unnecessary bracketing and sees it as a literal - and so applies the convert-to-number logic.</p>
+
+<h3>String theory</h3>
+
+<p>But number literals aren't the only ones that bring in their own magic. Strings do it too.</p>
+
+<pre><code>a = 1
+If (a = "1") Then
+  ' Yes
+End If
+</code></pre>
+
+<p>Isn't this example just like the <em>(a = b)</em> example we saw where <em>a</em> was the number 1 and <em>b</em> the string "1"?? Well, no. Here, the string literal on the right-hand side introduces a behaviour where the other side of the comparison is converted into a string and then considered. So the number 1 becomes the string "1", which does in fact match the right-hand side string literal "1". Crazy.</p>
+
+<h3>True for booleans?</h3>
+
+<p>So what about that last type of VBScript primitive type; the boolean?</p>
+
+<pre><code>a = "aa"
+If (a = False) Then
+  ' No
+End If
+</code></pre>
+
+<p>You might have expected that the boolean literal False in the condition would result in the left-hand side being converted to a boolean - something which the string "aa" can not be. But no "Type mismatch" error is raised, the condition just isn't met. This is also explained by the <a href="http://blogs.msdn.com/b/ericlippert/archive/2004/07/30/202432.aspx">Typing Hard Can Trip You Up</a> post - it's a bug! As if the whole system wouldn't have been confusing enough had there been an internal consistency for all primitive types, <em>this</em> comes along! When I first noticed the oddity with the numeric literals when examining some code, I poked around and came up with a whole variety of test cases and did a fairly good job of deducing the rules around numeric and string literals, it was only later that I found that Lippert post - had I not, I mighn't have realised about the booleans since they had slipped my mind while writing the examples. It seems crazy to me to think that that post was written more than ten years ago now, who would have thought that VBScript projects would still be clinging on for dear life (much as I'm slowly cutting the cords on the work projects) so far on? And I wonder how many people with VBScript experience actually know these rules - I've worked on projects using it over the last decade or so and normally things seem to just work (maybe that's a <em>slight</em> exaggeration!) and it's only when you dig deep into the edge cases that you realise there's such layers of crazy hiding down there.</p>
+
+<h3>Objects?</h3>
+
+<p>Comparisons such as "=" are not for objects (there is the "IS" comparison for object equality).</p>
+
+<p>If an object reference appears on either side of an "=" comparison (or "&lt;", ">", etc..) then it must have a parameter-less default property or method - this will be called and then the standard rules apply (if there is no such default then an "Object doesn't support this property of method" error will be raised - it's looking for a default property or method on the object and can't find one, so this kinda makes sense).</p>
+
+<p>If the default property or method returns another object then a "Type mismatch" error is raised. It doesn't matter if this object itself has a default member, the try-to-access-default-member logic does not apply recursively.</p>
+
+<p>There can be some minor complications when interacting with non-VBScript objects that are communicated with over IDispatch, since these may have additional rules of their own. But that's out of scope for today.</p>
+
+<h3>To err is human, but to really foul things up you need VBScript</h3>
+
+<p>We're so close to being VBScript "IF" gurus now (it's probably best not to worry about what is being pushed out of your brain to make space for this information!) - but there's another spanner in the works yet: <strong>On Error Resume Next</strong>, the error-handling mechanism that just isn't quite what you'd expect in oh, so many cases.</p>
+
+<p>Let's try this one; a variation of one of the earlier number literal examples from above:</p>
+
+<pre><code>On Error Resume Next
+a = "aa"
+If (a = 1) Then
+  ' Yes
+End If
+</code></pre>
+
+<p>Without "On Error Resume Next" this results in an error as <em>aa</em> can not be converted into a number. <em>With</em> "On Error Resume Next", I would have expected the error to result in the entire conditional structure being skipped over. In other words, I would have expected this <em>not</em> to consider the condition met. But VBScript has other ideas. If a condition is considered and causes an error and "On Error Resume Next" is in play, then the condition is found to be met.</p>
+
+<p>We don't even need any of the number literal behaviour to trigger this, the following does the same</p>
+
+<pre><code>On Error Resume Next
+If (1/0) Then
+  ' Yes
+End If
+</code></pre>
+
+<p>The "Division by zero" error with "On Error Resume Next" results in the condition being considered met. I really hadn't seen that one coming.</p>
+
+<p>The C# that I had imagined to be equivalent would be something like</p>
+
+<pre><code>try
+{
+    if (1/0)
+    {
+        // Don't enter here, 1/0 throws an exception!
+    }
+}
+catch { }
+</code></pre>
+
+<p>.. but that's just not the case. VBScript's idea of "proceed to the next statement" does not follow the same logic as C#.</p>
+
+<p>I said that it's only "if a condition is considered and causes an error" that this occurs, so in the following example the first condition is met (as you would expect) and so the second condition is not even considered, and so its error-raising behaviour will not result in its content block being executed.</p>
+
+<pre><code>On Error Resume Next
+If (1 = 1) Then
+  ' Yes
+ElseIf (1/0) Then
+  ' No
+End If
+</code></pre>
+
+<h3>That's enough for today (my head hurts)</h3>
+
+<p>Was I the only one surprised by all this? I presume that all of this weirdness can be linked back to some use cases where these rules made code look like it was doing "the right thing" but it's like one leaky abstraction after another!</p>
+
+<p>As I said at the start, though, I'm really not trying to take cheap shots at VBScript - the very fact that I looked into all this while migrating an important application written in it says a lot about it; that large production applications were able to be written in it and maintained until the present day does sort of speak quite highly about it. Or maybe it just harks to the eternal difficulty of the dreaded rewrite! While I feel a bit unfair slating it, let's put it this way - I'm not going to miss it when this transition is complete and it's finally gone! :)</p>
+<p class="PostTime">Posted at 22:35</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript.html#disqus_thread" data-disqus-identifier="79">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">2 May 2014</h3><h2><a id="Post69"></a><a href="vbscript-is-dim.html">VBScript is DIM</a></h2>
+
+<p>At work, we still have some projects that are are written in VBScript (aka "Classic ASP"). Projects that are important to the company and its bottom line. Which, yes, is madness.</p>
+
+<blockquote>
+  <p>I'm working in C# and C++, languages specifically designed for implementing complex software written by large teams. VBScript is not such a language -- it was designed for simple administration and web scripts</p>
+</blockquote>
+
+<p><strong>(Eric Lippert, 2004: <a href="http://blogs.msdn.com/b/ericlippert/archive/2004/08/25/error-handling-in-vbscript-part-three.aspx">Error Handling in VBScript, Part Three</a>)</strong></p>
+
+<blockquote>
+  <p>Classic ASP was replaced almost 12 years ago to the day with the platform that remains Microsoft’s framework of choice for building web sites today – ASP.NET. You could forgive someone for persevering with classic ASP a decade ago, perhaps even 5 years ago, but today? I don’t think so. If you’re running this platform today to host anything of any value whatsoever on the web, you’ve got rocks in your head.</p>
+</blockquote>
+
+<p><strong>(Troy Hunt, 2014: <a href="http://www.troyhunt.com/2014/02/heres-how-bell-was-hacked-sql-injection.html">Here’s how Bell was hacked – SQL injection blow-by-blow</a>)</strong></p>
+
+<blockquote>
+  <p>VBScript; if you thought its ass would age like wine.. if you mean it turns to vinegar, it does. If you mean it gets better with age, it don't.</p>
+</blockquote>
+
+<p><strong>(Paraphrasing of <a href="http://www.imdb.com/character/ch0001789/quotes">Marsellus Wallace</a>, Pulp Fiction)</strong></p>
+
+<p>During one particularly perverse investigation, I came to question the sanity of one of the most basic constructs in the language; the DIM statement. If you have Option Explicit enabled, you have to use DIM for all variables that you intend to access. Unless you happen to use REDIM, which can operate as a kind of implicit DIM. Even though its intention is to alter the state of a variable already declared. One of the strange things I observed about DIM is that it appears to hoist the variable declaration to the top of the current block scope, a bit like JavaScript. This is why something like the following does not result in an error (please excuse the code formatting and colouring here, the pretty-print script I use doesn't seem to like VBScript.. I'm sure it's not the only one) -</p>
+
+<pre><code>' Writes out "Empty"
+Option Explicit
+WScript.Echo TypeName(a)
+Dim a
+</code></pre>
+
+<p>It writes out "Empty" rather than <em>Variable is undefined: 'a'</em> which is the VBScript equivalent of the compile error you would get if you tried to do the same sort of thing with C#, which requires variables to be declared <em>before</em> use.</p>
+
+<p>Sidebar: When I said that REDIM can act as an "implicit DIM", I mean that that following does not raise an error </p>
+
+<pre><code>' Writes out "Variant()"
+Option Explicit
+ReDim a(0)
+WScript.Echo TypeName(a)
+</code></pre>
+
+<p>Even though <em>Option Explicit</em> is specified and even though ReDim is expected to affect an already-declared variable, this does not error as it implicitly declares the array <em>a</em> before settings its dimensions.</p>
+
+<p>Back to DIM, it's worth noting that it is raised to a form of block level scope, so that if there is a DIM statement inside an IF conditional, it will be raised to the scope of either the current function (or property) or to the top of the "outermost scope" if this is code in a script that is not in a class <em>or</em> function <em>or</em> property -</p>
+
+<pre><code>' Writes out "Empty"
+Option Explicit
+WScript.Echo TypeName(a)
+If (False) Then
+    Dim a
+End If
+</code></pre>
+
+<p>Even though the body of the conditional is never entered, the DIM is hoisted up to the top of the current scope.</p>
+
+<p>Now, to take a brief segue. The REDIM statement, as already mentioned, is primarily intended to alter an already-declared variable. The REDIM statement (being intended to resize arrays) is invalid, for example, if there are no array dimensions specified, such as with</p>
+
+<pre><code>' Throws a compilation error "Expected '('"
+ReDim a
+</code></pre>
+
+<p>or</p>
+
+<pre><code>' Throws a compilation error "Syntax error"
+ReDim a()
+</code></pre>
+
+<p>Perhaps its most common use is with something like</p>
+
+<pre><code>Dim a()
+ReDim a(1)
+WScript.Echo UBound(a)
+</code></pre>
+
+<p>Let's not worry ourselves with the fact that the target reference need not even be an array, such as with</p>
+
+<pre><code>Dim a
+ReDim a(1)
+WScript.Echo UBound(a)
+</code></pre>
+
+<p>And let's not worry for now about the fact that there are special cases for variables that were declared with a DIM that specified dimensions; they must be treated as being locked in size</p>
+
+<pre><code>' Throws a runtime error "This array is fixed or temporarily locked"
+Dim a(1)
+ReDim a(2)
+</code></pre>
+
+<p>Where I think REDIM really starts to come into its own is when we combine the facts that REDIM appears to act as if there was an implicit DIM whose variable it was affecting and the fact that DIM'd variables are hoisted to the top of the scope -</p>
+
+<pre><code>' Throws a runtime error "Variable is undefined: 'a'"
+Option Explicit
+WScript.Echo TypeName(a)
+ReDim a(0)
+</code></pre>
+
+<p>Right. Excellent. This is not what I would have expected. We are coming now to possibly my favourite. REDIM will act as an implicit DIM in only a limited way; though DIM'd variables are hoisted up in block scope, REDIM'd variables are not.</p>
+
+<p>When DIM'd variables are hoisted, they are hoisted to the top of the block scope - so IF and WHILE constructs are meaningless to a DIM (as we saw with the <em>If (False) Then</em> example earlier). REDIM, on the other hand, has other ideas -</p>
+
+<pre><code>' Throws a runtime error "Variable is undefined: 'a'"
+Option Explicit
+If (False) Then
+    ReDim a(0)
+End If
+WScript.Echo TypeName(a)
+</code></pre>
+
+<p>but</p>
+
+<pre><code>' Writes out "Variant()"
+Option Explicit
+If (True) Then
+    ReDim a(0)
+End If
+WScript.Echo TypeName(a)
+</code></pre>
+
+<p>This means that variables can actually be conditionally declared. <em>Conditionally declared!</em> Such a concept doesn't even exist in languages such as C# and JavaScript! JavaScript is hardly a paragon of virtue in terms of how it deals with declarations of variables and their scope (if we forget all about Option Explicit and DIM and REDIM then it's interesting to note that undeclared variables in VBScript are only "implicitly declared" in the current block scope, unlike JavaScript's decision to promote them to the global scope) but it doesn't <em>anything</em> quite as crazy as this.</p>
+
+<p>What's really bizarre is that VBScript's interpreter clearly has the ability to pick up on such inconsistencies. The behaviour of the following example</p>
+
+<pre><code>' Throws a compilation error "Name redefined"
+ReDim a(2)
+Dim a
+</code></pre>
+
+<p>makes sense if we consider REDIM to implicitly DIM a variable at the point at which the REDIM appears (if the variable has not already been declared). The "Name redefined" error occurs regardless of the presence or absence of "Option Explicit" - it is a compilation error whilst "Option Explicit" will only throw runtime errors*.</p>
+
+<p>* (This makes Option Explicit particularly awkward to retrofit to scripts that were not written with it from the get-go since any resulting errors are runtime errors and will only be raised if a code path is followed where an undeclared variable is accessed, unlike if static analysis was performed to identify undeclared variables before the script was run).</p>
+
+<p>Where it really gets bizarre is the following -</p>
+
+<pre><code>' ALSO throws a compilation error "Name redefined"
+If (False) Then
+    ReDim a(2)
+End If
+Dim a
+</code></pre>
+
+<p>Since this <em>is</em> a compilation error then it <em>is</em> being identified by static analysis - it is being thrown by considering the content of the script and is not an error that has occurred from <em>executing</em> the script.</p>
+
+<p>The really insane thing is that I just can't make this fit into everything else we've seen. If a REDIM would result in an implicit DIM that was hoisted to the top of the scope (like explicit DIM statements are) then this error would make perfect sense. But since we've seen that a REDIM can <em>conditionally declare</em> a variable, and the REDIM in this case is inside an unreachable code path, then surely it can't pose a problem for the DIM statement that <em>will</em> be executed! And yet it does.</p>
+
+<p>I am genuinely astonished that I've never had to look into the extent of the sheer lunacy of these constructs before now. But, on the other hand, is the fact that I've not had to and that, generally, <em>it's just worked</em>, something that says a lot about the language designers? Or am I just getting a case of Stockholm Syndrome?!</p>
+
+<p>One thing is for sure, though; next time I question the sanity of any given language or product feature and vent about how it could be much better or make more sense, I think I'll be taking a step back, a deep breath and just bearing in mind <strong>"it could be worse, it's not as bad as VBScript's (RE)DIM"</strong>.</p>
+<p class="PostTime">Posted at 23:59</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="vbscript-is-dim.html#disqus_thread" data-disqus-identifier="69">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">29 October 2013</h3><h2><a id="Post64"></a><a href="what-is-nothing.html">What is Nothing?</a></h2>
+
+<p>What a deep existential question!</p>
+
+<p>Well.. maybe not in this context..</p>
+
+<p>Here I'm talking about good old VBScript; a technology at work that just refuses to completely go away. We still have software running on a combination of VBScript and .net. One of them makes use of <a href="http://windowsitpro.com/scripting/wsh-part-3-windows-script-components">Windows Scripting Components</a>; basically VBScript wrapped up to act like a COM component. The advantage is that we can look at replacing areas of legacy code with .net (on-going maintenance and testing concerns are important here but the performance gap between the two technologies is startling too*) without having to throw everything away all at once.</p>
+
+<p>* <em>(Not surprising since not only is VBScript interpreted - rather than compiled - but also since it hasn't benefited from optimisation or active development for over a decade).</em></p>
+
+<p>One of the downsides of this, however, is dealing with VBScript's oddities. A lot of this is handled very nicely by COM (and .net's COM integrations) at the boundaries - a lot of basic types can be passed from .net to these components (and vice versa). You pass in a .net string and it's happily translated into BSTR (see <a href="http://blogs.msdn.com/b/ericlippert/archive/2003/09/12/52976.aspx">Eric's Complete Guide To BSTR Semantics</a>, before Eric Lippert was a C# genius he was responsible for a lot of work on the VBScript interpreter). Likewise with ints and booleans.</p>
+
+<p>But one of the craziest areas of VBScript is its representations of null. It has three of them. <em>Three</em>. And this is where we can get unstuck.</p>
+
+<h3>Empty, Null, Nothing (why, oh why?)</h3>
+
+<p>This is a bit of history, if you've ended up at this page looking for the same thing I was (until recently) looking for (how "Nothing" can be represented by .net) then jump down to the next section.</p>
+
+<p>I'm going to draw a parallel to JavaScript here since that effectively has two representations of "null" and will be much more well known.</p>
+
+<p>In JavaScript, if a variable is declared but unintialised then it has type "undefined" - eg.</p>
+
+<pre><code>var a;
+alert(typeof(a)); // "undefined"
+</code></pre>
+
+<p>This means that this variable has no value, we have not given it a value, we don't care at this point what it's value may or may not be.</p>
+
+<p>This is different from explicitly setting a variable to null. This is an intentional application of a value to a variable - eg.</p>
+
+<pre><code>var a = null;
+alert(typeof(a)); // "object"
+</code></pre>
+
+<p>Why it decides to describe "null" as an "object" could be a discussion for another day, but it's sufficient to show that it has been given an actual value, it is not "undefined" any more.</p>
+
+<p>Now these are similar to VBScript's Empty and Null - in VBScript, Empty means that the variable has not been initialised while Null means that it has <em>explicitly</em> set to Null. There are occassions where it's useful to say "I have tried to access this item and have found it to be absent" - hence giving it a null value - as opposed to "I haven't even attempted to populate this value".</p>
+
+<p>But Nothing is a different beast. VBScript has different assignment semantics for what it considers to be object references versus primitive types. If you want to set a value to be an "object" type (a VBScript class instance, for example) then you have to use the "SET" keyword -</p>
+
+<pre><code>Set u = GetUser()
+</code></pre>
+
+<p>If you omitted the "SET" then it would try to set "u" to what VBScript considers a value type (a string, number, etc..). To do  this it would look for a default (parameter-less) property or function on the object. If it can't find one then it will throw a rather unhelpful "Type mismatch" error.</p>
+
+<p>So far as I can tell, this is solely to try to make some tasks which are already easy even easier. For example, if the GetUser function returns an object reference with a default (and parameter-less) Name property then writing</p>
+
+<pre><code>WScript.Echo GetUser()
+</code></pre>
+
+<p>would print out the Name property. This is presumably because</p>
+
+<pre><code>WScript.Echo GetUser().Name
+</code></pre>
+
+<p>would be too hard??</p>
+
+<p>By supporting these default member options, a way to say "I don't want a default property, I want the object reference itself" is required. This is what the "SET" keyword is for.</p>
+
+<p>I'm thinking it's total madness. While possibly making some easy things a <em>tiny</em> bit easier, it makes some otherwise-not-too-difficult things <em>really</em> difficult and convoluted!</p>
+
+<p>The prime example is "Nothing". If you want a function that will return an object then you will call that method using "SET". But this will mean that you can't return Null to indicate no result since Null isn't an object and trying to do what amounts to</p>
+
+<pre><code>Set u = Null
+</code></pre>
+
+<p>will result in another unfriendly error</p>
+
+<blockquote>
+  <p>Object required: 'Null'</p>
+</blockquote>
+
+<p><em>Fantastic.</em></p>
+
+<p>So VBScript needs a way to represent an object type that effectively means "no value", but that is different to Empty (since that means not initialised) and Null (since that isn't an object).</p>
+
+<h3>Nothing in .net</h3>
+
+<p>For a long time I'd thought that Nothing must somehow be an internal VBScript concept. There were three things that had me half-convinced of this:</p>
+
+<ol>
+<li>There was no carryover into VB.Net, there is "Nothing" there but it is equivalent to null in C# - there aren't two values that can be accessed (Null vs Nothing), not even for some sort of backward compability</li>
+<li>If you pass Nothing over the COM boundary to a .net COM component, you get a null reference (not some magic other object type)</li>
+<li>Multiple web searches failed; "How do I represent Nothing in a COM component to interact with VBScript?" <a href="http://www.youtube.com/watch?v=e2KVj2vVxUs">Crickets..</a></li>
+</ol>
+
+<p>Point 2 is partly down to the cleverness of the .net / COM integration where it converts types into native CLR types where it can. VBScript's "Nothing" really could be said to equate to null in an environment where such a hard distinction between value and reference types is unrequired.</p>
+
+<p>But there could be legacy WSC components that have methods that differentiate between an argument that represents Null and one that represents Nothing, so I didn't want to give up completely.</p>
+
+<p>At some point, I had two breakthroughs. I don't know what was different about this web search.. maybe the work I did earlier this year with <a href="idispatch-iwastedtimeonthis-but-ilearntlots.html">COM and IDispatch</a> has helped me understand that way of thinking more or perhaps I was just more dogged in my refusing to accept defeat when looking for an answer. But I've finally struck gold! (Wow, such an exaggeration for something that may never be of use to anyone else, ever :)</p>
+
+<p>And as I write it out, it sounds frustratingly rudimentary. But, as I said, I found it incredibly hard to actually piece this together.</p>
+
+<p>In VBScript, all values are of type VARIANT. This can represent booleans, numbers, strings, a pointer to an IDispatch implementation, all sorts.</p>
+
+<p>A VARIANT has a type to indicate what it represents, as can be seen on MSDN: <a href="http://msdn.microsoft.com/en-us/library/cc237865.aspx">VARIANT Type Constants</a>.</p>
+
+<p>To VBScript, Empty means a null VARIANT. No reference to a variant at all.</p>
+
+<p>Null means a VARIANT of type VT_NULL (incidentally, <strong>System.DBNull.Value</strong> maps back and forth onto this over the COM boundary).</p>
+
+<p>Nothing means a VARIANT of type VT_EMPTY. (VBScript internally decides that this is an "object" type, as opposed to Null, which a value type).</p>
+
+<p>So the final puzzle piece; how do we represent this arbitrary VARIANT type in .net?</p>
+
+<p>I found this article (well, chapter from the book ".NET and COM: The Complete Interoperability Guide"): <a href="http://www.informit.com/articles/article.aspx?p=27219&amp;seqNum=8">The Essentials for Using COM in Managed Code</a> - which contains this magic section</p>
+
+<blockquote>
+  <p>Because null (Nothing) is mapped to an "empty object" (a VARIANT with type VT_EMPTY) when passed to COM via a System.Object parameter, you can pass new DispatchWrapper(null) or new UnknownWrapper(null) to represent a null object.</p>
+</blockquote>
+
+<p>And that's it! All you need is</p>
+
+<pre><code>var nothing = new DispatchWrapper(null);
+</code></pre>
+
+<p>and you've got a genuine "Nothing" reference that you can pass to VBScript and have it recognise! If you use the VBScript TypeName function then you get "Nothing" reported. That's all there is to to it, it <em>is</em> possible!</p>
+
+<h3>Follow-up: ComVisible return types  (28th Dec 2013)</h3>
+
+<p>I've done some more experimenting with this since I found some legacy code that I'd written a few years ago that infuriatingly seemed to manage to return Nothing from a method <em>without</em> explicitly specifying it with the <strong>DispatchWrapper</strong> as above.</p>
+
+<p>It turns out that if the return type of a method is a class that has the [ComVisible(true)] attribute then returning null from .net will result in VBScript interpreting the response as Nothing. However, if the return type is not a type with that attribute then it will <em>not</em> be translated into null.</p>
+
+<pre><code>public ComVisibleType Get(int id)
+{
+  return null; // VBScript will interpet this as Nothing
+}
+
+public object Get(int id)
+{
+  return null; // VBScript will interpet this as Empty
+}
+
+[ComVisible(true)]
+public class ComVisibleType
+{
+  public string Name { get; set; }
+}
+</code></pre>
+<p class="PostTime">Posted at 22:34</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/COM.html" title="8 Posts">COM</a></li><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="what-is-nothing.html#disqus_thread" data-disqus-identifier="64">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">18 February 2013</h3><h2><a id="Post44"></a><a href="idispatch-iwastedtimeonthis-but-ilearntlots.html">IDispatch (IWastedTimeOnThis but ILearntLots)</a></h2>
+
+<p>For something I've been working on it looked like I was going to have to interact with COM objects from a legacy system without type libraries and where the internals were written in VBScript. Ouch. It seemed like a restriction of the environment meant that .Net 4 wouldn't be available and so the dynamic keyword wouldn't be available.</p>
+
+<p>It would seem that the <a href="https://bitbucket.org/DanRoberts/cominteraction">COMInteraction</a> code that I wrote in the past would be ideal for this since it should wrap access to generic COM objects but I encountered a problem with that (which I'll touch briefly on later in this post).</p>
+
+<p>So the next step was to find out about the mysterious IDispatch interface that I've heard whispered about in relation to dealings with generic COM objects! Unfortunately, I think in the end I found a way to get .Net 4 into play for my original problem so this might all have been a bit of a waste of time.. but not only was it really interesting but I also found nowhere else on the internet that was doing this with C#. And I read up <em>a lot</em>. (There's articles that touch on most of it, but not all - read on to find out more! :)</p>
+
+<h3>What is IDispatch</h3>
+
+<p>From <a href="http://en.wikipedia.org/wiki/IDispatch">IDispatch on Wikipedia</a>:</p>
+
+<blockquote>
+  <p>IDispatch is the interface that exposes the OLE Automation protocol. It is one of the standard interfaces that can be exposed by COM objects .. IDispatch derives from IUnknown and extends its set of three methods (AddRef, Release and QueryInterface) with four more methods - GetTypeInfoCount, GetTypeInfo, GetIDsOfNames and Invoke.</p>
+  
+  <p>Each property and method implemented by an object that supports the IDispatch interface has what is called a Dispatch ID, which is often abbreviated DISPID. The DISPID is the primary means of identifying a property or method and must be supplied to the Invoke function for a property or method to be invoked, along with an array of Variants containing the parameters. The <em>GetIDsOfNames</em> function can be used to get the appropriate DISPID from a property or method name that is in string format.</p>
+</blockquote>
+
+<p>It's basically a way to determine what methods can be called on an object and how to call them.</p>
+
+<h3>How to use it</h3>
+
+<p>I got most of the useful information first from these links:</p>
+
+<ol>
+<li><a href="http://stackoverflow.com/questions/8068449/calling-a-member-of-idispatch-com-interface-from-c-sharp">Calling a member of IDispatch COM interface from C#</a> (Stack Overflow)</li>
+<li><a href="http://limbioliong.wordpress.com/2011/11/02/setting-a-property-by-idispatch-invoke/">Setting a Property by IDispatch Invoke</a> (particularly section 3.4)</li>
+<li><a href="http://limbioliong.wordpress.com/2011/09/06/using-variants-in-managed-code-part-3/">Using VARIANTs in Managed Code Part 3</a> (section 2.4)</li>
+</ol>
+
+<p>The first thing to do is to cast the object reference to the IDispatch interface (this will only work if the object implements IDispatch, for the COM components I was targetting this was the case). The interface isn't available in the framework but can be hooked up with</p>
+
+<pre><code>[ComImport()]
+[Guid("00020400-0000-0000-C000-000000000046")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IDispatch
+{
+  [PreserveSig]
+  int GetTypeInfoCount(out int Count);
+
+  [PreserveSig]
+  int GetTypeInfo
+  (
+    [MarshalAs(UnmanagedType.U4)] int iTInfo,
+    [MarshalAs(UnmanagedType.U4)] int lcid,
+    out System.Runtime.InteropServices.ComTypes.ITypeInfo typeInfo
+  );
+
+  [PreserveSig]
+  int GetIDsOfNames
+  (
+    ref Guid riid,
+    [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr)]
+    string[] rgsNames,
+    int cNames,
+    int lcid,
+    [MarshalAs(UnmanagedType.LPArray)] int[] rgDispId
+  );
+
+  [PreserveSig]
+  int Invoke
+  (
+    int dispIdMember,
+    ref Guid riid,
+    uint lcid,
+    ushort wFlags,
+    ref System.Runtime.InteropServices.ComTypes.DISPPARAMS pDispParams,
+    out object pVarResult,
+    ref System.Runtime.InteropServices.ComTypes.EXCEPINFO pExcepInfo,
+    out UInt32 pArgErr
+  );
+}
+</code></pre>
+
+<p>Then the GetIDsofNames is called to determine whether a given method is present:</p>
+
+<pre><code>private const int LOCALE_SYSTEM_DEFAULT = 2048;
+
+// rgDispId will be populated with the DispId of the named member (if available)
+var rgDispId = new int[1] { 0 };
+
+// IID_NULL must always be specified for the "riid" argument
+// (see http://msdn.microsoft.com/en-gb/library/windows/desktop/ms221306(v=vs.85).aspx)
+var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+
+var hrRet = ((IDispatch)source).GetIDsOfNames
+(
+  ref IID_NULL, // 
+  new string[1] { name },
+  1, // number of names to get ids for
+  LOCALE_SYSTEM_DEFAULT,
+  rgDispId
+);
+if (hrRet != 0)
+  throw new Exception("Uh-oh!");
+
+return rgDispId[0];
+</code></pre>
+
+<p>Then the Invoke method is called with the Disp Id, the type of call (eg. execute method, set property, etc..), a "local context" ("applications that do not support multiple national languages can ignore this parameter" - <a href="http://msdn.microsoft.com/en-gb/library/windows/desktop/ms221479(v=vs.85).aspx">IDispatch::Invoke method (Automation) at MSDN</a>) and the parameters.</p>
+
+<h3>Calling a argument-less method</h3>
+
+<pre><code>private const int LOCALE_SYSTEM_DEFAULT = 2048;
+private const ushort DISPATCH_METHOD = 1;
+
+var dispId = 19; // Or whatever the above code reported
+
+// This DISPPARAMS structure describes zero arguments
+var dispParams = new System.Runtime.InteropServices.ComTypes.DISPPARAMS()
+{
+  cArgs = 0,
+  cNamedArgs = 0,
+  rgdispidNamedArgs = IntPtr.Zero,
+  rgvarg = IntPtr.Zero
+};
+
+var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+UInt32 pArgErr = 0;
+object varResult;
+var excepInfo = new System.Runtime.InteropServices.ComTypes.EXCEPINFO();
+var hrRet = ((IDispatch)source).Invoke
+(
+  dispId,
+  ref IID_NULL,
+  LOCALE_SYSTEM_DEFAULT,
+  DISPATCH_METHOD,
+  ref dispParams,
+  out varResult,
+  ref excepInfo,
+  out pArgErr
+);
+if (hrRet != 0)
+  throw new Exception("FAIL!");
+return varResult;
+</code></pre>
+
+<p>The DISPPARAMS structure (which <em>is</em> part of the framework) enables the specification of both "named" and "unnamed" arguments. When calling a method, unnamed arguments may be passed in but when setting a property, the value that the property is to be set to must be passed as a named argument with the special constant DISPID_PROPERTYPUT (-3).</p>
+
+<p>The above code could also be used to retrieve a property value (a non-indexed property) by replacing the DISPATCH_METHOD value with DISPATCH_PROPERTYGET (2).</p>
+
+<h3>Calling a single-argument method</h3>
+
+<pre><code>[DllImport(@"oleaut32.dll", SetLastError = true, CallingConvention = CallingConvention.StdCall)]
+static extern Int32 VariantClear(IntPtr pvarg);
+
+private const int LOCALE_SYSTEM_DEFAULT = 2048;
+private const ushort DISPATCH_METHOD = 1;
+private const int SizeOfNativeVariant = 16;
+
+var dispId = 19; // Or whatever the above code reported
+var arg = "Value";
+
+// This DISPPARAMS describes a single (unnamed) argument
+var pVariant = Marshal.AllocCoTaskMem(SizeOfNativeVariant);
+Marshal.GetNativeVariantForObject(arg, pVariant);
+var dispParams = new System.Runtime.InteropServices.ComTypes.DISPPARAMS()
+{
+  cArgs = 1,
+  cNamedArgs = 0,
+  rgdispidNamedArgs = IntPtr.Zero,
+  rgvarg = pVariant
+};
+
+try
+{
+  var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+  UInt32 pArgErr = 0;
+  object varResult;
+  var excepInfo = new System.Runtime.InteropServices.ComTypes.EXCEPINFO();
+  var hrRet = ((IDispatch)source).Invoke
+  (
+    dispId,
+    ref IID_NULL,
+    LOCALE_SYSTEM_DEFAULT,
+    DISPATCH_METHOD,
+    ref dispParams,
+    out varResult,
+    ref excepInfo,
+    out pArgErr
+  );
+  if (hrRet != 0)
+    throw new Exception("FAIL!");
+  return varResult;
+}
+finally
+{
+  VariantClear(pVariant);
+  Marshal.FreeCoTaskMem(pVariant);
+}
+</code></pre>
+
+<p>As mentioned above, when calling methods there is no need to named arguments so cNamedArgs is still 0 and rgdispidNamedArgs is still IntPtr.Zero (a managed version of a null pointer).</p>
+
+<p>From what I understand (and I'd never used Marshal.AllocCoTaskMem or Marshal.GetNativeVariantForObject before a couple of days ago!), the AllocCoTaskMem call allocates a chunk of unmanaged memory and then GetNativeVariantForObject copies a managed reference into that memory. A variant is always 16 bytes. This is the same variant type used for all VBScript calls, for example, and used for method arguments for IDispatch. More about the VARIANT structure can be found at this <a href="http://msdn.microsoft.com/en-gb/library/windows/desktop/ms221627(v=vs.85).aspx">MSDN article</a>.</p>
+
+<p>The framework does some sort of clever manipulation to copy the contents of the managed reference into unmanaged memory, the internals of which I'm not going to worry <em>too</em> much about. But there's a couple of things to note; this is a <em>copy</em> operation so if I was getting involved with unmanaged memory for performance reasons then I'd probably want to avoid this. But it does mean that this copied memory is "safe" from the garbage collector doing anything with it. When you peel it back a layer, managed memory can't be expected to work as predictably as unmanaged memory as the garbage collector is free to be doing all manner of clever things to stay on top of memory usage and references and, er.. stuff. Which is a good thing because (for the large part) <em>I</em> don't have to worry about it! But it would be no good if the garbage collector moved memory around that the COM component was in the middle of accessing. Bad things would happen. Bad <em>intermittent</em> things (the worst kind). But this does have one important consequence; since the GC is not in control of this memory, I need to explicitly release it myself when I'm done with it.</p>
+
+<p>Another side note on this: The system also needs to be sure that the GC doesn't do anything interesting with memory contents while it's performing to copy to the variant. The framework uses something called "automatic pinning" to ensure that the reference being considered by the Marshal.GetNativeVariantForObject doesn't move during this operation (ie. it is "pinned" in place in memory). There is also a way to manually pin data where a particular reference can be marked such that its memory not be touched by the GC until it's freed (using GCHandle.Alloc and the GCHandleType.Pinned option, and later calling .Free on the handle returned by Alloc) which may be used in the passing-by-reference approach I alluded to above, but I won't need it here.</p>
+
+<h3>Setting a (non-indexed) property</h3>
+
+<pre><code>[DllImport(@"oleaut32.dll", SetLastError = true, CallingConvention = CallingConvention.StdCall)]
+static extern Int32 VariantClear(IntPtr pvarg);
+
+private const int LOCALE_SYSTEM_DEFAULT = 2048;
+private const ushort DISPATCH_PROPERTYPUT = 4;
+private const int DISPID_PROPERTYPUT = -3;
+private const int SizeOfNativeVariant = 16;
+
+var dispId = 19; // Or whatever the above code reported
+var arg = "Value";
+
+// This DISPPARAMS describes a single named (DISPID_PROPERTYPUT) argument
+var pNamedArg = Marshal.AllocCoTaskMem(sizeof(Int64));
+Marshal.WriteInt64(pNamedArg, DISPID_PROPERTYPUT);
+var pVariant = Marshal.AllocCoTaskMem(SizeOfNativeVariant);
+Marshal.GetNativeVariantForObject(arg, pVariant);
+var dispParams = new System.Runtime.InteropServices.ComTypes.DISPPARAMS()
+{
+  cArgs = 1,
+  cNamedArgs = 1,
+  rgdispidNamedArgs = pNamedArg,
+  rgvarg = pVariant
+};
+
+try
+{
+  var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+  UInt32 pArgErr = 0;
+  object varResult;
+  var excepInfo = new System.Runtime.InteropServices.ComTypes.EXCEPINFO();
+  var hrRet = ((IDispatch)source).Invoke
+  (
+    dispId,
+    ref IID_NULL,
+    LOCALE_SYSTEM_DEFAULT,
+    DISPATCH_PROPERTYPUT,
+    ref dispParams,
+    out varResult,
+    ref excepInfo,
+    out pArgErr
+  );
+  if (hrRet != 0)
+    throw new Exception("FAIL!");
+}
+finally
+{
+  VariantClear(pVariant);
+  Marshal.FreeCoTaskMem(pVariant);
+  VariantClear(pNamedArg);
+  Marshal.FreeCoTaskMem(pNamedArg);
+}
+</code></pre>
+
+<p>The example code in section 3.4 of the <a href="http://limbioliong.wordpress.com/2011/11/02/setting-a-property-by-idispatch-invoke/">Setting a Property by IDispatch Invoke</a> post I linked to earlier uses a manual pinning approach to specifying the named arguments data but as I understand it we can copy the DISPID_PROPERTYPUT value into unmanaged memory instead, in the same way as the property value is passed over the COM boundary.</p>
+
+<h3>Specifying multiple arguments</h3>
+
+<p>The final step is to support multiple arguments, whether this be for calling methods or for dealing with indexed properties. <em>This</em> is the step that I've been unable to find any examples for in C#.</p>
+
+<p>The problem is that there need to be multiple variant arguments passed to the Invoke call but no built-in way to allocate an array of variants to unmanaged memory. This Stack Overflow question on <a href="http://stackoverflow.com/questions/1318682/intptr-arithmetics">IntPtr arithmetics</a> looked promising but didn't quite cover it. And it revealed that I didn't know very much about the unsafe and fixed keywords :(</p>
+
+<p>The final code I've ended up with doesn't seem that complicated in and of itself, but I feel like I've gone through the wringer a bit trying to confirm that it's actually correct! The biggest question was how to go allocating a single variant</p>
+
+<pre><code>var rgvarg = Marshal.AllocCoTaskMem(SizeOfNativeVariant);
+Marshal.GetNativeVariantForObject(arg, rgvarg);
+
+// Do stuff..
+
+VariantClear(rgvarg);
+Marshal.FreeCoTaskMem(rgvarg);
+</code></pre>
+
+<p>to allocating multiple. I understood that the array of variants should be laid out sequentially in memory but the leap took me some time to get to</p>
+
+<pre><code>var rgvarg = Marshal.AllocCoTaskMem(SizeOfNativeVariant * args.Length);
+var variantsToClear = new List&lt;IntPtr&gt;();
+for (var index = 0; index &lt; args.Length; index++)
+{
+  var arg = args[(args.Length - 1) - index]; // Explanation below..
+  var pVariant = new IntPtr(
+    rgvarg.ToInt64() + (SizeOfNativeVariant * index)
+  );
+  Marshal.GetNativeVariantForObject(arg, pVariant);
+  variantsToClear.Add(pVariant);
+}
+
+// Do stuff..
+
+foreach (var variantToClear in variantsToClear)
+  VariantClear(variantToClear);
+Marshal.FreeCoTaskMem(rgvarg);
+</code></pre>
+
+<p>Particularly the concerns about the pointer arithmetic which I wasn't sure C# would like, especially after trying to digest all of the Stack Overflow question. But another <a href="http://stackoverflow.com/questions/1866236/add-offset-to-intptr">Add offset to IntPtr</a> <em>did</em> give me some hope thought it led me get thrown by this MSDN page for the .Net 4 <a href="http://msdn.microsoft.com/en-us/library/system.intptr.add%28VS.100%29.aspx">IntPtr.Add method</a>, with its usage of unsafe and fixed!</p>
+
+<pre><code>public static void Main()
+{
+  int[] arr = { 2, 4, 6, 8, 10, 12, 14, 16, 18, 20 };
+  unsafe {
+    fixed(int* parr = arr) {
+      IntPtr ptr = new IntPtr(parr);   
+      for (int ctr = 0; ctr &lt; arr.Length; ctr++)
+      {
+        IntPtr newPtr = IntPtr.Add(ptr, ctr * sizeof(Int32));
+        Console.Write("{0}   ", Marshal.ReadInt32(newPtr));
+      }
+    }      
+  }
+}
+</code></pre>
+
+<p>So the good news; pointer arithmetic would, dealt with properly, not end the world. Ok, good. And apparently it's safe to always manipulate them using the ToInt64 method</p>
+
+<pre><code>IntPtr ptr = new IntPtr(oldptr.ToInt64() + 2);
+</code></pre>
+
+<p>whether on a 32 or 64 bit machine. With overhead on 32 bit systems, but I'm not looking for ultimate performance here, I'm looking for functionality! (This last part is one of the answers on Stack Overflow: <a href="http://stackoverflow.com/a/1866268">Add offset to IntPtr</a>.</p>
+
+<p>From what I've learnt about pinning and its effects on the garbage collector, the "fixed" call in the MSDN example is to lock the array in place while it's being iterated over. Since at each insertion into the unmanaged memory I've allocated I'm using Marshal.GetNativeVariantForObject then I don't need to worry about this as that method is copying the data and automatic pinning is holding the data in place while it does so. So I'm all good - I just need to keep track of the variants I've copied so they can be cleared when I'm done <em>and</em> keep tracking of the one area of unmanaged memory I allocated which will need freeing.</p>
+
+<p>One more thing! And this took me a while to track down - I wasn't getting errors but I wasn't getting the results I was expecting. According to the MSDN <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms221479(v=vs.85).aspx">IDispatch::Invoke method (Automation)</a> page, arguments are stored in the DISPPARAMS structure in reverse order. <em>Reverse order!!</em> Why??! Ah, who cares, I'm over it.</p>
+
+<p>So, without further ado, here's an Invoke method that wraps up all of the above code so that any variety of call - method, indexed-or-not property get, indexed-or-not property set - can be made with all of the complications hidden away. If you don't want it to try to cast the return value then specify "object" as the type param. Anything that has a void return type will return null. This throws the named-argument requirement for property-setting into the mix but should be easy enough to follow if you're fine with everything up til now. (Where an indexed property is set, the last value in the args array should be the value to set it to and the preceeding args elements be the property indices).</p>
+
+<pre><code>public static T Invoke&lt;T&gt;(object source, InvokeFlags invokeFlags, int dispId, params object[] args)
+{
+  if (source == null)
+    throw new ArgumentNullException("source");
+  if (!Enum.IsDefined(typeof(InvokeFlags), invokeFlags))
+    throw new ArgumentOutOfRangeException("invokeFlags");
+  if (args == null)
+    throw new ArgumentNullException("args");
+
+  var memoryAllocationsToFree = new List&lt;IntPtr&gt;();
+  IntPtr rgdispidNamedArgs;
+  int cNamedArgs;
+  if (invokeFlags == InvokeFlags.DISPATCH_PROPERTYPUT)
+  {
+    // There must be at least one argument specified; only one if it is a non-indexed property and
+    // multiple if there are index values as well as the value to set to
+    if (args.Length &lt; 1)
+      throw new ArgumentException("At least one argument must be specified for DISPATCH_PROPERTYPUT");
+
+    var pdPutID = Marshal.AllocCoTaskMem(sizeof(Int64));
+    Marshal.WriteInt64(pdPutID, DISPID_PROPERTYPUT);
+    memoryAllocationsToFree.Add(pdPutID);
+
+    rgdispidNamedArgs = pdPutID;
+    cNamedArgs = 1;
+  }
+  else
+  {
+    rgdispidNamedArgs = IntPtr.Zero;
+    cNamedArgs = 0;
+  }
+
+  var variantsToClear = new List&lt;IntPtr&gt;();
+  IntPtr rgvarg;
+  if (args.Length == 0)
+    rgvarg = IntPtr.Zero;
+  else
+  {
+    // We need to allocate enough memory to store a variant for each argument (and then populate this
+    // memory)
+    rgvarg = Marshal.AllocCoTaskMem(SizeOfNativeVariant * args.Length);
+    memoryAllocationsToFree.Add(rgvarg);
+    for (var index = 0; index &lt; args.Length; index++)
+    {
+      // Note: The "IDispatch::Invoke method (Automation)" page
+      // (http://msdn.microsoft.com/en-us/library/windows/desktop/ms221479(v=vs.85).aspx) states that
+      // "Arguments are stored in pDispParams-&gt;rgvarg in reverse order" so we'll reverse them here
+      var arg = args[(args.Length - 1) - index];
+
+      // According to http://stackoverflow.com/a/1866268 it seems like using ToInt64 here will be valid
+      // for both 32 and 64 bit machines. While this may apparently not be the most performant approach,
+      // it should do the job.
+      // Don't think we have to worry about pinning any references when we do this manipulation here
+      // since we are allocating the array in unmanaged memory and so the garbage collector won't be
+      // moving anything around (and GetNativeVariantForObject copies the reference and automatic
+      // pinning will prevent the GC from interfering while this is happening).
+      var pVariant = new IntPtr(
+        rgvarg.ToInt64() + (SizeOfNativeVariant * index)
+      );
+      Marshal.GetNativeVariantForObject(arg, pVariant);
+      variantsToClear.Add(pVariant);
+    }
+  }
+
+  var dispParams = new ComTypes.DISPPARAMS()
+  {
+    cArgs = args.Length,
+    rgvarg = rgvarg,
+    cNamedArgs = cNamedArgs,
+    rgdispidNamedArgs = rgdispidNamedArgs
+  };
+
+  try
+  {
+    var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+    UInt32 pArgErr = 0;
+    object varResult;
+    var excepInfo = new ComTypes.EXCEPINFO();
+    var hrRet = ((IDispatch)source).Invoke
+    (
+      dispId,
+      ref IID_NULL,
+      LOCALE_SYSTEM_DEFAULT,
+      (ushort)invokeFlags,
+      ref dispParams,
+      out varResult,
+      ref excepInfo,
+      out pArgErr
+    );
+    if (hrRet != 0)
+    {
+      var message = "Failing attempting to invoke method with DispId " + dispId + ": ";
+      if ((excepInfo.bstrDescription ?? "").Trim() == "")
+        message += "Unspecified error";
+      else
+        message += excepInfo.bstrDescription;
+      var errorType = GetErrorMessageForHResult(hrRet);
+      if (errorType != CommonErrors.Unknown)
+        message += " [" + errorType.ToString() + "]";
+      throw new ArgumentException(message);
+    }
+    return (T)varResult;
+  }
+  finally
+  {
+    foreach (var variantToClear in variantsToClear)
+      VariantClear(variantToClear);
+
+    foreach (var memoryAllocationToFree in memoryAllocationsToFree)
+      Marshal.FreeCoTaskMem(memoryAllocationToFree);
+  }
+}
+
+public static int GetDispId(object source, string name)
+{
+  if (source == null)
+    throw new ArgumentNullException("source");
+  if (string.IsNullOrEmpty(name))
+    throw new ArgumentNullException("Null/blank name specified");
+
+  // This will be populated with a the DispId of the named member (if available)
+  var rgDispId = new int[1] { 0 };
+  var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+  var hrRet = ((IDispatch)source).GetIDsOfNames
+  (
+    ref IID_NULL,
+    new string[1] { name },
+    1, // number of names to get ids for
+    LOCALE_SYSTEM_DEFAULT,
+    rgDispId
+  );
+  if (hrRet != 0)
+  {
+    var message = "Invalid member \"" + name + "\"";
+    var errorType = GetErrorMessageForHResult(hrRet);
+    if (errorType != CommonErrors.Unknown)
+      message += " [" + errorType.ToString() + "]";
+    throw new ArgumentException(message);
+  }
+  return rgDispId[0];
+}
+
+public enum InvokeFlags : ushort
+{
+  DISPATCH_METHOD = 1,
+  DISPATCH_PROPERTYGET = 2,
+  DISPATCH_PROPERTYPUT = 4
+}
+
+private static CommonErrors GetErrorMessageForHResult(int hrRet)
+{
+  if (Enum.IsDefined(typeof(CommonErrors), hrRet))
+    return (CommonErrors)hrRet;
+
+  return CommonErrors.Unknown;
+}
+
+public enum CommonErrors
+{
+  Unknown = 0,
+
+  // A load of values from http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx
+}
+</code></pre>
+
+<p>Included is a GetDispId method and an "InvokeFlags" enum to wrap up those values. If an error is encountered, it will try to look up the hresult value in an enum that I've trimmed out here but you can find the values at <a href="http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx">http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx</a>.</p>
+
+<h3>A waste of my time?</h3>
+
+<p>It's looking like the environment restriction against using .Net 4 is going to go away (I think it was just me being a bit dense with configuration to be honest but I'm not quite convinced yet!) so I should be able to replace all of this code I was thinking of using with the "dynamic" keyword again.</p>
+
+<p>But it's certainly been interesting getting to the bottom of this, and it's given me a greater appreciation of the "dynamic" implementation! Until now I was under the impression that it did much of what it does with fairly straight forward reflection and some sort of caching for performance. But after looking into this I've looked into it more and realised that it does a lot more, varying its integration method depending upon what it's talking to (like if it's a .Net object, a IDispatch-implementing reference, an Iron Python object and whatever else). I have a much greater respect for it now! :)</p>
+
+<h3>The COMInteraction Project</h3>
+
+<p>One thing it <em>has</em> got me thinking about, though, is the <a href="https://bitbucket.org/DanRoberts/cominteraction">COMInteraction</a> code I wrote. The current code uses reflection and IL generation to sort of force method and property calls onto COM objects, which worked great for the components I was targetting at the time (VBScript WSC components) but which failed when I tried to use it with a Classic ASP Server reference that got passed through the chain. It didn't like the possibly hacky approach I used <em>at all</em>. But it <em>is</em> happy with being called by the Invoke method above since it implements IDispatch. So I'm contemplating now whether I can extend the work to generate different IL depending upon the source type; leaving it using reflection where possible and alternately using IDispatch where reflection won't work but IDispatch may. Sort of like "dynamic" much on a more conservative scale :)</p>
+
+<h3>A little bit more about dynamic's magic</h3>
+
+<p>Now that I understand more about how IDispatch enables the implementing type to be queried it answers a question I've wondered about before: how can the debugger show properties and data for a dynamic reference that's pointing at a COM object? The GetTypeInfo and GetIDsOfNames of the IDispatch interface can expose this information.</p>
+
+<p>There's some example code on this blog post (by the same guy who wrote some of the other posts I linked earlier): <a href="http://limbioliong.wordpress.com/2011/10/18/obtain-type-information-of-idispatch-based-com-objects-from-managed-code/">Obtain Type Information of IDispatch-Based COM Objects from Managed Code.</a>. I've played with it a bit and it looks interesting, but I've not gone any further than his method querying code (he retrieves a list of methods but doesn't examine the arguments that the methods take, for example).</p>
+<p class="PostTime">Posted at 20:54</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/COM.html" title="8 Posts">COM</a></li><li><a href="Archive/Tag/IDispatch.html" title="2 Posts">IDispatch</a></li><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="idispatch-iwastedtimeonthis-but-ilearntlots.html#disqus_thread" data-disqus-identifier="44">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">13 December 2011</h3><h2><a id="Post15"></a><a href="dynamically-applying-interfaces-to-objects.html">Dynamically applying interfaces to objects</a></h2>
+
+<p>Another area of this migration proof-of-concept work I'm doing at the day job involves investigating the best way to swap out a load of COM components for C# versions over time. The plan initially is to define interfaces for them and code against those interfaces, write wrapper classes around the components that implement these interfaces and one day rewrite them one-by-one.</p>
+
+<p>Writing the interfaces is valuable since it enables some documentation-through-comments to be generated for each method and property and forces me to look into the idiosyncracies of the various components.</p>
+
+<p>However, writing endless wrappers for the components to "join" them to the interfaces sounded boring! Even if I used the .Net 4.0 "dynamic" keyword it seemed like there'd be a lot of repitition and opportunity for me to mistype a property name and not realise until debugging / writing tests. (Plus I found a problem that prevented me from using "dynamic" with the WSCs I was wrapping - see the bottom of this post for more details).</p>
+
+<p>I figured this is the sort of thing that should be dynamically generatable from the interfaces instead of writing them all by hand - something like how Moq can create generate Mock&lt;ITest&gt; implementations. I did most of this investigation back in Summer, not long after the AutoMapper work I was looking into, and had hoped I'd be able to leverage my sharpened Linq Expression dynamic code generation skills. Alas, it seems that new classes can not be defined in this manner so I had to go deeper..</p>
+
+<h3>Reflection.Emit</h3>
+
+<p>I was aware that IL could be generated by code at runtime and executed as any other other loaded assembly might be. I'd read (and chuckled at) this article in the past but never taken it any further: <a href="http://www.codeproject.com/Articles/19513/Dynamic-But-Fast-The-Tale-of-Three-Monkeys-A-Wolf">Dynamic... But Fast: The Tale of Three Monkeys, A Wolf and the DynamicMethod and ILGenerator Classes</a></p>
+
+<p>As I tried to find out more information, though, it seemed that a lot of articles would make the point that you could find out how to construct IL by using the IL Disassembler that's part of the .Net SDK: ildasm.exe (located in C:\Program Files\Microsoft SDKs\Windows\v7.0A\bin on my computer). This makes sense because once you start constructing simple classes and examining the generated code in ildasm you can start to get a reasonable idea for how to write the generation code yourself. But it <em>still</em> took me quite a while to get to the point where the following worked!</p>
+
+<p>What I really wanted was something to take, for example:</p>
+
+<pre><code>public interface ITest
+{
+    int GetValue(string id);
+    string Name { get; set; }
+}
+</code></pre>
+
+<p>and wrap an object that had that method and property such that the interface was exposed - eg.</p>
+
+<pre><code>public class TestWrapper : ITest
+{
+  private object _src;
+  public TestWrapper(object src)
+  {
+    if (src == null)
+      throw new ArgumentNullException("src");
+    _src = src;
+  }
+
+  public int GetValue(string id)
+  {
+    return _src.GetType().InvokeMember(
+      "GetValue",
+      BindingFlags.InvokeMethod,
+      null,
+      _src,
+      new object[] { id }
+    );
+  }
+
+  public string Name
+  {
+    get
+    {
+      return _src.GetType().InvokeMember("Name", BindingFlags.GetProperty, null, _src, null)
+    }
+    set
+    {
+      _src.GetType().InvokeMember("Name", BindingFlags.SetProperty, null, _src, new object[] { value });
+    }
+  }
+}
+</code></pre>
+
+<p>It may seem like using reflection will result in there being overhead in the calls but the primary objective was to wrap a load of WSCs in C# interfaces so they could be rewritten later while doing the job for now - so performance wasn't really a massive concern at this point.</p>
+
+<h3>Somewhere to work in</h3>
+
+<p>The first thing to be aware of is that we can't create new classes in the current assembly, we'll have to create them in a new one. So we start off with</p>
+
+<pre><code>var assemblyBuilder = Thread.GetDomain().DefineDynamicAssembly(
+  new AssemblyName("DynamicAssembly"), // This is not a magic string, it can be called anything
+  AssemblyBuilderAccess.Run
+);
+var moduleBuilder = assemblyBuilder.DefineDynamicModule(
+  assemblyBuilder.GetName().Name,
+  false
+);
+
+// This NewGuid call is just to get a unique name for the new construct
+var typeName = "InterfaceApplier" + Guid.NewGuid().ToString();
+var typeBuilder = moduleBuilder.DefineType(
+  typeName,
+  TypeAttributes.Public
+    | TypeAttributes.Class
+    | TypeAttributes.AutoClass
+    | TypeAttributes.AnsiClass
+    | TypeAttributes.BeforeFieldInit
+    | TypeAttributes.AutoLayout,
+  typeof(object),
+  new Type[] { typeof(ITest) }
+);
+</code></pre>
+
+<p>The TypeAttribute values I copied from the ildasm output I examined.</p>
+
+<p>Note that we're specifying ITest as the interface we're implementing by passing it as the "interfaces" parameter to the moduleBuilder's DefineType method.</p>
+
+<h3>The Constructor</h3>
+
+<p>The constructor is fairly straight forward. The thing that took me longest to wrap my head around was how to form the "if (src == null) throw new ArgumentNullException()" construct. If seems that this is most easily done by declaring a label to jump to if src is <strong>not</strong> null which allows execution to leap over the point at which an ArgumentNullException will be raised.</p>
+
+<pre><code>// Declare private _src field
+var srcField = typeBuilder.DefineField("_src", typeof(object), FieldAttributes.Private);
+var ctorBuilder = typeBuilder.DefineConstructor(
+  MethodAttributes.Public,
+  CallingConventions.Standard,
+  new[] { typeof(object) }
+);
+
+// Generate: base.ctor()
+var ilCtor = ctorBuilder.GetILGenerator();
+ilCtor.Emit(OpCodes.Ldarg_0);
+ilCtor.Emit(OpCodes.Call, typeBuilder.BaseType.GetConstructor(Type.EmptyTypes));
+
+// Generate: if (src != null), don't throw new ArgumentException("src")
+var nonNullSrcArgumentLabel = ilCtor.DefineLabel();
+ilCtor.Emit(OpCodes.Ldarg_1);
+ilCtor.Emit(OpCodes.Brtrue, nonNullSrcArgumentLabel);
+ilCtor.Emit(OpCodes.Ldstr, "src");
+ilCtor.Emit(OpCodes.Newobj, typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) }));
+ilCtor.Emit(OpCodes.Throw);
+ilCtor.MarkLabel(nonNullSrcArgumentLabel);
+
+// Generate: _src = src
+ilCtor.Emit(OpCodes.Ldarg_0);
+ilCtor.Emit(OpCodes.Ldarg_1);
+ilCtor.Emit(OpCodes.Stfld, srcField);
+
+// All done!
+ilCtor.Emit(OpCodes.Ret);
+</code></pre>
+
+<h3>Properties</h3>
+
+<p>Although there's only a single property in the ITest example we're looking at, we might as look ahead and loop over <em>all</em> properties the interface has so we can apply the same sort of code to other interfaces. Since we <em>are</em> dealing with interfaces, we only need to consider whether a property is gettable, settable or both - there's no public / internal / protected / private / etc.. to worry about. Likewise, we only have to worry about properties and methods - interfaces can't declare fields.</p>
+
+<pre><code>foreach (var property in typeof(ITest).GetProperties())
+{
+  var methodInfoInvokeMember = typeof(Type).GetMethod(
+    "InvokeMember",
+    new[]
+    {
+      typeof(string),
+      typeof(BindingFlags),
+      typeof(Binder),
+      typeof(object),
+      typeof(object[])
+    }
+  );
+
+  // Prepare the property we'll add get and/or set accessors to
+  var propBuilder = typeBuilder.DefineProperty(
+    property.Name,
+    PropertyAttributes.None,
+    property.PropertyType,
+    Type.EmptyTypes
+  );
+
+  // Define get method, if required
+  if (property.CanRead)
+  {
+    var getFuncBuilder = typeBuilder.DefineMethod(
+      "get_" + property.Name,
+      MethodAttributes.Public
+        | MethodAttributes.HideBySig
+        | MethodAttributes.NewSlot
+        | MethodAttributes.SpecialName
+        | MethodAttributes.Virtual
+        | MethodAttributes.Final,
+      property.PropertyType,
+      Type.EmptyTypes
+    );
+
+    // Generate:
+    //   return _src.GetType().InvokeMember(property.Name, BindingFlags.GetProperty, null, _src, null)
+    var ilGetFunc = getFuncBuilder.GetILGenerator();
+    ilGetFunc.Emit(OpCodes.Ldarg_0);
+    ilGetFunc.Emit(OpCodes.Ldfld, srcField);
+    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
+    ilGetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.GetProperty);
+    ilGetFunc.Emit(OpCodes.Ldnull);
+    ilGetFunc.Emit(OpCodes.Ldarg_0);
+    ilGetFunc.Emit(OpCodes.Ldfld, srcField);
+    ilGetFunc.Emit(OpCodes.Ldnull);
+    ilGetFunc.Emit(OpCodes.Callvirt, methodInfoInvokeMember);
+    if (property.PropertyType.IsValueType)
+      ilGetFunc.Emit(OpCodes.Unbox_Any, property.PropertyType);
+    ilGetFunc.Emit(OpCodes.Ret);
+    propBuilder.SetGetMethod(getFuncBuilder);
+  }
+
+  // Define set method, if required
+  if (property.CanWrite)
+  {
+    var setFuncBuilder = typeBuilder.DefineMethod(
+      "set_" + property.Name,
+      MethodAttributes.Public
+        | MethodAttributes.HideBySig
+        | MethodAttributes.SpecialName
+        | MethodAttributes.Virtual,
+      null,
+      new Type[] { property.PropertyType }
+    );
+    var valueParameter = setFuncBuilder.DefineParameter(1, ParameterAttributes.None, "value");
+    var ilSetFunc = setFuncBuilder.GetILGenerator();
+
+    // Generate:
+    //   _src.GetType().InvokeMember(
+    //     property.Name, BindingFlags.SetProperty, null, _src, new object[1] { value }
+    //   );
+    // Note: Need to declare assignment of local array to pass to InvokeMember (argValues)
+    var argValues = ilSetFunc.DeclareLocal(typeof(object[]));
+    ilSetFunc.Emit(OpCodes.Ldarg_0);
+    ilSetFunc.Emit(OpCodes.Ldfld, srcField);
+    ilSetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilSetFunc.Emit(OpCodes.Ldstr, property.Name);
+    ilSetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.SetProperty);
+    ilSetFunc.Emit(OpCodes.Ldnull);
+    ilSetFunc.Emit(OpCodes.Ldarg_0);
+    ilSetFunc.Emit(OpCodes.Ldfld, srcField);
+    ilSetFunc.Emit(OpCodes.Ldc_I4_1);
+    ilSetFunc.Emit(OpCodes.Newarr, typeof(Object));
+    ilSetFunc.Emit(OpCodes.Stloc_0);
+    ilSetFunc.Emit(OpCodes.Ldloc_0);
+    ilSetFunc.Emit(OpCodes.Ldc_I4_0);
+    ilSetFunc.Emit(OpCodes.Ldarg_1);
+    if (property.PropertyType.IsValueType)
+      ilSetFunc.Emit(OpCodes.Box, property.PropertyType);
+    ilSetFunc.Emit(OpCodes.Stelem_Ref);
+    ilSetFunc.Emit(OpCodes.Ldloc_0);
+    ilSetFunc.Emit(OpCodes.Callvirt, methodInfoInvokeMember);
+    ilSetFunc.Emit(OpCodes.Pop);
+
+    ilSetFunc.Emit(OpCodes.Ret);
+    propBuilder.SetSetMethod(setFuncBuilder);
+  }
+}
+</code></pre>
+
+<p>The gist is that for the getter and/or setter, we have to declare a method and then assign that method to be the GetMethod or SetMethod for the property. The method is named by prefixing the property name with either "get_" or "set_", as is consistent with how C# generates it class properties' IL.</p>
+
+<p>The call to</p>
+
+<pre><code>_src.GetType().InvokeMember(
+  property.Name,
+  BindingFlags.SetProperty,
+  null,
+  _src,
+  new object[] { value }
+);
+</code></pre>
+
+<p>is a bit painful as we have to declare an array with a single element to pass to the method, where that single element is the "value" reference available within the setter.</p>
+
+<p>Also worthy of note is that when returning a ValueType or setting a ValueType. As we're expecting to either return an object or set an object, the value has to be "boxed" otherwise bad things will happen!</p>
+
+<p>Like the TypeAttributes in the Constructor, the MethodAttributes I've applied here were gleaned from looking at IL generated by Visual Studio.</p>
+
+<h3>Methods</h3>
+
+<p>We're on the home stretch now! Methods are very similar to the property setters except that we may have zero, one or multiple parameters to handle and we may or may not (if the return type is void) return a value from the method.</p>
+
+<pre><code>foreach (var method in typeof(ITest).GetMethods())
+{
+  var parameters = method.GetParameters();
+  var parameterTypes = new List&lt;Type&gt;();
+  foreach (var parameter in parameters)
+  {
+    if (parameter.IsOut)
+      throw new ArgumentException("Output parameters are not supported");
+    if (parameter.IsOptional)
+      throw new ArgumentException("Optional parameters are not supported");
+    if (parameter.ParameterType.IsByRef)
+      throw new ArgumentException("Ref parameters are not supported");
+    parameterTypes.Add(parameter.ParameterType);
+  }
+  var funcBuilder = typeBuilder.DefineMethod(
+    method.Name,
+    MethodAttributes.Public
+      | MethodAttributes.HideBySig
+      | MethodAttributes.NewSlot
+      | MethodAttributes.Virtual
+      | MethodAttributes.Final,
+    method.ReturnType,
+    parameterTypes.ToArray()
+  );
+  var ilFunc = funcBuilder.GetILGenerator();
+
+  // Generate: object[] args
+  var argValues = ilFunc.DeclareLocal(typeof(object[]));
+
+  // Generate: args = new object[x]
+  ilFunc.Emit(OpCodes.Ldc_I4, parameters.Length);
+  ilFunc.Emit(OpCodes.Newarr, typeof(Object));
+  ilFunc.Emit(OpCodes.Stloc_0);
+  for (var index = 0; index &lt; parameters.Length; index++)
+  {
+    // Generate: args[n] = ..;
+    var parameter = parameters[index];
+    ilFunc.Emit(OpCodes.Ldloc_0);
+    ilFunc.Emit(OpCodes.Ldc_I4, index);
+    ilFunc.Emit(OpCodes.Ldarg, index + 1);
+    if (parameter.ParameterType.IsValueType)
+      ilFunc.Emit(OpCodes.Box, parameter.ParameterType);
+    ilFunc.Emit(OpCodes.Stelem_Ref);
+  }
+
+  var methodInfoInvokeMember = typeof(Type).GetMethod(
+    "InvokeMember",
+    new[]
+    {
+      typeof(string),
+      typeof(BindingFlags),
+      typeof(Binder),
+      typeof(object),
+      typeof(object[])
+    }
+  );
+
+  // Generate:
+  //   [return] _src.GetType().InvokeMember(method.Name, BindingFlags.InvokeMethod, null, _src, args);
+  ilFunc.Emit(OpCodes.Ldarg_0);
+  ilFunc.Emit(OpCodes.Ldfld, srcField);
+  ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+  ilFunc.Emit(OpCodes.Ldstr, method.Name);
+  ilFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.InvokeMethod);
+  ilFunc.Emit(OpCodes.Ldnull);
+  ilFunc.Emit(OpCodes.Ldarg_0);
+  ilFunc.Emit(OpCodes.Ldfld, srcField);
+  ilFunc.Emit(OpCodes.Ldloc_0);
+  ilFunc.Emit(OpCodes.Callvirt, methodInfoInvokeMember);
+
+  if (method.ReturnType.Equals(typeof(void)))
+    ilFunc.Emit(OpCodes.Pop);
+  else if (method.ReturnType.IsValueType)
+    ilFunc.Emit(OpCodes.Unbox_Any, method.ReturnType);
+
+  ilFunc.Emit(OpCodes.Ret);
+}
+</code></pre>
+
+<p>The boxing of ValueTypes when passed as parameters or returned from the method is required, just like the property accessors.</p>
+
+<p>The only real point of interest here is the array generation for the parameters - this also took me a little while to wrap my head around! You may note that I've been a bit lazy and not supported optional, out or ref parameters - I didn't need these for anything I was working on and didn't feel like diving into it at this point. I'm fairly sure that if they become important features then whipping out ildasm and looking at the generated code there will reveal the best way to proceed with these.</p>
+
+<h3>The payoff!</h3>
+
+<p>Now that we've defined everything about the class, we can instantiate it!</p>
+
+<pre><code>var wrapper = (ITest)Activator.CreateInstance(
+  typeBuilder.CreateType(),
+  src
+);
+</code></pre>
+
+<p>This gives us back an instance of a magic new class that wraps a specified "src" and passes through the ITest properties and methods! If it's applied to an object that doesn't have the required properties and methods then exceptions will be thrown when they are called - the standard exceptions that reflection calls to invalid properties/methods would result in.</p>
+
+<p>But I think that's pretty much enough for this installment - it's been a bit dry but I think it's been worthwhile!</p>
+
+<h3>And then..</h3>
+
+<p>There are a lot of extension points that naturally arise from this rough-from-the-edges code - the first things that spring to my mind are a way to wrap this up nicely into a generic class that could create wrappers for any given interface, a way to handle interface inheritance, a way to possibly wrap the returned values - eg. if we have</p>
+
+<pre><code>public interface ITest
+{
+  IEmployee Get(int id);
+}
+
+public interface IEmployee
+{
+  int Id { get; }
+  string Name { get; }
+}
+</code></pre>
+
+<p>can the method that applies ITest to an object also apply IEmployee to the value returned from ITest.Get if that value itself doesn't already implement IEmployee??</p>
+
+<p>Finally, off the top of my head, if I'm using these generated classes to read interact with WSCs / COM components, am I going to need to pass references over <em>to</em> COM components? If so, I'm going to have to find a way to flag them as ComVisible.</p>
+
+<p>But these are issues to address another time :)</p>
+
+<h3>Footnote: WSC properties and "dynamic"</h3>
+
+<p>The code here doesn't use the .Net 4.0 "dynamic" keyword and so will compile under .Net 2.0. I had a bit of a poke around in the IL generated that makes use of dynamic since in some situations it should offer benefits - often performance is one such benefit! However, in the particularly niche scenario I'm working with it refuses to work :( Most of the components I'm wrapping are legacy VBScript WSCs and trying to set properties on these seems to fail when using dynamic. </p>
+
+<p>I've pulled this example from a test (in xUnit) I wrote to illustrate that there were issues ..</p>
+
+<pre><code>[Fact]
+public void SettingCachePropertyThrowsRuntimeBinderException()
+{
+  // The only way to demonstrate properly is unfortunately by loading an actual wsc - if we used a
+  // standard .Net class as the source then it would work fine
+  var src = Microsoft.VisualBasic.Interaction.GetObject(
+    Path.Combine(
+      new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
+      "TestSrc.wsc"
+    )
+  );
+  var srcWithInterface = new ControlInterfaceApplierUsingDynamic(src);
+
+  // Expect a RuntimeBinderException with message "'System.__ComObject' does not contain a definition
+  // for 'Cache'"
+  Assert.Throws&lt;RuntimeBinderException&gt;(() =&gt;
+  {
+    srcWithInterface.Cache = new NullCache();
+  });
+}
+
+public class ControlInterfaceApplierUsingDynamic : IControl
+{
+  private dynamic _src;
+  public ControlInterfaceApplierUsingDynamic(object src)
+  {
+    if (src == null)
+      throw new ArgumentNullException("src");
+
+    _src = src;
+  }
+
+  public ICache Cache
+  {
+    set
+    {
+      _src.Cache = value;
+    }
+  }
+}
+
+[ComVisible(true)]
+private class NullCache : ICache
+{
+  public object this[string key] { get { return null; } }
+  public void Add(string key, object value, int cacheDurationInSeconds) { }
+  public bool Exists(string key) { return false; }
+  public void Remove(string key) { }
+}
+</code></pre>
+
+<p>The WSC content is as follows:</p>
+
+<pre><code>&lt;?xml version="1.0" ?&gt;
+&lt;?component error="false" debug="false" ?&gt;
+&lt;package&gt;
+  &lt;component id="TestSrc"&gt;
+    &lt;registration progid="TestSrc" description="Test Control" version="1" /&gt;
+    &lt;public&gt;
+      &lt;property name="Config" /&gt;
+    &lt;/public&gt;
+    &lt;script language="VBScript"&gt;
+    &lt;![CDATA[
+      Public Cache
+    ]]&gt;
+    &lt;/script&gt;
+  &lt;/component&gt;
+&lt;/package&gt;
+</code></pre>
+
+<p>I've not been able to get to the bottom of <em>why</em> this fails and it's not exactly a common problem - most people left WSCs back in the depths of time.. along with VBScript! But for the meantime we're stuck with them since the thought of trying to migrate the <em>entire</em> codebase fills me with dread, at least splitting it this way means we can move over piecemeal and re-write isolated components of the code at a time. And then one day the old cruft will have gone! And people will consider the earlier migration code the new "old cruft" and the great cycle can continue!</p>
+
+<p><strong>Update (2nd May 2014):</strong> It turns out that if</p>
+
+<pre><code>var src = Microsoft.VisualBasic.Interaction.GetObject(
+  Path.Combine(
+    new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
+    "TestSrc.wsc"
+  )
+);
+</code></pre>
+
+<p>is altered to read</p>
+
+<pre><code>var src = Microsoft.VisualBasic.Interaction.GetObject(
+  "script:"
+  Path.Combine(
+    new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
+    "TestSrc.wsc"
+  )
+);
+</code></pre>
+
+<p>then this test will pass! I'll leave the content here for posterity but it struck me while flipping through this old post that I had seen and addressed this problem since writing this.</p>
+<p class="PostTime">Posted at 22:01</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/COM.html" title="8 Posts">COM</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="dynamically-applying-interfaces-to-objects.html#disqus_thread" data-disqus-identifier="15">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">27 August 2011</h3><h2><a id="Post9"></a><a href="impersonating-the-asp-request-object.html">Impersonating the ASP Request Object</a></h2>
+
+<p>I've got something coming up at work soon where we're hoping to migrate some internal web software from VBScript ASP to .Net, largely for performance reasons. The basic structure is that there's an ASP "Engine" running which instantiates and renders Controls that are VBScript WSC components. The initial task is going to be to try to replace the main Engine code and work with the existing Controls - this architecture give us the flexibility to migrate in this manner, rather than having to try to attack the entire codebase all at once. References are passed into the WSC Controls for various elements of the Engine but also for ASP objects such as Request and Response.</p>
+
+<p>The problem comes with the use of the Request object. I want to be able to swap it out for a .Net COM component since access to the ASP Request object won't be available when the Engine is running in .Net. But the Request collections (Form, QueryString and ServerVariables) have a variety of access methods that are not particular easy to replicate -</p>
+
+<pre><code>' Returns the full QueryString content (url-encoded), 
+Request.QueryString
+
+Request.QueryString.Count
+Request.QueryString.Keys.Count
+
+' Loops over the keys in the collections
+For .. in Request.QueryString
+For .. in Request.QueryString.Keys
+
+' Returns a string containing values for the specified key (comma-separated)
+Request.QueryString(key) 
+Request.QueryString.Item(key) 
+
+' Loops over the values for the specified key
+For Each .. In Request.QueryString(key)
+For Each .. In Request.QueryString.Item(key)
+</code></pre>
+
+<h3>Approaches</h3>
+
+<p>In the past I've made a few attempts at attacking this before -</p>
+
+<p>First trying a VBScript wrapper to take advantage of VBScript's Default properties and methods. But it doesn't seem possible to create a collection in VBScript that the For.. Each construct can work over.</p>
+
+<p>Another time I tried a Javascript wrapper - a returned array can be enumerate with For.. Each and I thought I might be able to add methods of properties to the returned array for the default properties, but these were returned in the keys when enumerated.</p>
+
+<p>I've previously tried to write a COM component but was unable to construct classes that would be accessible by all the above examples. This exact problem is described in a thread on StackOverflow and I thought that one of the answers would solve my problem by returning different data depending upon whether a key was supplied: <a href="http://stackoverflow.com/questions/317759/why-is-the-indexer-on-my-net-component-not-always-accessible-from-vbscript/1539519#1539519">here</a>.</p>
+
+<p>Hooray!</p>
+
+<p>Actually, no. I tried using that code and couldn't get it to work as advertised - getting a COM exception when trying to access QueryString without a key.</p>
+
+<p><em>However</em>, further down in that thread (<a href="http://stackoverflow.com/questions/317759/why-is-the-indexer-on-my-net-component-not-always-accessible-from-vbscript/4124031#4124031">here</a>) there's another suggestion - to implement IReflect. Not an interface I was familiar with..</p>
+
+<h3>IReflect</h3>
+
+<p>It turns out writing a class that implements IReflect and specifies ClassInterface(ClassInterfaceType.AutoDispatch) will enable us to handle all querying and invoking of the class interface from COM! The AutoDispatch value, as I understand it (and I'm far from an authority on this!), prevents the class from being used in any manner other than late binding as it doesn't publish any interface data in a type library - callers must always query the object for method, property, etc.. accessibility. And this will enable us to intercept this queries and invoke requests and handle as we see fit.</p>
+
+<p>It turns out that we don't even really have to do anything particularly fancy with the requests, and can pass them straight through to a .Net object that has method signatures with different number of parameters (which ordinarily we can't do through a COM interface).</p>
+
+<p>A cut down version of the code I've ended up with will demonstate:</p>
+
+<pre><code>// This doesn't need to be ComVisible since we're never returning an instance of it through COM, only
+// one wrapped in a LateBindingComWrapper
+public class RequestImpersonator
+{
+    public RequestDictionary Querystring()
+    {
+      // Return a reference to the whole RequestDictionary if no key specified
+    }
+    public RequestStringList Querystring(string key)
+    {
+      // Return data for the particular key, if one is specified
+    }
+
+    // .. code for Form, ServerVariables, etc..
+
+}
+
+[ClassInterface(ClassInterfaceType.AutoDispatch)]
+[ComVisible(true)]
+public class LateBindingComWrapper : IReflect
+{
+    private object _target;
+    public LateBindingComWrapper(object target)
+    {
+      if (target == null)
+        throw new ArgumentNullException("target");
+      _target = target;
+    }
+
+    public Type UnderlyingSystemType
+    {
+      get { return _target.GetType().UnderlyingSystemType; }
+    }
+
+    public object InvokeMember(
+      string name,
+      BindingFlags invokeAttr,
+      Binder binder,
+      object target,
+      object[] args,
+      ParameterModifier[] modifiers,
+      CultureInfo culture,
+      string[] namedParameters)
+    {
+      return _target.GetType().InvokeMember(
+        name,
+        invokeAttr,
+        binder,
+        _target,
+        args,
+        modifiers,
+        culture,
+        namedParameters
+      );
+    }
+
+    public MethodInfo GetMethod(string name, BindingFlags bindingAttr)
+    {
+      return _target.GetType().GetMethod(name, bindingAttr);
+    }
+
+    public MethodInfo GetMethod(
+      string name,
+      BindingFlags bindingAttr,
+      Binder binder,
+      Type[] types,
+      ParameterModifier[] modifiers)
+    {
+      return _target.GetType().GetMethod(name, bindingAttr, binder, types, modifiers);
+    }
+
+    public MethodInfo[] GetMethods(BindingFlags bindingAttr)
+    {
+      return _target.GetType().GetMethods();
+    }
+
+    // .. Other IReflect methods for fields, members and properties
+
+}
+</code></pre>
+
+<p>If we pass a RequestImpersonator-wrapping LateBindingComWrapper reference that wraps one of the WSC Controls as its Request reference then we've got over the problem with the optional key parameter and we're well on our way to a solution!</p>
+
+<p>RequestDictionary is enumerable for VBScript and exposes a Keys property which is a self-reference so that "For Each .. In Request.QueryString" and "For Each .. In Request.QueryString.Keys" constructs are possible. It also has a default GetSummary method which returns the entire querystring content (url-encoded). The enumerated values are RequestStringList instances which are in turn enumerable so that "For Each .. In Request.QueryString(key)" is possible but <em>also</em> have a default property which combines the values into a single (comma-separated) string.</p>
+
+<h3>VBScript Enumeration</h3>
+
+<p>I spent a lot of time trying to ascertain what exactly was required for a class to be enumerable by VBScript - implementing Generic.IEnumerable and/or IEnumerable didn't work, returning an ArrayList <em>did</em> work, implementing ICollection <em>did</em> work. Now I thought I was on to something! After looking into which methods and properties were actually being used by the COM interaction, it seemed that only "IEnumerator GetEnumerator()" and "int Count" were called. So I started off with:</p>
+
+<pre><code>[ComVisible(true)]
+public class RequestStringList
+{
+    private List&lt;string&gt; _values;
+
+    // ..
+
+    [DispId(-4)]
+    public IEnumerator GetEnumerator()
+    {
+        return _values.GetEnumerator();
+    }
+    public int Count
+    {
+        get { return _values.Count; }
+    }
+}
+</code></pre>
+
+<p>which worked great.</p>
+
+<p>This concept of Dispatch Ids (DispId) was ringing a vague bell from some VB6 component work I'd done the best part of a decade ago but not really encountered much since. These Dispatch Ids identify particular functions in a COM interface with zero and below having secret special Microsoft meanings. Zero would be default and -4 was to do with enumeration, so I guess this explains why there is a [DispId(-4)] attribute on GetEnumerator in IEnumerable.</p>
+
+<p><em>However</em>, .. RequestStringList also works if we DON'T include the [DispId(-4)] and try to enumerate over it. To be completely honest, I'm not sure what's going on with that. I'm not sure if the VBScript approach to the enumeration is performing some special check to request the GetEnumerator method by name rather than specific Dispatch Id.</p>
+
+<p>On a side note, I optimistically wondered if I could create an enumerable class in VBScript by exposing a GetEnumerator method and Count property (implementing an Enumerator class matching .Net's IEnumerator interface).. but VBScript was having none of it, giving me the "object not a collection" error. Oh well; no harm, no foul.</p>
+
+<h3>More Dispatch Id Confusion</h3>
+
+<p>As mentioned above, RequestDictionary and RequestStringList have default values on them. The would ordinarily be done with a method or property with Dispatch Id of zero. But again, VBScript seems to have its own special cases - if a method or property is named "Value" then this will be used as the default even if it doesn't have DispId(0) specified.</p>
+
+<h3>Limitations</h3>
+
+<p>I wrote this to try to solve a very specific problem, to create a COM component that could be passed to a VBScript WSC Control that would appear to mimic the ASP Request object's interface. And while I'm happy with the solution, it's not perfect - the RequestDictionary and RequestStringList classes are not enumerable from Javascript in a "for (var .. in ..)" construct. I've not looked into why this this or how easy (or not!) it would be to solve since it's not imporant for my purposes.</p>
+
+<p>One thing I did do after the bulk of the work was done, though, was to add some managed interfaces to RequestDictionary, RequestStringList and RequestImpersonatorCom which enabled managed code to access the data in a sensible manner. Adding classes to RequestImpersonatorCom has no effect on the COM side since all of the invoke calls are performed against the RequestImpersonator that's wrapped up in the LateBindingComWrapper.</p>
+
+<h3>Success!</h3>
+
+<p>After the various attempts I've made at looking into this over the years, I'm delighted that I've got a workable solution that integrates nicely with both VBScript <em>and</em> the managed side (though the latter was definitely a bonus more than an original requirement). The curent code can be found on GitHub at: <a href="https://github.com/ProductiveRage/ASPRequestImpersonator">https://github.com/ProductiveRage/ASPRequestImpersonator</a>.</p>
+<p class="PostTime">Posted at 10:20</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/COM.html" title="8 Posts">COM</a></li><li><a href="Archive/Tag/VBScript.html" title="8 Posts">VBScript</a></li></ul></div>
+						<p class="Comments">
+							<a href="impersonating-the-asp-request-object.html#disqus_thread" data-disqus-identifier="9">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

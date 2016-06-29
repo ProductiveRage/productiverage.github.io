@@ -1,0 +1,2984 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - AutoMapper</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">27 February 2014</h3><h2><a id="Post68"></a><a href="entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable.html">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></h2>
+
+<p>Last month I was looking back into one of my old projects that was inspired by AutoMapper but for mapping to immutable types - those that are initialised by a single constructor call, rather than by setting properties on a mutable type (see <a href="reflection-and-c-sharp-optional-constructor-arguments.html">Bonus provocative headline: Like AutoMapper, but 100x faster</a>). I had a fairly good idea of what scenarios I wanted to use it in and  had no intention of replicating the entire wide range of functionality that AutoMapper supports. However, something I <em>was</em> particularly taken with was the recently(ish) added support for LINQ auto-projections.</p>
+
+<p>Projections are when data is retrieved from an <strong>IQueryable</strong> source by translating the required properties onto either a particular class or an anonymous type - eg.</p>
+
+<pre><code>using (var context = new AlbumDataEntities())
+{
+  var albums = context.Albums
+    .Select(album =&gt; new {
+      Key = album.AlbumKey,
+      Name = album.Name
+    });
+</code></pre>
+
+<p>The clever thing about <strong>IQueryable</strong> and these projections is that the data source (Entity Framework, for example) can construct a query to retrieve only the data required; only the data that is needed to map those projected properties.</p>
+
+<p><em>Auto-projection</em> means that, if the mappings follow naming conventions, AutoMapper will pull over all of the properties' values by magic. Meaning you don't have to write the boring Key = album.AlbumKey, Name = album.Name code for each property in a mapping.</p>
+
+<h3>IQueryable vs IEnumerable</h3>
+
+<p>The <strong>IEnumerable</strong> type in .net allows for lazy initialisation such that data is only processed as it is requested. For a really simple example, the following code starts off with a data "source" that will generate up to ten million objects, returned as an enumerable set. On this we call Take(5), which returns another enumerable set that will only enumerate the first five items. Until ToArray is called, none of the data is actually delivered and none of the objects are createad. Even when ToArray <em>is</em> called, only five of the source objects are actually initialised as that is how many are actually required - the remaining 9,999,995 objects that <em>could</em> have been created are not since they are not required. Lazy evaulation in action!</p>
+
+<pre><code>var fiveItemsFromLargeEnumerableRange =
+  Enumerable.Range(1, 10000000).Select(i =&gt; new { Name = "Item" + i })
+    .Take(5)
+    .ToArray();
+</code></pre>
+
+<p><strong>IEnumerable</strong> can be thought to operate on in-memory data sets. The data <em>itself</em> may not originate from an in-memory source. Above it does, but the source could also be something delivering lines from a log file or rows from a database. Each entry in the data, though, is fully loaded when required and then processed in memory. Although each entity is only loaded when required, if the loading of each entity is expensive and only a subset of its data is required for the operation at hand, then even this form of lazy evaluation can become a burden. <strong>IEnumerable</strong> sets do not inherently expose a way to "partially load" the entities.</p>
+
+<p>It's worth noting at this point that many ORMs (including Entity Framework) support "lazy loading" of data for child properties to try to address this very point; the data for the properties of the returned objects is not loaded until the properties are accessed. At this point the database (or whatever data source is being used) is hit <em>again</em> to retrieve this information. The downside to this is that the data that <em>is</em> accessed may require multiple database hits for each entity when only a single query may have been required if "eagerly" loading all of the data for the entity. But if "eager loading" is used and only a subset of the data is required then <em>too much</em> data was being pulled down!</p>
+
+<p><strong>IQueryable</strong> sets have similar intentions to <strong>IEnumerable</strong> but a different approach, they are more tightly tied to the data source. Where <strong>IEnumerable</strong> sets may be considered to be in-memory (for each entity), <strong>IQueryable</strong> sets are all prepared in the data source and only the data that is required for each entity is returned.</p>
+
+<p>To illustrate with an example, say we have data about albums. There's an Albums table with AlbumKey, Name, Year and ArtistKey fields. There's a Tracks table with TrackKey, AlbumKey, TrackNumber and Name fields. And there's an Artists table with fields ArtistKey and Name.</p>
+
+<p>If I point Entity Framework at this then it will generate a model to dip into all this data. The simplest retrieval is probably for all Album names -</p>
+
+<pre><code>using (var context = new AlbumDataEntities())
+{
+  var allAlbumNames = context.Albums
+    .Select(album =&gt; album.Name)
+    .OrderBy(name =&gt; name);
+
+  // Calling ToString on an Entity Framework IQueryable pointing at a SQL database
+  // returns the SQL that will be executed to perform the query
+  var allAlbumNamesQuery = allAlbumNames.ToString();
+  var allAlbumNamesResults = allAlbumNames.ToArray();
+
+  Console.WriteLine("Query:");
+  Console.WriteLine(allAlbumNamesQuery);
+  Console.WriteLine();
+
+  Console.WriteLine("Results:");
+  Console.WriteLine(string.Join(Environment.NewLine, allAlbumNamesResults));
+}
+</code></pre>
+
+<p>This shows that the SQL executed was</p>
+
+<pre><code>SELECT 
+  [Extent1].[Name] AS [Name]
+  FROM [dbo].[Albums] AS [Extent1]
+  ORDER BY [Extent1].[Name] ASC
+</code></pre>
+
+<p>Which is pretty much what you would hope for.. but clever when you think about it. It's done some analysis of the request we've described and realised that it only needs to consider one particular column from that one table, even though it's all configured to do so much more.</p>
+
+<p>If instead we request </p>
+
+<pre><code>var allCombinedAlbumAndTrackNames = context.Albums
+  .SelectMany(album =&gt; album.Tracks.Select(track =&gt; new {
+    AlbumName = album.Name,
+    TrackName = track.Name,
+    TrackNumber = track.TrackNumber
+  }))
+  .OrderBy(combinedEntry =&gt; combinedEntry.AlbumName)
+  .ThenBy(combinedEntry =&gt; combinedEntry.TrackNumber)
+  .Select(combinedEntry =&gt; combinedEntry.AlbumName + "/" + combinedEntry.TrackName);
+</code></pre>
+
+<p>then the following SQL is executed:</p>
+
+<pre><code>SELECT 
+  [Project1].[C1] AS [C1]
+  FROM ( SELECT 
+    [Extent1].[Name] + N'/' + [Extent2].[Name] AS [C1], 
+    [Extent1].[Name] AS [Name], 
+    [Extent2].[TrackNumber] AS [TrackNumber]
+    FROM  [dbo].[Albums] AS [Extent1]
+    INNER JOIN [dbo].[Tracks] AS [Extent2]
+    ON [Extent1].[AlbumKey] = [Extent2].[AlbumKey]
+  )  AS [Project1]
+  ORDER BY [Project1].[Name] ASC, [Project1].[TrackNumber] ASC
+</code></pre>
+
+<p>This was not such a simple translation to make - this query got mapped into an interim anonymous type, there are multiple sorts and the final values are constructucted by concatenating two of the fields in the interim type.</p>
+
+<p>One more, for fun..</p>
+
+<pre><code>var namesOfTheFiveAlbumsWithTheGreatestNumberOfTracks = context.Albums
+  .OrderByDescending(album =&gt; album.Tracks.Count())
+  .Select(album =&gt; album.Name)
+  .Take(5);
+</code></pre>
+
+<p>results in:</p>
+
+<pre><code>SELECT TOP (5)
+  [Project1].[Name] AS [Name]
+  FROM ( SELECT 
+    [Extent1].[Name] AS [Name], 
+    (SELECT 
+      COUNT(1) AS [A1]
+      FROM [dbo].[Tracks] AS [Extent2]
+      WHERE [Extent1].[AlbumKey] = [Extent2].[AlbumKey]) AS [C1]
+    FROM [dbo].[Albums] AS [Extent1]
+  )  AS [Project1]
+  ORDER BY [Project1].[C1] DESC
+</code></pre>
+
+<p>This has not only performed an aggregate operation (by considering the number of Tracks per Album) but has also incorporated the "Take(5)" into the query. It is not possible for this query to return more than five results from the database. This is another example of how the request is translated into something handled by the data source that ensures that it can deliver the bare minimum data. Were the "Take(5)" call not translated into part of the query then potentially more data would be returned than necessary. The first five results could be isolated in a similar "in-memory" operation to that in the 1,000,000 item <strong>IEnumerable</strong> example earlier, but it wouldn't be as efficient to do so.</p>
+
+<p>So <em>all</em> of these demonstrate various ways in which <strong>IQueryable</strong> ensures that the minimum amount of data required is transmitted from the data source. None of them even touch the Artists table since none of the requests asked for Artist data! The <strong>IQueryable</strong> implementation is what performs this magic, whether that be Entity Framework, NHibernate, SubSonic or whatever - it is responsible for translating expressions into SQL (or whatever language the backing data source uses; it could be another SQL-like database or it could be a document database such as <a href="http://www.mongodb.org/">MongoDB</a>).</p>
+
+<h3>Applying this to mappings</h3>
+
+<p>In the above examples, ToArray() was used to force the retrieval / evaluation of the information. This could just as easily have been a call to ToList() or been a loop that enumerated through the data.</p>
+
+<p>With <strong>IEnumerable</strong> sets, the source data is not run through until it is explicitly enumerated. With <strong>IQueryable</strong>, the data is not retrieved from the source until the <strong>IQueryable</strong> reference is treated as an <strong>IEnumerable</strong>. This is possible since <strong>IQueryable</strong> implements <strong>IEnumerable</strong> and so any method that can operate on <strong>IEnumerable</strong> may also operate on <strong>IQueryable</strong>. But what's important here is that as soon as this is done, the <strong>IQueryable</strong> reference will then "become" an <strong>IEnumerable</strong> reference and the underlying data request will have been made in order for this to happen.</p>
+
+<p>The clever thing above, where the "Take(5)" method resulted in "SELECT TOP (5)" becoming part of the SQL query, comes about as LINQ has a load of extension methods for operating against <strong>IQueryable</strong> as well <strong>IEnumerable</strong> - so as well as</p>
+
+<pre><code>public static IEnumerable&lt;TSource&gt; Take&lt;TSource&gt;(
+  this IEnumerable&lt;TSource&gt; source,
+  int count
+);
+</code></pre>
+
+<p>there is also</p>
+
+<pre><code>public static IQueryable&lt;TSource&gt; Take&lt;TSource&gt;(
+  this IQueryable&lt;TSource&gt; source,
+  int count
+);
+</code></pre>
+
+<p>The latter ensures that an <strong>IQueryable</strong> <em>remains</em> as an IQueryable and so postpones its evaluation.</p>
+
+<p>By the way, I <em>am</em> finally approaching the point of this post now, so bear with me! :)</p>
+
+<p>The LINQ "Select" extension method similarly has alternative method signatures. The more common version is</p>
+
+<pre><code>public static IEnumerable&lt;TResult&gt; Select&lt;TSource, TResult&gt;(
+  this IEnumerable&lt;TSource&gt; source,
+  Func&lt;TSource, TResult&gt; selector
+);
+</code></pre>
+
+<p>where a particular transformation is performed upon each item in a <strong>IEnumerable</strong> set.</p>
+
+<p>But there is a corresponding signature</p>
+
+<pre><code>public static IQueryable&lt;TResult&gt; Select&lt;TSource, TResult&gt;(
+  this IQueryable&lt;TSource&gt; source,
+  Expression&lt;Func&lt;TSource, TResult&gt;&gt; selector
+);
+</code></pre>
+
+<p>where an <strong>Expression</strong> will be translated by the <strong>IQueryable</strong> provider into the language of the underlying data source (but since the <strong>IQueryable</strong> reference remains as an <strong>IQueryable</strong> this translation won't happen <em>yet</em>).</p>
+
+<p>The difference between <strong>Expression&lt;Func&lt;TSource, TResult&gt;&gt;</strong> and <strong>Func&lt;TSource, TResult&gt;</strong> is subtle but important. The compiler is clever enough that often you needn't even be aware that you're passing an <strong>Expression</strong>. Above we were performing various manipulations (such as wrapping data up in anonymous types and combining fields with string concatenation) without having to think about it. But if we tried to do something like</p>
+
+<pre><code>var nextId = 0;
+var allAlbumNamesWithExternallGeneratedIds = context.Albums
+  .Select(album =&gt; new { Name = album.Name, Id = ++nextId })
+  .OrderBy(name =&gt; name);
+</code></pre>
+
+<p>we'd get a compiler error</p>
+
+<blockquote>
+  <p>An expression tree may not contain an assignment operator</p>
+</blockquote>
+
+<p>So, unfortunately, it's not just any old lambda (aka anonymous function) that can be translated into an <strong>Expression</strong>. A different problem is encountered if we attempt to use AutoMapper to process the data - eg.</p>
+
+<pre><code>Mapper.CreateMap&lt;Album, AlbumStub&gt;();
+var allAlbumKeyAndNames = context.Albums
+  .Select(album =&gt; Mapper.Map&lt;Album, AlbumStub&gt;(album))
+  .OrderBy(name =&gt; name);
+</code></pre>
+
+<p>where the target class is</p>
+
+<pre><code>public class AlbumStub
+{
+  public int AlbumKey { get; set; }
+  public string Name { get; set; }
+}
+</code></pre>
+
+<p>This will result in a <strong>NotSupportedException</strong> being raised by Entity Framework with the following message:</p>
+
+<blockquote>
+  <p>LINQ to Entities does not recognize the method 'AlbumStub Map[Album,AlbumStub](ProjectionExamples.AlbumStub)' method, and this method cannot be translated into a store expression.</p>
+</blockquote>
+
+<p>What has happened here is that the compiler has recognised</p>
+
+<pre><code>album =&gt; Mapper.Map&lt;Album, AlbumStub&gt;(album)
+</code></pre>
+
+<p>as a valid <strong>Expression</strong> but when the query provider has tried to work its magic and translate it into SQL, it doesn't know what to do.</p>
+
+<p>We could try a different approach and call:</p>
+
+<pre><code>Mapper.CreateMap&lt;Album, AlbumStub&gt;();
+var allAlbumKeyAndNames = context.Albums
+  .Select(Mapper.Map&lt;Album, AlbumStub&gt;)
+  .OrderBy(name =&gt; name);
+</code></pre>
+
+<p>But here the Select method that has been called is the Select method that works against <strong>IEnumerable</strong> and so all of the data in the <em>context.Albums</em> object graph has been evaluated. Even though we only want the Album Keys and Names, <em>all</em> of the Album, Track and Artist data has been retrieved. At the point at which the <strong>IQueryable</strong> was forced into operating as an <strong>IEnumerable</strong> it had to be evaluated, and the provider is given no way way of knowing that only the Album Keys and Names are required. What a waste!</p>
+
+<p>(Incidentally, exactly the same problem was being exhibited by my "<a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">Compiler Type Converter</a>" code, this isn't something particular to AutoMapper).</p>
+
+<p>But back in February 2011, the author of AutoMapper wrote an article talking about this and how he'd been doing some work to improve the situation (<a href="http://lostechies.com/jimmybogard/2011/02/09/autoprojecting-linq-queries/">Autoprojecting LINQ queries</a>). I believe that it became a standard part of the library in the August 2013 3.0 release (according to the <a href="https://github.com/AutoMapper/AutoMapper/releases/tag/v3.0.0">GitHub Release Notes</a>).</p>
+
+<p>The way it works is by adding some extension methods for <strong>IQueryable</strong> that work with AutoMapper. The above example now becomes:</p>
+
+<pre><code>Mapper.CreateMap&lt;Album, AlbumStub&gt;();
+var allAlbumKeyAndNames = context.Albums
+  .OrderBy(name =&gt; name);
+  .Project().To&lt;AlbumStub&gt;();
+</code></pre>
+
+<p>The ".Project().To&lt;AlbumStub&gt;()" converts the <strong>IQueryable</strong> set into an <strong>IEnumerable</strong> but it does so in such a manner that only the minimum data is requested from the data source. So in this example, there will be no joins to the Tracks or Artists tables, nor will the ArtistKey field of the Album table even be mentioned in the underlying query! The "OrderBy" call is moved up so that it operates against the <strong>IQueryable</strong> and can be performed by SQL rather than retrieving the data from the db and having to sort it in-memory (which is what would happen if OrderBy was called after Project..To since it would be operating against an <strong>IEnumerable</strong> reference rather than an <strong>IQueryable</strong>).</p>
+
+<p>There are some limitations to the projections that can be performed (which are documented in the AutoMapper GitHub wiki page <a href="https://github.com/AutoMapper/AutoMapper/wiki/Queryable-Extensions">Queryable Extensions</a>). One problem that I found early on is that, while with <strong>IEnumerable</strong> mappings you could map to an immutable type such as</p>
+
+<pre><code>public class ImmutableAlbumStub
+{
+  public ImmutableAlbumStub(int albumKey, string name)
+  {
+    if (string.IsNullOrWhiteSpace(name))
+      throw new ArgumentException("Null/blank name specified");
+    AlbumKey = albumKey;
+    Name = name;
+  }
+  public int AlbumKey { get; private set; }
+  public string Name { get; private set; }
+}
+</code></pre>
+
+<p>by using</p>
+
+<pre><code>Mapper.CreateMap&lt;Album, ImmutableAlbumStub&gt;()
+  .ConstructUsing(a =&gt; new ImmutableAlbumStub(a.AlbumKey, a.Name));
+</code></pre>
+
+<p>if you attempt this using this mapping with Project..To results you'll receive an <strong>ArgumentException</strong> with the message</p>
+
+<blockquote>
+  <p>'ProjectionExamples.ImmutableAlbumStub' does not have a default constructor</p>
+</blockquote>
+
+<p>Hmm. Bummer.</p>
+
+<p>But, on the whole, I thought that this general "autoprojecting" thing was an awesome idea! And one that I wanted to steal (er.. I mean incorporate into my own code :)</p>
+
+<h3>Auto-Projecting to Immutable Types (with the Compilable Type Converter)</h3>
+
+<p>At its core, the problem is that we need to be able to provide <strong>Expression</strong>-based type converters that we can use with the <strong>IQueryable</strong>-based extension methods. Being able to do this will allow the <strong>IQueryable</strong> provider to analyse the <strong>Expressions</strong> and retrieve the bare minimum data required to satisfy the operation. I figured that this would be a walk in the park since the <strong>ICompilableTypeConverter</strong> is all about this - that's what enables its conversions to be compiled and be so fast!</p>
+
+<p>Unfortunately, the very idea of analysing arbitrary expressions and translating them into SQL (or whatever) is a complex matter and, since this translation is handled by the query provider, it may vary from one provider to another. So far I've only tested this with Entity Framework and it's Entity Framework's limitations that I've encountered and worked with / around.</p>
+
+<p>The first problem is to do with the handling of null values. If we continue with the album data model and imagine that it's actually optional to assign an artist to an album, then in such a case there would be a null ArtistKey on the Album database record. This would mean that the Artist property on the corresponding instance of the Entity-Framework-generated class would also be null. But if I try to map this onto another type structure such as with</p>
+
+<pre><code>var albumsWithArtists = context.Albums
+  .Select(a =&gt; new {
+    Name = a.Name,
+    Artist = (a.Artist == null) ? null : new { Name = a.Artist.Name }
+  });
+</code></pre>
+
+<p>then we get another <strong>NotSupportedException</strong> as soon as the data is evaluated, this time with the message</p>
+
+<blockquote>
+  <p>Unable to create a null constant value of type 'Anonymous type'. Only entity types, enumeration types or primitive types are supported in this context.</p>
+</blockquote>
+
+<p>Unfortunately, this is - broadly speaking - what happens in the type converters that my code generates. And something similar happens with properties that are enumerable. The Tracks property, for example:</p>
+
+<pre><code>var albumsWithTrackNames = context.Albums
+  .Select(a =&gt; new {
+    Name = a.Name,
+    TrackNames = (a.Tracks == null) ? null : a.Tracks.Select(t =&gt; t.Name)
+  });
+</code></pre>
+
+<blockquote>
+  <p>Cannot compare elements of type 'System.Collections.Generic.ICollection`1[[ProjectionExamples.Album, ProjectionExamples, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'. Only primitive types, enumeration types and entity types are supported.</p>
+</blockquote>
+
+<p>This second one doesn't seem all that unreasonable from Entity Framework's side; if there are no tracks associated with an album then an empty Tracks list would be recorded against an <strong>Album</strong> instance, not a null Tracks reference. Unfortunately my conversion methods <em>don't</em> assume this and just performing this null checking makes Entity Framework throw its toys out of the pram. We can't even check for nulls and then resort to a default empty array -</p>
+
+<pre><code>var albumsWithTrackNames = context.Albums
+  .Select(a =&gt; new {
+    Name = a.Name,
+    TrackNames = (a.Tracks == null) ? new string[0] : a.Tracks.Select(t =&gt; t.Name)
+  });
+</code></pre>
+
+<p>as that will result in the same error.</p>
+
+<p>And then, the killer:</p>
+
+<pre><code>var albumsAsImmutableTypes = context.Albums
+  .Select(a =&gt; new ImmutableAlbum(a.AlbumKey, a.Name));
+</code></pre>
+
+<p>This results in a <strong>NotSupportedException</strong> with the message</p>
+
+<blockquote>
+  <p>Only parameterless constructors and initializers are supported in LINQ to Entities.</p>
+</blockquote>
+
+<p>Oh dear.</p>
+
+<p>Soooooo...</p>
+
+<p>The approach I took to address this was two-fold. First, assume that all lists will be empty if there is no data for them and so assume that lists will never be null. Second, perform two mappings for each translation. Firstly to interim objects that have only the required properties, this is done while dealing with <strong>IQueryable</strong> data. And <em>then</em> map these interim types to the real destination objects, this is done after pushing the interim results into an <strong>IEnumerable</strong> set so that the limitations of the query provider no longer apply. The interim objects all have an "is-initialised" property on them so that if the source object is null then it can be mapped to an interim object with its "is-initialised" flag set to false, otherwise the flag will be set to true. When the interim types are mapped to the destination types, instances with "is-initialised" set to false will be mapped to null references.</p>
+
+<p>This means that only the minimum required data will be retrieved but that the data may be mapped to immutable objects <em>and</em> that Entity Framework's awkward behaviour around nulls can be side-stepped. It's a bit like an automated version of</p>
+
+<pre><code>var albumsAsImmutableTypes = context.Albums
+  .Select(a =&gt; (a == null) ? new { AlbumKey = a.AlbumKey, Name = a.Name })
+  .AsEnumerable()
+  .Select(a =&gt; new ImmutableAlbumStub(a.AlbumKey, a.Name));
+</code></pre>
+
+<p>but without having to write that interim mapping by hand.</p>
+
+<p>When building the mappings, first an "ideal mapping" is generated from the source types (the Entity Framework types) to the destination types (the <strong>ImmutableAlbumStub</strong>). This will never be used directly but performing this work reveals what property mappings are required and allows the interim types to be constructed to expose only the minimum required data.</p>
+
+<p>Since there is an overhead to performing this work (when not dealing with <strong>IQueryable</strong> data the "ideal mapping" is fine to use and none of this extra work is required) and since there are some tweaks to behaviour (such as the assumption that enumerable sets will never be null), I created a separate static class to use, the <strong>ProjectionConverter</strong>. It works as follows (this example includes a mapping of nested types so that it's not as simple as the album "stub" example above):</p>
+
+<pre><code>ProjectionConverter.CreateMap&lt;Track, ImmutableTrack&gt;();
+ProjectionConverter.CreateMap&lt;Album, ImmutableAlbum&gt;();
+using (var context = new ProjectionTestEntities1())
+{
+  var albumsWithTrackListings = context.Albums
+    .Project().To&lt;ImmutableAlbum&gt;();
+</code></pre>
+
+<p>The target classes are:</p>
+
+<pre><code>public class ImmutableAlbum
+{
+  public ImmutableAlbum(string name, IEnumerable&lt;ImmutableTrack&gt; tracks)
+  {
+    if (string.IsNullOrWhiteSpace(name))
+      throw new ArgumentException("Null/blank name specified");
+    if (tracks == null)
+      throw new ArgumentNullException("tracks");
+
+    Name = name;
+    Tracks = tracks.ToList().AsReadOnly();
+    if (Tracks.Any(t =&gt; t == null))
+      throw new ArgumentException("Null reference encountered in tracks set");
+  }
+
+  /// &lt;summary&gt;
+  /// This will never be null or blank
+  /// &lt;/summary&gt;
+  public string Name { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null nor contain any null references
+  /// &lt;/summary&gt;
+  public IEnumerable&lt;ImmutableTrack&gt; Tracks { get; private set; }
+}
+
+public class ImmutableTrack
+{
+  public ImmutableTrack(int number, string name)
+  {
+    if (string.IsNullOrWhiteSpace(name))
+      throw new ArgumentException("Null/blank name specified");
+    if (number &lt; 1)
+      throw new ArgumentOutOfRangeException("number must be greater than zero");
+
+    Number = number;
+    Name = name;
+  }
+
+  /// &lt;summary&gt;
+  /// This will always be greater than zero
+  /// &lt;/summary&gt;
+  public int Number { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null or blank
+  /// &lt;/summary&gt;
+  public string Name { get; private set; }
+}
+</code></pre>
+
+<p>The <em>Project</em> and <em>To</em> methods are <strong>IQueryable</strong> extensions in my "<a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">Compilable Type Converter</a>" project, not the ones in AutoMapper. All of the same options that I talked about <a href="reflection-and-c-sharp-optional-constructor-arguments.html">last time</a> are available for the projections (so some or all of the target types may be initialised by-property-setter instead of by-constructor), the big difference is that the <strong>ProjectionConverter</strong> must be used instead of the regular <strong>Converter</strong>.</p>
+
+<p>And with that, I'm done! <strong>IQueryable</strong>-based mappings to immutable types are now possible in a simple and efficient manner!</p>
+
+<h3>Bonus material: Dynamic "anonymous" types</h3>
+
+<p>The interim types that are generated by the code are created dynamically. The <strong>ProjectionConverter</strong> maintains a dictionary of generated types so if a mapping is required that requires an iterim type with the exact same set of properties as an interim type that has been used before, then a new instance of that type will be created, rather than having to build an entirely new type and then creating an instance of that. Obviously, the first time that any mapping is generated, some new types will have to be built.</p>
+
+<p>Since the C# compiler uses anonymous types, I'd wondered if there was some .net mechanism to generate these types on-the-fly. But after doing some testing (by compiling some code and investigating the output using <a href="http://msdn.microsoft.com/en-us/library/f7dy01k1(v=vs.110).aspx">ildasm</a>), it would seem that the compiler analyses the source code at compile time and bakes in classes to the IL that may be used for all of the required anonymous types. So that was a no-go.</p>
+
+<p>But a few years ago I'd been experimenting with a similar topic, so I was able to dust off and repurpose some old code. Which was convenient! All that I required was for a new type to be created with a particular set of non-indexed read-and-write properties. It doesn't need any methods, fields or events, it doesn't need any static properties, it doesn't need any read-only or write-only fields. It just requires a simple set of gettable/settable instance properties with particular names and types. I used the following to achieve this:</p>
+
+<pre><code>using System;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Threading;
+
+namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
+{
+  public class AnonymousTypeCreator
+  {
+    public static AnonymousTypeCreator DefaultInstance
+      = new AnonymousTypeCreator("DefaultAnonymousTypeCreatorAssembly");
+
+    private readonly ModuleBuilder _moduleBuilder;
+    public AnonymousTypeCreator(string assemblyName)
+    {
+      if (string.IsNullOrWhiteSpace(assemblyName))
+        throw new ArgumentException("Null/blank assemblyName specified");
+
+      var assemblyBuilder = Thread.GetDomain().DefineDynamicAssembly(
+        new AssemblyName(assemblyName),
+        AssemblyBuilderAccess.Run
+      );
+      _moduleBuilder = assemblyBuilder.DefineDynamicModule(
+        assemblyBuilder.GetName().Name,
+        false // emitSymbolInfo (not required here)
+      );
+    }
+
+    public Type Get(AnonymousTypePropertyInfoSet properties)
+    {
+      if (properties == null)
+        throw new ArgumentNullException("properties");
+
+      var typeName = "&lt;&gt;AnonymousType-" + Guid.NewGuid().ToString("N");
+      var typeBuilder = _moduleBuilder.DefineType(
+        typeName,
+        TypeAttributes.Public
+           | TypeAttributes.Class
+           | TypeAttributes.AutoClass
+           | TypeAttributes.AnsiClass
+           | TypeAttributes.BeforeFieldInit
+           | TypeAttributes.AutoLayout
+      );
+
+      var ctorBuilder = typeBuilder.DefineConstructor(
+        MethodAttributes.Public,
+        CallingConventions.Standard,
+        Type.EmptyTypes // constructor parameters
+      );
+      var ilCtor = ctorBuilder.GetILGenerator();
+      ilCtor.Emit(OpCodes.Ldarg_0);
+      ilCtor.Emit(OpCodes.Call, typeBuilder.BaseType.GetConstructor(Type.EmptyTypes));
+      ilCtor.Emit(OpCodes.Ret);
+
+      foreach (var property in properties)
+      {
+        // Prepare the property we'll add get and/or set accessors to
+        var propBuilder = typeBuilder.DefineProperty(
+          property.Name,
+          PropertyAttributes.None,
+          property.PropertyType,
+          Type.EmptyTypes
+        );
+        var backingField = typeBuilder.DefineField(
+          property.Name,
+          property.PropertyType,
+          FieldAttributes.Private
+        );
+
+        // Define get method
+        var getFuncBuilder = typeBuilder.DefineMethod(
+          "get_" + property.Name,
+          MethodAttributes.Public
+           | MethodAttributes.HideBySig
+           | MethodAttributes.NewSlot
+           | MethodAttributes.SpecialName
+           | MethodAttributes.Virtual
+           | MethodAttributes.Final,
+          property.PropertyType,
+          Type.EmptyTypes
+        );
+        var ilGetFunc = getFuncBuilder.GetILGenerator();
+        ilGetFunc.Emit(OpCodes.Ldarg_0);
+        ilGetFunc.Emit(OpCodes.Ldfld, backingField);
+        ilGetFunc.Emit(OpCodes.Ret);
+        propBuilder.SetGetMethod(getFuncBuilder);
+
+        // Define set method
+        var setFuncBuilder = typeBuilder.DefineMethod(
+          "set_" + property.Name,
+          MethodAttributes.Public
+           | MethodAttributes.HideBySig
+           | MethodAttributes.SpecialName
+           | MethodAttributes.Virtual,
+          null,
+          new Type[] { property.PropertyType }
+        );
+        var ilSetFunc = setFuncBuilder.GetILGenerator();
+        ilSetFunc.Emit(OpCodes.Ldarg_0);
+        ilSetFunc.Emit(OpCodes.Ldarg_1);
+        ilSetFunc.Emit(OpCodes.Stfld, backingField);
+        ilSetFunc.Emit(OpCodes.Ret);
+        propBuilder.SetSetMethod(setFuncBuilder);
+      }
+
+      return typeBuilder.CreateType();
+    }
+
+    private static MethodInfo MethodInfoInvokeMember = typeof(Type).GetMethod(
+      "InvokeMember",
+      new[] {
+        typeof(string),
+        typeof(BindingFlags),
+        typeof(Binder),
+        typeof(object),
+        typeof(object[])
+      }
+    );
+  }
+}
+</code></pre>
+
+<p>The <strong>AnonymousTypePropertyInfoSet</strong> data that is used to generate new classes is just a set of <strong>PropertyInfo</strong> instances that don't have the same property name used for multiple different property types and that ensures that none of the properties are indexed. It also overrides the Equals and GetHashCode method so that it can be used as a key in a dictionary of interim types to prevent creating more types that necessary. In essence, really it's an <strong>IEnumerable&lt;PropertyInfo&gt;</strong> with a few bells and whistles.</p>
+
+<p>(These files can be found in the Bitbucket project at <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter/src/f6d122508b580f70b95eb4520dd35d7fb354f42f/CompilableTypeConverterQueryableExtensions/ProjectionConverterHelpers/AnonymousTypeCreator.cs?at=default">AnonymousTypeCreator.cs</a> and <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter/src/f6d122508b580f70b95eb4520dd35d7fb354f42f/CompilableTypeConverterQueryableExtensions/ProjectionConverterHelpers/AnonymousTypePropertyInfoSet.cs?at=default">AnonymousTypePropertyInfoSet.cs</a> while the dynamic type creation is required by the <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter/src/f6d122508b580f70b95eb4520dd35d7fb354f42f/CompilableTypeConverterQueryableExtensions/ProjectionConverter.cs?at=default">PropertyConverter.cs</a>).</p>
+
+<p>And on that note, I really am done!</p>
+<p class="PostTime">Posted at 23:12</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable.html#disqus_thread" data-disqus-identifier="68">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">22 January 2014</h3><h2><a id="Post67"></a><a href="reflection-and-c-sharp-optional-constructor-arguments.html">Reflection and C# optional constructor arguments </a></h2>
+
+<h3>Bonus provocative headline: Like AutoMapper, but 100x faster!</h3>
+
+<p>I overheard someone at work bemoaning the fact that StructureMap doesn't seem to support optional constructor arguments (which, having a quick scout around the internet, does indeed seem to be the case, though there are solutions out there such as <a href="http://www.sep.com/sep-blog/2010/06/04/teaching-structuremap-about-c-4-0-optional-parameters-and-default-values">Teaching StructureMap About C# 4.0 Optional Parameters and Default Values</a>).</p>
+
+<p>This put me in mind of the "<a href="http://bitbucket.org/DanRoberts/compilabletypeconverter">Compilable Type Converter</a>" project I wrote a couple of years ago. It started off life as a way to try to easily extend AutoMapper to apply all of its cleverness to constructor arguments as well as properties. So instead of using the properties on one object to populate the properties of another object, it would call a constructor on the destination class and pass in values taken from properties on the source object. (AutoMapper allows constructors to be used for creating new instances, using the "ConvertUsing" method, but it doesn't do its magic with name mappings and type conversions).</p>
+
+<p>It then grew to generate conversion LINQ Expressions, which were compiled for performance. And from there it became a standalone component that could perform mappings without AutoMapper at all! It could still be used with AutoMapper since the converters it generated could be used in "ConvertUsing" calls but the property-to-constructor-argument mappings would be created automatically instead of manually. And if non-compilable type converters (not compiled to LINQ Expression and so functional but slower) were being generated with my project, there were classes to utilise AutoMapper to help perform the type conversions.</p>
+
+<p>The last thing I had done to it was add in support so that it could generate compiled converters that would populate the desination object using property setters (like AutoMapper does) instead of by-constructor.</p>
+
+<p>I wrote a couple of posts about this a long time ago, but they were early posts and they weren't written all that well, so I'm embarassed to link to them here. :)</p>
+
+<p>Anyway.. the point is, I was fairly confident that the Compilable Type Converter also did not support optional constructor arguments. And I didn't actually know how optional constructor arguments would look in the reflected information (the converter uses reflection to analyses the source and destination types and decide how to perform the conversion, but then generates a LINQ Expression to do the work which should have performance comparable to custom hand-written conversion code) so it seemed like a good opportunity to brush off an old project and have a bit of fun with it!</p>
+
+<h3>.net's representation of optional constructor arguments</h3>
+
+<p>This is the easy bit. I hadn't known how easy until I looked into it, but very easy.</p>
+
+<p>Say there is a class</p>
+
+<pre><code>public class TypeWithOptionalConstructorArguments
+{
+  public TypeWithOptionalConstructorArguments(string name, int number = 1)
+  {
+    // Do initialisation work..
+  }
+
+  // Have the rest of the class here..
+}
+</code></pre>
+
+<p>then to determine that the <em>number</em> argument is optional, we interrogate information about the constructor -</p>
+
+<pre><code>var constructorParameters = typeof(TypeWithOptionalConstructorArguments)
+  .GetConstructor(new[] { typeof(string), typeof(int) })
+  .GetParameters();
+
+var numberParameter = constructorParameters[1];
+var numberParameterType = numberParameter.ParameterType;
+var isNumberParameterOptional = numberParameter.IsOptional;
+var numberParameterDefaultValue = numberParameter.DefaultValue;
+</code></pre>
+
+<p>Here we find that <em>numberParameterType</em> is int, <em>isNumberParameterOptional</em> is true and <em>numberParameterDefaultValue</em> is 1. If we considered the first parameter then IsOptional would be false.</p>
+
+<h3>Incorporating this into the Compilable Type Converter</h3>
+
+<p>Before I give a quick run-down of how I made my code "optional-constructor-argument aware", I'll go quickly through the core concepts it uses when trying to generate a conversion.</p>
+
+<p>There are Property Getters which will take a value from a property on the source type in order to satisfy a value required to generate the destination type (this value may be a constructor argument or a property, depending upon whether a by-constructor or by-property-setter conversion is desired). Property Getters come in several varieties; there is one that will map a source value if the source value's type may be assigned directly to the destination type (ie. the source value matches the destination value or inherits from it / implements it). There is one that will map enum values - from one enum to another, according to a naming convention (this convention is determined by a Name Matcher, see below). There is another one that will perform one specific type translation, so if a converter is generated for mapping between <strong>SNested</strong> and <strong>DNested</strong> then a new Property Getter may be created that will help convert type <strong>SParent</strong> to <strong>DParent</strong> if <strong>SParent</strong> has a property with type <strong>SNested</strong> that needs to be mapped to a property on <strong>DParent</strong> with type <strong>DNested</strong>. There's another that's very similar but for enumerable types, so given an <strong>SNested</strong> -> <strong>DNested</strong> converter it can help map <strong>SParent</strong> to <strong>DParent</strong> if <strong>SParent</strong> has a property of type <strong>IEnumerable&lt;SNested&gt;</strong> and <strong>DParent</strong> has a property of type <strong>IEnumerable&lt;DNested&gt;</strong>.</p>
+
+<p>Property Getters are created by Property Getter Factories. When a conversion request is being analysed, the Property Getter Factories will be asked "can you perform a mapping from Src to Dest for the property on Dest named Prop?" (the property on Dest may be an actual property or it may be a constructor argument). The factory will look at all of the properties on the Src type and see which, if any, it would map onto Prop based upon the source property's name and type. The type matching depends upon what sort of Property Getter the factory can create (whether that be an assignable-to getter, an enum-translating getter, etc.. all of the options I just described above) and what name matching approach it will use. The name matching depends upon the Name Matcher that was provided to the factory at instantiation.</p>
+
+<p>Name Matchers simply answer the question "are these property/argument names equivalent?", the basic implementation in the project is the <strong>CaseInsensitiveSkipUnderscoreNameMatcher</strong>. This ignores underscores and case when comparing names, so "Title" and "title" and considered to be the same, as are "Person_Name" and "personName".</p>
+
+<p>Finally, when a by-constructor conversion is being generated, there may be multiple constructors which may be satisfied (ie. all of their constructor arguments may be provided with values from the source object's properties). In this case, a decision will need to be made as to which constructor to use. For this, there is a Constructor Prioritiser. Each may-be-satisifed-constructor is represented by the fully-generated converter that would use that constructor. The prioritiser must then pick one to be used as the converter that should be used for that translation.</p>
+
+<p>The only Constructor Prioritiser implementation that I currently have is an <strong>ArgsLengthTypeConverterPrioritiser</strong>. This simply picks the constructor which has the most arguments, the thinking being that this must be the constructor that uses the most data from the source type and so will result in the best-populated destination instance possible.</p>
+
+<p>However, if there are two constructors, one with four compulsory arguments and one with five arguments total, but two of them optional, then the five-argument constructor may no longer be the best bet. If a conversion is available that explicitly populates those five values with data from the source object, then this is probably still the best match. But if the only conversion that uses that five-argument constructor is actually relying on the default values for those two optional arguments then it's only actually populating <em>three</em> constructor arguments from the source data, so surely the four-argument constructor is better!</p>
+
+<h3>A quick(ish) explanation of how I introduced optional constructor arguments</h3>
+
+<p>So I have a <strong>CompilableTypeConverterByConstructorFactory</strong>. This has a method Get&lt;TSource, TDest&gt;() which will try return an <strong>ICompilableTypeConverter&lt;TSource, TDest&gt;</strong> that maps from <strong>TSource</strong> to <strong>TDest</strong>. If it can't create such a type converter then it will throw an exception.</p>
+
+<p>The particular implementation of <strong>ICompilableTypeConverter&lt;TSource, TDest&gt;</strong> returned from this class will be a <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong>.</p>
+
+<p>This class previously required a <strong>ConstructorInfo</strong> and a set of Property Getters for each argument in that constructor. The factory's job was to select the best <strong>ConstructorInfo</strong> and provide those Property Getters from the Property Getter Factories that it had access to. The constructor of the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> class would do some validation to ensure that the number of Property Getters matched the number of constructor arguments for the specified constructor, and that the types returned by the Property Getters matched the constructor's arguments types.</p>
+
+<p>The change I made was for the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> to also take a <strong>ICompilableConstructorDefaultValuePropertyGetter</strong> set - Property Getters which are associated with a particular constructor argument which has a default value, and which just return this default value when a value is requested.</p>
+
+<p>These Default Value Property Getters would only be specified by the Type Converter Factory if there was no Property Getter that could otherwise provide that constructor argument with a value - if it's possible to get data from the source object for a constructor argument then there's no point using the argument's default value!</p>
+
+<p>The benefit of providing two distinct sets of Property Getters (those relying upon default values and those not) to the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> is that it was possible to add another public property to it; the <em>NumberOfConstructorArgumentsMatchedWithNonDefaultValues</em> (this is the total number of arguments that the target constructor has minus the number of Default Value Property Getters). And the benefit of <em>this</em> is that it allows for a Constructor Prioritiser to consider the number of constructor arguments that were populated with data from the source object, as opposed to the <em>total</em> number of constructor arguments fulfilled, regardless of how many actually had to fall back on to using default values. Which addresses the problem I outlined in the section above.</p>
+
+<h3>Code updates</h3>
+
+<p>While I was making these changes and experimenting with various scenarios (trying to re-familiarise myself with exactly how everything worked) I found it interesting to note how some I've changed some coding conventions over the years. Particularly, I disliked a method on the <strong>ITypeConverterFactory</strong> interface -</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will return null if unable to generate the specified converter
+/// &lt;/summary&gt;
+ITypeConverter&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
+</code></pre>
+
+<p>From some sides, this doesn't sound all that bad. And it's not uncommon to find code out there that does the same sort of thing; try to get the requested value and return null if unable to.</p>
+
+<p>As a rule, though, I don't like this <em>at all</em>. I prefer to avoid nulls wherever humanly possible and explicitly indicate the possibility of their presence where they must crop up.</p>
+
+<p>If a class exists where a property may be null since the data is not required for that particular structure, then I will prefix that property with "Optional". If a method may be expected to return null then I will prefix it with "TryTo". This isn't a perfect system by any means but it's a convention that I've found useful.</p>
+
+<p>So I could change the Get method above to</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will return null if unable to generate the specified converter
+/// &lt;/summary&gt;
+ITypeConverter&lt;TSource, TDest&gt; TryToGet&lt;TSource, TDest&gt;();
+</code></pre>
+
+<p>if not being able to return the requested converter is not an error condition.</p>
+
+<p>However, for the cases a converter could <em>not</em> be generated to perform the specified <strong>TSource</strong> -> <strong>TDest</strong> mapping, the caller has no additional information - all they have is a null! And I suspect that someone trying to get a converter by calling a "Get" method would indeed consider it an error condition if it didn't actually return a converter.</p>
+
+<p>So I changed it to</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will throw an exception if unable to generate the specified converter, it will never
+/// return null
+/// &lt;/summary&gt;
+ITypeConverter&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
+</code></pre>
+
+<p>I then changed the Type Converter Factories to throw custom exceptions indicating what property could not be set on the target type or what constructor arguments could not be mappped. Changing the contract so that it is considered an error condition when a mapping could not be created resulted in more information being availble to the caller, more <em>useful and important</em> information.</p>
+
+<h3>Static convenience wrapper</h3>
+
+<p>Since I felt like I was cooking on gas at this point, I thought I'd address another problem with this project; trying to use this code for the first time (if you'd just cloned the project, for example) is difficult! I've got a ReadMe file in the project that tells you how to initialise a converter factory and then generate types but it's quite a lot of work to do so!</p>
+
+<p>In some of my other projects I've included "convenience wrappers" to do the fiddly work of initialising everything for the most common case so that the code is as easy as possible to get working with. For example, the <a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser</a> has the static <strong>Parser</strong> class, with its method "ParseCSS" and "ParseLESS" (with method signatures that will read from strings or from <strong>TextReader</strong>s). The <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> has the <strong>DefaultNonCachedLessCssLoaderFactory</strong> and <strong>EnhancedNonCachedLessCssLoaderFactory</strong> which can be initialised with only an ASP.Net "Server" reference. And, of course, AutoMapper is phenonemally easy to get going with since there is a static <strong>Mapper</strong> class with CreateMap and Map methods (amongst many others). So I thought that <em>my</em> Type Converter library would benefit from something similar!</p>
+
+<p>It can't get much simpler than this:</p>
+
+<pre><code>Converter.CreateMap&lt;MutablePersonDetails.RoleDetails, ImmutablePersonDetails.RoleDetails&gt;();
+var dest = Converter.Convert&lt;MutablePersonDetails, ImmutablePersonDetails&gt;(source);
+</code></pre>
+
+<p>The "source" objectin this example is initialised with</p>
+
+<pre><code>var source = new MutablePersonDetails
+{
+  Name = "Henry",
+  Roles = new List&lt;MutablePersonDetails.RoleDetails&gt;
+  {
+    new MutablePersonDetails.RoleDetails
+    {
+      Title = "Head Penguin Cleaner",
+      ClearanceLevel = ClearanceLevelOptions.Maximum
+    }
+  }
+};
+</code></pre>
+
+<p>(The actual classes for the source and destination types will be included later on for completion's sake).</p>
+
+<p>The types <strong>MutablePersonDetails.RoleDetails</strong> and <strong>ImmutablePersonDetails.RoleDetails</strong> are considered "nested" as they are not the target of the primary mapping (which is from <strong>MutablePersonDetails</strong> to <strong>ImmutablePersonDetails</strong>). There are properties on the source and destination types which are sets of these <strong>RoleDetails</strong> nested types.</p>
+
+<p>So first a mapping for the nested types is created. The <strong>Converter</strong> class is able to use this mapping to generate mappings between sets of these types; so creating a <strong>MutablePersonDetails.RoleDetails</strong> to <strong>ImmutablePersonDetails.RoleDetails</strong> mapping means that a <strong>List&lt;MutablePersonDetails.RoleDetails&gt;</strong> to <strong>IEnumerable&lt;ImmutablePersonDetails.RoleDetails&gt;</strong> becomes available as well.</p>
+
+<p>The <em>Convert</em> call will implicitly try to create a suitable mapping if one is not already available, this is why no explicit call to <em>CreateMap</em> is required for <strong>MutablePersonDetails</strong> to <strong>ImmutablePersonDetails</strong>.</p>
+
+<p>The mapping here was a "by-constructor" mapping (which is what I originally started this project for), it takes property values from the source object and uses them to populate constructor arguments on the destination type to create a new instance of it. But "by-property-setter" mappings are also supported, so we could also create a mapping in the opposite direction to that above:</p>
+
+<pre><code>Converter.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;();
+var dest = Converter.Convert&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+</code></pre>
+
+<p>The source and destination classes in the examples are as follow:</p>
+
+<pre><code>public class MutablePersonDetails
+{
+  public string Name { get; set; }
+  public List&lt;RoleDetails&gt; Roles { get; set; }
+
+  public class RoleDetails
+  {
+    public string Title { get; set; }
+    public ClearanceLevelOptions ClearanceLevel { get; set; }
+  }
+}
+
+public class ImmutablePersonDetails
+{
+  public ImmutablePersonDetails(string name, IEnumerable&lt;RoleDetails&gt; roles)
+  {
+    if (string.IsNullOrWhiteSpace(name))
+      throw new ArgumentException("Null/blank name specified");
+    if (roles == null)
+      throw new ArgumentNullException("roles");
+
+    Name = name;
+
+    Roles = roles.ToList().AsReadOnly();
+    if (Roles.Any(role =&gt; role == null))
+      throw new ArgumentException("Null reference encountered in roles set");
+  }
+
+  public string Name { get; private set; }
+  public IEnumerable&lt;RoleDetails&gt; Roles { get; private set; }
+
+  public class RoleDetails
+  {
+    public RoleDetails(string title, ClearanceLevelOptions clearanceLevel)
+    {
+      if (string.IsNullOrWhiteSpace(title))
+        throw new ArgumentException("Null/blank title specified");
+      if (!Enum.IsDefined(typeof(ClearanceLevelOptions), clearanceLevel))
+        throw new ArgumentOutOfRangeException("clearanceLevel");
+
+      Title = title;
+      ClearanceLevel = clearanceLevel;
+    }
+
+    public string Title { get; private set; }
+    public ClearanceLevelOptions ClearanceLevel { get; private set; }
+  }
+}
+
+public enum ClearanceLevelOptions
+{
+  Regular,
+  Maximum
+}
+</code></pre>
+
+<h3>Ignoring properties / using default constructor arguments</h3>
+
+<p>If the above classes were changed such that <strong>MutablePersonDetails.RoleDetails</strong> no longer has a <em>ClearanceLevel</em> property and the <strong>ImmutablePersonDetails.RoleDetails</strong> constructor's <em>clearanceLevel</em> argument is assigned a default value..</p>
+
+<pre><code>// Nested type of MutablePersonDetails
+public class RoleDetails
+{
+  public string Title { get; set; }
+}
+
+// Nested type of ImmutablePersonDetails
+public RoleDetails(
+  string title,
+  ClearanceLevelOptions clearanceLevel = ClearanceLevelOptions.Regular)
+</code></pre>
+
+<p>.. then the <strong>Converter</strong> will take this into account and still generate the expected mapping with:</p>
+
+<pre><code>Converter.CreateMap&lt;MutablePersonDetails.RoleDetails, ImmutablePersonDetails.RoleDetails&gt;();
+var dest = Converter.Convert&lt;MutablePersonDetails, ImmutablePersonDetails&gt;(source);
+</code></pre>
+
+<p>If we reversed this such that the <strong>MutablePersonDetails.RoleDetails</strong> still has a ClearanceLevel property but the <strong>ImmutablePersonDetails.RoleDetails</strong> does <em>not</em>..</p>
+
+<pre><code>// Nested type of MutablePersonDetails
+public class RoleDetails
+{
+  public string Title { get; set; }
+  public ClearanceLevelOptions ClearanceLevel { get; set; }
+}
+
+// Nested type of ImmutablePersonDetails
+public class RoleDetails
+{
+  public RoleDetails(string title)
+  {
+    if (string.IsNullOrWhiteSpace(title))
+      throw new ArgumentException("Null/blank title specified");
+    Title = title;
+  }
+  public string Title { get; private set; }
+}
+</code></pre>
+
+<p>.. then the mapping will fail as the <strong>Converter</strong> will throw an exception if it can't map every property on the target when performing a by-property-setter conversion. <em>Unless</em> it is explicitly instructed to ignore the property -</p>
+
+<pre><code>Converter.BeginCreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;()
+  .Ignore(
+    r =&gt; r.ClearanceLevel
+  )
+  .Create();
+var dest = Converter.Convert&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+</code></pre>
+
+<p>The <em>BeginCreateMap</em> allows for exceptions to be made to the normal mapping process. The <strong>Create</strong> call (at the end of the <em>BeginCreateMap</em>, <em>Ignore</em>, <em>Create</em> chain) is important since the work to try to generate the converter will not be performed without that call (and all of the <strong>BeginCreateMap</strong> and any subsequent calls in that chain will be ignored without <em>Create</em> being called).</p>
+
+<p>This is different to the AutoMapper approach since AutoMapper will take in information about how the mappings should be created but not use it until a conversion is required. This means that mappings can be specified in any order with AutoMapper; the following would be fine, for example -</p>
+
+<pre><code>Mapper.CreateMap&lt;ImmutablePersonDetails, MutablePersonDetails&gt;();
+Mapper.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;();
+</code></pre>
+
+<p>AutoMapper doesn't mind the mappings for the nested type appearing after the mapping for the "containing type" since it won't try to use this information until it actually performs a conversion.</p>
+
+<p>My <strong>Converter</strong> class, however, generates the converters when <em>CreateMap</em> (or <em>Convert</em> is called). So a mapping for the nested types must be specified before the containing type as a converter for the containing type can't be generated without knowing how to convert the nested types! While I think there are advantages to the flexibility of AutoMapper's approach (not having to worry about converter dependencies; not having to worry about the order in which mappings are specified) I also think there are advantages to my approach since an exception will be raised as soon as a mapping is requested that can not be created (along with information about what properties or constructor arguments could not be satisfied).</p>
+
+<p>Another advantage of the converters being generated as the mappings are specified is that the <strong>Converter</strong> is keeping track of them and can provide a reference to any of them through a call to <em>GetConverter</em>. The converters are all immutable and if a converter is returned from the <em>GetConverter</em> method then no further changes to the <strong>Converter</strong> class may affect it. This is reassuring in that the converter may be used elsewhere without having to worry about the mutability of the static <strong>Converter</strong> class but it also has performance benefits; calls to the <strong>Converter</strong>'s <em>Convert</em> method (and <em>CreateMap</em> and <em>GetConverter</em> methods) require cache lookups and locks. If you use a converter reference delivered by the <em>GetConverter</em> method then you don't need to worry about these lookups and locks. Which brings me neatly to..</p>
+
+<h3>The Compilable Type Converter's Performance</h3>
+
+<p>First off, the Compilable Type Converter isn't intended to compete feature-for-feature with AutoMapper. AutoMapper is a well-rounded library with all sorts of functionality that address all sorts of edge cases. For example, I only encountered the <em>BeforeMap</em> and <em>AfterMap</em> calls when looking into it more deeply to write this article! It also offers <a href="https://automapper.codeplex.com/wikipage?title=Flattening">object model flattening</a> and retrieval of data through Get methods rather than properties. I don't have any intention of supporting any of these, though I <em>do</em> intend to add some custom property mappings at some point. Something like</p>
+
+<pre><code>Converter.BeginCreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;()
+  .Custom(
+    dest =&gt; dest.ClearanceLevel,
+    src =&gt; src.GetClearanceLevel()
+  )
+  .Create();
+</code></pre>
+
+<p>(Let's not forget the killer feature of my library - for me, at least - is that it performs the name matching magic from properties onto constructor arguments so that immutable classes can be instantiated by the mappers).</p>
+
+<p>So anyway.. making performance comparisons between the two libraries is probably not all that productive. But since I've banged on about the Compilable Type Converter producing LINQ-Expression-compiled converters, I'm going to anyway! :)</p>
+
+<p>We'll stick with the <strong>ImmutablePersonDetails</strong> to <strong>MutablePersonDetails</strong> mapping that was in the earlier examples. </p>
+
+<p>There are two aspects that need considering - the startup time and the conversion time. If the Compilable Type Converter can perform conversions faster than AutoMapper but with a greater initialisation cost (which we'd expect since there is expensive LINQ Expression compilation going on) then there will have to be a certain number of conversion performed before we "break even" on the startup time. But after that, it should be all win!</p>
+
+<p>So I've set up a test program that times the initialisation processes, repeated in a loop. At the end of each loop, the <em>Reset</em> method is called for both the <strong>Mapper</strong> and <strong>Converter</strong> (these calls are outside of the initialisation work that is timed, since we're not interested in the efficiency of the <em>Reset</em> methods). The last loop doesn't call <em>Reset</em> so that everything is ready for the next section of the program, where I time a conversion from an <strong>ImmutablePersonDetails</strong> instance to a new <strong>MutablePersonDetails</strong> (over and over again).</p>
+
+<p>The init sections looks like this (basically the same as we've already seen above). We have to actually perform one mapping in the init code since AutoMapper postpones doing work until a mapping is actually requested, as I've already spoken about.</p>
+
+<pre><code>Mapper.CreateMap&lt;ImmutablePersonDetails, MutablePersonDetails&gt;();
+Mapper.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;();
+var destAutoMapperInitialise = Mapper.Map&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+
+Converter.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;();
+var converter = Converter.GetConverter&lt;ImmutablePersonDetails, MutablePersonDetails&gt;();
+var destCompilableTypeConverterInitialise = converter.Convert(source);
+</code></pre>
+
+<p>Then there are three operations that are individually timed in the "convert loop":</p>
+
+<pre><code>// Convert using AutoMapper
+Mapper.Map&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+
+// Convert using the Compilable Type Converter, through the static convenience wrapper
+Converter.Convert&lt;ImmutablePersonDetails, MutablePersonDetails&gt;(source);
+
+// Convert using the Compilable Type Converter, using the converter reference from a GetConverter
+// call in the init phase (this will be quicker as the cache lookups and locks in the convenience
+// wrapper are not required)
+converter.Convert(source);
+</code></pre>
+
+<p>I've run this whole process half a dozen times and got comparable results each time. The last time I ran it, the average time to initialise <strong>AutoMapper was 8ms</strong> and to initialise the <strong>Compilable Type Converter was 41ms</strong> (average taken over 100 repeated initialisations). The average time (taken over 100,000 loops) to perform the conversions was <strong>310 ticks for AutoMapper</strong>, <strong>46 ticks for the Compilable Type Converter via the convenience wrapper</strong> and <strong>3 ticks for the Compilable Type Converter via the <em>converter</em> reference</strong> that was obtained as part of the initialisation work.</p>
+
+<p>The standout result here is that the Compilable Type Converter was able to perform the conversion 100x faster.</p>
+
+<p><em>100x faster!</em></p>
+
+<p>That's good times! :)</p>
+
+<p>However, this ignores the initialisation overhead. If you were only ever going to perform a single conversion then speed of the initialised converter is more than offset by the additional initialisation time required. However, if you're expecting to perform a lot of these conversions then this initialisation overhead should be easily offset. (My original aim for this work was to translate a WCF web service's public-facing mutable classes into their internal immutable counterparts, so there <em>would</em> be many conversions in that case). In the example above, it would take 349 conversions to break even if using the <strong>Converter</strong> wrapper and only 300 if using the <em>converter</em> reference directly.</p>
+<p class="PostTime">Posted at 23:19</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="reflection-and-c-sharp-optional-constructor-arguments.html#disqus_thread" data-disqus-identifier="67">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">26 February 2012</h3><h2><a id="Post23"></a><a href="the-artist-previously-known-as-the-automapperbyconstructor.html">The artist previously known as the AutoMapper-By-Constructor</a></h2>
+
+<p>I've had a series of posts that was initiated by a desire to integrate AutoMapper more easily with classes that are instantiated with so-called "verbose constructors"..</p>
+
+<ul>
+<li><a href="teaching-automapper-about-verbose-constructors.html">Teaching AutoMapper about "verbose constructors"</a></li>
+<li><a href="automapperbyconstructor-without-automapper-and-faster.html">AutoMapper-By-Constructor without AutoMapper.. and faster</a></li>
+<li><a href="extendable-linqcompilable-mappers.html">Extendable LINQ-compilable Mappers</a></li>
+<li><a href="the-lesseffort-extendable-linqcompilable-mappers.html">The Less-Effort Extendable LINQ-compilable Mappers</a></li>
+</ul>
+
+<p>.. that ended up going on somewhat of a tangent and enabled the generation of compilable converters (using LINQ Expressions) that didn't utilise AutoMapper for the majority of simple cases.</p>
+
+<p>While the original intention of the project was to handle the conversion to these "verbose constructor"-based types, it struck me a few days ago that it shouldn't be much work to put together a class similar to the CompilableTypeConverterByConstructor that instead instantiates a type with a parameter-less constructor and sets the data through property-setters rather than by converter. The concept that started this all off in my head was a service that exposed xml-serialisable objects at the boundary but used "always-valid" internal representations (ie. immutable data where all values were specified and validated by constructor) - I wanted a way to convert <em>to</em> internal types. But with this property-setting approach the code could transform both ways.</p>
+
+<p>(Just a quick side-node that for transformations <em>to</em> data-set-by-property types, <a href="http://automapper.org">AutoMapper</a> is actually a much more full-featured package but for what I had in mind the simple name-matching in my project coupled with the significantly improved performance from the compiled converters was a better fit).</p>
+
+<h3>I still find LINQ Expressions hard to write</h3>
+
+<p>I envisaged something along the lines of a new class</p>
+
+<pre><code>public class CompilableTypeConverterByPropertySetting&lt;TSource, TDest&gt;
+    : ICompilableTypeConverter&lt;TSource, TDest&gt; where TDest : new()
+{
+    public CompilableTypeConverterByPropertySetting(
+        IEnumerable&lt;ICompilablePropertyGetter&gt; propertyGetters,
+        IEnumerable&lt;PropertyInfo&gt; propertiesToSet)
+    {
+        // Do constructor work..
+</code></pre>
+
+<p>where the number of propertyGetters would match the number of propertiesToSet. I won't go back over the ICompilableTypeConverter since it's not that important right this second but the property getters are:</p>
+
+<pre><code>public interface ICompilablePropertyGetter : IPropertyGetter
+{
+    /// &lt;summary&gt;
+    /// This must return a Linq Expression that retrieves the value from SrcType.Property as
+    /// TargetType - the specified "param" Expression must have a type that is assignable to
+    /// SrcType.
+    /// &lt;/summary&gt;
+    Expression GetPropertyGetterExpression(Expression param);
+}
+
+public interface IPropertyGetter
+{
+    /// &lt;summary&gt;
+    /// The type whose property is being accessed
+    /// &lt;/summary&gt;
+    Type SrcType { get; }
+
+    /// &lt;summary&gt;
+    /// The property on the source type whose value is to be retrieved
+    /// &lt;/summary&gt;
+    PropertyInfo Property { get; }
+
+    /// &lt;summary&gt;
+    /// The type that the property value should be converted to and returned as
+    /// &lt;/summary&gt;
+    Type TargetType { get; }
+
+    /// &lt;summary&gt;
+    /// Try to retrieve the value of the specified Property from the specified object (which
+    /// must be of type SrcType) - this will throw an exception for null or if retrieval fails
+    /// &lt;/summary&gt;
+    object GetValue(object src);
+}
+</code></pre>
+
+<p>So this should be easy! All I need is to create LINQ Expressions that can take a ParameterExpression of type TSource, use it to instantiate a new TDest and set each of the properties that I already have. And I've already got Expressions to retrieve the data from the TSource instance for each of the properties!</p>
+
+<pre><code>private Func&lt;TSource, TDest&gt; GenerateCompiledConverter()
+{
+    // Declare an expression to represent the src parameter
+    var src = Expression.Parameter(typeof(TSource), "src");
+
+    // Declare a local variable that will be used within the Expression block to have a new
+    // instance assigned to it and properties set
+    var dest = Expression.Parameter(typeof(TDest));
+
+    // Build up a list of Expressions that:
+    // 1. Instantiate a new TDest instance
+    var newInstanceGenerationExpressions = new List&lt;Expression&gt;
+    {
+        Expression.Assign(
+            dest,
+            Expression.New(typeof(TDest).GetConstructor(new Type[0]))
+        )
+    };
+
+    // 2 Set properties on the new instance
+    for (var index = 0; index &lt; _propertiesToSet.Count; index++)
+    {
+        newInstanceGenerationExpressions.Add(
+            Expression.Call(
+                dest,
+                _propertiesToSet[index].GetSetMethod(),
+                _propertyGetters[index].GetPropertyGetterExpression(src)
+            )
+        );
+    }
+
+    // 3. Return the reference
+    newInstanceGenerationExpressions.Add(
+        dest
+    );
+
+    // Return compiled expression that instantiates a new object by retrieving properties
+    // from the source and passing as constructor arguments
+    return Expression.Lambda&lt;Func&lt;TSource, TDest&gt;&gt;(
+        Expression.Block(
+            new[] { dest },
+            newInstanceGenerationExpressions
+        ),
+        src
+    ).Compile();
+}
+</code></pre>
+
+<p>(Take it as read that _propertiesToSet and _propertyGetters are PropertyInfo[] and ICompilablePropertyGetter[] that are validated and set as class-scoped members by the constructor).</p>
+
+<p>And indeed it <em>does</em> look easy! And I'm kinda wondering what all the fuss was about, but it took me a fair bit of tinkering and reasoning to get here since the LINQ Expression tutorials and examples just aren't that easy to track down! And it's not like you can easily take apart arbitrary example code like when dealing with IL (see the IL Disassembler mention in <a href="dynamically-applying-interfaces-to-objects.html">Dynamically applying interfaces to objects</a>).</p>
+
+<p>But I got there in the end! The only slightly odd thing is that the last expression has to be the ParameterExpression "dest" that we've constructed, otherwise the block won't return anything - it just returns the result of the last expression.</p>
+
+<p>Ok. I've actually lied. That <em>isn't</em> quite all of it. As an ICompilableTypeConverter, the CompilableTypeConverterByPropertySetting should be able to handle null values so that the CompilableTypeConverterPropertyGetter class can take any ICompilableTypeConverter reference and use it to retrieve and convert property values.. even when they're null. So the last section becomes:</p>
+
+<pre><code>    // Return compiled expression that instantiates a new object by retrieving properties
+    // from the source and passing as constructor arguments
+    return Expression.Lambda&lt;Func&lt;TSource, TDest&gt;&gt;(
+
+        Expression.Condition
+            Expression.Equal(
+                src,
+                Expression.Constant(null)
+            ),
+            Expression.Constant(default(TDest), typeof(TDest)),
+            Expression.Block(
+                new[] { dest },
+                newInstanceGenerationExpressions
+            )
+        ),
+
+        src
+
+    ).Compile();
+</code></pre>
+
+<p>.. so that it will return the default value to TDest (null unless TDest is a ValueType) if the TSource value is null.</p>
+
+<h3>Wrapping in a Factory</h3>
+
+<p>As with the similar CompilableTypeConverterByConstructor class there's a factory class which will examine given TSource and TDest types and try to generate a CompilableTypeConverterByPropertySetting&lt;TSource, TDest&gt; instance based on the ICompilablePropertyGetter set it has (and the INameMatcher for matching source and destination properties).</p>
+
+<p>I've also updated the ExtendableCompilableTypeConverterFactory (see <a href="the-lesseffort-extendable-linqcompilable-mappers.html">The Less-Effort Extendable LINQ-compilable Mappers</a>) such that it is more generic and doesn't insist on being based around CompilableTypeConverterByConstructorFactory. There is now a static helper class to instantiate an ExtendableCompilableTypeConverterFactory instance based upon whether the target type is to have its data set by-constructor or by-property-setting since the changes to ExtendableCompilableTypeConverterFactory have made it very abstract!</p>
+
+<h3>Splitting the AutoMapper dependency</h3>
+
+<p>Since the majority of work in this solution no longer requires AutoMapper, I've broken out a separate project "AutoMapperIntegration" which houses the AutoMapperEnabledpropertyGetter and AutoMapperEnabledpropertyGetterFactory classes so now the main project has no AutoMapper reference. My original intention was improve how AutoMapper worked with by-constructor conversions and this functionality is still available - without taking advantage of the compiled converters - by referencing the main project along with AutoMapperItegration (and so the example in <a href="teaching-automapper-about-verbose-constructors.html">Teaching AutoMapper about "verbose constructors"</a> is still applicable).</p>
+
+<p>And so I've renamed the solution itself to...</p>
+
+<h3>The Compilable Type Converter!</h3>
+
+<p>Yeah, yeah, not too imaginative a title, I will admit! :)</p>
+
+<p>I've actually moved my code over to BitBucket (see <a href="being-a-dirty-githubtobitbucket-turncoat.html">upcoming post</a>!) from GitHub, so the code that I've been talking about can now be found at:</p>
+
+<p><a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">https://bitbucket.org/DanRoberts/compilabletypeconverter</a></p>
+
+<h3>An apology</h3>
+
+<p>This has been a particularly dry and largely self-involved post but if the Compilable Type Converter sounds like it might be useful to you, check out that BitBucket link and there's an introduction on the Overview page which jumps straight into example code.</p>
+
+<h3>Examples</h3>
+
+<p>To demonstrate the generation of a converter from a generic SourceType class to one that is based upon verbose constructors:</p>
+
+<pre><code>// Prepare a converter factory using the base types (AssignableType and
+// EnumConversion property getter factories)
+var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+var converterFactory = ExtendableCompilableTypeConverterFactoryHelpers.GenerateConstructorBasedFactory(
+    nameMatcher,
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new ICompilablePropertyGetterFactory[]
+    {
+        new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+        new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+    }
+);
+
+// Extend the converter to handle SourceType.Sub1 to ConstructorDestType.Sub1 and
+// IEnumerable&lt;SourceType.Sub1&gt; to IEnumerable&lt;ConstructorDestType.Sub1&gt;
+// - This will raise an exception if unable to create the mapping
+converterFactory = converterFactory.CreateMap&lt;SourceType.Sub1, ConstructorDestType.Sub1&gt;();
+
+// This will enable the creation of a converter for SourceType to ConstructorDestType
+// - This will return null if unable to generate an appropriate converter
+var converter = converterFactory.Get&lt;SourceType, ConstructorDestType&gt;();
+if (converter == null)
+    throw new Exception("Unable to obtain a converter");
+
+var result = converter.Convert(new SourceType()
+{
+    Value = new SourceType.Sub1() { Name = "Bo1" },
+    ValueList = new[]
+    {
+        new SourceType.Sub1() { Name = "Bo2" },
+        null,
+        new SourceType.Sub1() { Name = "Bo3" }
+    },
+    ValueEnum = SourceType.Sub2.EnumValue2
+});
+
+public class SourceType
+{
+    public Sub1 Value { get; set; }
+    public IEnumerable&lt;Sub1&gt; ValueList { get; set; }
+    public Sub2 ValueEnum { get; set; }
+    public class Sub1
+    {
+        public string Name { get; set; }
+    }
+    public enum Sub2
+    {
+        EnumValue1,
+        EnumValue2,
+        EnumValue3,
+        EnumValue4,
+        EnumValue5,
+        EnumValue6,
+        EnumValue7,
+        EnumValue8
+    }
+}
+
+public class ConstructorDestType
+{
+    public ConstructorDestType(Sub1 value, IEnumerable&lt;Sub1&gt; valueList, Sub2 valueEnum)
+    {
+        if (value == null)
+            throw new ArgumentNullException("value");
+        if (valueList == null)
+            throw new ArgumentNullException("valueList");
+        if (!Enum.IsDefined(typeof(Sub2), valueEnum))
+            throw new ArgumentOutOfRangeException("valueEnum");
+        Value = value;
+        ValueList = valueList;
+        ValueEnum = valueEnum;
+    }
+    public Sub1 Value { get; private set; }
+    public IEnumerable&lt;Sub1&gt; ValueList { get; private set; }
+    public Sub2 ValueEnum { get; private set; }
+    public class Sub1
+    {
+        public Sub1(string name)
+        {
+            name = (name ?? "").Trim();
+            if (name == "")
+                throw new ArgumentException("Null/empty name specified");
+            Name = name;
+        }
+        public string Name { get; private set; }
+    }
+    public enum Sub2 : uint
+    {
+        EnumValue1 = 99,
+        EnumValue2 = 100,
+        EnumValue3 = 101,
+        EnumValue4 = 102,
+        EnumValue5 = 103,
+        enumValue_6 = 104,
+        EnumValue7 = 105
+    }
+}
+</code></pre>
+
+<p>.. and the equivalent where the destination types are based upon property-setting:</p>
+
+<pre><code>// Prepare a converter factory using the base types (AssignableType and EnumConversion property
+// getter factories)
+var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+var converterFactory = ExtendableCompilableTypeConverterFactoryHelpers.GeneratePropertySetterBasedFactory(
+    nameMatcher,
+    CompilableTypeConverterByPropertySettingFactory.PropertySettingTypeOptions.MatchAsManyAsPossible,
+    new ICompilablePropertyGetterFactory[]
+    {
+        new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+        new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+    }
+);
+
+// Extend the converter to handle SourceType.Sub1 to ConstructorDestType.Sub1 and
+// IEnumerable&lt;SourceType.Sub1&gt; to IEnumerable&lt;ConstructorDestType.Sub1&gt;
+// - This will raise an exception if unable to create the mapping
+converterFactory = converterFactory.CreateMap&lt;SourceType.Sub1, PropertySettingDestType.Sub1&gt;();
+
+// This will enable the creation of a converter for SourceType to ConstructorDestType
+// - This will return null if unable to generate an appropriate converter
+var converter = converterFactory.Get&lt;SourceType, PropertySettingDestType&gt;();
+if (converter == null)
+    throw new Exception("Unable to obtain a converter");
+
+var result = converter.Convert(new SourceType()
+{
+    Value = new SourceType.Sub1() { Name = "Bo1" },
+    ValueList = new[]
+    {
+        new SourceType.Sub1() { Name = "Bo2" },
+        null,
+        new SourceType.Sub1() { Name = "Bo3" }
+    },
+    ValueEnum = SourceType.Sub2.EnumValue2
+});
+
+public class SourceType
+{
+    public Sub1 Value { get; set; }
+    public IEnumerable&lt;Sub1&gt; ValueList { get; set; }
+    public Sub2 ValueEnum { get; set; }
+    public class Sub1
+    {
+        public string Name { get; set; }
+    }
+    public enum Sub2
+    {
+        EnumValue1,
+        EnumValue2,
+        EnumValue3,
+        EnumValue4,
+        EnumValue5,
+        EnumValue6,
+        EnumValue7,
+        EnumValue8
+    }
+}
+
+public class PropertySettingDestType
+{
+    public Sub1 Value { get; set; }
+    public IEnumerable&lt;Sub1&gt; ValueList { get; set; }
+    public Sub2 ValueEnum { get; set; }
+    public class Sub1
+    {
+        public string Name { get; set; }
+    }
+    public enum Sub2 : uint
+    {
+        EnumValue1 = 99,
+        EnumValue2 = 100,
+        EnumValue3 = 101,
+        EnumValue4 = 102,
+        EnumValue5 = 103,
+        enumValue_6 = 104,
+        EnumValue7 = 105
+    }
+}
+</code></pre>
+<p class="PostTime">Posted at 21:39</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-artist-previously-known-as-the-automapperbyconstructor.html#disqus_thread" data-disqus-identifier="23">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">3 January 2012</h3><h2><a id="Post19"></a><a href="the-lesseffort-extendable-linqcompilable-mappers.html">The Less-Effort Extendable LINQ-compilable Mappers</a></h2>
+
+<p>The <a href="extendable-linqcompilable-mappers.html">last post</a> almost finished off something I originally started back last April and enabled the creation of Compilable Type Converters which take properties from a source type and feed them in as constructor arguments on a destination type.</p>
+
+<p>The only issue I had is that the final code to set up conversions was a bit verbose. To create a Converter from SourceEmployee to DestEmployee -</p>
+
+<pre><code>public class SourceEmployee
+{
+    public string Name { get; set; }
+    public SourceRole Role { get; set; }
+}
+
+public class SourceRole
+{
+    public string Description { get; set; }
+}
+
+public class DestEmployee
+{
+    public DestEmployee(string name, DestRole role)
+    {
+        Name = name;
+        Role = role;
+    }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+
+public class DestRole
+{
+    public DestRole(string description)
+    {
+        Description = description;
+    }
+    public string Description { get; private set; }
+}
+</code></pre>
+
+<p>the following code was required:</p>
+
+<pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+
+var roleConverterFactory = new CompilableTypeConverterByConstructorFactory(
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new CombinedCompilablePropertyGetterFactory(
+        new ICompilablePropertyGetterFactory[]
+        {
+            new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+            new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+        }
+    )
+);
+
+var employeeConverterFactory = new CompilableTypeConverterByConstructorFactory(
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new CombinedCompilablePropertyGetterFactory(
+        new ICompilablePropertyGetterFactory[]
+        {
+            new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+            new CompilableEnumConversionPropertyGetterFactory(nameMatcher),
+            new CompilableTypeConverterPropertyGetterFactory&lt;SourceRole, DestRole&gt;(
+                nameMatcher,
+                roleConverterFactory.Get&lt;SourceRole, DestRole&gt;()
+            )
+        }
+    )
+);
+
+var employeeConverter = employeeConverterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
+</code></pre>
+
+<p>For more complicated type graphs this could quickly get tiring! What I <em>really</em> wanted to do was this:</p>
+
+<pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+var converterFactory = new ExtendableCompilableTypeConverterFactory(
+    nameMatcher,
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new ICompilablePropertyGetterFactory[]
+    {
+        new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+        new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+    }
+);
+converterFactory = converterFactory.CreateMap&lt;SourceRole, DestRole&gt;();
+var converter = converterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
+</code></pre>
+
+<h3>The ExtendableCompilableTypeConverterFactory</h3>
+
+<p>This class basically wraps up the duplication seen above and returns a new ExtendableCompilableTypeConverterFactory instance each time that CreateMap is successfully called, the new instance having a Compilable Property Getter than can support that mapping. If the CreateMap calls was <em>not</em> successful then an exception will be raised - this will be case if there is no constructor on the destination type whose arguments can all be satisified by properties on the source type (this also covers cases where additional mappings are required for referenced types). This exception is equivalent to the AutoMapperMappingException that AutoMapper throws in similar circumstances.</p>
+
+<p>I'm just going to jump right in with this - if you've been reading this far then this will hold no challenges or surprises.</p>
+
+<pre><code>public class ExtendableCompilableTypeConverterFactory : ICompilableTypeConverterFactory
+{
+    private INameMatcher _nameMatcher;
+    private ITypeConverterPrioritiserFactory _converterPrioritiser;
+    private List&lt;ICompilablePropertyGetterFactory&gt; _basePropertyGetterFactories;
+    private Lazy&lt;ICompilableTypeConverterFactory&gt; _typeConverterFactory;
+    public ExtendableCompilableTypeConverterFactory(
+        INameMatcher nameMatcher,
+        ITypeConverterPrioritiserFactory converterPrioritiser,
+        IEnumerable&lt;ICompilablePropertyGetterFactory&gt; basePropertyGetterFactories)
+    {
+        if (nameMatcher == null)
+            throw new ArgumentNullException("nameMatcher");
+        if (converterPrioritiser == null)
+            throw new ArgumentNullException("converterPrioritiser");
+        if (basePropertyGetterFactories == null)
+            throw new ArgumentNullException("basePropertyGetterFactories");
+
+        var basePropertyGetterFactoryList = new List&lt;ICompilablePropertyGetterFactory&gt;();
+        foreach (var basePropertyGetterFactory in basePropertyGetterFactories)
+        {
+            if (basePropertyGetterFactory == null)
+                throw new ArgumentException("Null entry encountered in basePropertyGetterFactories");
+            basePropertyGetterFactoryList.Add(basePropertyGetterFactory);
+        }
+
+        _nameMatcher = nameMatcher;
+        _converterPrioritiser = converterPrioritiser;
+        _basePropertyGetterFactories = basePropertyGetterFactoryList;
+        _typeConverterFactory = new Lazy&lt;ICompilableTypeConverterFactory&gt;(
+            getConverterFactory,
+            true
+        );
+    }
+
+    private ICompilableTypeConverterFactory getConverterFactory()
+    {
+        return new CompilableTypeConverterByConstructorFactory(
+            _converterPrioritiser,
+            new CombinedCompilablePropertyGetterFactory(_basePropertyGetterFactories)
+        );
+    }
+
+    /// &lt;summary&gt;
+    /// This will return null if a converter could not be generated
+    /// &lt;/summary&gt;
+    public ICompilableTypeConverterByConstructor&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;()
+    {
+        return _typeConverterFactory.Value.Get&lt;TSource, TDest&gt;();
+    }
+
+    ITypeConverter&lt;TSource, TDest&gt; ITypeConverterFactory.Get&lt;TSource, TDest&gt;()
+    {
+        return Get&lt;TSource, TDest&gt;();
+    }
+
+    /// &lt;summary&gt;
+    /// This will throw an exception if unable to generate the requested mapping - it will
+    /// never return null. If the successful, the returned converter factory will be able
+    /// to convert instances of TSourceNew as well as IEnumerable / Lists of them.
+    /// &lt;/summary&gt;
+    public ExtendableCompilableTypeConverterFactory CreateMap&lt;TSourceNew, TDestNew&gt;()
+    {
+        // Try to generate a converter for the requested mapping
+        var converterNew = _typeConverterFactory.Value.Get&lt;TSourceNew, TDestNew&gt;();
+        if (converterNew == null)
+            throw new Exception("Unable to create mapping");
+        return AddNewConverter&lt;TSourceNew, TDestNew&gt;(converterNew);
+    }
+
+    /// &lt;summary&gt;
+    /// Generate a further extended converter factory that will be able to handle conversion
+    /// of instances of TSourceNew as well as IEnumerable / Lists of them. This will never
+    /// return null.
+    /// &lt;/summary&gt;
+    public ExtendableCompilableTypeConverterFactory AddNewConverter&lt;TSourceNew, TDestNew&gt;(
+        ICompilableTypeConverter&lt;TSourceNew, TDestNew&gt; converterNew)
+    {
+        if (converterNew == null)
+            throw new ArgumentNullException("converterNew");
+
+        // Create a property getter factory that retrieves and convert properties using this
+        // converter and one that does the same for IEnumerable properties, where the
+        // IEnumerables' elements are the types handled by the converter
+        var extendedPropertyGetterFactories = new List&lt;ICompilablePropertyGetterFactory&gt;(
+            _basePropertyGetterFactories
+        );
+        extendedPropertyGetterFactories.Add(
+            new CompilableTypeConverterPropertyGetterFactory&lt;TSourceNew, TDestNew&gt;(
+                _nameMatcher,
+                converterNew
+            )
+        );
+        extendedPropertyGetterFactories.Add(
+            new ListCompilablePropertyGetterFactory&lt;TSourceNew, TDestNew&gt;(
+                _nameMatcher,
+                converterNew
+            )
+        );
+
+        // Return a new ExtendableCompilableTypeConverterFactory that can make use of these
+        // new property getter factories
+        return new ExtendableCompilableTypeConverterFactory(
+            _nameMatcher,
+            _converterPrioritiser,
+            extendedPropertyGetterFactories
+        );
+    }
+}
+</code></pre>
+
+<p>Ok.. except one. I've sprung the ListCompilablePropertyGetterFactory. The ListCompilablePropertyGetter is similar to the CompilableTypeConverterPropertyGetter but will deal with properties and constructor arguments which are IEnumerable&lt;SourceType&gt; and IEnumerable&lt;DestType&gt;, resp.</p>
+
+<p>This means that the ExtendableCompilableTypeConverterFactory setup code above would have worked if the SourceType and DestType were</p>
+
+<pre><code>public class SourceEmployee
+{
+    public string Name { get; set; }
+    public SourceRole[] Role { get; set; }
+}
+
+public class DestEmployee
+{
+    public DestEmployee(string name, IEnumerable&lt;DestRole&gt; role)
+    {
+        Name = name;
+        Role = role;
+    }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+</code></pre>
+
+<p>as the CreateMap would return a Converter Factory that could map SourceRole to DestRole <em>and</em> IEnumerable&lt;SourceRole&gt; to IEnumerable&lt;DestRole&gt;.</p>
+
+<h3>CreateMap vs AddNewConverter</h3>
+
+<p>The CreateMap method will try to generate a new Converter and build new Property Getter Factories using that by passing it to AddNewConverter. If you need to add any custom mapping mechanisms then AddNewConverter may be called with an ICompilableTypeConverter.</p>
+
+<p>For example, if our types now looked like</p>
+
+<pre><code>public class SourceEmployee
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public SourceRole[] Role { get; set; }
+}
+
+public class DestEmployee
+{
+    public DestEmployee(string id, string name, IEnumerable&lt;DestRole&gt; role)
+    {
+        Id = id;
+        Name = name;
+        Role = role;
+    }
+    public string Id { get; private set; }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+</code></pre>
+
+<p>then we would need a way to translate int to string when the name matcher identifies the potential "Id" to "id" mapping. We could do that with AddNewConverter and a custom ICompilableTypeConverter implementation -</p>
+
+<pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+var converterFactory = new ExtendableCompilableTypeConverterFactory(
+    nameMatcher,
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new ICompilablePropertyGetterFactory[]
+    {
+        new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+        new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+    }
+);
+converterFactory = converterFactory.CreateMap&lt;SourceRole, DestRole&gt;();
+converterFactory = converterFactory.AddNewConverter&lt;int, string&gt;(
+    new CompilableIntToStringTypeConverter()
+);
+var converter = converterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
+
+public class CompilableIntToStringTypeConverter : ICompilableTypeConverter&lt;int, string&gt;
+{
+    public string Convert(int src)
+    {
+        return src.ToString();
+    }
+
+    public Expression GetTypeConverterExpression(Expression param)
+    {
+        if (param == null)
+            throw new ArgumentNullException("param");
+        return Expression.Call(
+            param,
+            typeof(int).GetMethod("ToString", new Type[0])
+        );
+    }
+}
+</code></pre>
+
+<p>See, I promised last time that splitting ICompilableTypeConverter away from ICompilableTypeConverterByConstructor at some point! :)</p>
+
+<h3>Signing off</h3>
+
+<p>This has all turned into a bit of a saga! The final code for all this can be found at</p>
+
+<p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/</a></p>
+
+<p>I've not done <em>loads</em> of performance testing but the generated Converters have consistently been around 1.1 or 1.2 times as slow as hand-rolled code (ie. approximately the same), not including the work required to generate the Converters. Compared to AutoMapper, this is quite a win (which was what originally inspired me to go on this journey). But out of the box it doesn't support all the many configurations that AutoMapper does! My main use case was to map legacy WebService objects (with parameter-less constructors) onto internal objects (with verbose constructors) which is all done. But there's currently no way to map back.. I think that's something to worry about another day! :)</p>
+<p class="PostTime">Posted at 21:52</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-lesseffort-extendable-linqcompilable-mappers.html#disqus_thread" data-disqus-identifier="19">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">2 January 2012</h3><h2><a id="Post18"></a><a href="extendable-linqcompilable-mappers.html">Extendable LINQ-compilable Mappers</a></h2>
+
+<p>To pick up from where I left off in a <a href="automapperbyconstructor-without-automapper-and-faster.html">previous post</a>, I was trying to write something that could automatically generate LINQ Expressions that could translate from (for example) -</p>
+
+<pre><code>public class SourceEmployee
+{
+    public string Name { get; set; }
+    public SourceRole Role { get; set; }
+}
+
+public class SourceRole
+{
+    public string Description { get; set; }
+}
+</code></pre>
+
+<p>to</p>
+
+<pre><code>public class DestEmployee
+{
+    public DestEmployee(string name, DestRole role)
+    {
+        Name = name;
+        Role = role;
+    }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+
+public class DestRole
+{
+    public DestRole(string description)
+    {
+        Description = description;
+    }
+    public string Description { get; private set; }
+}
+</code></pre>
+
+<p>by applying name matching logic between properties on the source types and constructor arguments on the destination types. Having this all performed by LINQ Expressions should allow the final conversion to be comparatively fast to hand-rolled code.</p>
+
+<p>This was all kicked off initially since I was using <a href="http://automapper.codeplex.com/">AutoMapper</a> for some work and wasn't happy with its approach to mapping to types that have to be initialised with verbose constructors (as opposed to a parameter-less constructor and then the setting of individual properties). This much was achieved and the solution can be found here -</p>
+
+<p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a>.</p>
+
+<p>But I wanted to see if I could improve the performance by removing AutoMapper from the equation and using LINQ Expressions.</p>
+
+<h3>A more detailed recap</h3>
+
+<p>Where we left the code as of</p>
+
+<p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters</a></p>
+
+<p>we had the class</p>
+
+<pre><code>public class CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;
+    : ITypeConverterByConstructor&lt;TSource, TDest&gt;
+{
+    // ..
+    private Lazy&lt;Func&lt;TSource, TDest&gt;&gt; _converter;
+    public CompilableTypeConverterByConstructor(
+        IEnumerable&lt;ICompilablePropertyGetter&gt; propertyGetters,
+        ConstructorInfo constructor)
+    {
+        // ..
+        _converter = new Lazy&lt;Func&lt;TSource, TDest&gt;&gt;(generateCompiledConverter, true);
+    }
+
+    public ConstructorInfo Constructor
+    {
+        get
+        {
+            // ..
+        }
+    }
+
+    public TDest Convert(TSource src)
+    {
+        if (src == null)
+            throw new ArgumentNullException("src");
+
+        return _converter.Value(src);
+    }
+
+    private Func&lt;TSource, TDest&gt; generateCompiledConverter()
+    {
+        var srcParameter = Expression.Parameter(typeof(TSource), "src");
+        var constructorParameterExpressions = new List&lt;Expression&gt;();
+        foreach (var constructorParameter in _constructor.GetParameters())
+        {
+            var index = constructorParameterExpressions.Count;
+            constructorParameterExpressions.Add(
+                _propertyGetters[index].GetPropertyGetterExpression(srcParameter)
+            );
+        }
+
+        return Expression.Lambda&lt;Func&lt;TSource, TDest&gt;&gt;(
+            Expression.New(
+                _constructor,
+                constructorParameterExpressions.ToArray()
+            ),
+            srcParameter
+        ).Compile();
+    }
+}
+
+public interface ITypeConverterByConstructor&lt;TSource, TDest&gt;
+{
+    ConstructorInfo Constructor { get; }
+    TDest Convert(TSource src);
+}
+</code></pre>
+
+<p>which took a set of "Compilable Property Getters" that matched the arguments for a specified ConstructorInfo </p>
+
+<pre><code>public interface ICompilablePropertyGetter : IPropertyGetter
+{
+    Expression GetPropertyGetterExpression(Expression param);
+}
+
+public interface IPropertyGetter
+{
+    Type SrcType { get; }
+    PropertyInfo Property { get; }
+    Type TargetType { get; }
+    object GetValue(object src);
+}
+</code></pre>
+
+<p>and generated an internal conversion using LINQ Expressions.</p>
+
+<p>There were only two Compilable Property Getters - CompilableAssignableTypesPropertyGetter, which would work with property-to-constructor-arguments where no conversion was required (eg. the available property was a string array and the constructor argument was an IEnumerable&lt;string&gt;) and CompilableEnumConversionPropertyGetter, which mapped one enum to another using an INameMatcher implementation. (The enum mapping LINQ Expression is generated by first coming up with a set of mappings and then generating a LINQ Expression consisting of a set of nested "if" statements for each mapped enum value).</p>
+
+<pre><code>public class CompilableAssignableTypesPropertyGetter&lt;TSourceObject, TPropertyAsRetrieved&gt;
+    : AbstractGenericCompilablePropertyGetter&lt;TSourceObject, TPropertyAsRetrieved&gt;
+{
+    private PropertyInfo _propertyInfo;
+    public CompilableAssignableTypesPropertyGetter(PropertyInfo propertyInfo)
+    {
+        if (propertyInfo == null)
+            throw new ArgumentNullException("propertyInfo");
+        if (!propertyInfo.DeclaringType.Equals(typeof(TSourceObject)))
+            throw new ArgumentException("Invalid propertyInfo - DeclaringType must match TSourceObject");
+
+        _propertyInfo = propertyInfo;
+    }
+
+    public override PropertyInfo Property
+    {
+        get { return _propertyInfo; }
+    }
+
+    public override Expression GetPropertyGetterExpression(Expression param)
+    {
+        if (param == null)
+            throw new ArgumentNullException("param");
+        if (!typeof(TSourceObject).IsAssignableFrom(param.Type))
+            throw new ArgumentException("param.Type must be assignable to typeparam TSourceObject");
+
+        Expression getter = Expression.Property(
+            param,
+            _propertyInfo
+        );
+
+        var targetType = typeof(TPropertyAsRetrieved);
+        if (!targetType.IsAssignableFrom(_propertyInfo.PropertyType))
+            getter = Expression.Convert(getter, targetType);
+
+        if (!targetType.IsValueType &amp;&amp; _propertyInfo.PropertyType.IsValueType)
+            getter = Expression.TypeAs(getter, typeof(object));
+
+        return getter;
+    }
+}
+
+public abstract class AbstractGenericCompilablePropertyGetter&lt;TSourceObject, TPropertyAsRetrieved&gt;
+    : ICompilablePropertyGetter
+{
+    private Lazy&lt;Func&lt;TSourceObject, TPropertyAsRetrieved&gt;&gt; _getter;
+    public AbstractGenericCompilablePropertyGetter()
+    {
+        _getter = new Lazy&lt;Func&lt;TSourceObject, TPropertyAsRetrieved&gt;&gt;(generateGetter, true);
+    }
+
+    public Type SrcType
+    {
+        get { return typeof(TSourceObject); }
+    }
+
+    public abstract PropertyInfo Property { get; }
+
+    public Type TargetType
+    {
+        get { return typeof(TPropertyAsRetrieved); }
+    }
+
+    object IPropertyGetter.GetValue(object src)
+    {
+        if (src == null)
+            throw new ArgumentNullException("src");
+        if (!src.GetType().Equals(typeof(TSourceObject)))
+            throw new ArgumentException("The type of src must match typeparam TSourceObject");
+        return GetValue((TSourceObject)src);
+    }
+
+    public TPropertyAsRetrieved GetValue(TSourceObject src)
+    {
+        if (src == null)
+            throw new ArgumentNullException("src");
+        return _getter.Value(src);
+    }
+
+    public abstract Expression GetPropertyGetterExpression(Expression param);
+
+    private Func&lt;TSourceObject, TPropertyAsRetrieved&gt; generateGetter()
+    {
+        var param = Expression.Parameter(typeof(TSourceObject), "src");
+        return Expression.Lambda&lt;Func&lt;TSourceObject, TPropertyAsRetrieved&gt;&gt;(
+            GetPropertyGetterExpression(param),
+            param
+        ).Compile();
+    }
+}
+
+public interface ICompilablePropertyGetter : IPropertyGetter
+{
+    /// &lt;summary&gt;
+    /// This Linq Expression will retrieves the value from SrcType.Property as TargetType,
+    /// the specified "param" Expression must have a type that is assignable to SrcType.
+    /// &lt;/summary&gt;
+    Expression GetPropertyGetterExpression(Expression param);
+}
+
+public interface IPropertyGetter
+{
+    /// &lt;summary&gt;
+    /// This is the type whose property is being accessed
+    /// &lt;/summary&gt;
+    Type SrcType { get; }
+
+    /// &lt;summary&gt;
+    /// This is the property on the source type whose value is to be retrieved
+    /// &lt;/summary&gt;
+    PropertyInfo Property { get; }
+
+    /// &lt;summary&gt;
+    /// This is the type that the property value should be converted to and returned as
+    /// &lt;/summary&gt;
+    Type TargetType { get; }
+
+    /// &lt;summary&gt;
+    /// Try to retrieve the value of the specified Property from the specified object
+    /// (which must be of type SrcType)
+    /// &lt;/summary&gt;
+    object GetValue(object src);
+}
+</code></pre>
+
+<p>and to generate instances of these classes we had some factories (CompilableTypeConverterByConstructorFactory, CompilableAssignableTypesPropertyGetterFactory and CompilableEnumConversionPropertyGetterFactory). These would do the work of examining the properties and constructors of specified source and destination type pairs and determining the best constructor that could be satisfied (if any) with the Compilable Property Getters. The code in these factories is none too exciting.</p>
+
+<h3>The problem</h3>
+
+<p>If the mappings we want to generate are for very simple structures (in this case, "simple" means that all property-to-constructor-argument mappings are either directly assignable-to or are enum mappings) then everything's rosy - eg.</p>
+
+<pre><code>public class SourceEmployee
+{
+    public string Name { get; set; }
+    public SourceRole Role { get; set; }
+}
+
+public enum SourceRole
+{
+    big_boss_man,
+    worker_bee
+}
+</code></pre>
+
+<p>to</p>
+
+<pre><code>public class DestEmployee
+{
+    public DestEmployee(string name, DestRole role)
+    {
+        Name = name;
+        Role = role;
+    }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+
+public enum DestRole
+{
+    BigBossMan,
+    WorkerBee
+}
+</code></pre>
+
+<p>(The enum mapping in this example would be handled by specifying a CaseInsensitiveSkipUnderscoreNameMatcher for the CompilableEnumConversionPropertyGetterFactory).</p>
+
+<p>But the problem I opened with does <em>not</em> come under this "simple structure" umbrella as in that case SourceRole and DestRole are types for which we have no Compilable Property Getter! Oh nos!</p>
+
+<h3>The CompilableTypeConverterPropertyGetter</h3>
+
+<p>For inspiration, I go back to AutoMapper since it too can not magically handle nested types - </p>
+
+<pre><code>class Program
+{
+    static void Main(string[] args)
+    {
+        AutoMapper.Mapper.CreateMap&lt;SourceTypeSub1, DestTypeSub1&gt;();
+        AutoMapper.Mapper.CreateMap&lt;SourceType, DestType&gt;();
+        var dest = AutoMapper.Mapper.Map&lt;SourceType, DestType&gt;(
+            new SourceType()
+            {
+                Value = new SourceTypeSub1() { Name = "N1" }
+            }
+        );
+    }
+}
+
+public class SourceType
+{
+    public SourceTypeSub1 Value { get; set; }
+}
+
+public class SourceTypeSub1
+{
+    public string Name { get; set; }
+}
+
+public class DestType
+{
+    public DestTypeSub1 Value { get; set; }
+}
+
+public class DestTypeSub1
+{
+    public string Name { get; set; }
+}
+</code></pre>
+
+<p>without the CreateMap call for SourceTypeSub1 to DestTypeSub1, the Map call from SourceType to DestType would fail with an AutoMapperMappingException.</p>
+
+<p>Following the same tack, a way to create a new Compilable Property Getter from a CompilableTypeConverterByConstructor (which could then be used alongside the existing AssignableType and Enum Compilable Property Getters) should solve the problem. A plan!</p>
+
+<p>Step one is going to be to expose a way to request the LINQ Expression that the CompilableTypeConverterByConstructor uses in its conversion. To address this we'll update CompilableTypeConverterByConstructor to implement a new interface ICompilableTypeConverterByConstructor which in turn implements ITypeConverterByConstructor (which is all that CompilableTypeConverterByConstructor implemented previously) -</p>
+
+<pre><code>public interface ICompilableTypeConverterByConstructor&lt;TSource, TDest&gt;
+    : ICompilableTypeConverter&lt;TSource, TDest&gt;,
+      ITypeConverterByConstructor&lt;TSource, TDest&gt; { }
+
+public interface ICompilableTypeConverter&lt;TSource, TDest&gt;
+    : ITypeConverter&lt;TSource, TDest&gt;
+{
+    /// &lt;summary&gt;
+    /// This Linq Expression will generate a new TDest instance - the specified "param"
+    /// Expression must have a type that is assignable to TSource
+    /// &lt;/summary&gt;
+    Expression GetTypeConverterExpression(Expression param);
+}
+
+public interface ITypeConverterByConstructor&lt;TSource, TDest&gt; : ITypeConverter&lt;TSource, TDest&gt;
+{
+    ConstructorInfo Constructor { get; }
+}
+
+public interface ITypeConverter&lt;TSource, TDest&gt;
+{
+    TDest Convert(TSource src);
+}
+</code></pre>
+
+<p>The ITypeConverterByConstructor has now become a specialised form of ITypeConverter (with corresponding Compilable variants) which inherently makes sense but will also be useful where we're going (but let's not get ahead of ourselves, that's coming up later in the post).</p>
+
+<p>More importantly is the ICompilableTypeConverter GetTypeConverterExpression method which allows the creation of a Compilable Property Getter that is based upon a conversion that we want to feed back into the mapper -</p>
+
+<pre><code>public class CompilableTypeConverterPropertyGetter&lt;TSourceObject, TPropertyOnSource, TPropertyAsRetrieved&gt;
+    : AbstractGenericCompilablePropertyGetter&lt;TSourceObject, TPropertyAsRetrieved&gt;
+{
+    private PropertyInfo _propertyInfo;
+    private ICompilableTypeConverter&lt;TPropertyOnSource, TPropertyAsRetrieved&gt; _compilableTypeConverter;
+    public CompilableTypeConverterPropertyGetter(
+        PropertyInfo propertyInfo,
+        ICompilableTypeConverter&lt;TPropertyOnSource, TPropertyAsRetrieved&gt; compilableTypeConverter)
+    {
+        if (propertyInfo == null)
+            throw new ArgumentNullException("propertyInfo");
+        if (!propertyInfo.DeclaringType.Equals(typeof(TSourceObject)))
+            throw new ArgumentException("Invalid propertyInfo - DeclaringType must match TSourceObject");
+        if (!propertyInfo.PropertyType.Equals(typeof(TPropertyOnSource)))
+            throw new ArgumentException("Invalid propertyInfo - PropertyType must match TPropertyOnSource");
+        if (compilableTypeConverter == null)
+            throw new ArgumentNullException("compilableTypeConverter");
+
+        _propertyInfo = propertyInfo;
+        _compilableTypeConverter = compilableTypeConverter;
+    }
+
+    public override PropertyInfo Property
+    {
+        get { return _propertyInfo; }
+    }
+
+    /// &lt;summary&gt;
+    /// This Linq Expression will retrieves the value from SrcType.Property as TargetType,
+    /// the specified "param" Expression must have a type that is assignable to SrcType.
+    /// &lt;/summary&gt;
+    public override Expression GetPropertyGetterExpression(Expression param)
+    {
+        if (param == null)
+            throw new ArgumentNullException("param");
+        if (typeof(TSourceObject) != param.Type)
+            throw new ArgumentException("param.NodeType must match typeparam TSourceObject");
+
+        // Get property value (from object of type TSourceObject) without conversion (this
+        // will be as type TPropertyOnSource)
+        // - If value is null, return default TPropertyAsRetrieved (not applicable if a
+        //   value type)
+        // - Otherwise, pass through type converter (to translate from TPropertyOnSource
+        //   to TPropertyAsRetrieved)
+        var propertyValue = Expression.Property(param, _propertyInfo);
+        var conversionExpression = _compilableTypeConverter.GetTypeConverterExpression(propertyValue);
+        if (typeof(TPropertyOnSource).IsValueType)
+            return conversionExpression;
+        return Expression.Condition(
+            Expression.Equal(
+                propertyValue,
+                Expression.Constant(null)
+            ),
+            Expression.Constant(default(TPropertyAsRetrieved), typeof(TPropertyAsRetrieved)),
+            conversionExpression
+        );
+    }
+}
+</code></pre>
+
+<p>A corresponding CompilableTypeConverterPropertyGetterFactory is straight-forward to write. Like the other Property Getter Factories, it doesn't do a huge amount - it will determine whether a named property can be retreived from a specified type and converted <em>into</em> a specified type based upon name match rules and what kind of Property Getter that Factory can generate)</p>
+
+<pre><code>public class CompilableTypeConverterPropertyGetterFactory&lt;TPropertyOnSource, TPropertyAsRetrieved&gt;
+    : ICompilablePropertyGetterFactory
+{
+    private INameMatcher _nameMatcher;
+    private ICompilableTypeConverter&lt;TPropertyOnSource, TPropertyAsRetrieved&gt; _typeConverter;
+    public CompilableTypeConverterPropertyGetterFactory(
+        INameMatcher nameMatcher,
+        ICompilableTypeConverter&lt;TPropertyOnSource, TPropertyAsRetrieved&gt; typeConverter)
+    {
+        if (nameMatcher == null)
+            throw new ArgumentNullException("nameMatcher");
+        if (typeConverter == null)
+            throw new ArgumentNullException("typeConverter");
+
+        _nameMatcher = nameMatcher;
+        _typeConverter = typeConverter;
+    }
+
+    /// &lt;summary&gt;
+    /// This will return null if unable to return an ICompilablePropertyGetter for the
+    /// named property that will return a value as the requested type
+    /// &lt;/summary&gt;
+    public ICompilablePropertyGetter Get(
+        Type srcType,
+        string propertyName,
+        Type destPropertyType)
+    {
+        if (srcType == null)
+            throw new ArgumentNullException("srcType");
+        propertyName = (propertyName ?? "").Trim();
+        if (propertyName == "")
+            throw new ArgumentException("Null/empty propertyName specified");
+        if (destPropertyType == null)
+            throw new ArgumentNullException("destPropertyType");
+
+        // If destination type does not match type converter's destination type then can
+        // not handle the request; return null
+        if (destPropertyType != typeof(TPropertyAsRetrieved))
+            return null;
+
+        // Try to get a property we CAN retrieve and convert as requested..
+        var property = srcType.GetProperties().FirstOrDefault(p =&gt;
+            p.GetIndexParameters().Length == 0
+            &amp;&amp; _nameMatcher.IsMatch(propertyName, p.Name)
+            &amp;&amp; p.PropertyType == typeof(TPropertyOnSource)
+        );
+        if (property == null)
+            return null;
+
+        // .. if successful, use to instantiate a CompilableTypeConverterPropertyGetter
+        return (ICompilablePropertyGetter)Activator.CreateInstance(
+            typeof(CompilableTypeConverterPropertyGetter&lt;,,&gt;).MakeGenericType(
+                srcType,
+                property.PropertyType,
+                destPropertyType
+            ),
+            property,
+            _typeConverter
+        );
+    }
+
+    IPropertyGetter IPropertyGetterFactory.Get(
+        Type srcType,
+        string propertyName,
+        Type destPropertyType)
+    {
+        return Get(srcType, propertyName, destPropertyType);
+    }
+}
+</code></pre>
+
+<p>Note: I skipped over actually altering the CompilableTypeConverterByConstructor class to implement the GetTypeConverterExpression but it wasn't anything too complex, the generateCompiledConverter method was changed from</p>
+
+<pre><code>private Func&lt;TSource, TDest&gt; generateCompiledConverter()
+{
+    var srcParameter = Expression.Parameter(typeof(TSource), "src");
+    var constructorParameterExpressions = new List&lt;Expression&gt;();
+    foreach (var constructorParameter in _constructor.GetParameters())
+    {
+        var index = constructorParameterExpressions.Count;
+        constructorParameterExpressions.Add(
+            _propertyGetters[index].GetPropertyGetterExpression(srcParameter)
+        );
+    }
+
+    return Expression.Lambda&lt;Func&lt;TSource, TDest&gt;&gt;(
+        Expression.New(
+            _constructor,
+            constructorParameterExpressions.ToArray()
+        ),
+        srcParameter
+    ).Compile();
+}
+</code></pre>
+
+<p>and expanded into</p>
+
+<pre><code>private Func&lt;TSource, TDest&gt; generateCompiledConverter()
+{
+    var srcParameter = Expression.Parameter(typeof(TSource), "src");
+    return Expression.Lambda&lt;Func&lt;TSource, TDest&gt;&gt;(
+        GetTypeConverterExpression(srcParameter),
+        srcParameter
+    ).Compile();
+}
+
+/// &lt;summary&gt;
+/// This Linq Expression will generate a new TDest instance - the specified "param"
+/// Expression must have a type that is assignable to TSource
+/// &lt;/summary&gt;
+public Expression GetTypeConverterExpression(Expression param)
+{
+    if (param == null)
+        throw new ArgumentNullException("param");
+    if (!typeof(TSource).IsAssignableFrom(param.Type))
+        throw new ArgumentException("param.Type must be assignable to typeparam TSource");
+
+    // Instantiate expressions for each constructor parameter by using each of the
+    // property getters against the source value
+    var constructorParameterExpressions = new List&lt;Expression&gt;();
+    foreach (var constructorParameter in _constructor.GetParameters())
+    {
+        var index = constructorParameterExpressions.Count;
+        constructorParameterExpressions.Add(
+            _propertyGetters[index].GetPropertyGetterExpression(param)
+        );
+    }
+
+    // Return an expression that to instantiate a new TDest by using property getters
+    // as constructor arguments
+    return Expression.Condition(
+        Expression.Equal(
+            param,
+            Expression.Constant(null)
+        ),
+        Expression.Constant(default(TDest), typeof(TDest)),
+        Expression.New(
+            _constructor,
+            constructorParameterExpressions.ToArray()
+        )
+    );
+}
+</code></pre>
+
+<p>The only notable difference is that GetTypeConverterExpression should return an Expression that can deal with null values - we need this so that null properties can be retrieved from source types and passed to destination type constructors. Previously there was a null check against the "src" parameter passed to the Convert method, but this can be relaxed now that nulls have to be supported for this class to work as part of a Property Getter.</p>
+
+<h3>Almost there!</h3>
+
+<p>With the introduction of a CombinedCompilablePropertyGetterFactory (which will run through a set a Compilable Property Getter Factories for each request until one of the returns a non-null value to the Get request), we end up with this structure:</p>
+
+<pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+var converterFactory = new CompilableTypeConverterByConstructorFactory(
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new CombinedCompilablePropertyGetterFactory(
+        new ICompilablePropertyGetterFactory[]
+        {
+            // Insert Compilable Property Getter Factories here..
+        }
+    )
+);
+</code></pre>
+
+<p>which finally allows a setup such as:</p>
+
+<pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+
+var roleConverterFactory = new CompilableTypeConverterByConstructorFactory(
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new CombinedCompilablePropertyGetterFactory(
+        new ICompilablePropertyGetterFactory[]
+        {
+            new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+            new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+        }
+    )
+);
+
+var employeeConverterFactory = new CompilableTypeConverterByConstructorFactory(
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new CombinedCompilablePropertyGetterFactory(
+        new ICompilablePropertyGetterFactory[]
+        {
+            new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+            new CompilableEnumConversionPropertyGetterFactory(nameMatcher),
+            new CompilableTypeConverterPropertyGetterFactory&lt;SourceRole, DestRole&gt;(
+                nameMatcher,
+                roleConverterFactory.Get&lt;SourceRole, DestRole&gt;()
+            )
+        }
+    )
+);
+
+var employeeConverter = employeeConverterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
+
+var dest = employeeConverter.Convert(
+    new SourceEmployee()
+    {
+        Name = "Richard",
+        Role = new SourceRole() { Description = "Penguin Cleaner" }
+    }
+);
+</code></pre>
+
+<p>Hoorah!</p>
+
+<p>Now, there's a slight refinement that I want to look at <a href="the-lesseffort-extendable-linqcompilable-mappers.html">next time</a> but I think this post has gone on more than long enough.</p>
+
+<h3>Footnote</h3>
+
+<p>For the super-observant, I mentioned that the use of ITypeConverter (as opposed to necessarily requiring ITypeConverterByConstructor) would be touched on again in this post. Since I've run out of steam that will be covered <a href="the-lesseffort-extendable-linqcompilable-mappers.html">next time</a> too.</p>
+<p class="PostTime">Posted at 14:11</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="extendable-linqcompilable-mappers.html#disqus_thread" data-disqus-identifier="18">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">13 July 2011</h3><h2><a id="Post7"></a><a href="automapperbyconstructor-without-automapper-and-faster.html">AutoMapper-By-Constructor without AutoMapper.. and faster</a></h2>
+
+<p>I've been wanting to see if I can improve the performance of the by-constructor type converter I wrote about (<a href="teaching-automapper-about-verbose-constructors.html">here</a>). The plan is to implement Property Getters that can retrieve the property values - translated, if required - from a source object using LINQ Expressions. Then to push these through a ConstructorInfo call using more LINQ Expressions such that a single expression can be constructed that converts from source to destination types at the same speed that hand-rolled code would. In a lot of cases, this could be merely academic but if 1000s of instances are being converted together, then the overhead of AutoMapper could make a signficant difference.</p>
+
+<p>So I want to expand</p>
+
+<pre><code>public interface IPropertyGetter
+{
+    Type SrcType { get; }
+    PropertyInfo Property { get; }
+    Type TargetType { get; }
+    object GetValue(object src);
+}
+</code></pre>
+
+<p>with</p>
+
+<pre><code>public interface ICompilablePropertyGetter : IPropertyGetter
+{
+    Expression GetPropertyGetterExpression(Expression param);
+}
+</code></pre>
+
+<p>and to expand</p>
+
+<pre><code>public interface ITypeConverterByConstructor&lt;TSource, TDest&gt;
+{
+    ConstructorInfo Constructor { get; }
+    TDest Convert(TSource src);
+}
+</code></pre>
+
+<p>with</p>
+
+<pre><code>public interface ICompilableTypeConverterByConstructor&lt;TSource, TDest&gt;
+    : ITypeConverterByConstructor&lt;TSource, TDest&gt;
+{
+    Expression GetTypeConverterExpression(Expression param);
+}
+</code></pre>
+
+<h3>Compilable Property Getter</h3>
+
+<p>Turns it out this was quite easy to implement if you know how.. but quite difficult to find examples out there if you don't! One of the things I like about LINQ Expressions code is that when you read it back it scans quite well and kinda makes sense. However, I'm still really not that experienced with it and when I want to try something new it takes me quite a while to get to grips with how I need to form the code.</p>
+
+<p>The first property getter I've got will retrieve the value of a property from a specified source type TSourceObject, where the property value is of type TPropertyAsRetrieved. TPropertyAsRetrieved in this case must be assignable-to from the type of the property on TSourceObject. So TPropertyAsRetrieved could be a string IEnumerable if the property on TSourceObject was a string array, for example (as IEnumerable&lt;string&gt; is assignable-to from string[]).</p>
+
+<pre><code>public class CompilableAssignableTypesPropertyGetter&lt;TSourceObject, TPropertyAsRetrieved&gt;
+    : AbstractGenericCompilablePropertyGetter&lt;TSourceObject, TPropertyAsRetrieved&gt;
+{
+    private PropertyInfo _propertyInfo;
+    public CompilableAssignableTypesPropertyGetter(PropertyInfo propertyInfo)
+    {
+        if (propertyInfo == null)
+            throw new ArgumentNullException("propertyInfo");
+        if (!propertyInfo.DeclaringType.Equals(typeof(TSourceObject)))
+            throw new ArgumentException("Invalid propertyInfo - DeclaringType must match TSourceObject");
+
+        _propertyInfo = propertyInfo;
+    }
+
+    public override PropertyInfo Property
+    {
+        get { return _propertyInfo; }
+    }
+
+    public override Expression GetPropertyGetterExpression(Expression param)
+    {
+        if (param == null)
+            throw new ArgumentNullException("param");
+        if (!typeof(TSourceObject).IsAssignableFrom(param.Type))
+            throw new ArgumentException("param.Type must be assignable to typeparam TSourceObject");
+
+        // Prepare to grab the property value from the source object directly
+        Expression getter = Expression.Property(
+            param,
+            _propertyInfo
+        );
+
+        // Try to convert types if not directly assignable (eg. this covers some common enum type conversions)
+        var targetType = typeof(TPropertyAsRetrieved);
+        if (!targetType.IsAssignableFrom(_propertyInfo.PropertyType))
+            getter = Expression.Convert(getter, targetType);
+
+        // Perform boxing, if required (eg. when enum being handled and TargetType is object)
+        if (!targetType.IsValueType &amp;&amp; _propertyInfo.PropertyType.IsValueType)
+            getter = Expression.TypeAs(getter, typeof(object));
+
+        return getter;
+    }
+}
+</code></pre>
+
+<p>In order to keep the interesting compilable getter code separate from the boring stuff which implements the rest of IPropertyGetter, I've used a base class AbstractGenericCompilablePropertyGetter -</p>
+
+<pre><code>public abstract class AbstractGenericCompilablePropertyGetter&lt;TSourceObject, TPropertyAsRetrieved&gt;
+    : ICompilablePropertyGetter
+{
+    private Lazy&lt;Func&lt;TSourceObject, TPropertyAsRetrieved&gt;&gt; _getter;
+    public AbstractGenericCompilablePropertyGetter()
+    {
+        _getter = new Lazy&lt;Func&lt;TSourceObject, TPropertyAsRetrieved&gt;&gt;(generateGetter, true);
+    }
+
+    public Type SrcType
+    {
+        get { return typeof(TSourceObject); }
+    }
+
+    public abstract PropertyInfo Property { get; }
+
+    public Type TargetType
+    {
+        get { return typeof(TPropertyAsRetrieved); }
+    }
+
+    object IPropertyGetter.GetValue(object src)
+    {
+        if (src == null)
+            throw new ArgumentNullException("src");
+        if (!src.GetType().Equals(typeof(TSourceObject)))
+            throw new ArgumentException("The type of src must match typeparam TSourceObject");
+        return GetValue((TSourceObject)src);
+    }
+
+    public TPropertyAsRetrieved GetValue(TSourceObject src)
+    {
+        if (src == null)
+            throw new ArgumentNullException("src");
+        return _getter.Value(src);
+    }
+
+    public abstract Expression GetPropertyGetterExpression(Expression param);
+
+    private Func&lt;TSourceObject, TPropertyAsRetrieved&gt; generateGetter()
+    {
+        var param = Expression.Parameter(typeof(TSourceObject), "src");
+        return Expression.Lambda&lt;Func&lt;TSourceObject, TPropertyAsRetrieved&gt;&gt;(
+            GetPropertyGetterExpression(param),
+            param
+        ).Compile();
+    }
+}
+</code></pre>
+
+<h3>Compilable Type-Converter-By-Constructor</h3>
+
+<p />The general concept for this is straight-forward; a CompilableTypeConverterByConstructor<tsource, tdest=""> class will take a set of compilable property getters and a ConstructorInfo reference (that is used to instantiates instances of TDest and that takes the same number of parameters are there are property getters specified). The compilable type converter generates a LINQ Expression to perform the translation from TSource to TDest, given a ParameterExpression for the source object -<p />
+
+<pre><code>public Expression GetTypeConverterExpression(Expression param)
+{
+    if (param == null)
+        throw new ArgumentNullException("param");
+    if (!typeof(TSource).IsAssignableFrom(param.Type))
+        throw new ArgumentException("param.Type must be assignable to typeparam TSource");
+
+    // Instantiate expressions for each constructor parameter by using each of the
+    // property getters against the source value
+    var constructorParameterExpressions = new List&lt;Expression&gt;();
+    foreach (var constructorParameter in _constructor.GetParameters())
+    {
+        var index = constructorParameterExpressions.Count;
+        constructorParameterExpressions.Add(
+            _propertyGetters[index].GetPropertyGetterExpression(param)
+        );
+    }
+
+    // Return an expression that to instantiate a new TDest by using property getters
+    // as constructor arguments
+    return Expression.Condition(
+        Expression.Equal(
+            param,
+            Expression.Constant(null)
+        ),
+        Expression.Constant(default(TDest), typeof(TDest)),
+        Expression.New(
+            _constructor,
+            constructorParameterExpressions.ToArray()
+        )
+    );
+}
+</code></pre>
+
+<p>There's some handling in there to return default(TDest) if a null source reference is passed in but there are no other particular areas of note.</p>
+
+<h2>Limitations</h2>
+
+<p>There's a lot more work to be done down this avenue, since currently there's only Compilable Property Getters for Assignable Types (where no real conversion is happening) and Enums (where lookups from the source values to destination values are attempted by name before falling back to a straight numeric mapping). The code as described here is available in this tagged release:</p>
+
+<p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters</a></p>
+
+<p>However, there's more on the way! I want to be able to take these simple compilable classes and use them to create more complicated type converters, so that once we have a compilable converter from:</p>
+
+<pre><code>public class SourceRole
+{
+    public string Description { get; set; }
+}
+</code></pre>
+
+<p>to</p>
+
+<pre><code>public class DestRole
+{
+    public DestRole(string description)
+    {
+        Description = description;
+    }
+    public string Description { get; private set; }
+}
+</code></pre>
+
+<p>we could leverage it translate</p>
+
+<pre><code>public class SourceEmployee
+{
+    public string Name { get; set; }
+    public SourceRole Role { get; set; }
+}
+</code></pre>
+
+<p>to</p>
+
+<pre><code>public class DestEmployee
+{
+    public DestEmployee(string name, DestRole role)
+    {
+        Name = name;
+        Roles = roles;
+    }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+</code></pre>
+
+<p>or:</p>
+
+<pre><code>public class SourceRole
+{
+    public string Description { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+}
+
+public class SourceEmployee
+{
+    public string Name { get; set; }
+    public IEnumerable&lt;SourceRole&gt; Roles { get; set; }
+}
+</code></pre>
+
+<p>to</p>
+
+<pre><code>public class DestRole
+{
+    public DestRole(string description, DateTime startDate, DateTime endDate)
+    {
+        Description = description;
+        StartDate = startDate;
+        EndDate = endDate
+    }
+    public string Description { get; private set; }
+    public DateTime StartDate { get; private set; }
+    public DateTime EndDate { get; private set; }
+}
+
+public class DestEmployee
+{
+    public DestEmployee(string name, IEnumerable&lt;DestRole&gt; roles)
+    {
+        Name = name;
+        Roles = roles;
+    }
+    public string Name { get; private set; }
+    public IEnumerable&lt;DestRole&gt; Roles { get; private set; }
+}
+</code></pre>
+
+<p>.. something similar to the way in which AutoMapper's CreateMap method works.</p>
+
+<h3>Update (2nd January 2012)</h3>
+
+<p>I've finally got round to writing up this conclusion; <a href="extendable-linqcompilable-mappers.html">here</a>.</p>
+<p class="PostTime">Posted at 20:11</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li><li><a href="Archive/Tag/LINQ.html" title="11 Posts">LINQ</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="automapperbyconstructor-without-automapper-and-faster.html#disqus_thread" data-disqus-identifier="7">Comments</a>
+						</p>
+				</tsource,></div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">25 April 2011</h3><h2><a id="Post5"></a><a href="teaching-automapper-about-verbose-constructors.html">Teaching AutoMapper about "verbose constructors"</a></h2>
+
+<p>As I alluded to in an earlier post (<a href="the-joys-of-automapper.html">The joys of AutoMapper</a>), I've been wanting to look into a way to get AutoMapper to work with these once-instantiated / always-valid / verbose-constructor classes I'm such a fan of. As I'd hoped, it's actually not that big of a deal and I've put together a demo project:</p>
+
+<p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1</a></p>
+
+<p>There's an example in that download (and at the bottom of this post) if curiousity gets the better of you but I'm going to step through an outline of the solution here.</p>
+
+<p>Before we get going, it's worth noting that I'm hoping to expand on this solution and improve it in a number of areas - to make life easier if you're starting with this post, I've tagged the repository as "FirstImplementation" in its current state, so for the solution in its current form (as I'm about to describe), it may be best to download it from here:</p>
+
+<p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a></p>
+
+<h3>The Plan</h3>
+
+<ol>
+<li>Take two Types - srcType and destType - and consider every constructor in destType..</li>
+<li>For each argument in the constructor, try to find a property in srcType that can be used as the value for that argument
+<ul>
+<li>That property must meet name-matching criteria</li>
+<li>Its value must be mappable to the constructor argument's type</li>
+</ul></li>
+<li>If multiple destType constructors can be callled using srcType's data, the most appropriate one must be selected</li>
+<li>The ConstructorInfo reference and a list of "Property Getters" are handed off to a "Type Converter" class that now has all of the necessary information to create a new instance of destType given a srcType reference
+<ul>
+<li>A "Property Getter" is an object that can retrieve the value of a specified PropertyInfo from a srcType instance and cast that value to a particular type (ie. the type that the destType constructor argument requires)</li>
+</ul></li>
+<li>This "Type Converter" will expose a Convert method that accepts a srcType reference and returns a new destType instance - we can pass this as a Func&lt;srcType, destType&gt; to an AutoMapper ConstructUsing method call and we're all done!</li>
+</ol>
+
+<h3>The Players</h3>
+
+<p>There's a class that tries to locate a property on srcType which can be used as a particular constructor argument:</p>
+
+<pre><code>public interface IPropertyGetterFactory
+{
+    IPropertyGetter Get(Type srcType, string propertyName, Type destPropertyType);
+}
+</code></pre>
+
+<p>The IPropertyGetterFactory implementation will apply the name-matching criteria - it will compare "propertyName" to the actual names of properties on srcType - so it will have access to:</p>
+
+<pre><code>public interface INameMatcher
+{
+    bool IsMatch(string from, string to);
+}
+</code></pre>
+
+<p>If the IPropertyGetterFactory manages to find a property name / type match it return an IPropertyGetter:</p>
+
+<pre><code>public interface IPropertyGetter
+{
+    Type SrcType { get; }
+    PropertyInfo Property { get; }
+    Type TargetType { get; }
+    object GetValue(object src);
+}
+</code></pre>
+
+<p>We have a class which considers all of the constructors of destType and tries to match up their argument names to srcType properties using an IPropertyGetterFactory:</p>
+
+<pre><code>public interface ITypeConverterByConstructorFactory
+{
+    ITypeConverterByConstructor&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
+}
+</code></pre>
+
+<p>If ITypeConverterByConstructorFactory is able to find destType constructors whose arguments can be fully populated by srcType data, it returns:</p>
+
+<pre><code>public interface ITypeConverterByConstructor&lt;TSource, TDest&gt;
+{
+    TDest Convert(TSource src);
+    ConstructorInfo Constructor { get; }
+    IEnumerable&lt;PropertyInfo&gt; SrcProperties { get; }
+}
+</code></pre>
+
+<p>The ITypeConverterByConstructor may make use of an IConstructorInvoker implementation which handles the passing of the arguments to the constructor to create the new destType instance.</p>
+
+<pre><code>public interface IConstructorInvokerFactory
+{
+    IConstructorInvoker&lt;T&gt; Get&lt;T&gt;(ConstructorInfo constructor);
+}
+
+public interface IConstructorInvoker&lt;TDest&gt;
+{
+    TDest Invoke(object[] args);
+}
+</code></pre>
+
+<p>For the cases where multiple destType constructors where available, a way to decide which is best is required (in most cases, we'll probably be interested in the constructor which has the most arguments, but there might be special cases):</p>
+
+<pre><code>public interface ITypeConverterPrioritiserFactory
+{
+    ITypeConverterPrioritiser&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
+}
+
+public interface ITypeConverterPrioritiser&lt;TSource, TDest&gt;
+{
+    ITypeConverterByConstructor&lt;TSource, TDest&gt; Get(IEnumerable&lt;ITypeConverterByConstructor&lt;TSource, TDest&gt;&gt; options);
+}
+</code></pre>
+
+<p>Some of the key elements - ITypeConverterByConstructor, IConstructorInvoker, ITypeConverterPrioritiser - have generic typeparams specified but the ITypeConverterByConstructorFactory that prepares the ITypeConverterByConstructor does not; I wanted to be able to use one ITypeConverterByConstructorFactory instance to prepare converters for various combinations of srcType, destType. This is why these key elements have factory interfaces to instantiate them - the factory class will have no typeparam specification but will create "worker" classes that do. IPropertyGetter is an exception to this pattern as I was expecting to have to have to maintain a list of them in each ITypeConverterByConstructor and so they would have to at least share a interface without typeparams.</p>
+
+<h3>The Plan - Re-written</h3>
+
+<ol>
+<li>Pass srcType and destType to an ITypeConverterByConstructorFactory and call Get, this will consider each of destType's constructors and determine which can have its arguments specified with data from srcType's properties by..</li>
+<li>Calling Get on an IPropertyGetterFactory for each argument name and type, passing the srcType
+<ul>
+<li>IPropertyGetterFactory will use an INameMatcher to compare property names to the specified argument name</li>
+<li>IPropertyGetterFactory will use its own judgement to determine whether the property mapping is valid (eg. the AutoMapperEnabledPropertyGetterFactory will allow properties whose type can be converted as required by AutoMapper)</li>
+</ul></li>
+<li>The ITypeConverterByConstructorFactory may now have multiple ITypeConverterByConstructor instances (each will represent a ConstructorInfo and contain IPropertyGetters to retrieve data from the srcType to satisfy all of the constructor's arguments), it will use an ITypeConverterPrioritiser to pick the best one</li>
+<li>This ITypeConverterByConstructor&lt;srcType, destType&gt; has a method Convert which returns a new destType instance given a srcType reference - success! This allows us to hook up AutoMapper with CreateMap and ConstructUsing.</li>
+</ol>
+
+<h3>The implementation</h3>
+
+<p>These interfaces and corresponding classes can all be found in the GitHub repository and hopefully it will make a reasonable amount of sense now that everything's been outlined here. With a basic knowledge of reflection and AutoMapper hopefully the code won't be too difficult to read through and there are examples both in the solution itself and in the Readme.</p>
+
+<p>Again, there is a repository branch that only covers what's discussed here and not all the following work I'm planning for it:</p>
+
+<p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a></p>
+
+<h3>And now?</h3>
+
+<p>I'm happy I've solved the initial case I set out to, but it seems now like AutoMapper needn't be as key as I was first envisaging! For cases where the types don't all match up into nice assignable-to conversions, AutoMapper definitely comes in handy - but one class of cases I'd like to use this for would be converting from (asmx) webservice interface objects (where all properties have loose getters and setters) to a validated-by-constructor class. Most of the time the property types would match and wouldn't need AutoMapper. And then maybe the conversion could be compiled using IL generation or Linq Expressions so that it would be as fast as hand-written code, just without the opportunity for typos.. Intriguing!</p>
+
+<h3>Example</h3>
+
+<pre><code>// Get a no-frills, run-of-the-mill AutoMapper Configuration reference..
+var mapperConfig = new Configuration(
+    new TypeMapFactory(),
+    AutoMapper.Mappers.MapperRegistry.AllMappers()
+);
+mapperConfig.SourceMemberNamingConvention = new LowerUnderscoreNamingConvention();
+
+// .. teach it the SourceType.Sub1 to DestType.Sub1 mapping (unfortunately AutoMapper can't
+// magically handle nested types)
+mapperConfig.CreateMap&lt;SourceType.Sub1, ConstructorDestType.Sub1&gt;();
+
+// If the translatorFactory is unable to find any constructors it can use for the conversion,
+// the translatorFactory.Get method will return null
+var translatorFactory = new SimpleTypeConverterByConstructorFactory(
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new SimpleConstructorInvokerFactory(),
+    new AutoMapperEnabledPropertyGetterFactory(
+        new CaseInsensitiveSkipUnderscoreNameMatcher(),
+        mapperConfig
+    )
+);
+var translator = translatorFactory.Get&lt;SourceType, ConstructorDestType&gt;();
+if (translator == null)
+    throw new Exception("Unable to obtain a mapping");
+
+// Make our translation available to the AutoMapper configuration
+mapperConfig.CreateMap&lt;SourceType, ConstructorDestType&gt;().ConstructUsing(translator.Convert);
+
+// Let AutoMapper do its thing!
+var dest = (new MappingEngine(mapperConfig)).Map&lt;SourceType, ConstructorDestType&gt;(
+    new SourceType()
+    {
+        Value = new SourceType.Sub1() { Name = "Test1" },
+        ValueList = new[]
+        {
+            new SourceType.Sub1() { Name = "Test2" },
+            new SourceType.Sub1() { Name = "Test3" }
+        },
+        ValueEnum = SourceType.Sub2.EnumValue2
+    }
+);
+
+public class SourceType
+{
+    public Sub1 Value { get; set; }
+    public IEnumerable&lt;Sub1&gt; ValueList { get; set; }
+    public Sub2 ValueEnum { get; set; }
+
+    public class Sub1
+    {
+        public string Name { get; set; }
+    }
+
+    public enum Sub2
+    {
+        EnumValue1,
+        EnumValue2,
+        EnumValue3
+    }
+}
+
+public class ConstructorDestType
+{
+    private Sub1 _value;
+    private IEnumerable&lt;Sub1&gt; _valueList;
+    private Sub2 _valueEnum;
+    public ConstructorDestType(Sub1 value, IEnumerable&lt;Sub1&gt; valueList, Sub2 valueEnum)
+    {
+        if (value == null)
+            throw new ArgumentNullException("value");
+        if (valueList == null)
+            throw new ArgumentNullException("valueList");
+        if (!Enum.IsDefined(typeof(Sub2), valueEnum))
+            throw new ArgumentOutOfRangeException("valueEnum");
+        _value = value;
+        _valueList = valueList;
+        _valueEnum = valueEnum;
+    }
+
+    public Sub1 Value { get { return _value; } }
+    public IEnumerable&lt;Sub1&gt; ValueList { get { return _valueList; } }
+    public Sub2 ValueEnum { get { return _valueEnum; } }
+
+    public class Sub1
+    {
+        public string Name { get; set; }
+    }
+
+    public enum Sub2
+    {
+        EnumValue1,
+        EnumValue_2,
+        EnumValue3
+    }
+}
+</code></pre>
+<p class="PostTime">Posted at 17:58</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li><li><a href="Archive/Tag/Reflection.html" title="14 Posts">Reflection</a></li></ul></div>
+						<p class="Comments">
+							<a href="teaching-automapper-about-verbose-constructors.html#disqus_thread" data-disqus-identifier="5">Comments</a>
+						</p>
+				</div>
+				<div class="Content ArchiveByTag">
+					<h3 class="PostDate">29 March 2011</h3><h2><a id="Post3"></a><a href="the-joys-of-automapper.html">The joys of AutoMapper</a></h2>
+
+<p>Earlier this year I was introduced by someone I work with to <a href="http://automapper.codeplex.com/">AutoMapper</a>. At a very convenient time it turned out since I was in the middle of a couple of projects that I had to do a lot of run-of-the-mill gluing together of request between web services where there were very similar object models in play but which came from different services - so I was looking at writing a load of code that basically took a request from one side and re-formed it into a very similar request to push elsewhere. Not particularly fun, and I find one of the places I'm most like to make stupid mistakes are when I'm not 100% mentally switched on because the task at hand makes me feel like I'm being a robot!</p>
+
+<p>So, for one of these projects I was getting stuck into; AutoMapper to the rescue!</p>
+
+<p>AutoMapper is an "object-to-object" mapper which, well.. maps from one object to another! :) If the source and destination objects have identical structure but different namespaces then most times AutoMapper will be able to translate from one to another as-if-by-magic, and there are several conventions that are applied by the default mapper that perform simple object flattening and other tricks.</p>
+
+<p>There's loads of introductory tutorials out there for AutoMapper so this is just a dead simple example to get across the gist - I can use one call to a CreateMap method and use a nice fluent coding style to tweak it how I want, then conversion between lists or arrays or enumerables of mappable types are automatically handled:</p>
+
+<pre><code>var data = new Employee()
+{
+  Name = new Employee.EmployeeName()
+  {
+    Title = "Mr",
+    First = "Andrew",
+    Last = "Test",
+  },
+  DateOfBirth = new DateTime(1990, 6, 14)
+};
+
+Mapper.CreateMap&lt;Employee, Person&gt;()
+  .ForMember(d =&gt; d.Name, o =&gt; o.MapFrom(s =&gt; s.Name.Title + " " + s.Name.First + " " + s.Name.Last));
+
+var dataList = new Employee[] { data };
+var translated = Mapper.Map&lt;Employee[], List&lt;Person&gt;&gt;(dataList);
+
+public class Employee
+{
+  public EmployeeName Name { get; set; }
+  public DateTime DateOfBirth { get; set; }
+  public class EmployeeName
+  {
+    public string Title { get; set; }
+    public string First { get; set; }
+    public string Last { get; set; }
+  }
+}
+
+public class Person
+{
+  public string Name { get; set; }
+  public DateTime DateOfBirth { get; set; }
+}
+</code></pre>
+
+<p>This doesn't even scratch the surface; it can handle nested types and complex object models, you can define custom naming conventions for property mappings, specify properties to ignore or map other than to the conventions, map onto existing instances rather than creating new, create distinct configuration instances, .. loads and loads of stuff.</p>
+
+<p>An example of its use out-in-the-field is in the MVC <a href="http://www.nerddinner.com/">Nerd Dinner</a> demo project and Jimmy Bogard (who wrote AutoMapper) mentions how he uses it in his article "<a href="http://lostechies.com/jimmybogard/2009/04/24/how-we-do-mvc/">How we do MVC</a>" -</p>
+
+<blockquote>
+  <p>AutoMapper to go from Domain -> ViewModel and Domain -> EditModel.  This is again because the view and controller put constraints on our model that we didn't want in our domain.  AutoMapper flattened our domain into very discrete ViewModel objects, containing only the data for our view, and only in the shape we want.</p>
+</blockquote>
+
+<p>.. which sounds like a very sensible application for it to me! (The rest of that article's definitely worth a read, btw).</p>
+
+<h3>Whoops!</h3>
+
+<p>There <em>was</em> one gotcha using it that caught me out, but it made perfect sense when I reasoned it through afterward.</p>
+
+<p>I was mapping from one large, most-flat object into another where the first was a subset of the second; it was an old legacy webservice where the interface accepted every property for several types of bookings, where maybe 60% of the properties were shared between types and then the rest were specific to different booking types. So a booking made through the web interface resulted in an HotelBooking being instantiated, for example, and this was mapped onto the "super" booking object of the legacy service interface.</p>
+
+<pre><code>var source = new Hotel(
+  Guid.NewGuid(),
+
+  // .. other properties
+
+  "Test"
+
+  // .. other properties
+);
+
+Mapper.CreateMap&lt;Hotel, Booking&gt;();
+var dest = Mapper.Map&lt;Hotel, Booking&gt;(source);
+
+
+public class Hotel
+{
+  public Hotel(Guid id, /* .. other properties .. */ string network)
+  {
+    if ((network ?? "").Trim() == "")
+      throw new ArgumentException("Null/empty network specified");
+
+    // .. other validation ..
+
+    Id = id;
+
+    //.. other properties..
+
+    Network = network;
+
+    //.. other properties..
+  }
+
+  public Guid Id { get; private set; }
+
+  // .. other properties ..
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public string Network { get; private set; }
+
+  // .. other properties ..
+}
+
+public class Booking
+{
+  public Guid Id { get; set; }
+
+  // .. other properties
+
+  public string NetworkType { get; set; }
+
+  // .. other properties
+}
+</code></pre>
+
+<p>On the translated "dest" instance, the NetworkType property is "System.String" - er, what??</p>
+
+<p>Well it turns out that AutoMapper finds that there is no NetworkType property to map from Hotel to Booking but sees that there <em>is</em> a "Network" value. It then tries to see if it can perform some object flattening by checking whether the Network value has a Type property which, being a string, it doesn't. But it <em>then</em> consider a property retrieval method rather than a standard property getter so it looks for a GetType() method which, since string inherits from objects, it does! So it takes the .Network.GetType() value and assumes we want this for the Booking.NetworkType value!</p>
+
+<p>Like I said, it all makes perfect sense but it took me a little while to work out what was happening in this case :)</p>
+
+<p>Did I mention AutoMapper is open source? This is great cos it let me have a poke around the source code and get a feel for what magic seemed to be going on!</p>
+
+<h3>Something rotten in Denmark</h3>
+
+<p>My biggest problem is with scenarios where I want to do the opposite of the above - instead of translating from an "always-valid" internal object to a webservice class I'd like to be able to instantiate a class through its constructor, using data from a source class.</p>
+
+<p>Now, AutoMapper <em>does</em> have some sort of support for using constructors for mapping - eg.</p>
+
+<pre><code>Mapper.CreateMap&lt;Booking, Hotel&gt;()
+  .ConstructUsing(src =&gt; new Hotel(src.Id, /* .. other properties .. */));
+</code></pre>
+
+<p>But here I've got to manually map all of the properties from the source to arguments in destination's constructor! What I really want is all of that clever name convention malarkey done in AutoMapper to be applied to constructor arguments of destination types. I mean, argument names are always present in compiled C# code so it's not like that data is unavailable for examination by AutoMapper. And having conversions like this would save me having to write a lot of boring code at webservice boundaries!</p>
+
+<p>Now, since I seem to think it's so easy - <a href="http://www.youtube.com/watch?v=nVE09yyznfc">How Hard Can It Be?</a> :) - I'm going to have a bit of a play around and see if I can slap something together to do this. If I don't end up reduced to tears (and maybe even if I do!) I'll see what I can do about posting the results!</p>
+<p class="PostTime">Posted at 21:38</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/AutoMapper.html" title="8 Posts">AutoMapper</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-joys-of-automapper.html#disqus_thread" data-disqus-identifier="3">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

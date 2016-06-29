@@ -1,0 +1,352 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - April 2013</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">9 April 2013</h3><h2><a id="Post54"></a><a href="the-full-text-indexer-search-term-highlighting-with-source-locations.html">The Full Text Indexer: Search Term Highlighting with Source Locations</a></h2>
+
+<p>I made reference last time (in <a href="the-full-text-indexer-source-locations.html">The Full Text Indexer: Source Locations</a>) to using Source Location data to implement search term highlighting and since adding this functionality to the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer</a>, I've rewritten the search term highlighting mechanism on my blog to illustrate it.</p>
+
+<p>The idea is that when a search is performed, the results page tries to show a snippet of each matching post with instances of the search term(s) highlighted. The source locations will describe where <em>all</em> of the matches are but it might not be possible to show <em>all</em> of the matches if the length of the summary snippet is restricted to, say, 300 characters. So a mechanism is required that can choose the best snippet to show; this might be the segment of content that contains the greatest number of matches, or the greatest cumulative weight of matches. It also needs to bear in mind that it's possible that none of the source locations will be in the post content itself; it's feasible that a search term could be present in a post's title but not its content at all!</p>
+
+<h3>Getting straight to it</h3>
+
+<p>The previous system that I had on my blog to perform this task was a bit complicated - it tried to determine all of the places in the content where matches might have occured (this was before source locations information was included in the Full Text Indexer data) and then generated all permutations of combinations of some or all of these matches in order to try to decide what was the best segment of the content to extract and display as the summary. The logic wasn't precisely the same as the Full Text Indexer's searching as I didn't want to go crazy on processing the content - so it wouldn't handle matches of plurals, for example. And the LINQ statement I carefully crafted over a few iterations to generate the permutations of possible matches seemed cryptic when I came back to look at it a few months later.</p>
+
+<p>The new approach is much simpler:</p>
+
+<ol>
+<li>Sort the source location data by index (where the match appears in the content) and then by length of matched token</li>
+<li>Loop through the source data and build up chains of adjacent / overlapping matches where all of the matches can fit inside a segment that is no longer than <em>maxLengthForHighlightedContent</em>
+<ol>
+<li>Construct each chain by starting with the current source location</li>
+<li>Then look ahead to the next source location (if any) and determine whether both it and the current source location fit within the <em>maxLengthForHighlightedContent</em> constraint</li>
+<li>Continue for the subsequent source locations (as soon as including one would exceed the <em>maxLengthForHighlightedContent</em>, stop looking - this works since they're sorted by index and length)</li>
+</ol></li>
+<li>Decide which of these source location chains will result in the best summary (if no chains could be constructed then return an empty set instead)</li>
+<li>Return a set of segments (index / length pairs) to highlight - no overlapping segments will be returned, any overlapping segments will be combined (this can make the actual highlighting of search terms much simpler)</li>
+</ol>
+
+<p>The "best summary" is determined by an <strong>IComparer</strong> that considers different sets of source locations. The implementation I use runs through three metrics</p>
+
+<ol>
+<li>The combined MatchWeightContribution of the source location sets (the greater the better)</li>
+<li>If there are chains that the first metric can't differentiate between then consider the number of source locations in the chain (the lower the better, this must mean that the average weight of each match is greater)</li>
+<li>If a decision still hasn't been reached for a given comparison then consider the minimum SourceIndex (the lower the better, meaning the matching starts earlier in the content)</li>
+</ol>
+
+<p>I will only be showing a search summary extracted from the post Content field although the search functionality also considers the Title as well as any Tags for the post. The first Content Retriever extracts content from a plain text version of the post's content so all source locations that relate to the Content field will have a SourceFieldIndex value of zero (I touched briefly on this <a href="the-full-text-indexer-source-locations.html">last time</a> but I'll explain in more detail further down in this post too).</p>
+
+<p>So let's see the code! This is one of those pleasant cases where the code flows nicely from the outlined approach. I didn't go into detail above about how the overlap-prevention was handled but the code (hopefully!) illustrates more than adequately -</p>
+
+<pre><code>using System;
+using System.Collections.Generic;
+using System.Linq;
+using FullTextIndexer.Common.Lists;
+using FullTextIndexer.Core.Indexes;
+
+namespace BlogBackEnd.FullTextIndexing
+{
+  public static class SearchTermHighlighter
+  {
+    public static NonNullImmutableList&lt;StringSegment&gt; IdentifySearchTermsToHighlight(
+      string content,
+      int maxLengthForHighlightedContent,
+      NonNullImmutableList&lt;SourceFieldLocation&gt; sourceLocations,
+      IComparer&lt;NonNullImmutableList&lt;SourceFieldLocation&gt;&gt; bestMatchDeterminer)
+    {
+      if (content == null)
+        throw new ArgumentNullException("content");
+      if (maxLengthForHighlightedContent &lt;= 0)
+      {
+        throw new ArgumentOutOfRangeException(
+          "maxLengthForHighlightedContent",
+          "must be greater than zero"
+        );
+      }
+      if (sourceLocations == null)
+        throw new ArgumentNullException("sourceLocations");
+      if (sourceLocations.Select(s =&gt; s.SourceFieldIndex).Distinct().Count() &gt; 1)
+        throw new ArgumentException("All sourceLocations must have the same SourceFieldIndex");
+      if (bestMatchDeterminer == null)
+        throw new ArgumentNullException("bestMatchDeterminer");
+
+      // If there are no source locations there there is nothing to highlight
+      if (!sourceLocations.Any())
+        return new NonNullImmutableList&lt;StringSegment&gt;();
+
+      // Sort sourceLocations by index and then length
+      sourceLocations = sourceLocations.Sort((x, y) =&gt;
+      {
+        if (x.SourceIndex &lt; y.SourceIndex)
+          return -1;
+        else if (y.SourceIndex &lt; x.SourceIndex)
+          return 1;
+
+        if (x.SourceTokenLength &lt; y.SourceTokenLength)
+          return -1;
+        else if (y.SourceTokenLength &lt; x.SourceTokenLength)
+          return 1;
+
+        return 0;
+      });
+
+      // Identify all combinations of source locations that can be shown at once without exceeding the
+      // maxLengthForHighlightedContent restraint
+      var sourceLocationChains = new NonNullImmutableList&lt;NonNullImmutableList&lt;SourceFieldLocation&gt;&gt;();
+      for (var indexOfFirstSourceLocationInChain = 0;
+               indexOfFirstSourceLocationInChain &lt; sourceLocations.Count;
+               indexOfFirstSourceLocationInChain++)
+      {
+        var sourceLocationChain = new NonNullImmutableList&lt;SourceFieldLocation&gt;();
+        for (var indexOfLastSourceLocationInChain = indexOfFirstSourceLocationInChain;
+                 indexOfLastSourceLocationInChain &lt; sourceLocations.Count;
+                 indexOfLastSourceLocationInChain++)
+        {
+          var startPoint = sourceLocations[indexOfFirstSourceLocationInChain].SourceIndex;
+          var endPoint =
+            sourceLocations[indexOfLastSourceLocationInChain].SourceIndex +
+            sourceLocations[indexOfLastSourceLocationInChain].SourceTokenLength;
+          if ((endPoint - startPoint) &gt; maxLengthForHighlightedContent)
+            break;
+
+          sourceLocationChain = sourceLocationChain.Add(sourceLocations[indexOfLastSourceLocationInChain]);
+          sourceLocationChains = sourceLocationChains.Add(sourceLocationChain);
+        }
+      }
+
+      // Get the best source location chain, if any (if not, return an empty set) and translate into a
+      // StringSegment set
+      if (!sourceLocationChains.Any())
+        return new NonNullImmutableList&lt;StringSegment&gt;();
+
+      return ToStringSegments(
+        sourceLocationChains.Sort(bestMatchDeterminer).First()
+      );
+    }
+
+    private static NonNullImmutableList&lt;StringSegment&gt; ToStringSegments(
+      NonNullImmutableList&lt;SourceFieldLocation&gt; sourceLocations)
+    {
+      if (sourceLocations == null)
+        throw new ArgumentNullException("sourceLocations");
+      if (!sourceLocations.Any())
+        throw new ArgumentException("must not be empty", "sourceLocations");
+
+      var stringSegments = new NonNullImmutableList&lt;StringSegment&gt;();
+      var sourceLocationsToCombine = new NonNullImmutableList&lt;SourceFieldLocation&gt;();
+      foreach (var sourceLocation in sourceLocations.Sort((x, y) =&gt; x.SourceIndex.CompareTo(y.SourceIndex)))
+      {
+        // If the current sourceLocation overlaps with the previous one (or adjoins it) then they should
+        // be combined together (if there isn't a previous sourceLocation then start a new queue)
+        if (!sourceLocationsToCombine.Any()
+        || (sourceLocation.SourceIndex
+          &lt;= sourceLocationsToCombine.Max(s =&gt; (s.SourceIndex + s.SourceTokenLength)))
+        )
+        {
+          sourceLocationsToCombine = sourceLocationsToCombine.Add(sourceLocation);
+          continue;
+        }
+
+        // If the current sourceLocation marks the start of a new to-highlight segment then add any
+        // queued-up sourceLocationsToCombine content to the stringSegments set..
+        if (sourceLocationsToCombine.Any())
+          stringSegments = stringSegments.Add(new StringSegment(sourceLocationsToCombine));
+
+        // .. and start a new sourceLocationsToCombine list
+        sourceLocationsToCombine = new NonNullImmutableList&lt;SourceFieldLocation&gt;(new[] { sourceLocation });
+      }
+      if (sourceLocationsToCombine.Any())
+        stringSegments = stringSegments.Add(new StringSegment(sourceLocationsToCombine));
+      return stringSegments;
+    }
+
+    public class StringSegment
+    {
+      public StringSegment(NonNullImmutableList&lt;SourceFieldLocation&gt; sourceLocations)
+      {
+        if (sourceLocations == null)
+          throw new ArgumentNullException("sourceLocations");
+        if (!sourceLocations.Any())
+          throw new ArgumentException("must not be empty", "sourceLocations");
+        if (sourceLocations.Select(s =&gt; s.SourceFieldIndex).Distinct().Count() &gt; 1)
+          throw new ArgumentException("All sourceLocations must have the same SourceFieldIndex");
+
+        Index = sourceLocations.Min(s =&gt; s.SourceIndex);
+        Length = sourceLocations.Max(s =&gt; (s.SourceIndex + s.SourceTokenLength) - Index);
+        SourceLocations = sourceLocations;
+      }
+
+      public int Index { get; private set; }
+      public int Length { get; private set; }
+      public NonNullImmutableList&lt;SourceFieldLocation&gt; SourceLocations { get; private set; }
+    }
+  }
+}
+</code></pre>
+
+<p>The overlap-prevention is important for my application since I want to be able to take arbitrary segments of the content and wrap them in &lt;strong&gt; tags so that they can appear highlighted - if there are segments that overlap then this isn't going to result in valid html!</p>
+
+<p>The other part of the puzzle is the "best match determiner". This also follows very closely the approach outlined:</p>
+
+<pre><code>public class BlogSearchTermBestMatchComparer : IComparer&lt;NonNullImmutableList&lt;SourceFieldLocation&gt;&gt;
+{
+  public int Compare(
+    NonNullImmutableList&lt;SourceFieldLocation&gt; x,
+    NonNullImmutableList&lt;SourceFieldLocation&gt; y)
+  {
+    if (x == null)
+      throw new ArgumentNullException("x");
+    if (y == null)
+      throw new ArgumentNullException("y");
+
+    var combinedWeightComparisonResult =
+      y.Sum(s =&gt; s.MatchWeightContribution)
+      .CompareTo(x.Sum(s =&gt; s.MatchWeightContribution));
+    if (combinedWeightComparisonResult != 0)
+      return combinedWeightComparisonResult;
+
+    var numberOfTokensComparisonResult = x.Count.CompareTo(y.Count);
+    if (numberOfTokensComparisonResult != 0)
+      return numberOfTokensComparisonResult;
+
+    return x.Min(s =&gt; s.SourceIndex).CompareTo(y.Min(s =&gt; s.SourceIndex));
+  }
+}
+</code></pre>
+
+<p>Ok, there's actually one more thing. Since I currently use the GetPartialMatches method to deal with multi-word searches on my blog, I have a <strong>NonNullImmutableList&lt;SourceFieldLocationWithTerm&gt;</strong> rather than a <strong>NonNullImmutableList&lt;SourceFieldLocation&gt;</strong> so I have this alternate method signature:</p>
+
+<pre><code>public static NonNullImmutableList&lt;StringSegment&gt; IdentifySearchTermsToHighlight(
+  string content,
+  int maxLengthForHighlightedContent,
+  NonNullImmutableList&lt;IndexData_Extensions_PartialMatches.SourceFieldLocationWithTerm&gt; sourceLocations,
+  IComparer&lt;NonNullImmutableList&lt;SourceFieldLocation&gt;&gt; bestMatchDeterminer)
+{
+  if (sourceLocations == null)
+    throw new ArgumentNullException("sourceLocations");
+
+  return IdentifySearchTermsToHighlight(
+    content,
+    maxLengthForHighlightedContent,
+    sourceLocations
+      .Select(s =&gt; new SourceFieldLocation(
+        s.SourceFieldIndex,
+        s.TokenIndex,
+        s.SourceIndex,
+        s.SourceTokenLength,
+        s.MatchWeightContribution
+      ))
+      .ToNonNullImmutableList(),
+    bestMatchDeterminer
+  );
+}
+</code></pre>
+
+<p>It would be nice if <a href="http://blogs.msdn.com/b/ericlippert/archive/2007/10/16/covariance-and-contravariance-in-c-part-one.aspx">covariance</a> was supported for classes in C#, rather than interfaces only, as then this method signature and the extra wrapping would not be required. I've contemplated changing my code such that the <strong>NonNullImmutableList</strong> implements <strong>INonNullImmutableList</strong> and supporting covariance on that interface, but I'm a bit uncomfortable that then implementations of <strong>INonNullImmutableList</strong> could be provided that actually aren't immutable. Having the interface specify <strong>NonNullImmutableList</strong> (which inherits from <strong>ImmutableList</strong>) means that the list provided absolutely <em>is</em> immutable. Unfortunately this leaves us without covariance support. (This reminds me of this post I read: <a href="http://blogs.msdn.com/b/jaredpar/archive/2008/04/22/api-design-readonlycollection-t.aspx">Immutability and ReadOnlyCollection&lt;T&gt;</a>).</p>
+
+<h3>SourceFieldIndex Values</h3>
+
+<p>When the index is generated from the source data, Content Retrievers are specified which are responsible for returning strings of content. This was covered in the first post I wrote for this project: <a href="the-full-text-indexer.html">The Full Text Indexer</a>. Originally, each Content Retriever would return zero or one strings but since then the functionality has been expanded to return a <strong>NonNullOrEmptyStringList</strong> and so zero, one or multiple strings of content may be extracted by a single retriever.</p>
+
+<p>To return to my blog as an example, each post has a Title, Content and Tags (there may be zero, one or multiple Tags). The first Content Retriever extracts a single string from the Content property (it has to do some manipulation since internally it is <a href="http://daringfireball.net/projects/markdown/">Markdown</a> which is converted into html, then I extract plain text  content from that). The second Content Retriever takes the Title property for a post and the third Content Retriever takes a string for each Tag. This means that any given post will generate at least two content strings, depending upon how many Tags there are.</p>
+
+<p>Each source location associated with a matched search term has a SourceFieldIndex value. For results from searching my blog posts, I know that any source location with SourceFieldIndex zero comes from the post's Content, any source location with SourceFieldIndex one comes from the Title and any with a SourceFieldIndex greater than one must relate to a Tag. So when I want to consider source locations to highlight matches within a segment of the post Content, I consider only those with a SourceFieldIndex of zero.</p>
+
+<p>If you wish to use the <strong>AutomatedIndexGeneratorFactoryBuilder</strong> (see <a href="the-full-text-indexer-automating-index-generation.html">The Full Text Indexer - Automating Index Generation</a>) to configure an index generator (since that makes it really easy!) there is a method <em>SetPropertyForFirstContentRetriever</em> which enables a particular property to be specified as that which the first Content Retriever will extract content from. This allows this sort of functionality to be layered on top</p>
+
+<p>For more information on this project, see the <a href="the-full-text-indexer-post-roundup.html">Full Text Indexer Round-up</a>.</p>
+<p class="PostTime">Posted at 20:40</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/FullTextIndexer.html" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<p class="Comments">
+							<a href="the-full-text-indexer-search-term-highlighting-with-source-locations.html#disqus_thread" data-disqus-identifier="54">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,347 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - June 2013</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />	<link rel="shortcut icon" href="favicon.ico" />
+	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">19 June 2013</h3><h2><a id="Post57"></a><a href="parsing-css.html">Parsing CSS</a></h2>
+
+<p>A few months ago I wrote about some <a href="extending-the-css-minifier.html">extensions to the CSS Minifer</a> to support pseudo-Source-Mapping for compiled and minified content (among other things) and I've been meaning to write about the code I used to analyse the style sheet content.</p>
+
+<h3>History Lesson</h3>
+
+<p>A long time ago I wrote some code to parse javascript to remove comments and minify the content, this was before there were a proliferation of excellent plugins and such like to do it all for you - I think the YUI Compressor might have been around but since it required java to be installed where it would be used, we couldn't use it to compile scripts on-the-fly.</p>
+
+<p>The first pass through the content would break it down into strings representing javacript code, javascript strings and comments. Strings can be quoted with either single or double quotes, single-quote-wrapped strings could contain double quotes without escaping them and vice versa, either string format could contain their own quotes so long as they were formatted. Comments could be multi-line if they were wrapped in /* and */ or single line if they started with // (terminating with a line return or end-of-file). So similar to CSS in a lot of ways! (Particularly if you consider parsing LESS which supports single line comments, unlike regular CSS).</p>
+
+<p>I wrote it in a fairly naive manner, trying to handle each case at a time, building up a primary loop which went through each character, deciding what to do with it based upon what character it was and whether the current content was a string (and what would indicate the end of the string), a comment (and what would terminate that) or javascript code. There were various variables to keep track of these items of state. It did the job but I was keen not to repeat the same approach when writing this "CSS Parser" I wanted.</p>
+
+<h3>Employing Immutability (what a surprise!)</h3>
+
+<p>Keeping track of the changing state in this way meant that at any point in time there was a lot to hold in my head while I was trying to understand what was going on if something appeared to be misbehaving and made each change to add new functionality increasingly difficult. But reducing the places where state change is a large part of the <a href="Search.html?term=immutable">immutability obsession</a> I've got going on so I figured there must be a better way.</p>
+
+<p>The idea was to start with two interfaces</p>
+
+<pre><code>public interface IProcessCharacters
+{
+  CharacterProcessorResult Process(IWalkThroughStrings stringNavigator);
+}
+
+public interface IWalkThroughStrings
+{
+  char? CurrentCharacter { get; }
+  IWalkThroughStrings Next { get; }
+}
+</code></pre>
+
+<p>with corresponding class and enum</p>
+
+<pre><code>public class CharacterProcessorResult
+{
+  public CharacterProcessorResult(
+    CharacterCategorisationOptions characterCategorisation,
+    IProcessCharacters nextProcessor)
+  {
+    if (!Enum.IsDefined(typeof(CharacterCategorisationOptions), characterCategorisation))
+      throw new ArgumentOutOfRangeException("characterCategorisation");
+    if (nextProcessor == null)
+      throw new ArgumentNullException("nextProcessor");
+
+    CharacterCategorisation = characterCategorisation;
+    NextProcessor = nextProcessor;
+  }
+
+  public CharacterCategorisationOptions CharacterCategorisation { get; private set; }
+  public IProcessCharacters NextProcessor { get; private set; }
+}
+
+public enum CharacterCategorisationOptions
+{
+  Comment,
+  CloseBrace,
+  OpenBrace,
+  SemiColon,
+  SelectorOrStyleProperty,
+  StylePropertyColon,
+  Value,
+  Whitespace
+}
+</code></pre>
+
+<p>such that a given string can be traversed character-by-character with a processor returning the type of that character and providing a processor appropriate to the next character.</p>
+
+<p>The clever part being each processor will have very tightly-scoped behaviour and responsibility. For example, if a string is encountered that starts with double quotes then a processor whose entire job is string-handling would be used. This processor would know what quote character would terminate the string and that processing should go back to the previous processor when the string has terminated. All characters encountered within the string would be identified as the same type (generally this will be of type <strong>Value</strong> since strings are most commonly used in style properties - eg. a url string as part of a background property - so if a semi-colon is encountered it would be identified as type <strong>Value</strong> despite a semi-colon having more significant meaning when not part of a string value). Handling escape characters becomes very simple if a skip-characters processor is used; when a backslash is encountered, the quoted-section processor hands off to a processor that returns a fixed type for the next character and then returns control back to the quoted-section processor. This means that the quoted-section processor doesn't need to maintain any state such as even-if-the-next-character-is-the-terminating-quote-character-do-not-terminate-the-string-yet-as-it-is-being-escaped.</p>
+
+<p>Comment sections can be handled in a very similar manner, with different processors for multiline comments than single line since the termination manners are different (and this helps keep things really easy).</p>
+
+<p>There is a primary processor which is a bit meatier than I'd like (but still only 320-odd commented lines) that looks out for the start of string or comments and hands off processing appropriately, but also identifies single signficant characters such as opening or closing braces, colons (usually indicating the a separator between a style property name and its value but sometimes a pseudo-class indicator - eg. in "a:hover") and semi-colons.</p>
+
+<p>Parsing is made more challenging as I wanted to support <a href="http://lesscss.org/">LESS</a> which allows for nesting of rules whereas the only nesting that regular CSS supports is selectors within media queries. CSS 2.1 only allows for a single media query to wrap a selector while CSS 3 <em>may</em> support nesting media rules - see this answer on Stack Overflow: <a href="http://stackoverflow.com/questions/11746581/nesting-media-rules-in-css/11747166#11747166">Nesting @media rules in CSS</a>.</p>
+
+<p>As a bit of a cop-out, I don't differentiate between a selector and a property name in the <strong>CharacterCategorisationOptions</strong> enum, they are both rolled into the value <strong>SelectorOrStyleProperty</strong> (similarly, media query content is classified as a <strong>SelectorOrStyleProperty</strong>). While this feels lazy on the one hand, on the other I wanted to make this pass through the content as cheap and clean as possible and accurately determining whether a given character is a selector or a property name could involve significant reading back and forth through the content to find out for sure.</p>
+
+<p>This way, not only is the implementation easier to follow but it enables the main loop to parse only as much content as required to enumerate as far through the content as the caller requires.</p>
+
+<p>To explain what I mean, I need to introduce the class that wraps <strong>IProcessCharacters</strong> and <strong>IWalkThroughStrings</strong> -</p>
+
+<pre><code>public interface ICollectStringsOfProcessedCharacters
+{
+  IEnumerable&lt;CategorisedCharacterString&gt; GetStrings(
+    IWalkThroughStrings contentWalker,
+    IProcessCharacters contentProcessor
+  );
+}
+</code></pre>
+
+<p>and its return type..</p>
+
+<pre><code>public class CategorisedCharacterString
+{
+  public CategorisedCharacterString(
+    string value,
+    int indexInSource,
+    CharacterCategorisationOptions characterCategorisation)
+  {
+    if (string.IsNullOrEmpty(value))
+      throw new ArgumentException("Null/blank value specified");
+    if (indexInSource &lt; 0)
+      throw new ArgumentOutOfRangeException("indexInSource", "must be zero or greater");
+    if (!Enum.IsDefined(typeof(CharacterCategorisationOptions), characterCategorisation))
+      throw new ArgumentOutOfRangeException("characterCategorisation");
+
+    Value = value;
+    IndexInSource = indexInSource;
+    CharacterCategorisation = characterCategorisation;
+  }
+
+  public string Value { get; private set; }
+
+  public int IndexInSource { get; private set; }
+
+  public CharacterCategorisationOptions CharacterCategorisation { get; private set; }
+}
+</code></pre>
+
+<p>The default <strong>ICollectStringsOfProcessedCharacters</strong> implementation will traverse through the <strong>IWalkThroughStrings</strong> content and group together characters of the same <strong>CharacterCategorisationOptions</strong> into a single <strong>CategorisedCharacterString</strong>, using <a href="http://msdn.microsoft.com/en-us/library/vstudio/9k7k7cf0.aspx">yield return</a> to return the values.</p>
+
+<p>This means that</p>
+
+<pre><code>/* Test */ .Content { color: black; }
+</code></pre>
+
+<p>would return content identified as</p>
+
+<pre><code>"/* Test */"     Comment
+" "              Whitespace
+".Content"       SelectorOrStyleProperty
+" "              Whitespace
+"{"              OpenBrace
+" "              Whitespace
+"color"          SelectorOrStyleProperty
+":"              StylePropertyColon
+" "              Whitespace
+"black"          Value
+";"              SemiColon
+" "              Whitespace
+"}"              CloseBrace
+</code></pre>
+
+<p>But if the enumeration of the data returned from the <strong>GetStrings</strong> method stopped after the ".Content" string was returned then no more parsing of the CSS would be carried out. If accurate differentiation of selectors, media queries and style property names was required at this point then a lot more parsing may be required to ensure that that string (".Content") was indeed a selector.</p>
+
+<p>Another benefit arises if a large amount of content is to be parsed; an <strong>IWalkThroughStrings</strong> implementation that wraps a <strong>TextReader</strong> may be used so the content could be loaded from disk in chunks and as much or as little parsed as desired, using relatively few resources.</p>
+
+<h3>No Read-ahead at <em>all</em>??</h3>
+
+<p>Having just jabbered on about how amazing it is that this <strong>SelectorOrStyleProperty</strong> categorisation requires absolutely zero reading ahead in order to categorise any given character (so long as all of the preceeding characters have been parsed), there are a couple of exceptions to this rue:</p>
+
+<ol>
+<li>When a @media rule is encountered, all of the following content needs to be considered to be either <strong>Whitespace</strong> or <strong>SelectorOrStyleProperty</strong> until the opening brace for the rule is encountered, since the rule may contain otherwise-significant characters such as colon (eg. the ":" in "@media (min-width:500px)" is part of the media query and does not signify the separator symbol between a property name and a property value), so when a "@" is encountered, the next characters are read to determine whether it's a media rule or not</li>
+<li>A colon in a pseudo class should also not be identified as a <strong>StylePropertyColon</strong>, it should be considered part of the <strong>SelectorOrStyleProperty</strong>, so if a colon is encountered while processing what is thought to be a selector then some reading ahead is done to try to determine whether the content indicates that it is indeed a psuedo-class selector and not a separator between a property name and its value</li>
+</ol>
+
+<p>To make this easier, the <strong>IWalkThroughStrings</strong> interface has an additional method</p>
+
+<pre><code>/// &lt;summary&gt;
+/// This will try to extract a string of length requiredNumberOfCharacters from the current
+/// position in the string navigator. If there are insufficient characters available, then
+/// a string containing all of the remaining characters will be returned. This will be an
+/// empty string if there is no more content to deliver. This will never return null.
+/// &lt;/summary&gt;
+string TryToGetCharacterString(int requiredNumberOfCharacters);
+</code></pre>
+
+<p>I contemplated making this an extension method since the data can always be retrieved using the CurrentCharacter and Next properties, but depending upon the implementation there may be more efficient ways to retrieve the data and so it became an interface method.</p>
+
+<h3>An original idea?</h3>
+
+<p>I'm really happy with the way this approach to the problem has influenced the final design. There were a few issues that I hadn't foreseen when I started (the complications with pseudo classes giving different meaning to the colon character, for example, as outlined above, had somehow slipped my mind entirely when I got going) but extending it to cover these cases wasn't particularly difficult as keeping all of the complicated bits as segregated as possible made it easy to reason about where changes needed to be made and whether they could have any unpleasant side effects.</p>
+
+<p>I don't think I can take credit for the originality of the idea, though. The overarching plan is to have a processor instance which is posed to start processing content, at this point it has produced no results and is in an uninitialised state. This is the first <strong>IProcessCharacters</strong> instance. When its <strong>Process</strong> method is called, the first character from the <strong>IWalkThroughStrings</strong> is taken and a <strong>CharacterProcessorResult</strong> returned which identifies the type of that first character and specifies an <strong>IProcessCharacters</strong> instance to process the next character. That character triggered the change in state. The next call to <strong>Process</strong> might return a result with a different type of <strong>IProcessCharacters</strong> and/or a different <strong>CharacterCategorisationOptions</strong>.</p>
+
+<p>The point is that for any current state, there are a finite number of states that can be moved to next (since there are a limited number of <strong>CharacterCategorisationOptions</strong> values and <strong>IProcessCharacters</strong> implementations) and a finite number of triggers for each change in state (since there are only so many possible characters, even if we do consider the huge extended alphabets available). This puts me in mind of a Finite State Machine which is a well-documented concept.. the article on <a href="https://en.wikipedia.org/wiki/Finite-state_machine">Wikipedia</a> is thorough and there's another article on <a href="http://learnyousomeerlang.com/finite-state-machines">learn you some Erlang for great good!</a> which I haven't read all of, but I've heard good things about that site so intend to read that article properly before hopefully reading and following more of the tutorials on there.</p>
+
+<h3>Overview of processors</h3>
+
+<p>Just to emphasise how this approach made things easier and spread much of the logic across self-contained components, I'll spin through the processors which loop through the content, passing control back and forth as appropriate.</p>
+
+<p>The first is always the <strong>SelectorOrStylePropertySegment</strong>, which is actually the one that has to deal with the most different circumstances. By default it will identify each character as being of type <strong>SelectorOrStyleProperty</strong> unless it encounters any one-offs like an <strong>OpenBrace</strong> or a <strong>SemiColon</strong> or anything that consititues <strong>Whitespace</strong>. If it encounters the ":" character then it has to do a little reading ahead to try to determine whether that indicates that a delimiter between a Style Property Name and the Property Value or whether it's part of a pseudo class (eg. ":hover"). If it's a Property Value then it hands off to the <strong>StyleValueSegment</strong> class which walks through content, marking it as either type <strong>Value</strong> or <strong>Whitespace</strong> until it hits a ";" and returns control back to the <strong>SelectorOrStylePropertySegment</strong>.</p>
+
+<p>If the <strong>StyleValueSegment</strong> encounters a quote character then it hands off control to a <strong>QuotedSegment</strong> instance which walks through the content marking it as type <strong>Value</strong> until it encounters the closing quote and returns control back to where it came from. The <strong>QuotedSegment</strong> has a constructor argument for the termination character (the closing quote) so doesn't have to do anything complicated other than wait for that character to show up!</p>
+
+<p>The <strong>SelectorOrStylePropertySegment</strong> does something similar to handing off to the <strong>StyleValueSegment</strong> when it encounters an opening square bracket as that indicates the start of an attribute selector (eg. "a[href]") - control is given to a <strong>BracketedSelectorSegment</strong> which identifies all content as being type <strong>SelectorOrStyleProperty</strong> until the closing "]" character is encountered.</p>
+
+<p>All three of <strong>SelectorOrStylePropertySegment</strong>, <strong>StyleValueSegment</strong> and <strong>BracketedSelectorSegment</strong> have to make exceptions for comments. When a "/" is encountered, they will look ahead to see if the next is either "/" or "<em>" and hand off to a <strong>SingleLineCommentSegment</strong> or <strong>MultiLineCommentSegment</strong>, respectively. The first simply has to mark everything as <strong>Comment</strong> content until passing back control when a line break is encountered. The second marks content as <strong>Comment</strong> until it encounters a "</em>" which the character after is a "/". When this "*" is encountered it hands off to a <strong>SkipCharactersSegment</strong> which marks the next character as <strong>Comment</strong> as well and then hands back to whatever handed control to the <strong>MultiLineCommentSegment</strong>. Only a single character can be identified at once, hence the use of the <strong>SkipCharactersSegment</strong>, but even this small hoop is only a small one to jump through. These three classes are very minor specialisation of a shared base class so that this logic is shared.</p>
+
+<p>The <strong>QuotedSegment</strong> doesn't inherit from the same since <em>all</em> content should be identified as being of a particular type, comment-like content within a quoted string does not constitute an actual comment. The <strong>QuotedSegment</strong> class takes a constructor argument to indicate the type of content that it will be representing since a quoted section while processing <strong>Value</strong> content should be identified as type <strong>Value</strong> while a quoted section in <strong>SelectorOrStyleProperty</strong> content (eg. in "input[type='text']") should also be identified as type <strong>SelectorOrStyleProperty</strong>.</p>
+
+<p>So essentially it all boils down to is-the-current-processor-ok-for-this-character? If yes, then continue to use it. If a condition is encountered where the processor should change (either handing control to a new processor or handing control <em>back</em> to a previous processor) then do that and let it continue.</p>
+
+<p>When I started writing it, I somehow forgot all about attribute selectors (there's a fair argument that more planning might have been beneficial but I wanted to do it an exercise in jumping in with this approach and then hoping that the entire design would lend itself well to "changing requirements" - aka. me overlooking things!). If this had been processed in some contorted single loop full of complicated interacting conditions - like that javascript parser of my past - then adding that extra set of conditions would have filled me with dread. With this approach, it was no big deal.</p>
+
+<h3>The Processor Factory</h3>
+
+<p>There was only one thing that struck me with the idea of all of these processor instances being created left, right and centre; that there could be a lot of churn. That if there was content being processed then there could thousands of <strong>MultiLineCommentSegment</strong> instances being created, for instance, when they're nearly all to perform the same task - record comment content and pass back to the primary <strong>SelectorOrStylePropertySegment</strong> processor. If these instances could be shared then the churn could be reduced. And since each processor is immutable there is no state to worry about and so they are inherently shareable.</p>
+
+<p>To achieve this, an <strong>IGenerateCharacterProcessors</strong> is passed as a constructor argument to classes that need to instantiate other processors. The simplest implementation of this is to spin up a new instance of the requested processor type, passing the provided constructor arguments. This is what the <strong>CharacterProcessorsFactory</strong> class does. But the <strong>CachingCharacterProcessorsFactory</strong> class will wrap this and keep a record of everything it's instantiated and return a previous reference if it has the same type and constructor arguments as the request specifies. This enables the reuse that I had in mind.</p>
+
+<p>I will admit that there is a slight air of premature optimisation around this, worrying about churn with no evidence that it's a problem, but I intend for these processors to be used on substantial sized chunks of CSS / LESS - and when the <strong>IWalkThroughStrings</strong> interface allows for a class to be written backed onto a <strong>TextReader</strong> (as described earlier) so that only the minimum content need be held in memory at any one time, then this extra work to reuse processor instances seems to make sense.</p>
+
+<h3>Deeper Analysis</h3>
+
+<p>Ok, that explanation of how simple everything was ended up longer and quite possibly more detailed than I'd originally expected but there's one more thing I want to address!</p>
+
+<p>All of the code described above really only allows for quite a simplistic representation of the data. But it paves the way for more complicated processing.</p>
+
+<p>What I really needed was a way to analyse the structure of LESS content - this is all looping back to the idea of "linting" stylesheets to see if they adhere to the rules in the <a href="noncascading-css-a-revolution.html">Non-cascading CSS Post</a>. A simple example is being able to determine whether all content in a stylesheet (that has been identified as not being one of the Resets or Themes sheets) should have the content wrapped in a html tag which limits the scope of any declared mixins or values.</p>
+
+<p>A naive way approach would be trim the raw string content and see if it starts with "html {" or some variation with whitespace, hoping that there is no comment content that needs to be ignored. A better way is to use the CSS Processor as-is and skip over any leading comment and whitespace content and look for a html tag at the start of the content. However, more work would have to be done to ensure that that html tag isn't closed and then followed with more content which may or may not be wrapped in a scope-restricting html tag.</p>
+
+<p>To deal with cases like this which require "deep analysis", the "ExtendedLESSParser" project has a class, the <strong>LessCssHierarchicalParser</strong>, which takes the output from the CSSParser (a <strong>CategorisedCharacterString</strong> set) and tranforms it into hierarhical data describing selectors, media queries, import statements, style property names and style property values. Selectors and media queries are containers that have child "fragments" (these could be style properties or they could be nested selectors). All mention of whitespace and comments are removed and just a representation of the raw style data remains.</p>
+
+<pre><code>// Example 
+html
+{
+  h1
+  {
+    color: black;
+    background: white url("background.jpg") no-repeat top left;
+  }
+  p.Intro { padding: 8px; }
+}
+</code></pre>
+
+<p>becomes something like</p>
+
+<pre><code>html
+  h1
+    color
+      black
+    background
+      white
+      url("background.jpg")
+      no-repat
+      top
+      left
+  p.Intro
+    padding
+      8px
+</code></pre>
+
+<p><em>(Above: "html" represent a <strong>Selector</strong> instance with a ChildFragments property containing <strong>Selector</strong> instances for the "h1" and "p", each with ChildFragments data made up of <strong>StylePropertyValue</strong> and <strong>StylePropertyValue</strong> instances. These classes implement <strong>ICSSFragment</strong> as do the <strong>Import</strong> and <strong>MediaQuery</strong>, which aren't present in the example here).</em></p>
+
+<p>To ensure that content is wrapped in scope-restricting html tags, what must be done is that the output from the <strong>LessCssHierarchicalParser</strong> (a set of <strong>ICSSFragment</strong> implementations) must be considered and it be asserted that they are either <strong>Import</strong> instances or <strong>Selector</strong> instances whose <strong>Selectors</strong> property indicates that the selector in the source content was only "html". An implementation can be found in my <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/">NonCascadingCSSRulesEnforcer</a> project on Bitbucket, specifically the file <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/src/1c997d6a25d4cee7dcd64fc451eda4fa7c17ca80/NonCascadingCSSRulesEnforcer/Rules/HtmlTagScopingMustBeAppliedToNonResetsOrThemesSheets.cs">HtmlTagScopingMustBeAppliedToNonResetsOrThemesSheets.cs</a>.</p>
+
+<p>Unfortunately, since this level of analysis requires that the entire content be considered before the structure can be described, this is not as lightweight a process as the CSSProcessor's parsing. However, it is much more powerful in enabling you to drill down into the structure of a stylesheet. The <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/">NonCascadingCSSRulesEnforcer</a> has code to enforce nearly all of the rules in my original <a href="noncascading-css-a-revolution.html">Non-cascading CSS Post</a>, along with an <strong>ITextFileLoader</strong> implementation which allows the rules validation to be integrated with my <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> project which I've been using to rebuild a real site (not just my blog) with these rules. It's been going really well and I intend to put up a concluding post to this "Non-cascading CSS" mini-series with any final insights and any evidence I can present for and against trying to apply them to all builds I'm involved with in the future.</p>
+<p class="PostTime">Posted at 21:50</p><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Immutability.html" title="12 Posts">Immutability</a></li></ul></div>
+						<p class="Comments">
+							<a href="parsing-css.html#disqus_thread" data-disqus-identifier="57">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "http://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="Search.html" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="Scripts/prettify.js"></script>
+	<script type="text/javascript" src="Scripts/Site.js"></script>
+
+</body>
+</html>
