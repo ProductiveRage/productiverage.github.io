@@ -5,14 +5,14 @@
 	<meta charset="utf-8" />
 	<title>Productive Rage - Writing React apps using Bridge.NET - The Dan Way (from first principles)</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
 	<!--[if lt IE 9]>
 	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
 	<![endif]-->
-	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
 	<link rel="canonical" href="http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles" />
-	<link rel="shortcut icon" href="favicon.ico" />
-	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
 </head>
 
@@ -48,7 +48,7 @@
 				</script>
 
 				<div class="Content SinglePost">
-					<h3 class="PostDate">15 March 2016</h3><h2><a id="Post96"></a><a href="writing-react-apps-using-bridgenet-the-dan-way-from-first-principles.html">Writing React apps using Bridge.NET - The Dan Way (from first principles)</a></h2>
+					<h3 class="PostDate">15 March 2016</h3><h2><a id="Post96"></a><a href="/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles">Writing React apps using Bridge.NET - The Dan Way (from first principles)</a></h2>
 
 <p>I've had a request from someone to write about how I think that someone from a .net background should write a web-based application. The short answer is that I strongly believe that using Bridge.NET with React, using a Flux-like architecture is the way forward. I think that React changed the game by trying to introduce a way to write applications that addressed the big challenges, rather than what many of the other frameworks did, which was to try to make some aspects of development easier but without tackling the underlying problems. We're going to be using these technologies to create some big applications where I work and some resources as to how best to do this will be valuable. I'm going to try to roll this all together into a short series of posts about creating Bridge / React / Flux apps, where I'll try to start from the simplest approach at each point and only introduce something new when I can explain why it's valuable. So, initially, Flux will be nowhere to be seen - but, hopefully, when it <em>is</em> introduced, it will be clear why.</p>
 
@@ -60,7 +60,7 @@
 
 <p>All that the application will do will be to allow the user to write a message, entering  Title and Content strings, and to save this message. There will be a "Message API", which will emulate reading and writing to a remote endpoint, for data persistence, but the implementation will all be kept in-memory / in the browser, just to make things simple. It will look something like this:</p>
 
-<p><img alt="The proposed example app" src="Content/Images/Posts/ReactTutorial1.png" class="NoBorder AlwaysFullWidth" /></p>
+<p><img alt="The proposed example app" src="/Content/Images/Posts/ReactTutorial1.png" class="NoBorder AlwaysFullWidth" /></p>
 
 <p>As more messages are written, more entries will appear in the "Message History". Seems simple.</p>
 
@@ -124,7 +124,7 @@
 
 <p>Another reason that it is strongly recommended that components not update themselves (meaning that they are stateless, since the only way for a component to update itself is to change its state) is that it makes the handling of events much clearer. In the example application that I'm going to refer to in this series, the "Title" value that is entered by the user is reflected in the fieldset legend -</p>
 
-<p><img alt="Fieldset legend mirros the Title input value" src="Content/Images/Posts/ReactTutorial2.png" class="NoBorder AlwaysFullWidth" /></p>
+<p><img alt="Fieldset legend mirros the Title input value" src="/Content/Images/Posts/ReactTutorial2.png" class="NoBorder AlwaysFullWidth" /></p>
 
 <p>If the "Title" input box was to maintain its own state and update itself when its contents change, there still needs to be something listening for changes in order to update the fieldset legend text. If it was common for components to maintain their own state then things would quickly get out of hand as more and more components have to listen for (and react to) changes in other components. Just in the example here, there is a validation message that needs to be hidden if the "Title" input has a non-blank value, so that component would need to listen for the change event on the input. (Alternatively, the <strong>TextInput</strong> component could be provided with validation logic and <em>it</em> would be responsible for showing or hiding the validation message - which would complicate the <strong>TextInput</strong> class). On top of this, there is the "Save" button which should be disabled if either of the "Title" or "Content" input boxes have no value - so the Save button component would need to listen to change events from both text inputs and decide whether or not it should be enabled based upon their states. Maybe the input form itself wants to add an "invalid" class to itself for styling purposes if either of the inputs are invalid - now the form component has to listen to changes to the text inputs and add or remove this class. This way lies madness.</p>
 
@@ -160,7 +160,7 @@
 
 <p>In the sample application here -</p>
 
-<p><img alt="The proposed example app" src="Content/Images/Posts/ReactTutorial1.png" class="NoBorder AlwaysFullWidth" /></p>
+<p><img alt="The proposed example app" src="/Content/Images/Posts/ReactTutorial1.png" class="NoBorder AlwaysFullWidth" /></p>
 
 <p>The component hierarchy will look something like this:</p>
 
@@ -1176,7 +1176,7 @@ fieldset.history span.title
 <p>Which isn't to save that we haven't covered a lot of good ground! This will serve as a good base from which we can improve things. But we haven't seen the "Flux architecture" at all yet, and have only hinted at why we would want it. I'm not happy with how many of the properties on the various props, state and other data types are presented - one of my pet peeves with APIs is not knowing what can and can't be null; on the <strong>TextInput</strong>'s <strong>Props</strong> class, the "ClassName" string <em>may</em> be null but the "OnChange" callback must not be. These facts are not clear from just looking at the class. Similarly, it would be nice to know whether or not there are any guarantees about the "Title" and "Content" strings on the <strong>MessageDetails</strong> class (is it ever really acceptable for them to be null?). Finally, the reading and writing of messages through the <strong>MessageApi</strong> implementation we have here works fine for one person doing all the writing, but how could we deal with it if the <strong>MessageApi</strong> simulated a server-based API that received new messages from <em>other</em> uses, either through some sort of polling or through a push mechanism? This is an important question for systems that have to support multiple users.</p>
 
 <p>All of these questions will be answered in later posts, along with further advice to try to help you do what I think React does best - write code that is easier to reason about, and thus easier to read, maintain and extend.</p>
-<p class="PostTime">Posted at 23:55</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="easy-purecomponent-react-performance-boosts-for-bridgenet.html">Easy &quot;PureComponent&quot; React performance boosts for Bridge.Net</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="writing-react-apps-using-bridgenet-the-dan-way-part-two.html">Writing React apps using Bridge.NET - The Dan Way (Part Two)</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/Bridge.html" title="9 Posts">Bridge</a></li><li><a href="Archive/Tag/React.html" title="11 Posts">React</a></li></ul></div>
+<p class="PostTime">Posted at 23:55</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/easy-purecomponent-react-performance-boosts-for-bridgenet">Easy &quot;PureComponent&quot; React performance boosts for Bridge.Net</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/writing-react-apps-using-bridgenet-the-dan-way-part-two">Writing React apps using Bridge.NET - The Dan Way (Part Two)</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="9 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
 						<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "96";
@@ -1212,23 +1212,23 @@ fieldset.history span.title
 
 				</div>
 				<div class="Search">
-<form action="Search.html" method="get" />						<div>
+<form action="/Search" method="get" />						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				
-				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive">Every Post Title</a></div></div>
 			</div>
 
 		</div>
 	</div>
 
 	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
-	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
-	<script type="text/javascript" src="Scripts/prettify.js"></script>
-	<script type="text/javascript" src="Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
 
 </body>
 </html>

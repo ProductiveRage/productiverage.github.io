@@ -5,14 +5,14 @@
 	<meta charset="utf-8" />
 	<title>Productive Rage - Optimising the CSS Processor (ANTS and algorithms)</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<link rel="stylesheet" type="text/css" media="all" href="Content/Styles.css" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
 	<!--[if lt IE 9]>
 	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
 	<![endif]-->
-	<link rel="stylesheet" type="text/css" media="print" href="Content/PrintOverrides.css" />
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
 	<link rel="canonical" href="http://www.productiverage.com/optimising-the-css-processor-ants-and-algorithms" />
-	<link rel="shortcut icon" href="favicon.ico" />
-	<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
 </head>
 
@@ -48,11 +48,11 @@
 				</script>
 
 				<div class="Content SinglePost">
-					<h3 class="PostDate">11 November 2013</h3><h2><a id="Post65"></a><a href="optimising-the-css-processor-ants-and-algorithms.html">Optimising the CSS Processor (ANTS and algorithms)</a></h2>
+					<h3 class="PostDate">11 November 2013</h3><h2><a id="Post65"></a><a href="/optimising-the-css-processor-ants-and-algorithms">Optimising the CSS Processor (ANTS and algorithms)</a></h2>
 
 <p>The Production Team at work have started using my best-practices-rules-validating LESS CSS Processor (which utilises <a href="http://www.dotlesscss.org/">dotLess</a>). This is excellent news for me! And frankly, I think it's excellent news for them! :D</p>
 
-<p>This all ties in with a post I wrote at the start of the year (<a href="noncascading-css-a-revolution.html">Non-cascading CSS: A revolution!</a>), a set of rules to write maintainable and genuinely reusable stylesheets. I gave a presentation on it at work and one of the Lead Devs on Production recently built the first site using the processor (I've used it for this blog but the styling here is hardly the most complex). Now that it's been proven, it's being used on another build. And a high-profile one, at that. Like I said, exciting times!</p>
+<p>This all ties in with a post I wrote at the start of the year (<a href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a>), a set of rules to write maintainable and genuinely reusable stylesheets. I gave a presentation on it at work and one of the Lead Devs on Production recently built the first site using the processor (I've used it for this blog but the styling here is hardly the most complex). Now that it's been proven, it's being used on another build. And a high-profile one, at that. Like I said, exciting times!</p>
 
 <p>However, during the site-build process there are periods where the routine goes tweak styles, refresh, tweak styles, refresh, tweak styles, lather, rinse, repeat. And when the full set of stylesheets starts getting large, the time to regenerate the final output (and perform all of the other processing) was getting greater and making this process painful.</p>
 
@@ -66,7 +66,7 @@
 
 <p>So I point the profiler at the executable and the results look like the following..</p>
 
-<p><img src="Content/Images/Posts/ProfilingTheProcessor.png" alt="ANTS Performance Profiler in action" title="ANTS Performance Profiler in action" /></p>
+<p><img src="/Content/Images/Posts/ProfilingTheProcessor.png" alt="ANTS Performance Profiler in action" title="ANTS Performance Profiler in action" /></p>
 
 <p><em>(I shrank the screenshot to get it to fit on the page properly, if you can't read it then don't worry, I'm about to explain the highlights)</em>.</p>
 
@@ -88,7 +88,7 @@
 
 <p>The <strong>StringNavigator.CurrentCharacter</strong> property was being marked as taking a lot of time. This was surprising to me since it doesn't do much, it only returns a character with a particular index from the content string that is being examined. However, the hit count was enormous as this could be called multiple times for each character being examined - so if there were nearly 6m character results, there were many more <strong>StringNavigator.CurrentCharacter</strong> requests. I changed the string to a character array internally thinking that access to it might be quicker but it didn't make a lot of difference. What <em>did</em> make a difference was to extract the <strong>CurrentCharacter</strong> value in the <strong>StringNavigator</strong>'s constructor and return that value directly from the property, reducing the number of character array accesses required. What made it even better was to find any method that requested the <strong>CurrentCharacter</strong> multiple times and change them to request it once, store it in a local variable and use that for subsequent requests. Although each property access is very cheap individually, signficantly reducing the total number of property requests resulted in faster-running code. This is the sort of thing that would have felt like a crazy premature optimisation if I didn't have the profiler highlighting the cost!</p>
 
-<p>The <strong>InjectedIdTidyingTextFileLoader</strong>'s <strong>TidySelectorContent</strong> method spent a lot of its time in a LINQ "Any" call. The same enumerable data was being looped through many times - changing it to a <strong>HashSet</strong> (and using the <strong>HashSet</strong>'s Contains method) made this much more efficient. (The <strong>HashSet</strong> uses the same technique as the <strong>Dictionary</strong>'s key lookup which, as I've written about before in <a href="the-net-dictionary-is-fast.html">The .Net Dictionary is FAST!</a>, has impressive performance).</p>
+<p>The <strong>InjectedIdTidyingTextFileLoader</strong>'s <strong>TidySelectorContent</strong> method spent a lot of its time in a LINQ "Any" call. The same enumerable data was being looped through many times - changing it to a <strong>HashSet</strong> (and using the <strong>HashSet</strong>'s Contains method) made this much more efficient. (The <strong>HashSet</strong> uses the same technique as the <strong>Dictionary</strong>'s key lookup which, as I've written about before in <a href="/the-net-dictionary-is-fast">The .Net Dictionary is FAST!</a>, has impressive performance).</p>
 
 <p>The <strong>CategorisedCharacterString</strong>'s constructor also had an <strong>Enum.IsDefined</strong> call. While this class is instantiated much less often than the <strong>CharacterProcessorResult</strong>, it was still in the hundreds of thousands range, so it was worth changing too.</p>
 
@@ -239,7 +239,7 @@ html a.test:hover {
 <p>In real-world terms, the site style content that I was using as the basis of this test can be fully rebuilt from source in just under 2 seconds, rather than the almost 15 seconds it was taking before. When in the tweak / refresh / tweak / refresh cycle, this makes a huge difference.</p>
 
 <p>And it was interesting to see the "don't optimise before profiling" advice in action once more, along with "avoid premature optimisation". The places to optimise were not where I would have expected (well, certainly not in some of the cases) and the last two changes were not the micro-optimisations that profilers lead you directly to at all; if you blindly follow the profiler then you miss out on the "big picture" changes that the profiler is unaware of.</p>
-<p class="PostTime">Posted at 20:37</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="what-is-nothing.html">What is Nothing?</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="cross-browser-pseudo-source-mapping-with-less.html">Cross Browser (Pseudo) Source Mapping with LESS</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="Archive/Tag/CSS.html" title="9 Posts">CSS</a></li><li><a href="Archive/Tag/Optimisation.html" title="8 Posts">Optimisation</a></li></ul></div>
+<p class="PostTime">Posted at 20:37</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/what-is-nothing">What is Nothing?</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/cross-browser-pseudo-source-mapping-with-less">Cross Browser (Pseudo) Source Mapping with LESS</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/CSS" title="9 Posts">CSS</a></li><li><a href="/Archive/Tag/Optimisation" title="8 Posts">Optimisation</a></li></ul></div>
 						<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "65";
@@ -275,23 +275,23 @@ html a.test:hover {
 
 				</div>
 				<div class="Search">
-<form action="Search.html" method="get" />						<div>
+<form action="/Search" method="get" />						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner.html">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary.html">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="a-static-type-system-is-a-wonderful-message-to-the-present-and-future.html">A static type system is a wonderful message to the present and future</a></li><li><a href="using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier.html">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="writing-react-apps-using-bridgenet-the-dan-way-part-three.html">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				
-				<div class="History"><h2>Archives</h2><ul><li><a href="Archive/6/2016.html">June 2016 (1)</a></li><li><a href="Archive/5/2016.html">May 2016 (3)</a></li><li><a href="Archive/3/2016.html">March 2016 (3)</a></li><li><a href="Archive/2/2016.html">February 2016 (2)</a></li><li><a href="Archive/12/2015.html">December 2015 (1)</a></li><li><a href="Archive/11/2015.html">November 2015 (2)</a></li><li><a href="Archive/8/2015.html">August 2015 (3)</a></li><li><a href="Archive/7/2015.html">July 2015 (1)</a></li><li><a href="Archive/6/2015.html">June 2015 (1)</a></li><li><a href="Archive/5/2015.html">May 2015 (2)</a></li><li><a href="Archive/4/2015.html">April 2015 (1)</a></li><li><a href="Archive/3/2015.html">March 2015 (1)</a></li><li><a href="Archive/1/2015.html">January 2015 (2)</a></li><li><a href="Archive/12/2014.html">December 2014 (1)</a></li><li><a href="Archive/11/2014.html">November 2014 (1)</a></li><li><a href="Archive/10/2014.html">October 2014 (2)</a></li><li><a href="Archive/9/2014.html">September 2014 (2)</a></li><li><a href="Archive/8/2014.html">August 2014 (1)</a></li><li><a href="Archive/7/2014.html">July 2014 (1)</a></li><li><a href="Archive/6/2014.html">June 2014 (1)</a></li><li><a href="Archive/5/2014.html">May 2014 (2)</a></li><li><a href="Archive/2/2014.html">February 2014 (1)</a></li><li><a href="Archive/1/2014.html">January 2014 (1)</a></li><li><a href="Archive/12/2013.html">December 2013 (1)</a></li><li><a href="Archive/11/2013.html">November 2013 (1)</a></li><li><a href="Archive/10/2013.html">October 2013 (1)</a></li><li><a href="Archive/8/2013.html">August 2013 (3)</a></li><li><a href="Archive/7/2013.html">July 2013 (3)</a></li><li><a href="Archive/6/2013.html">June 2013 (1)</a></li><li><a href="Archive/5/2013.html">May 2013 (2)</a></li><li><a href="Archive/4/2013.html">April 2013 (1)</a></li><li><a href="Archive/3/2013.html">March 2013 (8)</a></li><li><a href="Archive/2/2013.html">February 2013 (2)</a></li><li><a href="Archive/1/2013.html">January 2013 (2)</a></li><li><a href="Archive/12/2012.html">December 2012 (3)</a></li><li><a href="Archive/11/2012.html">November 2012 (4)</a></li><li><a href="Archive/9/2012.html">September 2012 (1)</a></li><li><a href="Archive/8/2012.html">August 2012 (1)</a></li><li><a href="Archive/7/2012.html">July 2012 (3)</a></li><li><a href="Archive/6/2012.html">June 2012 (3)</a></li><li><a href="Archive/5/2012.html">May 2012 (2)</a></li><li><a href="Archive/2/2012.html">February 2012 (3)</a></li><li><a href="Archive/1/2012.html">January 2012 (4)</a></li><li><a href="Archive/12/2011.html">December 2011 (7)</a></li><li><a href="Archive/8/2011.html">August 2011 (2)</a></li><li><a href="Archive/7/2011.html">July 2011 (1)</a></li><li><a href="Archive/5/2011.html">May 2011 (1)</a></li><li><a href="Archive/4/2011.html">April 2011 (2)</a></li><li><a href="Archive/3/2011.html">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="Archive.html">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive">Every Post Title</a></div></div>
 			</div>
 
 		</div>
 	</div>
 
 	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
-	<script type="text/javascript" src="Scripts/jquery.autocomplete.min.js"></script>
-	<script type="text/javascript" src="Scripts/prettify.js"></script>
-	<script type="text/javascript" src="Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
 
 </body>
 </html>
