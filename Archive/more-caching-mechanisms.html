@@ -1,0 +1,358 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - More Caching Mechanisms</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/more-caching-mechanisms" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">22 May 2013</h3><h2><a id="Post56"></a><a href="/more-caching-mechanisms">More Caching Mechanisms</a></h2>
+
+<p>This is something I'd meant to cover in the last post (<a href="/caching-mechanisms">Caching Mechanisms</a>) before I realised how long the last one was getting! And it's a bite-sized post before I segue into more about alternate approches to expiring cache entries.</p>
+
+<p>Last time I had the catchily-named <strong>StaleResultDeliveringLastModifiedBasedCachingConfigLoader</strong> which implemented this simple interface</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  ConfigDetails Get();
+}
+</code></pre>
+
+<p>and combined a cache expiration mechanism based upon the last-modified date of the source content with a willingness to return stale content so long as it promised to perform a background update of the cached data when it first knowingly returned stale content.</p>
+
+<p>The principle being that this sort of cache would be used in an environment where retrieving the data is expensive and the frequency of requests is high. If stale data delivery was not allowed then this combination of expensive data retrieval and high request frequency would mean that when cached data was found to be stale (and so removed from cache) there would likely be multiple requests all going to retrieve the live data independently. And if this process is so expensive then this would be a bad thing that we'd like to avoid!</p>
+
+<p>An alternative to delivering stale data during these points would be to queue up the requests that all want to go and get the live data such that only one makes the live retrieval and pushes it into cache, then the queued requests could be set free but directed at the now-populated cache. Delivering stale data during the update process, however, means that all of the requests are fast during the background update process and the high frequency of the requests should mean that stale data is not present in the cache long before it is updated (and hence the window in which stale data is returned should be small).</p>
+
+<p>However, at first request the cache will be empty and if the request rate is so high and the retrieval so expensive  then there will be a burst of activity as multiple requests all have to retrieve the data live before the first to complete pushes it into the cache.</p>
+
+<p>To address that, there's this variation on it, the <strong>WorkAvoidingLastModifiedBasedCachingConfigLoader</strong> (because it's getting late and I was unable to come up with a succinct but descriptive name.. ironic considering the quote about the "hard things in computer science" I started the <a href="/caching-mechanisms">last post</a> with!).</p>
+
+<p>This adds a queue around requests that have to deal with the case of the cache being unable to provide any content, stale or otherwise. The synchronisation mechanism here is more like a traditional lock construct but with a timeout so that a limit can optionally be put on how long requests should be patient for while waiting for another request to get the live data, with an exception being raised if this time is exceeded. (I say "optionally" since specifying TimeSpan.MaxValue for the timeout value would effectively disable this behaviour).</p>
+
+<p>A "lock" is basically translated by the compiler from</p>
+
+<pre><code>lock (lockObject)
+{
+  // Do work
+}
+</code></pre>
+
+<p>into</p>
+
+<pre><code>var copyOfLockObject = lockObject;
+var lockWasTaken = false;
+try
+{
+  Monitor.Enter(copyOfLockObject, ref lockWasTaken);
+
+  // Do work
+}
+finally
+{
+  if (lockWasTaken)
+    Monitor.Exit(copyOfLockObject);
+}
+</code></pre>
+
+<p>I've used the Monitor.TryEnter method that takes a timeout argument. If the lock couldn't be taken then a timeout occurred and so I throw an exception.</p>
+
+<p>This lock-unrolling information is taken from Eric Lippert's <a href="http://blogs.msdn.com/b/ericlippert/archive/2009/03/06/locks-and-exceptions-do-not-mix.aspx">Locks and exceptions do not mix</a> which is quite short and absolutely worth a read (as per usual!). He mentions that "the body of a lock should do as little as possible" not only "so that anyone waiting on the lock does not have to wait long" but more importantly that "small, simple lock bodies minimize the chance that the thing in there is going to throw an exception" which could leave the resources in a messed up state. Wwrapping work in a lock only guarantees that a single thread can process it at any given time, not that the work magically becomes atomic - it could half succeed and then fail, leaving these resources that must be protected in an unpredictable way. Thankfully, here all I'm doing inside the lock is trying to retrieve live data and then updating the cache - <em>hopefully</em> nothing that can leave things corrupt in any way.</p>
+
+<pre><code>namespace CachingExamples.ConfigLoaders
+{
+  public class WorkAvoidingLastModifiedBasedCachingConfigLoader : IRetrieveConfigDetails
+  {
+    private readonly IRetrieveConfigDetails _configLoader;
+    private readonly Func&lt;DateTime&gt; _lastModifiedDateRetriever;
+    private readonly TimeSpan _retrieverLockAcquisitionTimeout;
+    private readonly Action&lt;Action&gt; _backgroundWorkExecuter;
+    private readonly ICacheOneSpecificThing _cache;
+    private int _workInProgressIndicator;
+    private readonly object _retrieverLock;
+    public StaleResultDeliveringLastModifiedBasedCachingConfigLoader(
+      IRetrieveConfigDetails configLoader,
+      Func&lt;DateTime&gt; lastModifiedDateRetriever,
+      TimeSpan retrieverLockAcquisitionTimeout,
+      Action&lt;Action&gt; backgroundWorkExecuter,
+      ICacheOneSpecificThing cache)
+    {
+      if (configLoader == null)
+        throw new ArgumentNullException("configLoader");
+      if (lastModifiedDateRetriever == null)
+        throw new ArgumentNullException("lastModifiedDateRetriever");
+      if (retrieverLockAcquisitionTimeout.Ticks &lt;= 0)
+        throw new ArgumentOutOfRangeException(
+          "retrieverLockAcquisitionTimeout",
+          "must be a positive duration"
+        );
+      if (backgroundWorkExecuter == null)
+        throw new ArgumentNullException("backgroundWorkExecuter");
+      if (cache == null)
+        throw new ArgumentNullException("cache");
+
+      _configLoader = configLoader;
+      _lastModifiedDateRetriever = lastModifiedDateRetriever;
+      _retrieverLockAcquisitionTimeout = retrieverLockAcquisitionTimeout;
+      _backgroundWorkExecuter = backgroundWorkExecuter;
+      _cache = cache;
+      _workInProgressIndicator = 0;
+      _retrieverLock = new object();
+    }
+    public StaleResultDeliveringLastModifiedBasedCachingConfigLoader(
+      IRetrieveConfigDetails configLoader,
+      Func&lt;DateTime&gt; lastModifiedDateRetriever,
+      TimeSpan retrieverLockAcquisitionTimeout,
+      ICacheOneSpecificThing cache)
+      : this(
+        configLoader,
+        lastModifiedDateRetriever,
+        retrieverLockAcquisitionTimeout,
+        ThreadPoolBackgroundWorkExecuter,
+        cache
+      ) { }
+
+    /// &lt;summary&gt;
+    /// The default manner in which background work is performed is to queue up the work through
+    /// the Threadpool but this be can overridden by using the constructor that takes the 
+    /// backgroundWorkExecuter argument
+    /// &lt;/summary&gt;
+    public static Action&lt;Action&gt; ThreadPoolBackgroundWorkExecuter
+    {
+      get
+      {
+        return backgroundAction =&gt;
+        {
+          if (backgroundAction == null)
+            return;
+
+          ThreadPool.QueueUserWorkItem(state =&gt; { backgroundAction(); });
+        };
+      }
+    }
+
+    public ConfigDetails Get()
+    {
+      // Try to retrieve data from cache
+      var lastModified = _lastModifiedDateRetriever();
+      var cachedData = _cache.GetIfAvailable() as ConfigDetailsWithModifiedDate;
+
+      // If unavailable in cache then the cache needs populating, only one request should be
+      // allowed to perform this work, any others should wait until the work has completed
+      // and the data been made available in the cache
+      if (cachedData == null)
+      {
+        var lockWasTaken = false;
+        try
+        {
+          Monitor.TryEnter(_retrieverLockAcquisitionTimeout, ref lockWasTaken);
+          if (lockWasTaken)
+          {
+            cachedData = _cache.GetIfAvailable() as ConfigDetailsWithModifiedDate;
+            if (cachedData == null)
+            {
+              var liveData = _configLoader.Get();
+              _cache.SetIfNotAvailable(
+                new ConfigDetailsWithModifiedDate(
+                  liveData,
+                  lastModified
+                )
+              );
+              return liveData;
+            }
+          }
+        }
+        finally
+        {
+          if (lockWasTaken)
+            Monitor.Exit(_retrieverLockAcquisitionTimeout);
+        }
+        if (!lockWasTaken)
+          throw new TimeoutException("The request timed out while waiting for Config Details load");
+      }
+
+      // If the available data is still valid then return that
+      if (cachedData.LastModified &gt;= lastModified)
+        return cachedData.Config;
+
+      // If the available data is no longer valid then initiate a background request immediately
+      // return the stale data (if CompareExchange returns zero then it means that the value of
+      // _workInProgressIndicator was zero before the call to CompareExchange (and so it will
+      // have then been set to one since the second argument is the value to set the first
+      // argument's reference to if it currently matches the third argument)
+      if (Interlocked.CompareExchange(ref _workInProgressIndicator, 1, 0) == 0)
+      {
+        _backgroundWorkExecuter(() =&gt;
+        {
+          try
+          {
+            UpdateCachedData();
+          }
+          catch
+          {
+            // Ignore any errors - if this work was performed on another thread then there's
+            // nothing we can do about it here, we just need to be sure to reset the
+            // workInProgressIndicator value
+          }
+          Interlocked.Exchange(ref _workInProgressIndicator, 0);
+        });
+      }
+      return cachedData.Config;
+    }
+
+    private void UpdateCachedData()
+    {
+      var lastModified = _lastModifiedDateRetriever();
+      var backgroundUpdateLiveData = _configLoader.Get();
+      _cache.RemoveIfAvailable();
+      _cache.SetIfNotAvailable(
+        new ConfigDetailsWithModifiedDate(
+          backgroundUpdateLiveData,
+          lastModified
+        )
+      );
+    }
+
+    private class ConfigDetailsWithModifiedDate
+    {
+      public ConfigDetailsWithModifiedDate(ConfigDetails config, DateTime lastModified)
+      {
+        if (config == null)
+          throw new ArgumentNullException("config");
+
+        Config = config;
+        LastModified = lastModified;
+      }
+
+      /// &lt;summary&gt;
+      /// This will never be null
+      /// &lt;/summary&gt;
+      public ConfigDetails Config { get; private set; }
+
+      public DateTime LastModified { get; private set; }
+    }
+  }
+}
+</code></pre>
+
+<p>I think the use of Monitor for the locking in this case is most appropriate for the case in hand where the timeout on queued requests is required. Particularly since the time spent with the cache empty should be relatively small and so any performance losses comparing Monitor to the Interlocked approach used for marking a background update as being in progress will be minor.</p>
+
+<p>The test for an empty cache has to implement the double-checked locking pattern for cases where requests are queued up while one gets the live data, otherwise once the live data becomes available then the queued requests would try to get the live data themselves even though it's just been put into cache. There's no complications with this implementation of the pattern as having the Monitor call implicitly generates "full fence" memory barriers around it to prevent any instructions reordering that is the threat to this sort of thing. I think the definitive article is Joe Albarhari's <a href="http://www.albahari.com/threading/part4.aspx">Threading in C# (Part 4: Advanced Threading)</a>. I'm sure I've linked to it before and I've certainly read it over and over again over the years!</p>
+
+<p>I think I've covered everything I wanted to about implementing caches for now*, I still need to do some more work before I can crack on with talking about all of the cache expiration methods I have in mind. Think it's going to be a little while before that's all ready but having to get everything completely straight in my head for a topic has been one of the benefit I've found to blogging about things!</p>
+
+<p>* (I half contemplated writing <em>another</em> variation which would have a perioidic timer to pick up on an empty cache or trigger a background update if stale data is present and an update is not already in progress, but to be honest I think that might be labouring the point a bit and wouldn't add that much value to the post - hopefully it's obvious both how such a mechanism could be implemented and what some of the pros and cons would be).</p>
+<p class="PostTime">Posted at 00:26</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/caching-mechanisms">Caching Mechanisms</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/parsing-css">Parsing CSS</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Caching" title="2 Posts">Caching</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "56";
+							var disqus_title = "More Caching Mechanisms";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

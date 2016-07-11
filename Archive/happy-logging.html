@@ -1,0 +1,431 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Happy Logging</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/happy-logging" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">7 May 2014</h3><h2><a id="Post70"></a><a href="/happy-logging">Happy Logging</a></h2>
+
+<p>I started a project recently and got to the point where some of the classes needed a way to write out warnings and other debug messages so I started hashing out a quick <strong>ILogEvents</strong> interface, as I've done for other projects.</p>
+
+<p>And stopped, wondering if I had half a dozen different projects with very similar logging requirements that I'd written similar code for. There are some reasons that I've allowed this duplication of effort to occur; some code was for internal work projects whereas some was for my personal projects. Some projects had specific requirements like writing requests and responses into particular columns in a database.. but most of the time, general purpose logging-this-or-that boils down to the same sorts of things.</p>
+
+<p>Now, in fairness, through writing this "same sort of thing" over various iterations in varios scenarios, I've refined it down somewhat - which is good - but now I'm past the point where it changes significantly from implementation to implementation. The time for churning this code out over and over for my general purpose logging needs has been and gone!</p>
+
+<h3>What do I really want from a logger?</h3>
+
+<p>Although it seems obvious at a first glance what a logger should do (log messages, duh) there are some requirements - or maybe ideals - that I'd like.</p>
+
+<ol>
+<li><p>Each message should have a Log Level (so that I can filter messages to only include Warnings and Errors, if that seems appropriate at the time)</p></li>
+<li><p>There should be delayed evaluation of messages' contents (so that it's possible to generate detailed and expensive-to-generate messages - eg. serialised object graphs - with almost zero cost if those log messages don't end up being recorded anywhere)</p></li>
+<li><p>I want a way to buffer messages so that writes to disk, for example, can be batched up (ideally having a single "write thread" to avoid file locking issues) - in some scenarios this could probably be considered equivalent to saying that it should be possible for the logging to be asynchronous so that callers never have to wait for log requests to succeed before carrying on with their real work (just push the messages onto the buffer and move on)</p></li>
+<li><p>Convenience methods should exist for the most common logging calls, including calls that will ignore any logging errors (if a call to log a warning failed, what am I going to do with a warning about logging the warning.. try to log it?!)</p></li>
+<li><p>The framework should be simple-to-use, without any magic (I had to integrate with a library that used log4net once, I didn't like the static references or how incredibly difficult it seemed to be to configure it programatically)</p></li>
+</ol>
+
+<p>A follow-on from points 3 (about batching) and 4 (about error handling) is that it should to try to log as much as possible if things go wrong. For example, if a batch of six log messages are to be written and it turns out that one of those messages throws an exception when its message content is evaluated, then that one message should be ignored and the others written. This is a bit different to how I would normally like to write code (fail as fast as possible and identify what failed) but for logging it feels like it makes sense.</p>
+
+<h3>The Interface</h3>
+
+<p>So this is my solution. I call it "Happy Logging" since it seems almost impossible to come up with a name for a logging framework that is neither boring nor generic. Instead I thought I'd come up with something cheery and memorable! (You can find <a href="https://bitbucket.org/DanRoberts/happylogging">"Happy Logging" on Bitbucket</a>).</p>
+
+<p>The core interface itself is very simple, a logger implementation needs to be able to deal with a set of messages. There may be zero, one or multiple entries in that set, but it's considered an error condition to pass a null <em>messages</em> reference (the implementation should raise an exception).</p>
+
+<pre><code>public interface ILogEvents
+{
+  /// &lt;summary&gt;
+  /// This should throw an exception for a null messages set. Whether exceptions are
+  /// thrown due to any other issues (eg. null references within the messages set,
+  /// messages whose ContentGenerator delegates throw exceptions, file or database
+  /// exceptions if file-writing or database-access is attempted while recording
+  /// the messages, etc..) will vary depending upon the implementation.
+  /// &lt;/summary&gt;
+  void Log(IEnumerable&lt;LogEventDetails&gt; messages);
+}
+
+public class LogEventDetails
+{
+  public LogEventDetails(
+    LogLevel logLevel,
+    DateTime logDate,
+    int managedThreadId,
+    Func&lt;string&gt; contentGenerator,
+    Exception optionalException)
+  {
+    if (!Enum.IsDefined(typeof(LogLevel), logLevel))
+      throw new ArgumentOutOfRangeException("logLevel");
+    if (contentGenerator == null)
+      throw new ArgumentNullException("contentGenerator");
+
+    LogLevel = logLevel;
+    LogDate = logDate;
+    ManagedThreadId = managedThreadId;
+    ContentGenerator = contentGenerator;
+    OptionalException = optionalException;
+  }
+
+  public LogLevel LogLevel { get; private set; }
+
+  public DateTime LogDate { get; private set; }
+
+  public int ManagedThreadId { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public Func&lt;string&gt; ContentGenerator { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This may be null as it is optional information (there is no guarantee that it
+  /// will be non-null even if the LogLevel is Error)
+  /// &lt;/summary&gt;
+  public Exception OptionalException { get; private set; }
+}
+
+public enum LogLevel
+{
+  Debug,
+  Info,
+  Warning,
+  Error
+}
+</code></pre>
+
+<p>I considered documenting this interface with stricter expected behaviour regarding null entries in the set but logger implementations have more to worry aboun that just null messages. Since the messages' <em>ContentGenerator</em> delegates aren't executed until the messages actually need to be logged, there's no way to know if they're going to throw an exception or not until that time. So it seemed to me that it was best to leave it up to the logger implementation to deal with "dodgy messages" (null references or messages whose <em>ContentGenerators</em> blow up). This way it is an explicit expectation that the logger will have to do so, and something that the implementation writer should be aware of (since it's expressed in the interface's doc comment!).</p>
+
+<p>The thing to take away from all this talk about exception-handling is that it should be something for the implementation to worry about rather than the caller. The caller should just be able to hand off some information and go about its day!</p>
+
+<p>To this end, there are a range of extension methods with two main purposes: exception-ignoring and call abbreviation. This relates to point 4 in my original list; I want to be able to write convenient log-writing code. Most of the time I don't want to have to care if the logging failed (since, again, what can I do with this information) and a lot of the time I don't want to specify a batch of fully-specified messages. I might want to just record some particular warning message text for a condition encountered - it's happened right now, so I don't want to have to specify <strong>DateTime.Now</strong> and it's happened on the current thread, so I don't want to have to specify <strong>Thread.CurrentThread.ManagedThreadId</strong>. And there was no exception so I don't have an exception reference to log information about. All I want to do is specify a log level and a content generator delegate and be done with it:</p>
+
+<pre><code>_logger.LogIgnoringAnyError(LogLevel.Warning, () =&gt; "Something strange happened");
+</code></pre>
+
+<p>These are what the extension methods are for.</p>
+
+<p>The first takes all of the information for a single log message and abbreviates the code required to log it (the caller doesn't have to create a <strong>LogEventDetails</strong> instance and wrap it in an enumerable set). But it doesn't provide any exception-hiding.</p>
+
+<p>The second method (the first of the <em>LogIgnoringAnyError</em> methods) calls the first method but wraps its in a try..catch so that any exceptions don't bubble up to the caller.</p>
+
+<p>Then there are two further variations. The first doesn't have a <em>logDate</em> argument (it passes along <strong>DateTime.Now</strong>) or a <em>managedThreadId</em> (it passes along <strong>Thread.CurrentThread.ManagedThreadId</strong>). The second doesn't take <em>logDate</em> or <em>managedThreadId</em> arguments, nor does it take an <em>exception</em> argument, it passes that along as null. This final extension method takes the bare minimum information possible (Log Level and content generator) and this is the method used in the above example.</p>
+
+<pre><code>public static class ILogEvents_Extensions
+{
+    public static void Log(
+      this ILogEvents logger,
+      LogLevel logLevel,
+      DateTime logDate,
+      int managedThreadId,
+      Func&lt;string&gt; contentGenerator,
+      Exception exception)
+    {
+        if (logger == null)
+            throw new ArgumentNullException("logger");
+
+        logger.Log(new[] { new LogEventDetails(
+          logLevel,
+          logDate,
+          managedThreadId,
+          contentGenerator,
+          exception
+        )});
+    }
+
+    public static void LogIgnoringAnyError(
+      this ILogEvents logger,
+      LogLevel logLevel,
+      DateTime logDate,
+      int managedThreadId,
+      Func&lt;string&gt; contentGenerator,
+      Exception exception)
+    {
+        if (logger == null)
+            throw new ArgumentNullException("logger");
+
+        try
+        {
+            Log(logger, logLevel, logDate, managedThreadId, contentGenerator, exception);
+        }
+        catch { }
+    }
+
+    public static void LogIgnoringAnyError(
+      this ILogEvents logger,
+      LogLevel logLevel,
+      Func&lt;string&gt; contentGenerator,
+      Exception exception)
+    {
+        if (logger == null)
+            throw new ArgumentNullException("logger");
+
+        LogIgnoringAnyError(
+          logger,
+          logLevel,
+          DateTime.Now,
+          Thread.CurrentThread.ManagedThreadId,
+          contentGenerator,
+          exception
+        );
+    }
+
+    public static void LogIgnoringAnyError(
+      this ILogEvents logger,
+      LogLevel logLevel,
+      Func&lt;string&gt; contentGenerator)
+    {
+        if (logger == null)
+            throw new ArgumentNullException("logger");
+
+        LogIgnoringAnyError(logger, logLevel, contentGenerator, null);
+    }
+}
+</code></pre>
+
+<h3>The exciting stuff, the implementations!</h3>
+
+<p>Ok, now we're through the intro, let's get to the real meat! There are implementations <strong>ConsoleLogger</strong> and <strong>TraceLogger</strong> (for when you want to write to the Console or to Trace), there's a <strong>NullLogger</strong> (for when you want to disable logging) and there's a <strong>FilteredLogger</strong> (that wraps another logger but only passes through messages with particular log levels). There's a <strong>CombinedLogger</strong> (which wraps multiple loggers and passes through messages to all of them) and there's a <strong>FileLogger</strong> (which writes messages immediately to disk). The <strong>FileLogger</strong> may either be provided a hard-coded filename or be given a delegate that generates a filename for every write (this makes it easy to write log files whose filename includes the current date and time).</p>
+
+<p>The <strong>ConsoleLogger</strong>, <strong>TraceLogger</strong> and <strong>FileLogger</strong> all write out message details in a default format that can overridden if required.</p>
+
+<p>But this is still child's play. </p>
+
+<p>I said right at the start that one of my aims was to be able to buffer messages / process them asynchronously. For scenarios like this, there is the <strong>ThrottlingLogger</strong>, which places all messages onto an internal queue and periodically flushes its queue's contents to another logger. The flushing period can be based upon a minimum frequency (in terms of time) or upon an upper limit on the number of items in the queue (or both!).</p>
+
+<p>The primary constructor for this class is</p>
+
+<pre><code>public ThrottlingLogger(
+  ILogEvents logger,
+  TimeSpan mimimumFrequency,
+  int maximumNumberOfBufferedItems,
+  ErrorBehaviourOptions individualLogEntryErrorBehaviour)
+</code></pre>
+
+<p>The <em>individualLogEntryErrorBehaviour</em> argument may take a value of either "Ignore" or "ThrowException". This is the behaviour to apply when an issue is encountered with a single message within a set, whether that be a null message reference or one whose <em>ContentGenerator</em> throws an exception. The default value should be considered to be "Ignore" for most cases.</p>
+
+<p>(Note that the <strong>ConsoleLogger</strong>, <strong>TraceLogger</strong> and <strong>FileLogger</strong> also have constructors where an <em>individualLogEntryErrorBehaviour</em> may be specified, this is not something that is specific to the <strong>ThrottlingLogger</strong>).</p>
+
+<p>Many of the loggers in the solution have alternate "shorthand" constructors, where sensible default values are used. For the <strong>ThrottlingLogger</strong> it is of the form</p>
+
+<pre><code>public ThrottlingLogger(ILogEvents logger)
+</code></pre>
+
+<p>where <em>mimimumFrequency</em> is provided with a default value of 2 seconds, <em>maximumNumberOfBufferedItems</em> a default of 50 and <em>individualLogEntryErrorBehaviour</em> a default of "Ignore".</p>
+
+<p>For a long-running service that logs its information to disk (which is one of the most comon cases that I need this sort of thing for), these seem like appropriate starting values.</p>
+
+<p>It should be noted that, for such a service, it would make most sense for a single logger reference to be used by all request threads, otherwise there could still be contention when flushing the messages to disk. The <strong>ThrottlingLogger</strong> uses a <strong>ConcurrentQueue</strong> internally and so is thread-safe for pushing messages to. If a single <strong>ThrottlingLogger</strong> is used by all threads then it will mean that only one thread will ever be writing the disk log at a time, which will avoid any "file in use" IO errors that more naive disk-writing log mechanisms may risk.</p>
+
+<p>Your favourite IoC framework can help with this, if that's what floats your boat. (Personally, I think you can go a long way before needing to rely upon a full "framework" to handle all of your dependencies, but let's not get bogged down with all that here).</p>
+
+<h3>Error BackTracking</h3>
+
+<p>Ok! So far, so good. But now I want to go one step further and support what I've heard called "opportunistic logging". One of the big problems with logging is trying to work out what to log and when. If you log <em>everything</em> then your log files get big quick (or your-favoured-persistence-mechanism takes up a lot of space quickly - maybe you're logging to SQL, for example). The CPU cost of logging may also become a factor if your detailed (ie. Debug level) messages perform complicated analysis or serialisation of complex data structures. However, if you don't log <em>enough</em>, then when things go wrong the logs don't give you enough clues!</p>
+
+<p>This is where opportunistic logging comes in, the logger will queue up messages and - when things are going well - throw most of them away. But when an Error message is recorded, the logger will flush everything out of its queue, writing away all of the information leading up to the problem. Since messages contents' are lazily-evaluated, potentially-expensive Debug messages can be prepared but the overhead of evaluating their content not be paid unless there is an error scenario in which the cost will be worth it.</p>
+
+<p>So you get compact logs when things are going well and detailed logs when things go wrong. The best of both worlds!</p>
+
+<p>The primary constructor for the <strong>ErrorWithBackTrackLogger</strong> class is:</p>
+
+<pre><code>public ErrorWithBackTrackLogger(
+  ILogEvents logger,
+  int maximumNumberOfHistoricalMessagesToMaintain,
+  int maximumNumberOfHistoricalMessagesToIncludeWithAnErrorEntry,
+  HistoryLoggingBehaviourOptions historyLoggingBehaviour,
+  ErrorBehaviourOptions individualLogEntryErrorBehaviour)
+</code></pre>
+
+<p>There <em>are</em> some complications to bear in mind. The logger is going to be maintaining a queue of messages, most of which shouldn't be required. Depending upon how many requests are being handled and how chatty (in terms of logging) the processing of these requests is, this in-memory queue could get big quickly. This is why the <strong>ErrorWithBackTrackLogger</strong> has a <em>maximumNumberOfHistoricalMessagesToMaintain</em>; to put a cap on it. But it's another balancing act around not wanting to maintain too many queued messages at any one time, weighed against the need to have enough messages in the queue that when a "backlog" is written with an error that <em>enough</em> history is written to be useful.</p>
+
+<p>In addition to this, you need to specify whether the backlog written includes <em>all</em> messages in the queue or just the messages whose <em>managedThreadId</em> matches that of the Error log message. For the more common cases that I encounter, I would specify "IncludePrecedingMessagesFromTheSameThreadOnly" for the <em>historyLoggingBehaviour</em> argument but "IncludeAllPrecedingMessages" is the alternative.</p>
+
+<p>Like the other logger implementations, this class has a shorthand constructor</p>
+
+<pre><code>public ErrorWithBackTrackLogger(ILogEvents logger)
+</code></pre>
+
+<p>which uses default values of 1000 for <em>maximumNumberOfHistoricalMessagesToMaintain</em>, 100 for <em>maximumNumberOfHistoricalMessagesToIncludeWithAnErrorEntry</em>, "IncludePrecedingMessagesFromTheSameThreadOnly" for <em>historyLoggingBehaviour</em> and "Ignore" for <em>individualLogEntryErrorBehaviour</em>. These feel like sensible starting values that may be easily tweaked if different use cases require it.</p>
+
+<p>Just to clarify: <em>maximumNumberOfHistoricalMessagesToMaintain</em> is the cap on the queue size and <em>maximumNumberOfHistoricalMessagesToIncludeWithAnErrorEntry</em> is the cap on the number of backlog messages that will be flushed out with any error. If you had a service that was only ever going to service a single request at a time or if you had a case where you wanted to flush <em>all</em> queued log messages (and not just those that originated on the same thread) with an Error message, then these two values may as well be set to the same value. However, if requests are concurrent, independent and have a dedicated (managed) thread each, then it makes sense for <em>maximumNumberOfHistoricalMessagesToMaintain</em> to be larger since it must maintain backlog information for all of the requests that are being processed at any given time.</p>
+
+<h3>Combining loggers</h3>
+
+<p>To conclude, let's look at putting some of these loggers together:</p>
+
+<pre><code>var logger = new CombinedLogger(
+  new FilteredLogger(
+    new TraceLogger(),
+    LogLevel.Info, LogLevel.Warning, LogLevel.Error
+  ),
+  new ThrottlingLogger(
+    new ErrorWithBackTrackLogger(
+      new FileLogger(
+        () =&gt; new FileInfo("Error " + DateTime.Now.ToString("yyyy-MM-dd") + ".log")
+      )
+    )
+  )
+);
+</code></pre>
+
+<p>This will write all messages with level Info, Warning and Error to the Trace (so if you have a Trace Listener attached to the process you can see most of what's happening as it happens) but it will also be on the look out for any Error messages and, when encountered, will flush a backlog of messages to an error log on disk. The error log's filename will include today's date and the log file writer backs off a <strong>ThrottlingLogger</strong> to ensure that, in the unfortunate event of multiple requests erroring at the same time, there is only a single thread trying to write to the disk. It would be bad if some of this valuable error log information could not be written to disk because multiple threads were trying to do it simultaneously and one thread prevented the others due to file locking!</p>
+
+<p>In the above example, the only log level not being passed to the <strong>TraceLogger</strong> is Debug. This is the log level that I would recommend be used for any expensive messages, such as serialised representations of requests, responses or interim state. This ensures that the work to generate those messages is not performed unless it's really useful, like when an error has occurred and we want all the information we can get (the <strong>ErrorWithBackTrackLogger</strong> writes messages for <em>all</em> log levels).</p>
+
+<p>And with that, we're done! This library is simple enough that I can happily use it with any new project that I start but it can also be easily configured to handle amost every situation I've needed a logger for that I can think of in the last few years. A lot of unusual cases can probably be dealt with by tweaking values on the current loggers or by extending the functionality by writing a new implementation (such as one to write to a persistence mechanism other than disk).</p>
+
+<p><a href="https://bitbucket.org/DanRoberts/happylogging">Happy Logging</a> indeed! :)</p>
+
+<h3>Update (8th May 2014)</h3>
+
+<p>Following feedback, I've got a couple of updates.</p>
+
+<p>Firstly, the <strong>LogEventDetails</strong> implementation I originally posted was executing the <em>contentGenerator</em> delegate to ensure that it wasn't null or blank. This is crazy, since it totally negates the effort to enable lazily-evaluated messages! So I've removed that from the code here and on Bitbucket. I also tweaked the default message formatter to deal with the case of an empty message (that code is just in the repo, it's not in this post).</p>
+
+<p>I then added another extension method for logging exceptions -</p>
+
+<pre><code>public static void LogIgnoringAnyError(this ILogEvents logger, Exception error)
+{
+  if (logger == null)
+    throw new ArgumentNullException("logger");
+
+  // If there's no error then there's nothing to log, but this method is not supposed
+  // to throw an error when operating against a logger implementation. (A null logger
+  // reference means it's NOT operating against an actual logger, which is why the
+  // ArgumentNullException above is acceptable).
+  if (error == null)
+    return;
+
+  LogIgnoringAnyError(logger, LogLevel.Error, () =&gt; "", error);
+}
+</code></pre>
+
+<p>I'm sure that someone left a comment saying that it's a bit awkward to log errors when you need to specify a content generator, but you have no content to add other than what is in the exception. Weirdly, I can't see this comment any more! I don't know if the author removed it in a manner that means I can't see that it ever existed.. Nonetheless, I thought this was a good idea!</p>
+
+<p>This method takes only an exception argument (if null is passed then no logging is performed), so now you can log in a manner such as</p>
+
+<pre><code>try
+{
+  AttemptSomething();
+}
+catch(Exception e)
+{
+  _logger.LogIgnoringError(e);
+  throw;
+}
+</code></pre>
+<p class="PostTime">Posted at 23:32</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/vbscript-is-dim">VBScript is DIM</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/wcf-cors-plus-json-rest-complete-example">WCF CORS (plus JSON &amp; REST) - Complete Example</a></div></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "70";
+							var disqus_title = "Happy Logging";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,394 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - The Full Text Indexer - Structured Queries</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/the-full-text-indexer-structured-queries" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">13 March 2013</h3><h2><a id="Post51"></a><a href="/the-full-text-indexer-structured-queries">The Full Text Indexer - Structured Queries</a></h2>
+
+<p>I've considered in the past extending the way in which searches can be defined for use with the Full Text Indexer. The current approaches are:</p>
+
+<ol>
+<li>A simple one-word query</li>
+<li>A multi-word query using GetPartialMatches</li>
+<li>A multi-word query where all of the words must appear</li>
+</ol>
+
+<p>The first doesn't need much explaining, most of the examples have been based around this. The use of GetPartialMatches was outlined in the first <a href="/the-full-text-indexer">Full Text Indexer post</a>; the method takes a search term, a Token Breaker (to break the multi-word term into single-word terms) and a "MatchCombiner" delegate which describes how to combine the weighted matches for each broken-down word (this delegate will include the logic that determines whether <em>all</em> of the words in the original term must be matched or if it's just that a greater combined weight should be given to results that do match them all). This is the method that the search facility on this blog uses.</p>
+
+<p>The third approach makes use of the <strong>ConsecutiveTokenCombiningTokenBreaker</strong> and is a bit different; when the index is being generated, the content is not only broken down into individual words but also runs of multiple words. This is explained in more detail in the <a href="/the-full-text-indexer-token-breaker-and-string-normaliser-variations">Token Breaker and String Normaliser variations</a> post, but that's the gist. In this scenario, the search term is <em>not</em> broken down and treated as a single token to search for. If you want to perform searches for multi-word terms where those words must appear in the order specified (rather than just appearing in any order, anywhere throughout the source content - possibly spanning multiple fields) then this is what you'd use.</p>
+
+<h3>Structured Querying</h3>
+
+<p>I wanted to introduce a consolidated query method but I'd been putting off writing a parser to take a search string and work out what to do with the various components. However, having recently written a CSS / LESS parser (<a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser on Bitbucket</a>) I was inspired to use the same recursive parsing technique and piece together something for the Full Text Indexer.</p>
+
+<p>I went into it wanting something vaguely like GetPartialMatches but with.. more. The first assumption I wanted to make was that where multiple terms are specified then they should be considered an OR combination; so a match will be found if any one of the terms is found. If a particular term absolutely must be present then it can be prefixed with a "+". If a term must <em>not</em> be present then it can be prefixed with a "-". These ideas are directly influenced by Google query format! :)</p>
+
+<p>This would allow us straight away to specify</p>
+
+<blockquote>
+  <p>apples pears bananas +fruit +nuts -lunatics</p>
+</blockquote>
+
+<p>so that we could match articles (or whatever the source content may be) that have "fruit" and "nuts" in the content (but not "lunatics", we don't want those kinds of nuts!) and apply a greater match weigh to results that contain the words "apples", "pears" and / or "bananas". If an article doesn't contain the word "apples" then it may still be returned so long as it contains the word "fruit" (and not "lunatics").</p>
+
+<p>The same logic about word matching would be applied as normal, so if an index is built with an <strong>EnglishPluralityStringNormaliser</strong> then the word "fruits" would be matched as it was "fruit".</p>
+
+<p>There are a few more refinements that I wanted to add, the first also straight from Google search's interface! I wanted to allow words or phrases to be quoted such that they should appear precisely as specified. So, if our example became</p>
+
+<blockquote>
+  <p>"apples" pears bananas +fruit +nuts -lunatics</p>
+</blockquote>
+
+<p>then the word "apple" should <em>not</em> be considered a match for "apples". This is also applicable to phrases so</p>
+
+<blockquote>
+  <p>"apples and pears"</p>
+</blockquote>
+
+<p>should only match articles that contain the string "apples and pears", not ones that contain the words "apples" / "and" / "pears" present but in a different order.</p>
+
+<p>These should be combinable such that we could specify</p>
+
+<blockquote>
+  <p>-"apples and pears" apples pears bananas +fruit</p>
+</blockquote>
+
+<p>which would return articles that definitely contained "fruit" (or a word that is considered equivalent by the string normaliser), with additional weight given to articles that contained "apples" / "pears" / "bananas", so long as they don't contain the phrase "apples and pears". I think I've contorted this example a bit far now :)</p>
+
+<p>The final aspect to throw in the mix is the ability to bracket terms. Let's stretch the example on step further:</p>
+
+<blockquote>
+  <p>+(apples pears bananas) +fruit +nut -lunatic</p>
+</blockquote>
+
+<p>This will return articles that contain <em>at least one</em> of "apples" / "pears" / "bananas" <em>and</em> "fruit" <em>and</em> "nut" and <em>not</em> "lunatic".</p>
+
+<p>The bracketing and compulsory / excluding (the "+" and "-") operators should be combinable and nestable in any manner. They can't be nested within quoted sections as they would be considered to be part of the content, but quoted sections can be nested with brackets or combined with the other operators, as already seen. (If a quote is required within a quoted section that it may be escaped with a backslash).</p>
+
+<h3>Show me the code!</h3>
+
+<p>In case you're not that interested in stepping through the internals, there's a complete working example at the end of this post that demonstrates how to use this! Just change the string passed to the querier.GetMatches method to play around with it.</p>
+
+<h3>Content Analysers</h3>
+
+<p>The first step is to break down a search term into the various <strong>IQuerySegment</strong> types in the Querier project (in the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer Bitbucket repository</a>): the <strong>StandardMatchQuerySegment</strong>, <strong>PreciseMatchQuerySegment</strong>, <strong>CompulsoryQuerySegment</strong>, <strong>ExcludingQuerySegment</strong>, <strong>CombiningQuerySegment</strong> and <strong>NoMatchContentQuerySegment</strong> (used, for example, when brackets surround empty content).</p>
+
+<p>To illustrate, the example</p>
+
+<blockquote>
+  <p>+(apples pears bananas) +fruit +nut -lunatic</p>
+</blockquote>
+
+<p>would be translated into</p>
+
+<pre><code>CombiningQuerySegment
+{
+  CompulsoryQuerySegment
+  {
+    CombiningQuerySegment
+    {
+      StandardMatchQuerySegment: apples
+      StandardMatchQuerySegment: pears
+      StandardMatchQuerySegment: bananas
+    }
+  },
+  CompulsoryQuerySegment
+  {
+    StandardMatchQuerySegment: fruit
+  },
+  CompulsoryQuerySegment
+  {
+    StandardMatchQuerySegment: nut
+  },
+  ExcludingQuerySegment
+  {
+    StandardMatchQuerySegment: lunatic
+  }
+}
+</code></pre>
+
+<p>The outermost <strong>CombiningQuerySegment</strong> is required since a Content Analyser should only return a single query segment, and since there were multiple in the search term they have to be wrapped up in the <strong>CombiningQuerySegment</strong>.</p>
+
+<p>To translate an arbitrary search term into an <strong>IQuerySegment</strong>, we use</p>
+
+<pre><code>var querySegment = (new BreakPointCharacterAnalyser()).Process(new StringNavigator(searchTerm));
+</code></pre>
+
+<p>That's quite a mouthful, but if you read on you'll see that the <strong>Querier</strong> class means that you should never need to call that directly.</p>
+
+<p>It breaks tokens on whitespace unless inside a quoted section, so the only way to specify particular multi-word phrases is to quote them (as with "apples and pears" above).</p>
+
+<h3>Two Indexes</h3>
+
+<p>One thing I haven't addressed so far is how quoted sections can be processed differently to none-quoted sections. Unfortunately, there's no clever facility to introduce and the bad news is that to deal with this, <em>two</em> indexes will have to be generated for the source content. The first index, the "default", uses the most common construction parameters and will be more forgiving on matches. It would be appropriate to use the <strong>EnglishPluralityStringNormaliser</strong> for this index, for example (assuming that it <em>is</em> English language content!). It will only need to deal with single word matches (as only quoted sections in the content are parsed into query segments with multiple words).</p>
+
+<p>The second index, the "precise match" index, should be less forgiving (using a <strong>DefaultStringNormaliser</strong>, perhaps, which will normalise casing and ignore punctuation but not consider singular and plural versions of words to be equivalent). It will also need to make use of the <strong>ConsecutiveTokenCombiningTokenBreaker</strong> if quoted phrases are to be matchable (as opposed to only supporting quoting individual words).</p>
+
+<h3>Query Translator</h3>
+
+<p>The two indexes (and a MatchCombiner, see below) are used to instantiate a <strong>QueryTranslator</strong> whose method GetMatches will take an <strong>IQuerySegment</strong> and return an immutable set of WeighedEntry results, just like the the <em>*IIndexData</em> class.</p>
+
+<p>The MatchCombiner is used whenever multiple matches need be combined together into one - this will happen if there are multiple words in the initial query and will happen any times multiple terms are bracketed together. For the search term</p>
+
+<blockquote>
+  <p>apples +(pears bananas +(pomegranate tomato))</p>
+</blockquote>
+
+<p>there will be three match weight combinations:</p>
+
+<ol>
+<li>pomegranate / tomato</li>
+<li>pears / bananas / combined-pomegranate-tomato</li>
+<li>apples / combined-bananas-combined-pomegranate-tomato</li>
+</ol>
+
+<p>This could be a simple summing or averaging of the match weights. One variation is to sum the weights but then always divide by a particular value, this reduces the weight of nested terms - so if terms are several bracketing levels deep then they will impart a lower weight on the final weight of the result. Whether this seems appropriate or not is up to you!</p>
+
+<h3>The Querier</h3>
+
+<p>The <strong>Querier</strong> class tidies up access to the Content Analysers and the Query Translator to try to make life easier. The <strong>Querier</strong> is instantiated with the two indexes and the MatchCombiner that the <strong>QueryTranslator</strong> requires and exposes a method GetMatches which takes a search term, translates it into an <strong>IQuerySegment</strong>, passes it through the <strong>QueryTranslator</strong> and returns the weighted results.</p>
+
+<h3>Example code</h3>
+
+<p>Below is a complete example that has a simple "Post" source type. I've used the <strong>AutomatedIndexGeneratorFactoryBuilder</strong> (see <a href="/the-full-text-indexer-automating-index-generation">The Full Text Indexer - Automating Index Generation</a>) to kick things off. I've taken the first content from a couple of Posts on my blog as example content. The largest piece of setup code is the instantiation of the generator for the "precise match" index, and that's most due to the explanatory comments!</p>
+
+<pre><code>using System;
+using System.Linq;
+using FullTextIndexer.Common.Lists;
+using FullTextIndexer.Core.Indexes.TernarySearchTree;
+using FullTextIndexer.Core.TokenBreaking;
+using FullTextIndexer.Helpers;
+using FullTextIndexer.Querier;
+
+namespace Tester
+{
+  class Program
+  {
+    static void Main(string[] args)
+    {
+      var posts = new NonNullImmutableList&lt;Post&gt;(new[]
+      {
+        new Post(30, "The Full Text Indexer", "I started out on a journey a few months ago being " +
+          "frustrated by the Lucene.net integration we had with one of our products at work (I'm not " +
+          "badmouthing the Lucene project, I'm wholeheartedly blaming the integration I inherited!)"),
+        new Post(31, "The Full Text Indexer - Adding and Subtracting", "The Full Text Indexer that I " +
+          "talked about last time took a definition for an Index Generator for a specific TSource type " +
+          "and produced an IndexData instance, using that generator, for a TSource set."),
+        new Post(32, "The Full Text Indexer - Going International!", "Pushing on with the Full Text " +
+          "Indexer series I'm been posting about (see Full Text Indexer and Full Text Indexer - Adding " +
+          "and Subtracting) I want to demonstrate how it can work with multi-lingual content")
+      });
+
+      var defaultIndexGenerator = (new AutomatedIndexGeneratorFactoryBuilder&lt;Post, int&gt;()).Get().Get();
+      var preciseMatchIndexGenerator = (new AutomatedIndexGeneratorFactoryBuilder&lt;Post, int&gt;())
+        .SetTokenBreaker(
+          new ConsecutiveTokenCombiningTokenBreaker(
+            // The ConsecutiveTokenCombiningTokenBreaker wraps another token breaker and then creates new
+            // tokens by stringing runs of broken tokens together
+            new WhiteSpaceExtendingTokenBreaker(
+              new ImmutableList&lt;char&gt;(new[] { '&lt;', '&gt;', '[', ']', '(', ')', '{', '}', '.', ',' }),
+              new WhiteSpaceTokenBreaker()
+            ),
+
+            // This is the maximum number of words that are strung together, if quoted sections have more
+            // words than this then they won't be matched. A way to work around this may be hashed out
+            // one day (but not today :)
+            12,
+
+            // Tokens may be given an additional weight multiplier (between 0 and 1) when content is
+            // is broken down, when multiple tokens are combined a multiplier for the combined token
+            // must be provider. Commonly it is stop words that have a fractional multiplier, but
+            // when words are combined into a phrase, it makes sense to remove any fractional
+            // multiplier and give the combined token the full value of 1.
+            weightMultipliersOfCombinedTokens =&gt; 1
+          )
+        )
+        .SetStringNormaliser(new DefaultStringNormaliser())
+        .Get()
+        .Get();
+
+      var querier = new Querier&lt;Post, int&gt;(
+        defaultIndexGenerator.Generate(posts),
+        preciseMatchIndexGenerator.Generate(posts),
+        (matchWeights, sourceQuerySegments) =&gt; matchWeights.Sum()
+      );
+
+      var matches = querier.GetMatches("Generator");
+    }
+  }
+
+  public class Post
+  {
+    public Post(int id, string title, string content)
+    {
+      if (string.IsNullOrWhiteSpace(title))
+        throw new ArgumentException("Null/blank title specified");
+      if (string.IsNullOrWhiteSpace(content))
+        throw new ArgumentException("Null/blank content specified");
+
+      Id = id;
+      Title = title;
+      Content = content;
+    }
+
+    public int Id { get; set; }
+    public string Title { get; set; }
+    public string Content { get; set; }
+  }
+}
+</code></pre>
+
+<p>To try different search terms, just replace the string "Generator" with something else.</p>
+
+<blockquote>
+  <p>Generator</p>
+</blockquote>
+
+<p>will indicate one result, as only Post 31 is matched (it contains the word "generators").</p>
+
+<blockquote>
+  <p>Indexer Generators</p>
+</blockquote>
+
+<p>will indicate that all three Posts match. With the configuration here, Posts 31 and 32 are found to have an identical match weight of 4 - as Post 31 matches "Indexer" twice and "Generators" twice while Post 32 matches "Indexer" four times. (Post 30 matches "Indexer" once and "Generator" zero times).</p>
+
+<blockquote>
+  <p>Indexer +"multi-lingual"</p>
+</blockquote>
+
+<p>will only match Post 31, since that is the only one that contains "multi-lingual".</p>
+
+<blockquote>
+  <p>"Full Text Indexer" -adding</p>
+</blockquote>
+
+<p>will only match Post 30 since, while they all have contain the phrase "Full Text Indexer", both Posts 31 and 32 also contain the word "adding".</p>
+
+<blockquote>
+  <p>"Full Text Indexers"</p>
+</blockquote>
+
+<p>matches zero Posts. Since none of them contain that precise phrase. They will contain "Full Text Indexer", singular "Indexer", but not the plural "Full Text Indexers".</p>
+
+<p>I don't think any more examples are required, really, hopefully it's clear enough how to construct the queries and understand how they're applied :)</p>
+
+<p>I wouldn't necessarily expect this structured querying to be exposed through a simple site search (I have no immediate intentions of enabling it on this blog at the moment*) but it could certainly have a place elsewhere in application logic for performing a variety of full text searches against data.</p>
+
+<p>* <em>(The site search configuration here makes it compulsory that every word in the search term is matched in order for a Post to be returned, for cases where multiple words are specified. Changing over to use the Querier would mean that Posts would come back that don't match all of the words unless the "+" compulsory operator precedes each of them which, for now, I don't want to do).</em></p>
+<p class="PostTime">Posted at 22:36</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/css-minifier-caching">CSS Minifier - Caching</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/publishing-rss">Publishing RSS</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "51";
+							var disqus_title = "The Full Text Indexer - Structured Queries";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

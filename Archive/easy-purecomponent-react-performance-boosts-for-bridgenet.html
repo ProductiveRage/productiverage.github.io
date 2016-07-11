@@ -1,0 +1,586 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Easy &quot;PureComponent&quot; React performance boosts for Bridge.Net</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/easy-purecomponent-react-performance-boosts-for-bridgenet" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">11 February 2016</h3><h2><a id="Post95"></a><a href="/easy-purecomponent-react-performance-boosts-for-bridgenet">Easy "PureComponent" React performance boosts for Bridge.Net</a></h2>
+
+<p>React's great strength is that it makes creating UIs simple(r) because you can treat the view as a pure function - often, you essentially give a props reference into a top level component and it works out what to draw. Then, when something changes, you do the same again; trigger a full re-draw and rely upon React's Virtual DOM to work out what changed in an efficient manner and apply those changes to the browser DOM. The browser DOM is slow, which is why interactions with it should be minimised. The Virtual DOM is fast.</p>
+
+<p>The common pre-React way to deal with UIs was to have some code to render the UI in an initial state and then further code that would change the UI based upon user interactions. React reduces these two types of state-handling (initial-display and update-for-specific-interaction) into one (full re-render).</p>
+
+<p>And a lot of the time, the fast Virtual DOM performs quickly enough that you don't have to worry about what it's doing. But sometimes, you may have a UI that is so complicated that it's a lot of work for the Virtual DOM to calculate the diffs to apply to the browser DOM. Or you might have particularly demanding performance requirements, such as achieving 60 fps animations on mobile.</p>
+
+<p>Handily, React has a way for you to give it hints - namely the <a href="https://facebook.github.io/react/docs/component-specs.html#updating-shouldcomponentupdate">ShouldComponentUpdate</a> method that components may implement. This method can look at the component's current props and state values and the <em>next</em> props and state values and let React know if any changes are required. The method returns a boolean - false meaning "no, I don't need to redraw, this data looks the same" and true meaning "yes, I need to redraw for this new data". The method is optional, if a component doesn't implement it then it's equivalent to it always returning true. Remember, if a component returns true for "do I need to be redrawn?", the Virtual DOM is still what is responsible for dealing with the update - and it usually deals with it in a very fast and efficient manner. Returning true is not something to necessarily be worried about. However, if you <em>can</em> identify cases where ShouldComponentUpdate can return false then you can save the Virtual DOM from working out whether that component <em>or any of its child components</em> need to be redrawn. If this can be done high up in a deeply-nested component tree then it could save the Virtual DOM a lot of work.</p>
+
+<p>The problem is, though, that coming up with a mechanism to reliably and efficiently compare object references (ie. props and / or state) to determine whether they describe the same data is difficult to do in the general case.</p>
+
+<p>Let me paint a picture by describing a very simple example React application..</p>
+
+<h3>The Message Editor Example</h3>
+
+<p>Imagine an app that can read a list of messages from an API and allow the user of the app to edit these messages. Each message has "Content" and "Author" properties that are strings. Either of these values may be edited in the app. These messages are part of a message group that has a title - this also may be edited in the app.</p>
+
+<p><em>(I didn't say that it was a useful or realistic app, it's just one to illustrate a point :)</em></p>
+
+<p>The way that I like to create React apps is to categorise components as one of two things; a "Container Component" or a "Presentation Component". Presentation Components should be state-less, they should just be handed a props reference and then go off and draw themselves. Any interactions that the user makes with this component or any of its child components are effectively passed up (via change handlers on the props reference) until it reaches a Container Component. The Container Component will translate these interaction into actions to send to the Dispatcher. Actions will be handled by a store (that will be listening out for Dispatcher actions that it's interested in). When a store handles an action, it emits a change event. The Container Component will be listening out for change events on stores that it is interested in - when this happens, the Container Component will trigger a re-render of itself by updating its state based upon data now available in the store(s) it cares about. This is a fairly standard Flux architecture and, I believe, the terms "Container Component" / "Presentation Component are in reasonably common use (I didn't make them up, I just like the principle - one of the articles that I've read that uses these descriptions is <a href="https://medium.com/making-internets/component-brick-and-mortar-8bde51899b00#.6yi3i9hou">Component Brick and Mortar: The React documentation I wish I had a year ago</a>).</p>
+
+<p>So, for my example app, I might have a component hierarchy that looks this:</p>
+
+<pre><code>AppContainer
+  Title
+    TextInput
+      Input
+  MessageList
+    MessageRow
+      TextInput
+        Input
+      TextInput
+        Input
+    MessageRow
+      TextInput
+        Input
+      TextInput
+        Input
+</code></pre>
+
+<p>There will be as many "MessageRow" components as there are messages to edit. <strong>Input</strong> is a standard React-rendered element and all of the others (<strong>AppContainer</strong>, <strong>Title</strong>, <strong>MessageList</strong>, <strong>MessageRow</strong> and <strong>TextInput</strong>) are custom components.</p>
+
+<p>(Note: This is <em>not</em> a sufficiently deeply-nested hierarchy that React would have any problems with rendering performance, it's intended to be <em>just</em> complicated enough to demonstrate the point that I'm working up to).</p>
+
+<p>The <strong>AppContainer</strong> is the only "Container Component" and so is the only component that has a React state reference as well as props. A state reference is, essentially, what prevents a component from being what you might consider a "pure function" - where the props that are passed in are all that affects what is rendered out. React "state" is required to trigger a re-draw of the UI, but it should be present in as few places as possible - ie. there should only be one, or a small number of, top level component(s) that have state. Components that render <em>only</em> according to their props data are much easier to reason about (and hence easier to write, extend and maintain).</p>
+
+<p>My <a href="https://www.nuget.org/packages/Bridge.React">Bridge.NET React bindings</a> NuGet package makes it simple to differentiate between stateful (ie. Container) components and stateless (ie. Presentation) components as it has both a <strong>Component&lt;TProps, TState&gt;</strong> base class and a <strong>StatelessComponent&lt;TProps&gt;</strong> base class - you derive from the appropriate one when you create custom components (for more details, see <a href="/react-and-flux-with-bridgenet-redux">React (and Flux) with Bridge.net - Redux</a>).</p>
+
+<p>To start with the simplest example, below is the <strong>TextInput</strong> component. This just renders a text Input with a specified value and communicates up any requests to change that string value via an "OnChange" callback -</p>
+
+<pre><code>public class TextInput : StatelessComponent&lt;TextInput.Props&gt;
+{
+  public TextInput(Props props) : base(props) { }
+
+  public override ReactElement Render()
+  {
+    return DOM.Input(new InputAttributes
+    {
+      Type = InputType.Text,
+      Value = props.Content,
+      OnChange = OnTextChange
+    });
+  }
+
+  private void OnTextChange(FormEvent&lt;InputElement&gt; e)
+  {
+    props.OnChange(e.CurrentTarget.Value);
+  }
+
+  public class Props
+  {
+    public string Content { get; set; }
+    public Action&lt;string&gt; OnChange { get; set; }
+  }
+}
+</code></pre>
+
+<p>It is fairly easy to envisage how you might try to implement "ShouldComponentUpdate" here - given a "this is the new props value" reference (which gets passed into ShouldComponentUpdate as an argument called "nextProps") and the current props reference, you need only  look at the "Content" and "OnChange" references on the current and next props and, if both Content/Content and OnChange/OnChange references are the same, then we can return false (meaning "no, we do not need to re-draw this TextInput").</p>
+
+<p><em>(Two things to note here: Firstly, it is not usually possible to directly compare the current props reference with the "nextProps" reference because it is common for the parent component to create a new props instance for each proposed re-render of a child component, rather than re-use a previous props instance - so the individual property values within the props references may all be consistent between the current props and nextProps, but the actual props references will usually be distinct. Secondly, the Bridge.NET React bindings only support React component life cycle method implementations on custom components derived from <strong>Component&lt;TProps, TState&gt;</strong> classes and not those derived from <strong>StatelessComponent&lt;TProps&gt;</strong>, so you couldn't actually write your own "ShouldComponentUpdate" for a <strong>StatelessComponent</strong> - but that's not important here, we're just working through a thought experiment).</em></p>
+
+<p>Now let's move on to the <strong>MessageList</strong> and <strong>MessageRow</strong> components, since things get more complicated there -</p>
+
+<pre><code>public class MessageList : StatelessComponent&lt;MessageList.Props&gt;
+{
+  public MessageList(Props props) : base(props) { }
+
+  public override ReactElement Render()
+  {
+    var messageRows = props.IdsAndMessages
+      .Select(idAndMessage =&gt; new MessageRow(new MessageRow.Props
+      {
+        Key = idAndMessage.Item1,
+        Message = idAndMessage.Item2,
+        OnChange = newMessage =&gt; props.OnChange(idAndMessage.Item1, newMessage)
+      }));
+    return DOM.Div(
+      new Attributes { ClassName = "message-list" },
+      messageRows.ToChildComponentArray()
+    );
+  }
+
+  public class Props
+  {
+    public Tuple&lt;int, MessageEditState&gt;[] IdsAndMessages;
+    public Action&lt;int, MessageEditState&gt; OnChange;
+  }
+}
+
+public class MessageRow : StatelessComponent&lt;MessageRow.Props&gt;
+{
+  public MessageRow(Props props) : base(props) { }
+
+  public override ReactElement Render()
+  {
+    // Note that the "Key" value from the props reference does not explicitly need
+    // to be mentioned here, the React bindings will deal with it (it is important
+    // to give dynamic children components unique key values, but it is handled by
+    // the bindings and the React library so long as a "Key" property is present
+    // on the props)
+    // - See https://facebook.github.io/react/docs/multiple-components.html for
+    //   more details
+    return DOM.Div(new Attributes { ClassName = "message-row" },
+      new TextInput(new TextInput.Props
+      {
+        Content = props.Message.Content,
+        OnChange = OnContentChange
+      }),
+      new TextInput(new TextInput.Props
+      {
+        Content = props.Message.Author,
+        OnChange = OnAuthorChange
+      })
+    );
+  }
+
+  private void OnContentChange(string newContent)
+  {
+    props.OnChange(new MessageEditState
+    {
+      Content = newContent,
+      Author = props.Message.Author
+    });
+  }
+  private void OnAuthorChange(string newAuthor)
+  {
+    props.OnChange(new MessageEditState
+    {
+      Content = props.Message.Content,
+      Author = newAuthor
+    });
+  }
+
+  public class Props
+  {
+    public int Key;
+    public MessageEditState Message;
+    public Action&lt;MessageEditState&gt; OnChange;
+  }
+}
+
+public class MessageEditState
+{
+  public string Content;
+  public string Author;
+}
+</code></pre>
+
+<p>If the <strong>MessageList</strong> component wanted to implement "ShouldComponentUpdate" then its job is more difficult as it has an array of message data to check. It could do one of several things - the first, and most obviously accurate, would be to perform a "deep compare" of the arrays from the current props and the "nextProps"; ensuring firstly that there are the same number of items in both and then comparing each "Content" and "Author" value in each item of the arrays. If everything matches up then the two arrays contain the same data and (so long as the "OnChange" callback hasn't changed) the component doesn't need to re-render. Avoiding re-rendering this component (and, subsequently, any of its child components) would be a big win because it accounts for a large portion of the total UI. Not re-rendering it would give the Virtual DOM much less work to do. But would a deep comparison of this type actually be any cheaper than letting the Virtual DOM do what it's designed to do?</p>
+
+<p>The second option is to presume that whoever created the props references would have re-used any <strong>MessageEditState</strong> instances that haven't changed. So the array comparison could be reduced to ensuring that the current and next props references both have the same number of elements and then performing reference equality checks on each item.</p>
+
+<p>The third option is to presume that whoever created the props reference would have re-used the array itself if the data hadn't changed, meaning that a simple reference equality check could be performed on the current and next props' arrays.</p>
+
+<p>The second and third options are both much cheaper than a full "deep compare" but they both rely upon the caller following some conventions. This is why I say that this is a difficult problem to solve for the general case.</p>
+
+<h3>Immutability to the rescue</h3>
+
+<p>There is actually another option to consider, the object models for the props data could be rewritten to use immutable types. These have the advantage that if you find that two references are equal then they are guaranteed to contain the same data. They also have the advantage that it's much more common to re-use instances to describe the same data - partly because there is some overhead to initialising immutable types and partly because there is no fear that "if I give this reference to this function, I want to be sure that it can't change the data in <em>my</em> reference while doing its work" because it is <em>impossible</em> to change an immutable reference's data. (I've seen defensively-written code that clones mutable references that it passes into other functions, to be sure that no other code can change the data in the original reference - this is never required with immutable types).</p>
+
+<p>Conveniently, I've recently written a library to use with Bridge.NET which I think makes creating and working with immutable types easier than C# makes it on its own. I wrote about it in "<a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a>" but the gist is that you re-write <strong>MessageEditState</strong> as:</p>
+
+<pre><code>// You need to pull in the "ProductiveRage.Immutable" NuGet package to use IAmImmutable
+public class MessageEditState : IAmImmutable
+{
+  public MessageEditState(string content, string author)
+  {
+    this.CtorSet(_ =&gt; _.Content, content);
+    this.CtorSet(_ =&gt; _.Author, author);
+  }
+  public string Content { get; private set; }
+  public string Author { get; private set; }
+}
+</code></pre>
+
+<p>It's still a little more verbose than the mutable version, admittedly, but I'm hoping to convince you that it's worth it (if you need convincing!) for the benefits that we'll get.</p>
+
+<p>When you have an instance of this new <strong>MessageEditState</strong> class, if you need to change one of the properties, you don't have to call the constructor each time to get a new instance, you can use the "With" extension methods that may be called on any <strong>IAmImmutable</strong> instance - eg.</p>
+
+<pre><code>var updatedMessage = message.With(_ =&gt; _.Content, "New information");
+</code></pre>
+
+<p>This would mean that the change handlers from <strong>MessageRow</strong> could be altered from:</p>
+
+<pre><code>private void OnContentChange(string newContent)
+{
+  props.OnChange(new MessageEditState
+  {
+    Content = newContent,
+    Author = props.Message.Author
+  });
+}
+private void OnAuthorChange(string newAuthor)
+{
+  props.OnChange(new MessageEditState
+  {
+    Content = props.Message.Content,
+    Author = newAuthor
+  });
+}
+</code></pre>
+
+<p>and replaced with:</p>
+
+<pre><code>private void OnContentChange(string newContent)
+{
+  props.OnChange(props.Message.With(_ =&gt; _.Content, newContent));
+}
+private void OnAuthorChange(string newAuthor)
+{
+  props.OnChange(props.Message.With(_ =&gt; _.Author, newAuthor));
+}
+</code></pre>
+
+<p>Immediately, the verbosity added to <strong>MessageEditState</strong> is being offset with tidier code! (And it's nice not having to set both "Content" <em>and</em> "Author" when only changing <em>one</em> of them).</p>
+
+<p>The "With" method also has a small trick up its sleeve in that it won't return a new instance if the new property value is the same as the old property value. This is an eventuality that <em>could</em> happen in the code above as an "Input" element rendered by React will raise an "OnChange" event for any action that <em>might</em> have altered the text input's content. For example, if you had a text box with the value "Hello" in it and you selected all of that text and then pasted in text from the clipboard over the top of it, if the clipboard text was also "Hello" then the "OnChange" event will be raised, even though the actual value has not changed (it was "Hello" before and it's still "Hello" now). The "With" method will deal with this, though, and just pass the same instance straight back out. This is an illustration of the "reuse of instances for unchanged data" theme that I alluded to above.</p>
+
+<p>The next step would be to change the array type in the <strong>MessageList.Props</strong> type from</p>
+
+<pre><code>public Tuple&lt;int, MessageEditState&gt;[] IdsAndMessages;
+</code></pre>
+
+<p>to</p>
+
+<pre><code>public Set&lt;Tuple&lt;int, MessageEditState&gt;&gt; IdsAndMessages;
+</code></pre>
+
+<p>The <strong>Set</strong> class is also in the <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a> NuGet package. It's basically an immutable <strong>IEnumerable</strong> that may be used in Bridge.NET projects. A simple example of it in use is:</p>
+
+<pre><code>// Create a new set of values (the static "Of" method uses type inference to determine
+// the type of "T" in the returned "Set&lt;T&gt;" - since 1, 2 and 3 are all ints, the
+// "numbers" reference will be of type "Set&lt;int&gt;")
+var numbers = Set.Of(1, 2, 3);
+
+// SetValue takes an index and a new value, so calling SetValue(2, 4) on a set
+// containing 1, 2, 3 will return a new set containing the values 1, 2, 4
+numbers = numbers.SetValue(2, 4);
+
+// Calling SetValue(2, 4) on a set containing values 1, 2, 4 does not require any
+// changes, so the input reference is passed straight back out
+numbers = numbers.SetValue(2, 4);
+</code></pre>
+
+<p>As with <strong>IAmImmutable</strong> instances we get two big benefits - we can rely on reference equality comparisons more often, since the data with any given reference can never change, and references will be reused in many cases if operations are requested that would not actually change the data. (It's worth noting that the guarantees fall apart if any property on an <strong>IAmImmutable</strong> reference is a of a mutable type, similarly if a <strong>Set</strong> has elements that are a mutable type, or that have nested properties that are of a mutable type.. but so long as immutability is used "all the way down" then all will be well).</p>
+
+<p>If this philosophy was followed, then suddenly the "ShouldComponentUpdate" implementation for the <strong>MessageList</strong> component would be very easy to write - just perform reference equality comparisons on the "IdsAndMessages" and "OnChange" values on the current props and on the nextProps. While solving the problem for the general case is very difficult, solving it when you introduce some constraints (such as the use of immutable and persistent data types) can be very easy!</p>
+
+<p>If we <em>did</em> implement this <strong>MessageList</strong> "ShouldComponentUpdate" method, then we could be confident that when a user makes changes to the "Title" text input that the Virtual DOM would not have to work out whether the <strong>MessageList</strong> or any of its child components had changed - because we'd have told the Virtual DOM that they hadn't (because the "IdsAndMessages" and "OnChange" property references wouldn't have changed).</p>
+
+<p>We could take this a step further, though, and consider the idea of implementing "ShouldComponentUpdate" on other components - such as <strong>MessageRow</strong>. If the user edits a text value within one row, then the <strong>MessageList</strong> will have to perform some re-rendering work, since one of its child components needs to be re-rendered. But there's no need for any of the other rows to re-render, it could be <em>just</em> the single row in which the change was requested by the user.</p>
+
+<p>So the <strong>MessageRow</strong> could look at its props values and, if they haven't changed between the current props and the nextProps, then inform React (via "ShouldComponentUpdate") that no re-render is required.</p>
+
+<p>And why not go even further and just do this on <em>all</em> Presentation Components? The <strong>TextInput</strong> could avoid the re-render of its child Input if the props' "Content" and "OnChange" reference are not being updated.</p>
+
+<h3>Introducing the Bridge.React "PureComponent"</h3>
+
+<p>To make this easy, I've added a new base class to the React bindings (available in 1.4 of <a href="https://www.nuget.org/packages/Bridge.React">Bridge.React</a>); the <strong>PureComponent&lt;TProps&gt;</strong>.</p>
+
+<p>This, like the <strong>StatelessComponent&lt;TProps&gt;</strong>, is very simple and does not support state and only allows the "Render" method to be implemented - no other React lifecycle functions (such "ComponentWillMount", "ShouldComponentUpdate", etc..) may be defined on components deriving from this class.</p>
+
+<p>The key difference is that it has its own "ShouldComponentUpdate" implementation that presumes that the props data is immutable and basically does what I've been describing above automatically - when React checks "ShouldComponentUpdate", it will look at the "props" and "nextProps" instances and compare their property values. (It also deals with the cases where one or both of them are null, in case you want components whose props reference is optional).</p>
+
+<p>This is not an original idea, by a long shot. I first became aware of people doing this in 2013 when I read <a href="http://swannodette.github.io/2013/12/17/the-future-of-javascript-mvcs/">The Future of JavaScript MVC Frameworks</a>, which was talking about using <a href="https://github.com/clojure/clojurescript">ClojureScript</a> and its React interface "<a href="https://github.com/omcljs/om">Om</a>". More recently, I was reading <a href="http://benchling.engineering/performance-engineering-with-react/">Performance Engineering with React (Part 1)</a>, which talks about roughly the same subject but with vanilla JavaScript. And, of course, Facebook has long had its <a href="https://facebook.github.io/react/docs/pure-render-mixin.html">PureRenderMixin</a> - though mixins can't be used with ES6 components (which seems to be the approach to writing components that Facebook is pushing at the moment).</p>
+
+<p>So, this is largely just making it easy it when writing React applications with <em>Bridge</em>. However, using Bridge to do this <em>does</em> give us some extra advantages (on top of the joy of being able to write React apps in C#!). In the code earlier (from the <strong>MessageRow</strong> Render method) -</p>
+
+<pre><code>new TextInput(new TextInput.Props
+{
+  Content = props.Message.Content,
+  OnChange = OnContentChange
+})
+</code></pre>
+
+<p>Bridge will bind the "OnContentChange" method to the current <strong>MessageRow</strong> instance so that when it is called by the <strong>TextInput</strong>'s "OnChange" event, "this" is the <strong>MessageRow</strong> and not the <strong>TextInput</strong> (which is important because OnContentChange needs to access the "props" reference scoped to the <strong>MessageRow</strong>).</p>
+
+<p>This introduces a potential wrinkle in our plan, though, as this binding process creates a new JavaScript method each time and means that each time the <strong>TextInput</strong> is rendered, the "OnChange" reference is new. So if we try to perform simple reference equality checks on props values, then we won't find the current "OnChange" and the new "OnChange" to be the same.</p>
+
+<p>This problem is mentioned in the "Performance Engineering" article I linked above:</p>
+
+<blockquote>
+  <p>Unfortunately, each call to Function.bind produces a new function.. No amount of prop checking will help, and your component will always re-render.</p>
+  
+  <p>..</p>
+  
+  <p>The simplest solution we've found is to pass the unbound function.</p>
+</blockquote>
+
+<p>When using Bridge, we don't have the option of using an unbound function since the function-binding is automatically introduced by the C#-to-JavaScript translation process. And it's very convenient, so it's not something that I'd ideally <em>like</em> to have to workaround.</p>
+
+<p>Having a dig through Bridge's source code, though, revealed some useful information. When Bridge.fn.bind is called, it returns a new function (as just discussed).. but with some metadata attached to it. When it returns a new function, it sets two properties on it "$scope" and "$method". The $scope reference is what "this" will be set to when the bound function is called and the $method reference is the original function that is being bound. This means that, when the props value comparisons are performed, if a value is a function and it the reference equality comparison fails, a fallback approach may be attempted - if both functions have $scope and $method references defined then compare them and, if they are both consistent between the function value on the current props and the function value on the nextProps, then consider the value to be unchanged.</p>
+
+<p>The <strong>PureComponent</strong>'s "ShouldComponentUpdate" implementation deals with this automatically, so you don't have to worry about it.</p>
+
+<p>It's possibly worth noting that the "Performance Engineering" post did briefly consider something similar -</p>
+
+<blockquote>
+  <p>Another possibility we've explored is using a custom bind function that stores metadata on the function itself, which in combination with a more advanced check function, could detect bound functions that haven't actually changed.</p>
+</blockquote>
+
+<p>Considering that Bridge automatically includes this additional metadata, it seemed to me to be sensible to use it.</p>
+
+<p>There's one other equality comparison that is supported; as well as simple referential equality and the function equality gymnastics described above, if both of the values are non-null and the first has an "Equals" function then this function will be considered. This means that any custom "Equals" implementations that you define on classes will be automatically taken into consideration by the <strong>PureComponent</strong>'s logic.</p>
+
+<h3>Another Bridge.NET bonus: Lambda support</h3>
+
+<p>When I started writing this post, there was going to be a section here with a warning about using lambdas as functions in props instances, rather than using named functions (which the examples thus far have done).</p>
+
+<p>As with bound functions, anywhere that an anonymous function is present in JavaScript, it will result in a new function value being created. If, for example, we change the <strong>MessageRow</strong> class from:</p>
+
+<pre><code>public class MessageRow : PureComponent&lt;MessageRow.Props&gt;
+{
+  public MessageRow(Props props) : base(props) { }
+
+  public override ReactElement Render()
+  {
+    return DOM.Div(new Attributes { ClassName = "message-row" },
+      new TextInput(new TextInput.Props
+      {
+        Content = props.Message.Content,
+        OnChange = OnContentChange
+      }),
+      new TextInput(new TextInput.Props
+      {
+        Content = props.Message.Author,
+        OnChange = OnAuthorChange
+      })
+    );
+  }
+
+  private void OnContentChange(string newContent)
+  {
+    props.OnChange(props.Message.With(_ =&gt; _.Content, newContent));
+  }
+  private void OnAuthorChange(string newAuthor)
+  {
+    props.OnChange(props.Message.With(_ =&gt; _.Author, newAuthor));
+  }
+
+  public class Props
+  {
+    public int Key;
+    public MessageEditState Message;
+    public Action&lt;MessageEditState&gt; OnChange;
+  }
+}
+</code></pre>
+
+<p>to:</p>
+
+<pre><code>public class MessageRow : PureComponent&lt;MessageRow.Props&gt;
+{
+  public MessageRow(Props props) : base(props) { }
+
+  public override ReactElement Render()
+  {
+    return DOM.Div(new Attributes { ClassName = "message-row" },
+      new TextInput(new TextInput.Props
+      {
+        Content = props.Message.Content,
+        OnChange = newContent =&gt;
+          props.OnChange(props.Message.With(_ =&gt; _.Content, newContent))
+      }),
+      new TextInput(new TextInput.Props
+      {
+        Content = props.Message.Author,
+        OnChange = newAuthor =&gt;
+          props.OnChange(props.Message.With(_ =&gt; _.Author, newAuthor))
+      })
+    );
+  }
+
+  public class Props
+  {
+    public int Key;
+    public MessageEditState Message;
+    public Action&lt;MessageEditState&gt; OnChange;
+  }
+}
+</code></pre>
+
+<p>then there would be problems with the "OnChange" props values specified because each new lambda - eg..</p>
+
+<pre><code>OnChange = newContent =&gt;
+  props.OnChange(props.Message.With(_ =&gt; _.Content, newContent))
+</code></pre>
+
+<p>would result in a new JavaScript function being passed to Bridge.fn.bind every time that it was called:</p>
+
+<pre><code>onChange: Bridge.fn.bind(this, function (newContent) {
+  this.getprops().onChange(
+    ProductiveRage.Immutable.ImmutabilityHelpers.$with(
+      this.getprops().message,
+      function (_) { return _.getContent(); },
+      newContent
+    )
+  );
+})
+</code></pre>
+
+<p>And this would prevent the <strong>PureComponent</strong>'s "ShouldComponentUpdate" logic from being effective, since the $method values from the current props "OnChange" and the nextProps "OnChange" bound functions would always be different.</p>
+
+<p>I was quite disappointed when I realised this and was considering trying to come up with some sort of workaround - maybe calling "toString" on both $method values and comparing their implementations.. but I couldn't find definitive information about the performance implications of this and I wasn't looking forward to constructing my own suite of tests to investigate any potential performance impact of this across different browsers and different browser versions.</p>
+
+<p>My disappointment was two-fold: firstly, using the lambdas allows for more succinct code and less syntactic noise - since the types of the lambda's argument(s) and return value (if any) are inferred, rather than having to be explicitly typed out.</p>
+
+<pre><code>newContent =&gt; props.OnChange(props.Message.With(_ =&gt; _.Content, newContent))
+</code></pre>
+
+<p>is clearly shorter than</p>
+
+<pre><code>private void OnContentChange(string newContent)
+{
+  props.OnChange(props.Message.With(_ =&gt; _.Content, newContent));
+}
+</code></pre>
+
+<p>The other reason that I was deflated upon realising this was that it meant that the "ShouldComponentUpdate" implementation would, essentially, silently fail for components that used lambdas - "ShouldComponentUpdate" would return true in cases where I would like it to return false. There would be no compiler error and the UI code would still function, but it wouldn't be as efficient as it could be (the Virtual DOM would have to do more work than necessary).</p>
+
+<p>Instead, I had a bit of a crazy thought.. lambdas like this, that only need to access their own arguments and the "this" reference, could be "lifted" into named functions quite easily. Essentially, I'm doing this manually by writing methods such as "OnContentChange". But could the Bridge translator do something like this automatically - take those C# lambdas and convert them into named functions in JavaScript? That way, I would get the benefit of the succinct lambda format in C# <em>and</em> the <strong>PureComponent</strong> optimisations would work.</p>
+
+<p>Well, once again the Bridge.NET Team came through for me! I raised a <a href="http://forums.bridge.net/forum/general/feature-requests/1515-open-921-lift-simple-anonymous-functions-into-named-functions-for-performance-wins">Feature Request</a> about this, explained what I'd like in an ideal world (and why) and five days later there was a branch on GitHub where I could preview changes that did precisely what I wanted!</p>
+
+<p>This is not just an example of fantastic support from the Bridge Team, it is also, I believe, an incredible feature for Bridge and a triumph for writing front-end code in C#! Having this "translation step" from C# to JavaScript provides the opportunity for handy features to be included for free - earlier we saw how the insertion of Bridge.fn.bind calls by the translator meant that we had access to $method and $scope metadata (which side-steps one of the problems that were had by the author of <a href="http://benchling.engineering/performance-engineering-with-react/">Performance Engineering with React</a>) but, here, the translation step can remove the performance overhead that anonymous functions were going to cause for our "ShouldComponentUpdate" implementation, without there being <em>any</em> burden on the developer writing the C# code.</p>
+
+<p>It's also worth considering the fact that every allocation made in JavaScript is a reference that needs to be tidied up by the browser's garbage collector at some point. A big reason why judicious use of "ShouldComponentUpdate" can make UIs faster is that there is less work for the Virtual DOM to do, but it <em>also</em> eases the load on the garbage collector because none of the memory allocations need to be made for child components of components that do not need to be re-rendered. Since anonymous JavaScript functions are created over and over again (every time that the section of code that declares the anonymous function is executed), lifting them into named functions means that there will be fewer allocations in your SPA and hence even less work for the garbage collector to do.</p>
+
+<p><em>Note: As of the 11th of February 2016, this Bridge.NET improvement has not yet been made live - but their release cycles tend to be fairly short and so I don't imagine that it will be very long until it is included in an official release. If you were desperate to write any code with <strong>PureComponent</strong> before then, you could either avoid lambdas in your C# code or you could use lambdas now, knowing that the <strong>PureComponent</strong> won't be giving you the full benefit immediately - but that you WILL get the full benefit when the Bridge Team release the update.</em></p>
+
+<h3>So it's an unequivocable success then??</h3>
+
+<p>Well, until it transpired that the Bridge translator would be altered to convert these sorts of lambdas into named functions, I was going to say "this is good, but..". However, <em>with</em> that change in sight, I'm just going to say outright "yes, and I'm going to change all classes that derive from <strong>StatelessComponent</strong> in my projects to derive from <strong>PureComponent</strong>". This will work fine, so long as your props references are all immutable (meaning that they are immutable <em>all the way down</em> - you shouldn't have, say, a props property that is an immutable <strong>Set</strong> of references, but where those references have mutable properties).</p>
+
+<p>And, if you're not using immutable props types - sort yourself out! While a component is being rendered (according to the <a href="https://facebook.github.io/react/docs/tutorial.html">Facebook React Tutorial</a>):</p>
+
+<blockquote>
+  <p>props are immutable: they are passed from the parent and are "owned" by the parent</p>
+</blockquote>
+
+<p>So, rather than having props only be immutable during component renders (by a convention that the React library enforces), why not go whole-hog and use fully immutable classes to describe your props types - that way props are <em>fully</em> immutable and you can use the <a href="https://www.nuget.org/packages/Bridge.React">Bridge.React</a>'s <strong>PureComponent</strong> to get performance boosts for free!</p>
+
+<p><em>(Now seems like a good time to remind you of my post "<a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a>", which illustrates how to use the <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a> NuGet package to make defining immutable classes just that bit easier).</em></p>
+<p class="PostTime">Posted at 20:11</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/using-roslyn-to-identify-unused-and-undeclared-variables-in-vbscript-wsc-components">Using Roslyn to identify unused and undeclared variables in VBScript WSC components</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles">Writing React apps using Bridge.NET - The Dan Way (from first principles)</a></div></div><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a></li><li><a href="/react-and-flux-with-bridgenet-redux">React (and Flux) with Bridge.net - Redux</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="9 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "95";
+							var disqus_title = "Easy \"PureComponent\" React performance boosts for Bridge.Net";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

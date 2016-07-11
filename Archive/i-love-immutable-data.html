@@ -1,0 +1,513 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - I love Immutable Data</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/i-love-immutable-data" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">14 March 2011</h3><h2><a id="Post1"></a><a href="/i-love-immutable-data">I love Immutable Data</a></h2>
+
+<p>I love immutable data. There, I said it. I think over the last couple of years a few major factors have had the most influence in leading me to this point -</p>
+
+<ul>
+<li>I've been driven mad by dealing with code full of complicated object models with no indication which properties are required, which are optional, which go together, which are mutually exclusive, etc..</li>
+<li>I was working on a store of data that would be read from and written to by multiple threads and the initial implementation had a naive lock-on-every-interaction approach when it seemed like we should be able to make the reads work without locking (especially since reads were massively more common than writes)</li>
+<li>I've been working largely on Tourism websites (and all the related backend services) for a few years now and most of the data feels like it's read-only, though having thought about it I'm not sure if I'd change my mind if I was doing CRUD day-in, day-out instead</li>
+</ul>
+
+<p>The first point could really be addressed in all sorts of ways - the code's all a bit wishy-washy and poorly defined and nobody seems to know which fields are for what in the example I'm thinking of. But when I think of immutable types I instinctively think of classes whose values are set once through a constructor (though there are other variations that can be used) and then that instance is "locked" such that we know its state will never change - and that constructor will have ensured that this state is valid. If the classes in point were all written in this way then never again (hopefully!) would there be concerns regarding the validity of the states of the objects, they must have been valid in order to be instantiated and immutability means they can't have changed since!</p>
+
+<p>While we're doing some sort of validation on the constructor arguments I think it also encourages you to think about the various states that can exist - eg.</p>
+
+<pre><code>public class Employee
+{
+  public string Title { get; set; }     
+  public string FirstName { get; set; }     
+  public string LastName { get; set; }      
+  public string[] Roles { get; set; }   
+}
+</code></pre>
+
+<p>This is the sort of thing that's found all over the place - especially across webservice interfaces. Assume that we have the requirements that Title, FirstName and LastName <em>all</em> have values and that all Employees have zero or more Roles. I think describing the requirements in constructor validation and then some liberal commenting ends up in nicer code:</p>
+
+<pre><code>public class Employee
+{
+  public Employee(Name name, DefinedStringList roles)
+  {
+    if (name == null)
+      throw new ArgumentNullException("name");
+    if (roles == null)
+      throw new ArgumentNullException("roles");
+
+    Name = name;
+    Roles = roles;
+  }
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public Name Name { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public DefinedStringList Roles { get; private set; }
+}
+
+public class Name
+{
+  public Name(string title, string firstName, string lastName)
+  {
+    if ((title ?? "").Trim() == "")
+      throw new ArgumentException("Null/empty title specified");
+    if ((firstName ?? "").Trim() == "")
+      throw new ArgumentException("Null/empty firstName specified");
+    if ((lastName ?? "").Trim() == "")
+      throw new ArgumentException("Null/empty lastName specified");
+
+    Title = title;
+    FirstName = firstName;
+    LastName = lastName;
+  }
+
+  /// &lt;summary&gt;
+  /// This will never be null or empty
+  /// &lt;/summary&gt;
+  public string Title { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null or empty
+  /// &lt;/summary&gt;
+  public string FirstName { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null or empty
+  /// &lt;/summary&gt;
+  public string LastName { get; private set; }
+}
+</code></pre>
+
+<p>Except - wow! - the amount of code seems to have ballooned and I've not even included the "DefinedStringList" class! (Well, not here at least - it's down the bottom of the post).</p>
+
+<p>But what we <em>do</em> have now will be instances of Employee that are always in a known good state and we can safely retrieve employee.Name.FirstName without first ensuring that Name is not null. We also know that Employees that have not been assigned roles will have a Roles instance that declares a Count of zero rather than wondering if it will be that or whether there will be a null Roles instance. So the upshot should be that there will actually be <em>less</em> code in places where Employee instances are accessed.</p>
+
+<h3>Multithreaded access</h3>
+
+<p>Now, to recreate a really trivial version of the multithreaded datastore I mentioned earlier, imagine we have a local store of Employees that is being written to and read from - eg.</p>
+
+<pre><code>public class EmployeeStore
+{
+  private List&lt;Employee&gt; _data = new List&lt;Employee&gt;();
+
+  public IEnumerable&lt;Employee&gt; GetAll()
+  {
+    lock (_data)
+    {
+      return _data.AsReadOnly();
+    }
+  }
+
+  public void Add(Employee employeeToAdd)
+  {
+    if (employeeToAdd == null)
+      throw new ArgumentNullException("employeeToAdd");
+
+    lock (_data)
+    {
+      _data.Add(employeeToAdd);
+    }
+  }
+}
+</code></pre>
+
+<p>We'll ignore any concept or deleting or updating for now. Since we don't know how many threads are at work in this scenario, or who's doing what, we lock the internal data at each read or write. We're also returning the data as an IEnumerable and using List's .AsReadOnly method in an optimistic attempt to keep the internal data from being manipulated externally after we return it. In fact, in the example I had, the data was actually (deep-)cloned before returning to ensure that no caller could manipulate any data inside the data store.</p>
+
+<p>If we're working with immutable data types and have access to an immutable list then we can change this without much effort to require no locks for reading and we can implicitly forget any AsReadOnly or cloning malarkey if we have an immutable list to work with as well. An immutable list works by returning new instances when methods that would otherwise effect its contents are called - so if a list has 3 items and we call Add then the existing list is unchanged and the Add method returns a <em>new</em> list with all 4 items. Example code is at the end of this post, along with a DefinedStringList implementation, as mentioned earlier.</p>
+
+<pre><code>public class EmployeeStoreWithoutReadLocking
+{
+  private object _writeLock = new object();
+  private ImmutableList&lt;Employee&gt; _data = new ImmutableList&lt;Employee&gt;();
+
+  public ImmutableList&lt;Employee&gt; GetAll()
+  {
+    return _data;
+  }
+
+  public void Add(Employee employeeToAdd)
+  {
+    if (employeeToAdd == null)
+      throw new ArgumentNullException("employeeToAdd");
+
+    lock (_writeLock)
+    {
+      _data = _data.Add(employeeToAdd);
+    }
+  }
+}
+</code></pre>
+
+<p>Easy! Of course this relies upon the Employee class being immutable (which must cover all of its properties' types as well). Now we're not just reaping the benefits in state validity but we've got more performant threaded code (again, my example was heavy on reads and light). In a lot of cases immutability such as this can make areas of multi-threaded code much easier to write and maintain.</p>
+
+<p>I think in this case I extended the ImmutableList to a NonNullImmutableList which had validation to ensure it would never contain any null references. Similar to how the DefinedStringList will ensure it has no null or empty values. Another layer of comforting behaviour guarantee so that callers don't have to worry about nulls. It makes me feel warm and fuzzy.</p>
+
+<h3>Undo!</h3>
+
+<p>In most scenarios it seems I've been working with recently, classes such as Employee <em>would</em> be instantiated just the once and then not changed unless another query was executed that returned a new set of Employee data. But feasibly we may want to alter the Employee class such that it is "editable" in the same way that the DefinedStringList that we're talking about is - you can call methods that return a new instance of the class with the alteration made, leaving the original reference unaltered.</p>
+
+<pre><code>public class Employee
+{
+  public Employee(Name name, DefinedStringList roles)
+  {
+    if (name == null)
+      throw new ArgumentNullException("name");
+    if (roles == null)
+      throw new ArgumentNullException("roles");
+
+    Name = name;
+    Roles = roles;
+  }
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public Name Name { get; private set; }
+
+  /// &lt;summary&gt;
+  /// This will never be null
+  /// &lt;/summary&gt;
+  public DefinedStringList Roles { get; private set; }
+
+  public Employee UpdateName(Name name)
+  {
+    // This will throw an exception for a null name reference
+    return new Employee(name, _roles);
+  }
+
+  public Employee AddRole(string role)
+  {
+    // This will throw an exception for a null or empty role value
+    return new Employee(_name, _roles.Add(role));
+  }
+
+  public Employee RemoveRole(string role)
+  {
+    return new Employee(_name, _roles.Remove(role));
+  }
+}
+</code></pre>
+
+<p>Here the name can be overwritten and roles can be added or removed. What's interesting about this approach is that returning new instances each time means you could persists a chain of changes - an undo history or sorts! I must admit that I've never taken advantage of this in any way, but it's often struck me that it could be useful in some situations..</p>
+
+<h3>Some more views</h3>
+
+<p>While writing this post, I did a bit of research to try and make sure I wasn't say anything either too done-to-death or too stupid and the following links are articles I like, largely because they agree with me! :)</p>
+
+<blockquote>
+  <p>Immutable data structures are the way of the future in C#</p>
+</blockquote>
+
+<p><a href="http://blogs.msdn.com/b/ericlippert/archive/2007/10/04/path-finding-using-a-in-c-3-0-part-two.aspx">http://blogs.msdn.com/b/ericlippert/archive/2007/10/04/path-finding-using-a-in-c-3-0-part-two.aspx</a></p>
+
+<blockquote>
+  <p>One of reasons why immutable types can be faster is that they are optimized due to having dealt with memory management in years past</p>
+</blockquote>
+
+<p><a href="http://en.csharp-online.net/CSharp_Coding_Solutions%E2%80%94Immutable_Types_Are_Scalable_Types">http://en.csharp-online.net/CSharp_Coding_Solutions-Immutable_Types_Are_Scalable_Types</a></p>
+
+<p>However there's also this one:</p>
+
+<blockquote>
+  <p>The "verbose constructor" is itself a good candidate for an anti-pattern for the following reasons:</p>
+</blockquote>
+
+<p><a href="http://blog.dezfowler.com/2009/05/always-valid-entity-anti-pattern.html">http://blog.dezfowler.com/2009/05/always-valid-entity-anti-pattern.html</a></p>
+
+<p>I've worked with Derek before so although I read that article two or three times and couldn't agree with it, I didn't give up 'cos I know he's a bright guy. And it finally broke for me what I think he meant when I read the comments on that piece - there's only four and it's the last one that made it stick for me. Partly because someone I work with <em>now</em> has a similar view, I think. The way I see things working together is that the validation in these "verbose constructors" is a last line of defense to ensure that the object's state is ensured to be valid and is <em>not</em> business logic where the intention is to throw a load of possibly-valid values at it and see what sticks. There should be a nice validation layer between the UI and these constructors that only allows through allowable state and handles the aggregation of errors where required. The exceptions in the constructor should still be just that; exceptions, not the norm for invalid UI input.</p>
+
+<p>But in summary, I'm still all for these "verbose constructors" - as this final defense that allows us not to worry about instances of these immutable classes - if they exist, then they're valid. And I like that.</p>
+
+<h3>An immutable list (and the DefinedStringList class)</h3>
+
+<p>Since this code is a bit long to jam in the middle of the article, here it is in all its glory:</p>
+
+<pre><code>public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
+{
+  private List&lt;T&gt; values;
+  private IValueValidator&lt;T&gt; validator;
+  public ImmutableList(IEnumerable&lt;T&gt; values, IValueValidator&lt;T&gt; validator)
+  {
+    if (values == null)
+      throw new ArgumentNullException("values");
+
+    var valuesList = new List&lt;T&gt;();
+    foreach (var value in values)
+    {
+      if (validator != null)
+      {
+        try { validator.EnsureValid(value); }
+        catch (Exception e)
+        {
+          throw new ArgumentException("Invalid reference encountered in values", e);
+        }
+      }
+      valuesList.Add(value);
+    }
+    this.values = valuesList;
+    this.validator = validator;
+  }
+  public ImmutableList(IEnumerable&lt;T&gt; values) : this(values, null) { }
+  public ImmutableList(IValueValidator&lt;T&gt; validator, params T[] values)
+    : this((IEnumerable&lt;T&gt;)values, validator) { }
+  public ImmutableList(params T[] values) : this(null, values) { }
+
+  public T this[int index]
+  {
+    get
+    {
+      if ((index &lt; 0) || (index &gt;= this.values.Count))
+        throw new ArgumentOutOfRangeException("index");
+      return this.values[index];
+    }
+  }
+
+  public int Count
+  {
+    get { return this.values.Count; }
+  }
+
+  public bool Contains(T value)
+  {
+    return this.values.Contains(value);
+  }
+
+  public ImmutableList&lt;T&gt; Add(T value)
+  {
+    if (this.validator != null)
+    {
+      try { this.validator.EnsureValid(value); }
+      catch (Exception e)
+      {
+        throw new ArgumentException("Invalid value", e);
+      }
+    }
+    var valuesNew = new List&lt;T&gt;();
+    valuesNew.AddRange(this.values);
+    valuesNew.Add(value);
+    return new ImmutableList&lt;T&gt;()
+    {
+      values = valuesNew,
+      validator = this.validator
+    };
+  }
+
+  /// &lt;summary&gt;
+  /// Removes the first occurrence of a specific object
+  /// &lt;/summary&gt;
+  public ImmutableList&lt;T&gt; Remove(T value)
+  {
+    var valuesNew = new List&lt;T&gt;();
+    valuesNew.AddRange(this.values);
+    valuesNew.Remove(value);
+    return new ImmutableList&lt;T&gt;()
+    {
+      values = valuesNew,
+      validator = this.validator
+    };
+  }
+
+  /// &lt;summary&gt;
+  /// This is just a convenience method so that derived types can call Add, Remove, etc.. and return
+  /// instances of themselves without having to pass that data back through a constructor which will
+  /// check each value against the validator even though we already know they're valid! Note: This
+  /// can only be used by derived classes that don't have any new requirements of any type - we're
+  /// setting only the values and validator references here!
+  /// &lt;/summary&gt;
+  protected static U toDerivedClass&lt;U&gt;(ImmutableList&lt;T&gt; list) where U : ImmutableList&lt;T&gt;, new()
+  {
+    if (list == null)
+      throw new ArgumentNullException("list");
+
+    // Use same trick as above methods to cheat - we're changing the state of the object after
+    // instantiation, but after returning from
+    // this method it can be considered immutable
+    return new U()
+    {
+      values = list.values,
+      validator = list.validator
+    };
+  }
+
+  public IEnumerator&lt;T&gt; GetEnumerator()
+  {
+    return this.values.GetEnumerator();
+  }
+
+  IEnumerator IEnumerable.GetEnumerator()
+  {
+    return GetEnumerator();
+  }
+}
+
+public interface IValueValidator&lt;T&gt;
+{
+  /// &lt;summary&gt;
+  /// This will throw an exception for a value that does pass validation requirements
+  /// &lt;/summary&gt;
+  void EnsureValid(T value);
+}
+</code></pre>
+
+<p>That's all the setup to enable a DefinedStringList class, which we can with:</p>
+
+<pre><code>public class DefinedStringList : ImmutableList&lt;string&gt;
+{
+  public DefinedStringList(IEnumerable&lt;string&gt; values)
+    : base(values, new NonNullOrEmptyWrappingValueValidator()) { }
+  public DefinedStringList(params string[] values) : this((IEnumerable&lt;string&gt;)values) { }
+  public DefinedStringList() : this(new string[0]) { }
+
+  public new DefinedStringList Add(string value)
+  {
+    return toDerivedClass&lt;DefinedStringList&gt;(base.Add(value));
+  }
+  public new DefinedStringList Remove(string value)
+  {
+    return toDerivedClass&lt;DefinedStringList&gt;(base.Remove(value));
+  }
+
+  private class NonNullOrEmptyWrappingValueValidator : IValueValidator&lt;string&gt;
+  {
+    public void EnsureValid(string value)
+    {
+      if ((value ?? "").Trim() == null)
+        throw new ArgumentException("Null/empty value specified");
+    }
+  }
+}
+</code></pre>
+
+<p />These are actually cut-down versions of classes I've got in one of my projects that also includes AddRange, Insert, RemoveAt, Contains(T value, IEqualityComparer<t> comparer), etc.. but this is more than enough to get the gist. At some point I may look into that GitHub thing..<p />
+
+<h3>Immutability purity</h3>
+
+<p>A final side note(*) - you might notice that internally the ImmutableList <em>does</em> actually participate in some mutability! When calling the Add method, we validate the new value (if required) and then create a new instance of the class with no data and <em>then</em> assign its internal "values" and "validator" references, meaning we sidestep the looping of all the data in the constructor which is unnecessary since we know the values are all valid, that's part of the point of the class! BTW, it feels like a bit of a trick updating these private references after creating the new instances and it's only possible because we've just created the instance ourself and the new object is an instance of the class that is performing the work. I don't know if there's a phrase to describe this method and I was a bit surprised to discover it could be done since it has a feeling of breaking the "private" member contract!</p>
+
+<p>* I don't want to go into <em>too</em> much detail since I want to talk about this further another time!</p>
+
+<p><strong>Update (26th November 2012):</strong> A re-visit of this principle can be seen in the post <a href="/persistent-immutable-lists">Persistent Immutable Lists</a> which has an alternate implementation of the immutable list with improved performance but all of the immutability-based safety!</p>
+<p class="PostTime">Posted at 20:14</p><div class="PreviousAndNext"><div class="Next"><h3>Next:</h3><a class="Next" href="/problems-in-immutabilityland">Problems in Immutability-land</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "1";
+							var disqus_title = "I love Immutable Data";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</t></div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

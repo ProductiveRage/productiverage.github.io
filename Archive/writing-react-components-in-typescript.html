@@ -1,0 +1,433 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Writing React components in TypeScript</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/writing-react-components-in-typescript" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">24 September 2014</h3><h2><a id="Post75"></a><a href="/writing-react-components-in-typescript">Writing React components in TypeScript</a></h2>
+
+<p><strong>Whoops..</strong> <em>I started writing this post a while ago and have only just got round to finishing it off. Now I realise that it applies to React 0.10 but the code here doesn't work in the now-current 0.11. On top of this,</em> hopefully <em>this will become unnecessary when 0.12 is released. I talk about this in the last part of the post. But until 0.12 is out (and confirmed to address the problem), I'm going to stick to 0.10 and use the solution that I talk about here.</em></p>
+
+<p><strong>Update (29th January 2015):</strong> React 0.13 beta has been released and none of this workaround is required any more - I've written about it here: <a href="/typescript-es6-classes-for-react-components-without-the-hacks">TypeScript / ES6 classes for React components - without the hacks!</a></p>
+
+<p>I've been playing around with React recently, putting together some prototypes to try to identify any pitfalls in what I think is an excellent idea and framework, with a view to convincing everyone else at work that we should consider it for new products. I'm no JavaScript hater but I do strongly believe in strongly typed code being easier to maintain in the long run for projects of significant size. Let's not get into an argument about whether strong or "weak" typing is best - before we know it we could end up worrying about what <a href="http://ericlippert.com/2012/10/15/is-c-a-strongly-typed-or-a-weakly-typed-language">strongly typed even means</a>! If you don't agree with me then you probably don't see any merit to TypeScript and you probably already guessed that this post will not be of interest to you! :)</p>
+
+<p>So I wanted to try bringing together the benefits of React with the benefits of TypeScript.. I'm clearly not the only one since there is already a type definition available in NuGet: <a href="https://www.nuget.org/packages/React.TypeScript.DefinitelyTyped">React.TypeScript.DefinitelyTyped</a>. This seems to be the recommended definition and appears to be in active development. I'd love it even more if there was an official definition from Facebook themselves (they have one for their <a href="https://github.com/facebook/immutable-js">immutable-js</a> library) but having one here is a great start. This allows us to call methods in the React library and know what types the arguments should be and what they will return (and the compiler will tell us if we break these contracts by passing the wrong types or trying to mistreat the return values).</p>
+
+<p>However, there are a few problems. Allow me to venture briefly back to square one..</p>
+
+<h3>Back to basics: A React component</h3>
+
+<p>This is a very simple component in React -</p>
+
+<pre><code>var MyButton = React.createClass({
+  _clickHandler: function() {
+    alert('Clicked MyButton with message "' + this.props.message + '"');
+  },
+  render: function() {
+    return &lt;button onClick={this._clickHandler}&gt;{this.props.message}&lt;/button&gt;;
+  }
+});
+</code></pre>
+
+<p>It's pretty boring but it illustrates a few principles. Firstly, it's written in "jsx" - a format like JavaScript but that needs some processing to actually become JavaScript. The &lt;button&gt; declaration looks like html, for example, and needs altering to become real JavaScript. If we're going to write components in TypeScript then we can't use this format since Visual Studio doesn't understand it (granted I'm making a bit of a leap assuming that you're using Visual Studio for this - it's not necessary, but I suspect most people writing TypeScript <em>will</em> use it since the TypeScript support is so good).</p>
+
+<p>The good news is that the translation from "jsx" to JavaScript is not a complex one*. It results in slightly longer code but it's still easily readable (and writable). So the above would be, written in native JavaScript -</p>
+
+<pre><code>var MyButton = React.createClass({
+  _clickHandler: function() {
+    alert('Clicked MyButton with message "' + this.props.message + '"');
+  },
+  render: function() {
+    return React.DOM.button({ onClick: this._clickHandler }, this.props.message);
+  }
+});
+</code></pre>
+
+<p>* <em>(It</em> can <em>do other clever stuff like translate "fat arrow" functions into JavaScript that is compatible with older browsers, but let's not get bogged down with that here - since I want to use TypeScript rather than jsx, it's not that relevant right now).</em></p>
+
+<p>This simple example is illustrating something useful that can be taken for granted since React 0.4; <em>autobinding</em>. When "_clickHandler" is called, the "this" reference is bound to the component instance, so "this.props.message" is accessible. Before 0.4, you had to use the "React.autoBind" method - eg.</p>
+
+<pre><code>var MyButton = React.createClass({
+  _clickHandler: React.autoBind(function() {
+    alert('Clicked MyButton with message "' + this.props.message + '"');
+  }),
+  render: function() {
+    return React.DOM.button({ onClick: this._clickHandler }, this.props.message);
+  }
+});
+</code></pre>
+
+<p>but these days it just works as you would expect (or as you would hope, perhaps). This happened back in July 2013 - see <a href="http://facebook.github.io/react/blog/2013/07/02/react-v0-4-autobind-by-default.html">New in React v0.4: Autobind by Default</a>.</p>
+
+<h3>A TypeScript React component: Take 1</h3>
+
+<p>If we naively try to write TypeScript code that starts off with the JavaScript above then we find we have no intellisense. The editor has no idea about "this.props" - no idea that it is defined, certainly no idea that it has a property "message" that should be a string. This shouldn't really be a surprise since the "this" in this case is just an anonymous object that we're passing to "React.createClass"; no information about the type has been specified, so it is considered to be of type "any".</p>
+
+<p><img alt="TypeScript React Component 'this' issue" src="/Content/Images/Posts/TypeScriptComponentThisIsAny.png" class="AlwaysFullWidth" /></p>
+
+<p>If we continue like this then we're going to miss out on the prime driver for using TypeScript in the first place - we might as well just write the components in JavaScript or "jsx"! (In fairness, this is something that I considered.. with React, and particularly the recommended Flux architecture, the "view components" are a relatively thin layer over components that could easily be written in TypeScript and so benefit from being strongly typed.. the view components could remain "more dynamic" and be covered by the class of unit tests that are often used to cover cases that are impossible with the guarantees of strong typing).</p>
+
+<p>The obvious thing to try was to have a TypeScript class along the lines of</p>
+
+<pre><code>class MyButton {
+  props: { message: string };
+  private _clickHandler() {
+    alert('Clicked MyButton with message "' + this.props.message + '"');
+  }
+  public render() {
+    return React.DOM.button({ onClick: this._clickHandler }, this.props.message);
+  }
+}
+
+var MyButtonReactComponent = React.createClass(new MyButton());
+</code></pre>
+
+<p>This would solve the internal type specification issue (where "this" is "any"). However, when the "React.createClass" function is called at runtime, an error is thrown..</p>
+
+<blockquote>
+  <p>Error: Invariant Violation: createClass(...): Class specification must implement a <code>render</code> method.</p>
+</blockquote>
+
+<p>I'm not completely sure, but I suspect that the React framework code is expecting an object with a property that is a function named "render" while the class instance passed to it has a function "render" on its prototype rather than a property on the reference itself.</p>
+
+<h3>Looking for help elsewhere</h3>
+
+<p>When I got to this point, I figured that someone else must have had encountered the same problem - particularly since there exists this TypeScript definition for React in the first place! I came across a GitHub project <a href="https://github.com/fdecampredon/react-typescript">React TypeScript</a> which describes itself as a</p>
+
+<blockquote>
+  <p>React wrapper to make it play nicely with typescript.</p>
+</blockquote>
+
+<p>An example in the README shows</p>
+
+<pre><code>import React = require('react');
+import ReactTypescript = require('react-typescript');
+
+class HelloMessage extends ReactTypescript.ReactComponentBase&lt;{ name: string; }, {}&gt; {
+  render() {
+    return React.DOM.div(null, 'Hello ' + this.props.name);
+  }
+}
+
+React.renderComponent(new HelloMessage({ name: 'Jhon' }), mountNode);
+</code></pre>
+
+<p>which looks like exactly what I want!</p>
+
+<p>The problems are that it clearly states..</p>
+
+<blockquote>
+  <p>warning: ReactTypescript can actually only be used with commonjs modules and browserify, if someone does want AMD I'll gladly accept any PR that would packages it for another format.</p>
+</blockquote>
+
+<p>.. and I'm very interesting in using AMD and require.js to load modules "on demand" (so that if I develop a large app then I have a way to prevent the "megabyte-plus initial JavaScript download").</p>
+
+<p>Also, I'm concerned that the maintained TypeScript definition that I referenced earlier claims to be</p>
+
+<blockquote>
+  <p>Based on TodoMVC sample by @fdecampredon, improved by @wizzard0, MIT licensed.</p>
+</blockquote>
+
+<p>fdecampredon is the author of this "React TypeScript" repo.. which hasn't been updated in seven months. So I'm concerned that the definitions might not be getting updated here - there are already a lot of differences between the <a href="https://github.com/fdecampredon/react-typescript/blob/master/declarations/react.d.ts">react.d.ts</a> in this project and that in the maintained NuGet package's <a href="https://github.com/wizzard0/react-typescript-definitions/blob/master/react.d.ts">react.d.ts</a>.</p>
+
+<p>In addition to this, the README states that</p>
+
+<blockquote>
+  <p>In react, methods are automatically bound to a component, this is not the case when using ReactTypeScript, to activate this behavious you can use the autoBindMethods function of ReactTypeScript</p>
+</blockquote>
+
+<p>This refers to what I talked about earlier; the "auto-binding" convenience to make writing components more natural. There are two examples of ways around this. You can use the ReactTypeScript library's "autoBindMethods" function -</p>
+
+<pre><code>class MyButton extends ReactTypeScript.ReactComponentBase&lt;{ message: string}, any&gt; {
+  clickHandler(event: React.MouseEvent) {
+    alert(this.props.message);
+  }
+  render() {
+    return React.DOM.button({ onClick: this.clickHandler }, 'Click Me');
+  }
+}
+
+// If this isn't called then "this.props.message" will error in clickHandler as "this" is not
+// bound to the instance of the class
+ReactTypeScript.autoBindMethods(MyButton);
+</code></pre>
+
+<p>or you can use the TypeScript "fat arrow" to bind the function to the "this" reference that you would expect:</p>
+
+<pre><code>class MyButton extends  ReactTypeScript.ReactComponentBase&lt;{ message: string}, any&gt; {
+  // If the fat arrow isn't used for the clickHandler definition then "this.props.message" will
+  // error in clickHandler as "this" is not bound to the instance of the class
+  clickHandler = (event: React.MouseEvent) =&gt; {
+    alert(this.props.message);
+  }
+  render() {
+    return React.DOM.button({ onClick: this.clickHandler }, 'Click Me');
+  }
+}
+</code></pre>
+
+<p>The first approach feels a bit clumsy, that you must always remember to call this method for all component classes. The second approach doesn't feel too bad, it's just a case of being vigilant and always using fat arrows - but if you forget, you won't find out until runtime. Considering that I want to use to TypeScript to catch more errors at compile time, this still doesn't feel ideal.</p>
+
+<p>The final concern I have is that the library includes a large-ish <a href="https://github.com/fdecampredon/react-typescript/blob/master/third_party/react-internal.js">react-internal.js</a> file. What I'm going to suggest further down does unfortunately dip its toe into React's (undocumented) internals but I've tried to keep it to the bare minimum. This "react-internal.js" worries me as it might be relying on a range of implementation details, any of which (as far as I know) could potentially change and break my code.</p>
+
+<p>In case I'm sounding down on this library, I don't mean to be - I've tried it out and it does actually work, and there are not a lot of successful alternatives out there. So I've got plenty of respect for this guy, getting his hands dirty and inspiring me to follow in his footsteps!</p>
+
+<h3><s>Stealing</s> Taking inspiration - A TypeScript React component: Take 2</h3>
+
+<p>So I want a way to</p>
+
+<ol>
+<li>Write a TypeScript class that can be used as a React component</li>
+<li>Use the seemingly-maintained <a href="https://www.nuget.org/packages/React.TypeScript.DefinitelyTyped">NuGet-delivered type definition</a> and limit access to the "internals" as much as possible</li>
+<li>Have the component's methods always be auto-bound</li>
+</ol>
+
+<p>I'd better say this up-front, though: I'm willing to sacrifice the support for mixins here.</p>
+
+<p>fdecampredon's "React TypeScript" library <em>does</em> support mixins so it's technically possible but I'm not convinced at this time that they're worth the complexity required by the implementation since I don't think they fit well with the model of a TypeScript component.</p>
+
+<p>The basic premise is that you can name mixin objects which are "merged into" the component code, adding properties such as functions that may be called by the component's code. Since TypeScript wouldn't be aware of the properties added by mixins, it would think that there were missing methods / properties and flag them as errors if they were used within the component.</p>
+
+<p>On top of this, I've not been convinced by the use cases for mixins that I've seen so far. In the official <a href="http://facebook.github.io/react/docs/reusable-components.html#mixins">React docs section about mixins</a>, it uses the example of a timer that is automatically cleared when the component is unmounted. There's a question on Stack Overflow "<a href="http://stackoverflow.com/questions/21854938">Using mixins vs components for code reuse in Facebook React</a>" where the <a href="http://stackoverflow.com/a/21857309">top answer</a> talks about using mixins to perform common form validation work to display errors or enable or disable inputs by directly altering internal state on the component. As I understand the Flux architecture, the one-way message passing should result in validation being done in the store rather than the view / component. This allows the validation to exist in a central (and easily-testable) location and to <em>not</em> exist in the components. This also goes for the timer example, the logic-handling around whatever events are being raised on a timer should not exist within the components.</p>
+
+<p>What I have ended up with is this:</p>
+
+<pre><code>import React = require('react');
+
+// The props and state references may be passed in through the constructor
+export class ReactComponentBase&lt;P, S&gt; {
+  constructor(props?: P, state?: S) {
+
+    // Auto-bind methods on the derived type so that the "this" reference is as expected
+    // - Only do this the first time an instance of the derived class is created
+    var autoBoundTypeScriptMethodsFlagName = '__autoBoundTypeScriptMethods';
+    var autoBindMapPropertyName = '__reactAutoBindMap'; // This is an internal React value
+    var cp = this['constructor'].prototype;
+    var alreadyBoundTypeScriptMethods = (cp[autoBoundTypeScriptMethodsFlagName] === true)
+      &amp;&amp; cp.hasOwnProperty(autoBoundTypeScriptMethodsFlagName);
+    if (!alreadyBoundTypeScriptMethods) {
+      var autoBindMap = {};
+      var parentAutoBindMap = cp[autoBindMapPropertyName];
+      var functionName;
+      if (parentAutoBindMap) {
+        // Maintain any binding from an inherited class (if the current class being dealt
+        // with doesn't directly inherit from ReactComponentBase)
+        for (functionName in parentAutoBindMap) {
+          autoBindMap[functionName] = parentAutoBindMap[functionName];
+        }
+      }
+      for (functionName in cp) {
+        if (!cp.hasOwnProperty(functionName) || (functionName === "constructor")) {
+          continue;
+        }
+        var fnc = cp[functionName];
+        if (typeof (fnc) !== 'function') {
+          continue;
+        }
+        autoBindMap[functionName] = fnc;
+      }
+      cp[autoBindMapPropertyName] = autoBindMap;
+      cp[autoBoundTypeScriptMethodsFlagName] = true;
+    }
+
+    this['construct'].apply(this, arguments); // This is an internal React method
+  }
+
+  props: P;
+  state: S;
+}
+ReactComponentBase.prototype = React.createClass({
+  // The component must share the "componentConstructor" that is present on the prototype of
+  // the return values from React.createClass
+  render: function () {
+    return null;
+  }
+})['componentConstructor'].prototype; // Also an internal React method
+
+// This must be used to mount component instances to avoid errors due to the type definition
+// expecting a React.ReactComponent rather than a ReactComponentBase (though the latter is
+// able to masquerade as the former and when the TypeScript compiles down to JavaScript,
+// no-one will be any the wiser)
+export function renderComponent&lt;P, S&gt;(
+    component: ReactComponentBase&lt;P, S&gt;,
+    container: Element,
+    callback?: () =&gt; void) {
+  var mountableComponent = &lt;React.ReactComponent&lt;any, any&gt;&gt;&lt;any&gt;component;
+  React.renderComponent(
+    mountableComponent,
+    container,
+    callback
+    );
+}
+</code></pre>
+
+<p>This allows the following component to be written:</p>
+
+<pre><code>import React = require('react');
+import ReactComponentBridge = require('components/ReactComponentBridge');
+
+class MyButton extends ReactComponentBridge.ReactComponentBase&lt;{ message: string }, any&gt; {
+  myButtonClickHandler(event: React.MouseEvent) {
+    alert('Clicked MyButton with message "' + this.props.message + '"');
+  }
+  render() {
+    return React.DOM.button({ onClick: this.myButtonClickHandler }, 'Click Me');
+  }
+}
+
+export = MyButton;
+</code></pre>
+
+<p>which may be rendered with:</p>
+
+<pre><code>import ReactComponentBridge = require('components/ReactComponentBridge');
+import MyButton = require('components/MyButton');
+
+ReactComponentBridge.renderComponent(
+  new MyButton({ message: 'Click Me' }),
+  document.getElementById('container')
+);
+</code></pre>
+
+<p>Hurrah! Success! All is well with the world! I've got the benefits of TypeScript <em>and</em> the benefits of React and the Flux architecture (ok, the last one doesn't need any of this or even require React - it could really be used with whatever framework you chose). There's just one thing..</p>
+
+<h3>I'm out of date</h3>
+
+<p>Like I said at the start of this post, as I got to rounding it out to publish, I realised that I wasn't on the latest version of React (current 0.11.2, while I was still using 0.10) and that this code didn't actually work on that version. Sigh.</p>
+
+<p>However, the good news is that it sounds like 0.12 (still in alpha at the moment) is going to make things a lot easier. The changes in 0.11 appear to be paving the way for 0.12 to shakes things up a bit. Changes are documented at <a href="https://gist.github.com/sebmarkbage/d7bce729f38730399d28">New React Descriptor Factories and JSX</a> which talks about how the problem they're trying to solve with the new code is a</p>
+
+<blockquote>
+  <p>Simpler API for ES6 classes</p>
+</blockquote>
+
+<p>.. and there is a note in the <a href="https://github.com/reactjs/react-future/blob/master/01%20-%20Core/05%20-%20Elements.js">react-future</a> GitHub repo ("Specs &amp; docs for potential future and experimental React APIs and JavaScript syntax") that</p>
+
+<blockquote>
+  <p>A React component module will no longer export a helper function to create virtual elements. Instead it's the responsibility of the consumer to efficiently create the virtual element.</p>
+  
+  <p>Languages that compile to JS can choose to implement the element signature in whatever way is idiomatic for that language:</p>
+</blockquote>
+
+<p>TypeScript implements some ES6 features (such as classes, which are how I want to represent React components) so (hopefully) this means that soon-to-hit versions of React are going to make ES6-classes-for-components much easier (and negate the need for a workaround such as is documented here).</p>
+
+<p>The articles that I've linked to (I'm not quite sure how official that all is, btw!) <em>are</em> talking about a future version since they refer to the method "React.createFactory", which isn't available in 0.11.2. I have cloned the in-progress master repo from <a href="https://github.com/facebook/react">github.com/facebook/react</a> and built the 0.12-alpha code* and that <em>does</em> have that method. However, I haven't yet managed to get it working as I was hoping. I only built it a couple of hours ago, though, and I want to get this post rounded out rather than let it drag on any longer! And, I'm sure, when this mechanism for creating React components is made available, I'm sure a lot of information will be released about it!</p>
+
+<p>* <em>(npm</em> is <em>a great tool but it still can't make</em> everything <em>easy.. first I didn't realise that the version of node.js I was using was out of date and it prevented some dependencies from being installed. Then I had to install Python - but 2.7 was required, I found out, after I'd installed 3.4.</em> Then <em>I didn't have Git installed on the computer I was trying to build React from. Then I had to mess about with setting environment variables for the Python and Git locations. But it</em> did <em>work, and when I think about how difficult it would have been without a decent package manager I stop feeling the need to complain about it too much :)</em></p>
+<p class="PostTime">Posted at 23:12</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to &quot;Implementing F#-inspired &#39;with&#39; updates in C#&quot;</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "75";
+							var disqus_title = "Writing React components in TypeScript";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,580 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - TypeScript State Machines</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/typescript-state-machines" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">19 August 2013</h3><h2><a id="Post62"></a><a href="/typescript-state-machines">TypeScript State Machines</a></h2>
+
+<p>Last time, in <a href="/c-sharp-state-machines">C# State Machines</a>, I used the example of traffic lights at a crossroads to illustrate how complexity could be handled easily with the state machine pattern. This was a follow-on to my <a href="/parsing-css">Parsing CSS</a> post and inspired by the excellent article <a href="http://gameprogrammingpatterns.com/state.html">Game Programming Patterns: State</a>.</p>
+
+<p>Well this little excursion offered me the perfect opportunity to dive into something else I've been looking at: <a href="http://www.typescriptlang.org/">TypeScript</a>. I've long been a fan of JavaScript. It's got a lot of quirks and it's easy to write absolute rubbish with it. In fairness, it's possible to write crap with any language, it just feels like sometimes JavaScript makes it <em>very</em> easy. But if you embrace the patterns that work well with it and apply a little discipline, you can come up with elegant, maintainable solutions.</p>
+
+<p>But I've often found it difficult to leave behind entirely the concept of static typing and that warm cozy feeling of knowing that the argument that you want is going to be an int and, as an int, you can apply any range checks you might need to and be content that everything has met your expectations (or demands, perhaps :) But if you don't even know what type it is, you can't as easily apply these sorts of restrictions. You can try to check the type of the argument and <em>then</em> apply range checking (or whatever) but that can start to get very messy, very quickly. I used to work with someone who claimed that static checking was unnecessary with sufficient unit testing. Meanwhile, I still think that there's a lot of potential for <a href="http://msdn.microsoft.com/en-us/library/dd264808.aspx">Code Contracts</a> which is tending towards the polar opposite, so we basically had to agree to disagree on that one. In fact I may choose to take his argument to mean that with static types that a whole category of unit tests become unnecessary, handled instead by compiler checks!</p>
+
+<p>So it's probably fairly easy to see, if I like JavaScript <em>and</em> I like static typing, why TypeScript could seem apper attractive prospect. And here was a nice little project that was non-trivial but still pretty compact that I could try it out with.</p>
+
+<p>The type annotations in TypeScript are optional, but since I'm writing the code from scratch it makes sense to use them throughout. Interfaces are defined but do not need to referenced by types that implement the interface - so long as they have all of the required properties and methods then they will implicitly be considered to implement the interface. This is like Google's <a href="http://golang.org/">Go</a> language and not like C#.</p>
+
+<p>One thing that I don't like too much is that it isn't currently possible to specify an interface with readonly properties. It must be a property with a getter and setter or nothing. So I've resorted to specific Get methods on the interfaces instead, such as GetColour() and GetState().</p>
+
+<p>(I'm going for a fairly direct port from the C# code. If you haven't read the <a href="/c-sharp-state-machines">last post</a> then it might be worth a quick look - there's nothing too complicated going on here, it's just that I'm going to be skimming over the general program structure and concentrating mostly on how it works with TypeScript).</p>
+
+<pre><code>interface IAmATrafficLightState {
+  GetColour(): ColourOptions;
+  GetStatus(): StatusOptions;
+  RegisterCarQueueing(): IAmAStateTransition;
+  RegisterPassageOfTime(): IAmAStateTransition;
+}
+
+interface IAmAStateTransition {
+  GetTransitionType(): TransitionTypeOptions;
+  GetNewState(): IAmATrafficLightState; 
+}
+
+enum ColourOptions {
+  GreenOnly,
+  RedAndYellow,
+  RedOnly,
+  YellowOnly
+}
+
+enum StatusOptions {
+  HandlingTraffic,
+  NotHandlingTraffic
+}
+
+enum TransitionTypeOptions {
+  NoChange,
+  Pop,
+  Push,
+  Replace
+}
+</code></pre>
+
+<p>In the C# code, I actually had a <strong>StateTransition</strong> class rather than an <strong>IAmAStateTransition</strong>. The class had a private constructor and multiple static public methods for constructing instances: NoChange, Pop, Push and Replace. This isn't a structure that TypeScript supports, so instead I've got an interface and separate implementations. Each of the below classes implicitly <strong>IAmAStateTransition</strong> as they have the methods GetTransitionType() and GetNewState().</p>
+
+<p>The <strong>PushTransition</strong> and <strong>ReplaceTransition</strong> classes take a single constructor argument of type <strong>IAmATrafficLightState</strong> (as the transitions work against a "state stack", only the Push and Replace actions require a state to change to, Pop and NoChange don't). Since the constructor argument's type is specified, the only validation I have to perform to remain consistent with the C# code is to ensure that it has a non-null value. TypeScript would indicate a compile-time error if I tried to pass a string for this argument, as that clearly isn't an <strong>IAmATrafficLightState</strong> implementation. But it won't complain about <em>either</em> a null value or an undefined value. So the easiest thing to do seems to be just use the JavaScript pattern of testing for anything that evaluates to false - ie. "if (!state) { /* Error */ }"</p>
+
+<pre><code>class NoChangeTransition {
+  GetTransitionType(): TransitionTypeOptions {
+    return TransitionTypeOptions.NoChange;
+  }
+  GetNewState(): IAmATrafficLightState {
+    return null;
+  }
+}
+
+class PopTransition {
+  GetTransitionType(): TransitionTypeOptions {
+    return TransitionTypeOptions.Pop;
+  }
+  GetNewState(): IAmATrafficLightState {
+    return null;
+  }
+}
+
+class PushTransition {
+  constructor(private state: IAmATrafficLightState) {
+    if (!state) {
+      throw new Error("state may not be null for a Push Transition");
+    }
+  }
+  GetTransitionType(): TransitionTypeOptions {
+    return TransitionTypeOptions.Push;
+  }
+  GetNewState(): IAmATrafficLightState {
+    return this.state;
+  }
+}
+
+class ReplaceTransition {
+  constructor(private state: IAmATrafficLightState) {
+    if (!state) {
+      throw new Error("state may not be null for a Replace Transition");
+    }
+  }
+  GetTransitionType(): TransitionTypeOptions {
+    return TransitionTypeOptions.Replace;
+  }
+  GetNewState(): IAmATrafficLightState {
+    return this.state;
+  }
+}
+</code></pre>
+
+<p>I like the syntax here where constructor arguments can be marked as private, resulting in a private backing field being implicitly specified (see Steve Fenton's <a href="http://www.stevefenton.co.uk/Content/Blog/Date/201304/Blog/Stop-Manually-Assigning-TypeScript-Constructor-Parameters/">Stop Manually Assigning TypeScript Constructor Parameters</a>). What I don't like is that in the resulting JavaScript, these fields are <em>not</em> private. If you look at the JavaScript below, which is generated from the TypeScript <strong>PushTransition</strong> class..</p>
+
+<pre><code>// This is the generated JavaScript for the TypeScript "PushTransition" class above
+var PushTransition = (function () {
+  function PushTransition(state) {
+    this.state = state;
+    if (!state) {
+      throw new Error("state may not be null for a Push Transition");
+    }
+  }
+  PushTransition.prototype.GetTransitionType = function () {
+    return TransitionTypeOptions.Push;
+  };
+  PushTransition.prototype.GetNewState = function () {
+    return this.state;
+  };
+  return PushTransition;
+})();
+</code></pre>
+
+<p>.. you'll see that the state value is stored in "this.state". That's a public reference that JavaScript can manipulate. If all of the code that uses this class is TypeScript, then it won't be a problem as the compiler will enforce its private status. But if this is code to be called by non-TypeScript JavaScript then it's not ideal.</p>
+
+<p>Although Douglas Crockford showed us years ago that genuinely private members were possible (see <a href="http://javascript.crockford.com/private.html">Private Members in JavaScript</a>), the sacrifice is that methods for an object instance with private members must be declared for each instance. The class structure used by TypeScript, on the other hand, uses the prototype approach to declare functions for each class. This means that each method is defined only once per class, rather than once per instance. So it's a conscious decision to gain a performance improvement in terms of the memory required. (Anders Hejlsberg - the daddy of both C# and TypeScript - addresses exactly this point in this forum post <a href="http://typescript.codeplex.com/discussions/397651">Private Variables</a>).</p>
+
+<h3>Time-Transitioning States</h3>
+
+<p>Some states in this model will transition based upon time alone. The initial state of <strong>RedLightWaitingForTraffic</strong> will only transition when cars arrive at the lights whereas states such as <strong>GreenLight</strong> transition based solely on time - it will stay green for a set period of time before cycling back round.</p>
+
+<p>In the C# code last time, I had an abstract <strong>TimeBasedTransitiveState</strong> class with a nested class that would represent the states during which time was being counted down before the next transition. This nested class would have a "Source" property that pointed back to the traffic light state that started the countdown (eg. a <strong>GreenLight</strong> instance). TypeScript doesn't support abstract classes <em>or</em> nested classes so this structure wasn't going to work.</p>
+
+<p>Instead I wrote it in a much more straight forward manner and then replaced the classes that have no internal state other than Colour, Status, Next Transition and Time-To-Next-Transition with what amount to static references. I liked this approach so much that I went back and changed the C# code such that <strong>TimeBasedTransitiveState</strong> class was written in pretty much the same way. (I've put the code up on Bitbucket for reference - see the <a href="https://bitbucket.org/DanRoberts/trafficlightstatemachine">TrafficLightStateMachine</a>). I haven't changed the C# code to use static references yet, but it's something I'm considering.</p>
+
+<pre><code>class TimeBasedTransitiveState {
+  constructor(
+    private colour: ColourOptions,
+    private status: StatusOptions,
+    private timeSlicesToWaitFor: number,
+    private nextTransition: IAmAStateTransition) {
+    if (!nextTransition) {
+      throw new Error("nextTransition may not be null for a Push Transition");
+    }
+    if (timeSlicesToWaitFor &lt;= 0) {
+      throw new Error("timeSlicesToWaitFor must be a positive value");
+    }
+  }
+  GetColour(): ColourOptions {
+    return this.colour;
+  }
+  GetStatus(): StatusOptions {
+    return this.status;
+  }
+  RegisterCarQueueing(): IAmAStateTransition {
+    return new NoChangeTransition();
+  }
+  RegisterPassageOfTime(): IAmAStateTransition {
+    if (this.timeSlicesToWaitFor === 1) {
+      return this.nextTransition;
+    }
+    return new ReplaceTransition(
+      new TimeBasedTransitiveState(
+        this.colour,
+        this.status,
+        this.timeSlicesToWaitFor - 1,
+        this.nextTransition
+      )
+    );
+  }
+}
+
+var RedLightPausedBeforeWaitingForTraffic = (function () {
+  var TIME_AFTER_RESETTING_TO_RED_BEFORE_CONSIDERING_TRAFFIC = 5;
+  return new TimeBasedTransitiveState(
+    ColourOptions.RedOnly,
+    StatusOptions.HandlingTraffic,
+    TIME_AFTER_RESETTING_TO_RED_BEFORE_CONSIDERING_TRAFFIC,
+    new PopTransition()
+  );
+})();
+
+var YellowLight = (function () {
+  var TIME_TO_WAIT_ON_YELLOW = 5;
+  return new TimeBasedTransitiveState(
+    ColourOptions.YellowOnly,
+    StatusOptions.HandlingTraffic,
+    TIME_TO_WAIT_ON_YELLOW,
+    new ReplaceTransition(RedLightPausedBeforeWaitingForTraffic)
+  );
+})();
+
+var GreenLight = (function () {
+  var TIME_TO_STAY_ON_GREEN = 100;
+  return new TimeBasedTransitiveState(
+    ColourOptions.GreenOnly,
+    StatusOptions.HandlingTraffic,
+    TIME_TO_STAY_ON_GREEN,
+    new ReplaceTransition(YellowLight)
+  );
+})();
+
+var RedAndYellowLight = (function () {
+  var TIME_TO_WAIT_ON_RED_AND_YELLOW = 5;
+  return new TimeBasedTransitiveState(
+    ColourOptions.RedAndYellow,
+    StatusOptions.HandlingTraffic,
+    TIME_TO_WAIT_ON_RED_AND_YELLOW,
+    new ReplaceTransition(GreenLight)
+  );
+})();
+
+var RedLightAboutToChange = (function () {
+  // We're committed to letting traffic pass at this point so declare HandlingTraffic
+  var TIME_TO_STAY_RED_AFTER_CAR_ARRIVES = 10;
+  return new TimeBasedTransitiveState(
+    ColourOptions.RedOnly,
+    StatusOptions.HandlingTraffic,
+    TIME_TO_STAY_RED_AFTER_CAR_ARRIVES,
+    new ReplaceTransition(RedAndYellowLight)
+  );
+})();
+</code></pre>
+
+<p>Note that the state objects have to follow the <strong>TimeBasedTransitiveState</strong> definition, in terms of the order in which they appear in the code. These objects are created by calling the constructor of the <strong>TimeBasedTransitiveState</strong> class. If these calls are made before the class is defined then an error such as "undefined is not a function" or "PushTransition is not a constructor" will be raised (depending upon browser or other runtime environment).</p>
+
+<p>This has been observed by many people, sometimes resulting in bug reports such as <a href="https://typescript.codeplex.com/workitem/627">Inheritance only works if parent class is declared before child class</a>. These have so far been rejected. In that report, <a href="http://social.msdn.microsoft.com/profile/jonathan%20turner%20%5Bms%5D/">Jon Turner</a> writes</p>
+
+<blockquote>
+  <p>Unless we reorder the code for you, I think you still can come up with situations where a value hasn't been fully initialized. [..] At this time, we're explicitly not reordering code (or even adding code except in a couple of exceptions) that you've written.</p>
+</blockquote>
+
+<p>So I guess that we have to get used to the current situation.</p>
+
+<p>For working with multiple files, there is support for CommonJs and AMD modules as talked about at <a href="http://blorkfish.wordpress.com/2012/10/23/typescript-organizing-your-code-with-amd-modules-and-require-js/">Organizing your code with AMD modules and require.js</a>. Note that I think the mention of comments "reference path" is out of date now, as Steve Fenton points out in <a href="http://www.stevefenton.co.uk/Content/Blog/Date/201308/Blog/Say-Goodbye-To-TypeScript-Reference-Comments/">Say Goodbye To TypeScript Reference Comments</a>!</p>
+
+<p>One last point relating to this. I had a niggling thought that "isn't hoisting in JavaScript a way around this?" But hoisting is just about variable declarations, not their definitions. If you need a refresher on this (like I did) then this article is excellent: <a href="http://net.tutsplus.com/tutorials/javascript-ajax/quick-tip-javascript-hoisting-explained/">JavaScript Hoisting Explained</a> (it has a video at the top which I skipped, all of the information is written below it).</p>
+
+<h3>Traffic-Transitioning States</h3>
+
+<p>So back to the TypeScript state machine code..</p>
+
+<p>The traffic-transitioning states are the ones that are a bit more interesting! Traffic lights start off as a <strong>RedLightWaitingForTraffic</strong>. Once traffic is registered as having arrived at the light, it will transition to either the <strong>RedLightAboutToChange</strong> state or the <strong>RedLightWaitingForAccess</strong>. The first option is only possible if the traffic lights on the intersecting road at the crossroads are not letting traffic through - it would be no good for traffic on both roads to be moving simultaneously! The <strong>RedLightAboutToChange</strong> is one of the time-transitioning states above, all that will happen is that the full state cycle (RedAndYellow to Green to Yellow and back to Red) will take place.</p>
+
+<p>However, if the other road <em>is</em> letting through traffic then the <strong>RedLightWaitingForAccess</strong> state is used. This state will check whether it is free to pass traffic every time that its RegisterPassageOfTime method is called. If so (meaning that the other road is no longer letting traffic flow), then it can transition straight to the <strong>RedAndYellowLight</strong> state. Otherwise it has to stick to being a <strong>RedLightWaitingForAccess</strong>.</p>
+
+<p>Something I particularly liked when writing the TypeScript version was how easy it was to specify a constructor argument that was a function. I shouldn't be surprised, really, since not only does JavaScript support first class functions but also C# has had lambdas all over the place (and the <strong>Func</strong> class) since .net 3.5. But it was just gratifying that it was so easy to declare! I want a single argument that is a parameter-less function that returns a bool. As such, I need only write -</p>
+
+<pre><code>constructor(private isAllowedToLetTrafficThrough: () =&gt; boolean) {
+</code></pre>
+
+<p>Lovely! Succinct but easy to follow. So for the full implementations of the two traffic-based states we have -</p>
+
+<pre><code>class RedLightWaitingForAccess {
+  constructor(private isAllowedToLetTrafficThrough: () =&gt; boolean) {
+    if (!isAllowedToLetTrafficThrough) {
+      throw new Error("isAllowedToLetTrafficThrough must be specified");
+    }
+  }
+  GetColour(): ColourOptions {
+    return ColourOptions.RedOnly;
+  }
+  GetStatus(): StatusOptions {
+    return StatusOptions.NotHandlingTraffic;
+  }
+  RegisterCarQueueing(): IAmAStateTransition {
+    // We can't do anything here, we're already waiting
+    return new NoChangeTransition();
+  }
+  RegisterPassageOfTime(): IAmAStateTransition {
+    if (this.isAllowedToLetTrafficThrough()) {
+      return new ReplaceTransition(RedAndYellowLight);
+    }
+    return new NoChangeTransition();
+  }
+}
+
+class RedLightWaitingForTraffic {
+  constructor(private isAllowedToLetTrafficThrough: () =&gt; boolean) {
+    if (!isAllowedToLetTrafficThrough) {
+      throw new Error("isAllowedToLetTrafficThrough must be specified");
+    }
+  }
+  GetColour(): ColourOptions {
+    return ColourOptions.RedOnly;
+  }
+  GetStatus(): StatusOptions {
+    return StatusOptions.NotHandlingTraffic;
+  }
+  RegisterCarQueueing(): IAmAStateTransition {
+    if (this.isAllowedToLetTrafficThrough()) {
+      return new PushTransition(RedLightAboutToChange);
+    }
+    return new PushTransition(new RedLightWaitingForAccess(this.isAllowedToLetTrafficThrough));
+  }
+  RegisterPassageOfTime(): IAmAStateTransition {
+    return new NoChangeTransition();
+  }
+}
+</code></pre>
+
+<p>Representing the state transitions as a stack and having each <strong>IAmATrafficLightState</strong> implementation return an <strong>IAmAStateTransition</strong> for the calls to RegisterCarQueueing and RegisterPassageOfTime makes following the changes in state very easy. The <strong>RedLightWaitingForTraffic</strong> is always at the bottom of the stack. When it changes state (to either a <strong>RedLightAboutToChange</strong> or a <strong>RedLightWaitingForAccess</strong>) that new state is pushed onto the stack. All of the following states replace that top entry until the final <strong>RedLightPausedBeforeWaitingForTraffic</strong> which will pop off, leaving the original <strong>RedLightWaitingForTraffic</strong>.</p>
+
+<h3>Tying it all together</h3>
+
+<p>Having recreated the states and the transitions, we need the <strong>TrafficLight</strong> class that keeps track of the state queue. The TypeScript version is reassuringly close to the C# code. There's no <strong>Stack</strong> class so I've used an array instead (which in JavaScript has "push" and "pop" methods and so isn't far removed from the .net <strong>Stack</strong> class). TypeScript's enums are implemented in such a way that if you want to display their name (rather than their numeric value) then you need to treat the enum as a hashtable which maps the value back onto the name. This varies from C#, where the ToString method of an enum value will return the name rather than the value. Also note that I'm using a method "Log" to write out messages. This will be defined below.</p>
+
+<pre><code>class TrafficLight {
+  private states: IAmATrafficLightState[];
+  constructor(private trafficLightId: string, initialState: IAmATrafficLightState) {
+    if (!trafficLightId) {
+      throw new Error("A trafficLightId must be specified");
+    }
+    if (!initialState) {
+      throw new Error("An initialstate must be specified");
+    }
+    this.states = [ initialState ];
+  }
+
+  GetTrafficLightId(): string {
+    return this.trafficLightId;
+  }
+
+  GetColour(): ColourOptions {
+    return this.GetCurrentState().GetColour();
+  }
+
+  GetStatus(): StatusOptions {
+    return this.GetCurrentState().GetStatus();
+  }
+
+  RegisterPassageOfTime(): void {
+    this.ApplyTransition(this.GetCurrentState().RegisterPassageOfTime());
+  }
+
+  RegisterCarQueueing(): void {
+    this.ApplyTransition(this.GetCurrentState().RegisterCarQueueing());
+  }
+
+  private ApplyTransition(transition: IAmAStateTransition): void {
+    var previousColour = this.GetCurrentState().GetColour();
+    if (transition.GetTransitionType() === TransitionTypeOptions.NoChange) {
+      // Do nothing
+    }
+    else if (transition.GetTransitionType() === TransitionTypeOptions.Pop) {
+      if (this.states.length === 1) {
+        throw new Error("Invalid transition - may not remove last state in the stack");
+      }
+      this.states.pop();
+    }
+    else if (transition.GetTransitionType() === TransitionTypeOptions.Push) {
+      this.states.push(transition.GetNewState());
+    }
+    else if (transition.GetTransitionType() === TransitionTypeOptions.Replace) {
+      this.states[this.states.length - 1] = transition.GetNewState();
+    }
+    else {
+      throw new Error("Unsupported transition type: " + transition.GetTransitionType());
+    }
+    var newColour = this.GetCurrentState().GetColour();
+    if (newColour !== previousColour) {
+      Log(
+        "* " + this.trafficLightId + " changed " + ColourOptions[previousColour] +
+        " to " + ColourOptions[newColour]
+      );
+    }
+  }
+
+  private GetCurrentState() {
+    return this.states[this.states.length - 1];
+  }
+}
+</code></pre>
+
+<p>The final piece of the puzzle is the equivalent of the <strong>Program</strong> class that drives the simulation in the C# code. This will create an object "tester" that wraps up references to both the North-South and East-West traffic lights in a closure, exposing a method "Advance" which will call "RegisterPassageOfTime" on the lights and, from time-to-time, based on the probabilityOfCarArrivingEachTimeSlice value, call "RegisterCarQueueing" too.</p>
+
+<p>I originally intended to run the code from the command line (using CScript) but thought afterward that it might be worth doing in the browser as well, maybe using that to bolt on some sort of graphical representation of what's happening. Doing it in the browser allows it to be slowed down, too, since tester.Advance may be called through the setInterval method rather than firing full speed as it does at the command line (JavaScript has no Thread.Sleep method!). Note that any sort of "graphical representation" is yet to be implemented, it's text-only for now.</p>
+
+<p>Whether or not it's being hosted in the browser also affects how it logs out its messages - with "console.log" or "WScript.Echo". I've gone for a simple approach in guessing how it's being hosted by presuming that if there is a "window" reference that it's in the browser and at the command line otherwise.</p>
+
+<pre><code>var tester = (function () {
+  var probabilityOfCarArrivingEachTimeSlice = 0.1;
+
+  var eastWestTrafficLight: TrafficLight = null;
+  var northSouthTrafficLight = new TrafficLight(
+    "N-S",
+    new RedLightWaitingForTraffic(
+      function() {
+        return eastWestTrafficLight.GetStatus() === StatusOptions.NotHandlingTraffic;
+      }
+    )
+  );
+  eastWestTrafficLight = new TrafficLight(
+    "E-W",
+    new RedLightWaitingForTraffic(
+      function() {
+        return northSouthTrafficLight.GetStatus() === StatusOptions.NotHandlingTraffic;
+      }
+    )
+  );
+
+  var allTrafficLights = [ northSouthTrafficLight, eastWestTrafficLight ];
+  return {
+    Advance: function () {
+      for (var i = 0; i &lt; allTrafficLights.length; i++) {
+        var trafficLight = allTrafficLights[i];
+        if (Math.random() &lt; probabilityOfCarArrivingEachTimeSlice) {
+          if (trafficLight.GetColour() === ColourOptions.GreenOnly) {
+            Log(
+              "Car didn't have to queue " + trafficLight.GetTrafficLightId() +
+              ", went straight through"
+            );
+          }
+          else if (trafficLight.GetColour() === ColourOptions.YellowOnly) {
+            Log(
+              "Car didn't have to queue " + trafficLight.GetTrafficLightId() +
+              ", went straight through (naughty!)"
+            );
+          }
+          else {
+            Log("Register car queueing " + trafficLight.GetTrafficLightId() + "..");
+          }
+          trafficLight.RegisterCarQueueing();
+        }
+      }
+      for (var i = 0; i &lt; allTrafficLights.length; i++) {
+        allTrafficLights[i].RegisterPassageOfTime();
+      }
+    }
+  };
+})();
+
+function IsBrowser(): boolean {
+  return (typeof(window) !== "undefined");
+}
+
+function Log(message): void {
+  if (IsBrowser()) {
+    console.log(message);
+  }
+  else {
+    WScript.Echo(message);
+  }
+}
+
+if (IsBrowser()) {
+  setInterval(tester.Advance, 100);
+}
+else {
+  while (true) {
+    tester.Advance();
+  }
+}
+</code></pre>
+
+<h2>So how did TypeScript treat me?</h2>
+
+<p>All in all, I've enjoyed this. There were some potential gotchas like the ordering of classes. There's the concern over the public privates. There's no abstract classes or a "protected" keyword, nor are there nested classes, nor can you declare consts. Buut none of these are the end of the world.</p>
+
+<p>When I first tried it out, for some reason I thought that the default behaviour of "==" and "!=" were going to be changed to act as "===" and "!==". This is not the case and I don't think it's the case for <a href="https://www.dartlang.org/">Dart</a> or <a href="http://coffeescript.org/">CoffeeScript</a> either. It <em>is</em> the case for <a href="http://ckknight.github.io/gorillascript/">GorillaScript</a>, which I read about last month. This also has support for optional typing (like TypeScript) but also throws in <em>a lot</em> of other features such as the equality changes I just mentioned (if you really want the JavaScript "==" and "!=" behaviour then you can use "~=" and "!~=" which I'm choosing to read as "wobbly equals" - which seems appropriate!), immutable-by-default (which I <em>love</em> the sound of), constants, generics, promises, all sorts! It even - hold onto your hats for controversy time - uses indentation-based code blocks, rather than curlies (now you know it's crazy! :) I don't know what uptake for this has been like or what sort of support is available but I may well be having a bit of a poke into this at some point.</p>
+
+<p>Back to TypeScript.. I'm fairly sure that this is going to be just an early foray into its abilities for me. I've really liked what I've seen so far and hope to make time to try to use it in more scenarios. Something I really liked, that I found myself doing almost unconsciously to begin with, was not using hungarian notation in the code. Now I know that the idea that I used it <em>at all</em> will make some people a little sick in their mouth but I did feel that it acted as a crutch to document some of my intent when writing in a language without type annotations. I don't do it in C#. And I don't do it in TypeScript!</p>
+<p class="PostTime">Posted at 21:03</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/c-sharp-state-machines">C# State Machines</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/why-do-you-hate-my-wcf-types-php">Why do you hate my (WCF) types, PHP??</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "62";
+							var disqus_title = "TypeScript State Machines";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

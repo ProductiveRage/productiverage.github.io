@@ -1,0 +1,687 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Persistent Immutable Lists - Extended</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/persistent-immutable-lists-extended" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">6 December 2012</h3><h2><a id="Post39"></a><a href="/persistent-immutable-lists-extended">Persistent Immutable Lists - Extended</a></h2>
+
+<p>In my last post (<a href="/persistent-immutable-lists">Persistent Immutable Lists</a>) I offered some code as an alternate (and more performant) way to write an immutable list to that I suggested right back in my first post (<a href="/i-love-immutable-data">I love Immutable Data</a>). Well now I'd like to present a minor follow-up to the follow-up! I've incorporated the new list implementation into a few projects and have filled out a few more methods such as a "Remove" method (to remove a particular value, rather than removing from a given index with "RemoveAt" or "RemoveRange"), alternate "Sort" signatures and a "To" method that allows for derived types to be written that return their the derived type from the manipulation methods (see examples below):</p>
+
+<pre><code>[Serializable]
+public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
+{
+    private readonly Node _tail;
+    private readonly IValueValidator&lt;T&gt; _optionalValueValidator;
+    private T[] _allValues;
+
+    public ImmutableList() : this((IValueValidator&lt;T&gt;)null) { }
+    public ImmutableList(IEnumerable&lt;T&gt; values) : this(values, null) { }
+    public ImmutableList(IValueValidator&lt;T&gt; optionalValueValidator)
+        : this((Node)null, optionalValueValidator) { }
+    public ImmutableList(IEnumerable&lt;T&gt; values, IValueValidator&lt;T&gt; optionalValueValidator)
+    {
+        if (values == null)
+            throw new ArgumentNullException("values");
+
+        Node node = null;
+        foreach (var value in values)
+        {
+            if (optionalValueValidator != null)
+                optionalValueValidator.EnsureValid(value);
+            if (node == null)
+                node = new Node(value, null);
+            else
+                node = new Node(value, node);
+        }
+        _tail = node;
+        _optionalValueValidator = optionalValueValidator;
+        _allValues = null;
+    }
+    protected ImmutableList(Node tail, IValueValidator&lt;T&gt; optionalValueValidator)
+    {
+        _tail = tail;
+        _optionalValueValidator = optionalValueValidator;
+        _allValues = null;
+    }
+
+    public T this[int index]
+    {
+        get
+        {
+            if ((index &lt; 0) || (index &gt;= Count))
+                throw new ArgumentOutOfRangeException("index");
+
+            EnsureAllValuesDataIsPopulated();
+            return _allValues[index];
+        }
+    }
+
+    public int Count
+    {
+        get { return (_tail == null) ? 0 : _tail.Count; }
+    }
+
+    public bool Contains(T value)
+    {
+        return Contains(value, null);
+    }
+
+    public bool Contains(T value, IEqualityComparer&lt;T&gt; optionalComparer)
+    {
+        if (_tail == null)
+            return false;
+
+        EnsureAllValuesDataIsPopulated();
+        for (var index = 0; index &lt; _allValues.Length; index++)
+        {
+            if (DoValuesMatch(_allValues[index], value, optionalComparer))
+                return true;
+        }
+        return false;
+    }
+
+    public ImmutableList&lt;T&gt; Add(T value)
+    {
+        // Add is easy since we keep a reference to the tail node, we only need to wrap it
+        // in a new node to create a new tail!
+        if (_optionalValueValidator != null)
+            _optionalValueValidator.EnsureValid(value);
+        return new ImmutableList&lt;T&gt;(
+            new Node(value, _tail),
+            _optionalValueValidator
+        );
+    }
+
+    public ImmutableList&lt;T&gt; AddRange(IEnumerable&lt;T&gt; values)
+    {
+        if (values == null)
+            throw new ArgumentNullException("values");
+        if (!values.Any())
+            return this;
+
+        // AddRange is easy for the same reason as Add
+        var node = _tail;
+        foreach (var value in values)
+        {
+            if (_optionalValueValidator != null)
+                _optionalValueValidator.EnsureValid(value);
+            node = new Node(value, node);
+        }
+        return new ImmutableList&lt;T&gt;(node, _optionalValueValidator);
+    }
+
+    public ImmutableList&lt;T&gt; Insert(IEnumerable&lt;T&gt; values, int insertAtIndex)
+    {
+        if (values == null)
+            throw new ArgumentNullException("values");
+
+        return Insert(values, default(T), insertAtIndex);
+    }
+
+    public ImmutableList&lt;T&gt; Insert(T value, int insertAtIndex)
+    {
+        return Insert(null, value, insertAtIndex);
+    }
+
+    private ImmutableList&lt;T&gt; Insert(
+        IEnumerable&lt;T&gt; multipleValuesToAdd,
+        T singleValueToAdd,
+        int insertAtIndex)
+    {
+        if ((insertAtIndex &lt; 0) || (insertAtIndex &gt; Count))
+            throw new ArgumentOutOfRangeException("insertAtIndex");
+        if ((multipleValuesToAdd != null) &amp;&amp; !multipleValuesToAdd.Any())
+            return this;
+
+        // If the insertion is at the end of the list then we can use Add or AddRange which
+        // may allow some optimisation
+        if (insertAtIndex == Count)
+        {
+            if (multipleValuesToAdd == null)
+                return Add(singleValueToAdd);
+            return AddRange(multipleValuesToAdd);
+        }
+
+        // Starting with the tail, walk back to the insertion point, record the values we
+        // pass over
+        var node = _tail;
+        var valuesBeforeInsertionPoint = new T[Count - insertAtIndex];
+        for (var index = 0; index &lt; valuesBeforeInsertionPoint.Length; index++)
+        {
+            valuesBeforeInsertionPoint[index] = node.Value;
+            node = node.Previous;
+        }
+
+        // Any existing node chain before the insertion point can be persisted and the new
+        // value(s) appended
+        if (multipleValuesToAdd == null)
+        {
+            if (_optionalValueValidator != null)
+                _optionalValueValidator.EnsureValid(singleValueToAdd);
+            node = new Node(singleValueToAdd, node);
+        }
+        else
+        {
+            foreach (var valueToAdd in multipleValuesToAdd)
+            {
+                if (_optionalValueValidator != null)
+                    _optionalValueValidator.EnsureValid(valueToAdd);
+                node = new Node(valueToAdd, node);
+            }
+        }
+
+        // Finally, add back the values we walked through before to complete the chain
+        for (var index = valuesBeforeInsertionPoint.Length - 1; index &gt;= 0; index--)
+            node = new Node(valuesBeforeInsertionPoint[index], node);
+        return new ImmutableList&lt;T&gt;(node, _optionalValueValidator);
+    }
+
+    /// &lt;summary&gt;
+    /// Removes the first occurrence of a specific object from the list, if the item is
+    /// not present then this instance will be returned
+    /// &lt;/summary&gt;
+    public ImmutableList&lt;T&gt; Remove(T value)
+    {
+        return Remove(value, null);
+    }
+
+    /// &lt;summary&gt;
+    /// Removes the first occurrence of a specific object from the list, if the item is
+    /// not present then this instance will be returned
+    /// &lt;/summary&gt;
+    public ImmutableList&lt;T&gt; Remove(T value, IEqualityComparer&lt;T&gt; optionalComparer)
+    {
+        // If there are no items in the list then the specified value can't be present,
+        // so do nothing
+        if (_tail == null)
+            return this;
+
+        // Try to find the last node that matches the value when walking backwards from
+        // the tail; this will be the first in the list when considered from start to end
+        var node = _tail;
+        Node lastNodeThatMatched = null;
+        int? lastNodeIndexThatMatched = null;
+        var valuesBeforeRemoval = new T[Count];
+        for (var index = 0; index &lt; Count; index++)
+        {
+            if (DoValuesMatch(value, node.Value, optionalComparer))
+            {
+                lastNodeThatMatched = node;
+                lastNodeIndexThatMatched = index;
+            }
+            valuesBeforeRemoval[index] = node.Value;
+            node = node.Previous;
+        }
+        if (lastNodeThatMatched == null)
+            return this;
+
+        // Now build a new chain by taking the content before the value-to-remove and
+        // adding back the values that were stepped through
+        node = lastNodeThatMatched.Previous;
+        for (var index = lastNodeIndexThatMatched.Value - 1; index &gt;= 0; index--)
+            node = new Node(valuesBeforeRemoval[index], node);
+        return new ImmutableList&lt;T&gt;(node, _optionalValueValidator);
+    }
+
+    private bool DoValuesMatch(T x, T y, IEqualityComparer&lt;T&gt; optionalComparer)
+    {
+        if (optionalComparer != null)
+            return optionalComparer.Equals(x, y);
+
+        if ((x == null) &amp;&amp; (y == null))
+            return true;
+        else if ((x == null) || (y == null))
+            return false;
+        else
+            return x.Equals(y);
+    }
+
+    public ImmutableList&lt;T&gt; RemoveAt(int removeAtIndex)
+    {
+        return RemoveRange(removeAtIndex, 1);
+    }
+
+    public ImmutableList&lt;T&gt; RemoveRange(int removeAtIndex, int count)
+    {
+        if (removeAtIndex &lt; 0)
+            throw new ArgumentOutOfRangeException(
+                "removeAtIndex",
+                "must be greater than or equal zero"
+            );
+        if (count &lt;= 0)
+            throw new ArgumentOutOfRangeException("count", "must be greater than zero");
+        if ((removeAtIndex + count) &gt; Count)
+            throw new ArgumentException("removeAtIndex + count must not exceed Count");
+
+        // Starting with the tail, walk back to the end of the removal range, recording
+        // the values we pass over
+        var node = _tail;
+        var valuesBeforeRemovalRange = new T[Count - (removeAtIndex + count)];
+        for (var index = 0; index &lt; valuesBeforeRemovalRange.Length; index++)
+        {
+            valuesBeforeRemovalRange[index] = node.Value;
+            node = node.Previous;
+        }
+
+        // Move past the values in the removal range
+        for (var index = 0; index &lt; count; index++)
+            node = node.Previous;
+
+        // Now add back the values we walked through above to the part of the chain that
+        // can be persisted
+        for (var index = valuesBeforeRemovalRange.Length - 1; index &gt;= 0; index--)
+            node = new Node(valuesBeforeRemovalRange[index], node);
+        return new ImmutableList&lt;T&gt;(node, _optionalValueValidator);
+    }
+
+    public ImmutableList&lt;T&gt; Sort()
+    {
+        return Sort((IComparer&lt;T&gt;)null);
+    }
+
+    public ImmutableList&lt;T&gt; Sort(Comparison&lt;T&gt; optionalComparison)
+    {
+        if (optionalComparison == null)
+            return Sort((IComparer&lt;T&gt;)null);
+        return Sort(new SortComparisonWrapper(optionalComparison));
+    }
+
+    public ImmutableList&lt;T&gt; Sort(IComparer&lt;T&gt; optionalComparer)
+    {
+        EnsureAllValuesDataIsPopulated();
+        return new ImmutableList&lt;T&gt;(
+            (optionalComparer == null)
+                ? _allValues.OrderBy(v =&gt; v)
+                : _allValues.OrderBy(v =&gt; v, optionalComparer),
+            _optionalValueValidator
+        );
+    }
+
+    public IEnumerator&lt;T&gt; GetEnumerator()
+    {
+        // As documented at http://msdn.microsoft.com/en-us/library/system.array.aspx,
+        // from .Net 2.0 onward, the Array class implements IEnumerable&lt;T&gt; but this is
+        // only provided at runtime so we have to explicitly cast access its generic
+        // GetEnumerator method
+        EnsureAllValuesDataIsPopulated();
+        return ((IEnumerable&lt;T&gt;)_allValues).GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
+    }
+
+    /// &lt;summary&gt;
+    /// So that a derived class may override the public methods with implementations that
+    /// return the derived type's class, this method exposes a manner to access the _tail
+    /// reference of a return ImmutableList instance without having to make both it and the
+    /// Node class public - eg. a derived class NonNullOrEmptyStringList may incorporate its
+    /// own hard-coded validation and wish to have a NonNullOrEmptyStringList instance
+    /// returned from its Add method. If it calls the ImmutableList's Add method it will
+    /// receive a new ImmutableList instance which can be transformed into an instance of
+    /// NonNullOrEmptyStringList if it has a constructor which take a Node argument by
+    /// passing a lambda wrapping a call to that constructor into this method, along with
+    /// the new ImmutableList reference that is to be wrapped. This introduce does have the
+    /// overhead of an additional initialisation (of the NonNullOrEmptyStringList) but it
+    /// allows for more strictly-typed return values from the NonNullOrEmptyStringList's
+    /// methods.
+    /// &lt;/summary&gt;
+    protected static U To&lt;U&gt;(ImmutableList&lt;T&gt; list, Func&lt;Node, U&gt; generator)
+    {
+        if (list == null)
+            throw new ArgumentNullException("list");
+        if (generator == null)
+            throw new ArgumentNullException("generator");
+
+        return generator(list._tail);
+    }
+
+    /// &lt;summary&gt;
+    /// For enumerating the values we need to walk through all of the nodes and then reverse
+    /// the set (since we start with the tail and work backwards). This can be relatively
+    /// expensive so the list is cached in the "_allValues" member array so that subsequent
+    /// requests are fast (wouldn't be a big deal for a single enumeration of the contents
+    /// but it could be for multiple calls to the indexed property).
+    /// &lt;/summary&gt;
+    private void EnsureAllValuesDataIsPopulated()
+    {
+        if (_allValues != null)
+            return;
+
+        // Since we start at the tail and work backwards, we need to reverse
+        // the order of the items in values array that is populated here
+        var numberOfValues = Count;
+        var values = new T[numberOfValues];
+        var node = _tail;
+        for (var index = 0; index &lt; numberOfValues; index++)
+        {
+            values[(numberOfValues - 1) - index] = node.Value;
+            node = node.Previous;
+        }
+        _allValues = values;
+    }
+
+    /// &lt;summary&gt;
+    /// This is used by the Sort method if a Comparison&lt;T&gt; is specified
+    /// &lt;/summary&gt;
+    private class SortComparisonWrapper : IComparer&lt;T&gt;
+    {
+        private Comparison&lt;T&gt; _comparison;
+        public SortComparisonWrapper(Comparison&lt;T&gt; comparison)
+        {
+            if (comparison == null)
+                throw new ArgumentNullException("comparison");
+
+            _comparison = comparison;
+        }
+
+        public int Compare(T x, T y)
+        {
+            return _comparison(x, y);
+        }
+    }
+
+    protected class Node
+    {
+        public Node(T value, Node previous)
+        {
+            Value = value;
+            Previous = previous;
+            Count = (previous == null) ? 1 : (previous.Count + 1);
+        }
+
+        public T Value { get; private set; }
+
+        /// &lt;summary&gt;
+        /// This will be null if there is no previous node (ie. this is the start of the
+        /// chain, the head)
+        /// &lt;/summary&gt;
+        public Node Previous { get; private set; }
+
+        public int Count { get; private set; }
+    }
+}
+
+public interface IValueValidator&lt;T&gt;
+{
+    /// &lt;summary&gt;
+    /// This will throw an exception for a value that does pass validation requirements
+    /// &lt;/summary&gt;
+    void EnsureValid(T value);
+}
+</code></pre>
+
+<p>To implement a NonNullImmutableList we want to inherit from the ImmutableList and introduce a compulsory IValueValidator that ensures that no item in the list is null. Each of the methods are then "overridden" using the "new" keyword so that if they are called on an instance of the NonNullImmutableList then an instance of the NonNullImmutableList will be returned but if it is used anywhere as an ImmutableList then the ImmutableList's methods will be called directly and an ImmutableList (rather than a NonNullImmutableList) reference will be returned. This approach does have a minor overhead as described in the comment on the "To" method seen above but it does offer a straight-forward way to write derived classes that maintain their type (and so their implicit validation rules and assurances) when manipulations are performed.</p>
+
+<pre><code>[Serializable]
+public class NonNullImmutableList&lt;T&gt; : ImmutableList&lt;T&gt; where T : class
+{
+    private readonly static Validator _defaultValidator = new Validator(null);
+    private IValueValidator&lt;T&gt; _optionalValueValidator;
+
+    public NonNullImmutableList() : this((IValueValidator&lt;T&gt;)null) { }
+    public NonNullImmutableList(IEnumerable&lt;T&gt; values) : this(values, null) { }
+    public NonNullImmutableList(IValueValidator&lt;T&gt; optionalValueValidator)
+        : base((Node)null, GetValidator(optionalValueValidator))
+    {
+        _optionalValueValidator = optionalValueValidator;
+    }
+    public NonNullImmutableList(
+        IEnumerable&lt;T&gt; values,
+        IValueValidator&lt;T&gt; optionalValueValidator
+    ) : base(values, GetValidator(optionalValueValidator))
+    {
+        _optionalValueValidator = optionalValueValidator;
+    }
+    private NonNullImmutableList(Node tail, IValueValidator&lt;T&gt; optionalValueValidator)
+        : base(tail, GetValidator(optionalValueValidator))
+    {
+        _optionalValueValidator = optionalValueValidator;
+    }
+
+    private static IValueValidator&lt;T&gt; GetValidator(IValueValidator&lt;T&gt; optionalValueValidator)
+    {
+        if (optionalValueValidator == null)
+            return _defaultValidator;
+        return new Validator(optionalValueValidator);
+    }
+
+    public new NonNullImmutableList&lt;T&gt; Add(T value)
+    {
+        return ToNonNullOrEmptyStringList(base.Add(value));
+    }
+    public new NonNullImmutableList&lt;T&gt; AddRange(IEnumerable&lt;T&gt; values)
+    {
+        return ToNonNullOrEmptyStringList(base.AddRange(values));
+    }
+    public new NonNullImmutableList&lt;T&gt; Insert(T value, int insertAtIndex)
+    {
+        return ToNonNullOrEmptyStringList(base.Insert(value, insertAtIndex));
+    }
+    public new NonNullImmutableList&lt;T&gt; Insert(IEnumerable&lt;T&gt; values, int insertAtIndex)
+    {
+        return ToNonNullOrEmptyStringList(base.Insert(values, insertAtIndex));
+    }
+    public new NonNullImmutableList&lt;T&gt; Remove(T value)
+    {
+        return ToNonNullOrEmptyStringList(base.Remove(value));
+    }
+    public new NonNullImmutableList&lt;T&gt; Remove(T value, IEqualityComparer&lt;T&gt; optionalComparer)
+    {
+        return ToNonNullOrEmptyStringList(base.Remove(value, optionalComparer));
+    }
+    public new NonNullImmutableList&lt;T&gt; RemoveAt(int removeAtIndex)
+    {
+        return ToNonNullOrEmptyStringList(base.RemoveAt(removeAtIndex));
+    }
+    public new NonNullImmutableList&lt;T&gt; RemoveRange(int removeAtIndex, int count)
+    {
+        return ToNonNullOrEmptyStringList(base.RemoveRange(removeAtIndex, count));
+    }
+    public new NonNullImmutableList&lt;T&gt; Sort()
+    {
+        return ToNonNullOrEmptyStringList(base.Sort());
+    }
+    public new NonNullImmutableList&lt;T&gt; Sort(Comparison&lt;T&gt; optionalComparison)
+    {
+        return ToNonNullOrEmptyStringList(base.Sort(optionalComparison));
+    }
+    public new NonNullImmutableList&lt;T&gt; Sort(IComparer&lt;T&gt; optionalComparer)
+    {
+        return ToNonNullOrEmptyStringList(base.Sort(optionalComparer));
+    }
+    private NonNullImmutableList&lt;T&gt; ToNonNullOrEmptyStringList(ImmutableList&lt;T&gt; list)
+    {
+        if (list == null)
+            throw new ArgumentNullException("list");
+
+        return To&lt;NonNullImmutableList&lt;T&gt;&gt;(
+            list,
+            tail =&gt; new NonNullImmutableList&lt;T&gt;(tail, _optionalValueValidator)
+        );
+    }
+
+    private class Validator : IValueValidator&lt;T&gt;
+    {
+        private IValueValidator&lt;T&gt; _optionalInnerValidator;
+        public Validator(IValueValidator&lt;T&gt; optionalInnerValidator)
+        {
+            _optionalInnerValidator = optionalInnerValidator;
+        }
+
+        /// &lt;summary&gt;
+        /// This will throw an exception for a value that does pass validation requirements
+        /// &lt;/summary&gt;
+        public void EnsureValid(T value)
+        {
+            if (value == null)
+                throw new ArgumentNullException("value");
+            if (_optionalInnerValidator != null)
+                _optionalInnerValidator.EnsureValid(value);
+        }
+    }
+}
+</code></pre>
+
+<p>A very similar approach could be taken to implement a "NonNullOrEmptyStringList" class (referred to in previous posts as a "DefinedStringList") but dropping the type param and inheriting from ImmutableList&lt;string&gt; and swapping out the validator to check for null or blank strings.</p>
+
+<p>The final piece of the puzzle I've used in my code is to throw in some extension methods:</p>
+
+<pre><code>public static class IEnumerable_Extensions
+{
+    public static ImmutableList&lt;T&gt; ToImmutableList&lt;T&gt;(this IEnumerable&lt;T&gt; data)
+    {
+        return new ImmutableList&lt;T&gt;(data);
+    }
+
+    /// &lt;summary&gt;
+    /// valueValidator is optional (may be null)
+    /// &lt;/summary&gt;
+    public static ImmutableList&lt;T&gt; ToImmutableList&lt;T&gt;(
+        this IEnumerable&lt;T&gt; data,
+        IValueValidator&lt;T&gt; valueValidator)
+    {
+        return new ImmutableList&lt;T&gt;(data, valueValidator);
+    }
+
+    /// &lt;summary&gt;
+    /// This will throw an exception if any of the values are null
+    /// &lt;/summary&gt;
+    public static NonNullImmutableList&lt;T&gt; ToNonNullImmutableList&lt;T&gt;(
+        this IEnumerable&lt;T&gt; data) where T : class
+    {
+        return new NonNullImmutableList&lt;T&gt;(data);
+    }
+
+    /// &lt;summary&gt;
+    /// This will throw an exception if any of the values are null, valueValidator is
+    /// optional (may be null)
+    /// &lt;/summary&gt;
+    public static NonNullImmutableList&lt;T&gt; ToNonNullImmutableList&lt;T&gt;(
+        this IEnumerable&lt;T&gt; data,
+        IValueValidator&lt;T&gt; valueValidator) where T : class
+    {
+        return new NonNullImmutableList&lt;T&gt;(data, valueValidator);
+    }
+}
+</code></pre>
+
+<p>And that's it! I'm happy with these updated lists for now and, as I already mentioned, have been using them in a few projects and consider them ready for use!</p>
+<p class="PostTime">Posted at 20:02</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/persistent-immutable-lists">Persistent Immutable Lists</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-full-text-indexer-post-roundup">The Full Text Indexer Post Round-up</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "39";
+							var disqus_title = "Persistent Immutable Lists - Extended";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

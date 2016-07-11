@@ -1,0 +1,172 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - The WinDbg Blues</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/the-windbg-blues" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">20 November 2012</h3><h2><a id="Post37"></a><a href="/the-windbg-blues">The WinDbg Blues</a></h2>
+
+<p>To investigate some cpu-off-the-charts hanging issue that refuses to reproduce itself in a local environment in a project I'm involved with I've had to use WinDbg to interrogate a process dump for clues. On the one hand, that all is information is available can seem amazing at times. Other times it's frustrating how primitive it feels compared to poking around with the Visual Studio debugger!</p>
+
+<p>One of the problems I have is that I only do this kind of investigation infrequently so I never quite internalise all the tricks that I need from one time to the next. The first that for some minidumps there seems to be a version mismatch problem with I try to ".loadby sos mscorwks", resulting in the following error:</p>
+
+<blockquote>
+  <p>CLRDLL: c:\WINDOWS\Microsoft.NET\Framework\v2.0.50727\mscordacwks.dll:2.0.50727.5448 f:0 doesn't match desired version 2.0.50727.3625 f:0</p>
+</blockquote>
+
+<p>The version of the clr on my computer doesn't match that loaded by the process running on the server. One way around this is to copy sos.dll and all msc*.dll files from the server's C:\Windows\Microsoft.Net\Framework64\v2.0.50727 (or equivalent, depending upon windows location and framework version) into a local folder and then load sos with the following: ".load C:\DllsFromServer\SOS.dll". I must admit, I think I came upon the set of files to load through some trial and error rather than comprehending the full depth of the issue. But it's worked each time I've encountered the issue so far! :)</p>
+
+<h3>Retrieving C# struct values</h3>
+
+<p>Another problem I run into each time is the manner in which struct values needs to be probed. With other types you can just "!do {addr}" (DumpObject) it and nine times out of ten see the properties and values you want, with the occassional "!da {addr}" (DumpArray) thrown in for good measure. But if you try to do this for a struct value you get the cryptic response:</p>
+
+<blockquote>
+  <p>&lt;Note: this object has an invalid CLASS field&gt; Invalid object</p>
+</blockquote>
+
+<p>From what I understand, the type information is not contained at the address that is indicated (my understanding of all this is a bit limited, so if that's less than accurate then please forgive me!). To access its content we need to point the debugger at the type information as well. For a DateTime, we can get this with the following:</p>
+
+<pre><code>!Name2EE * System.DateTime
+</code></pre>
+
+<p>This searches all of the loaded assemblies for the specified type and, if located, will report a MethodTable address. This can used with the DumpVC command to look into the DateTime data:</p>
+
+<pre><code>!DumpVC {MethodTableAddr} {addr}
+</code></pre>
+
+<p>For DateTimes, the value is represented by a UInt64 which can be translated by C#:</p>
+
+<pre><code>var d = new DateTime(value);
+</code></pre>
+
+<p>Alternatively, there is a WinDbg extension that can help with this: sosex (which can be downloaded from <a href="http://www.stevestechspot.com/SOSEXV40NowAvailable.aspx">http://www.stevestechspot.com/SOSEXV40NowAvailable.aspx</a>). Once loaded (by putting the dll into the "winext" folder under the WinDbg installation location and using ".load sosex") you can:</p>
+
+<pre><code>!mdt System.DateTime {addr}
+</code></pre>
+
+<p>Which is much easier!</p>
+
+<p>There is a similar problem with .Net generic nullable types. If you want to look into the state of a nullable int aka "int?" aka "Nullable&lt;int&gt;" you need to look into the type "System.Nullable`1" and then following the above !Name2EE / !DumpVC approach to looking as the "hasValue" and "value" fields.</p>
+
+<p>This only works following some guesswork at that precise "System.Nullable`1" name. It turns out that sosex can also help with this; it can look up type information given a partial name:</p>
+
+<pre><code>!mx System.Nullable*
+</code></pre>
+
+<p>This returns clickable links, amongst which are "get_Value" which exposes a MethodTable for retrieving the content with !DumpVC.</p>
+<p class="PostTime">Posted at 21:03</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-full-text-indexer-token-breaker-and-string-normaliser-variations">The Full Text Indexer - Token Breaker and String Normaliser variations</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/persistent-immutable-lists">Persistent Immutable Lists</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/WinDbg" title="2 Posts">WinDbg</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "37";
+							var disqus_title = "The WinDbg Blues";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

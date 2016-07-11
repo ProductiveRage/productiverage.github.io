@@ -1,0 +1,484 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - The Full Text Indexer - Going International!</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/the-full-text-indexer-going-international" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">26 July 2012</h3><h2><a id="Post32"></a><a href="/the-full-text-indexer-going-international">The Full Text Indexer - Going International!</a></h2>
+
+<p>Pushing on with the Full Text Indexer series I'm been posting about (see <a href="/the-full-text-indexer">Full Text Indexer</a> and <a href="/the-full-text-indexer-adding-and-subtracting">Full Text Indexer - Adding and Subtracting</a>) I want to demonstrate how it can work with multi-lingual content (or other content variations - for example, with the data at my day job Products have different delivery "channels" for which different descriptions may be recorded, <em>as well</em> as being in multiple languages).</p>
+
+<p><strong>A heads-up:</strong> This post is going to be largely code with a few explanatory paragraphs. There's nothing particularly complex going on and I think the code will - for the most part - speak for itself!</p>
+
+<h3>Setting the scene</h3>
+
+<p>In the previous examples, the TKey type of the IIndexData was an int representing an item's unique id. One way to extend this would be to specify as TKey the following:</p>
+
+<pre><code>public interface ILanguageScopedId : IEquatable&lt;ILanguageScopedId&gt;
+{
+    int Id { get; }
+    bool IsApplicableForLanguage(int language);
+}
+</code></pre>
+
+<p>Where two simple implementations might be:</p>
+
+<pre><code>public sealed class LanguageScopedId : ILanguageScopedId
+{
+    public LanguageScopedId(int id, int language)
+    {
+        Id = id;
+        Language = language;
+    }
+
+    public int Id { get; private set; }
+
+    public int Language { get; private set; }
+
+    public bool IsApplicableForLanguage(int language)
+    {
+        return (language == Language);
+    }
+
+    public bool Equals(ILanguageScopedId obj)
+    {
+        var objLanguageScopedId = obj as LanguageScopedId;
+        if (objLanguageScopedId == null)
+            return false;
+
+        return ((objLanguageScopedId.Id == Id) &amp;&amp; (objLanguageScopedId.Language == Language));
+    }
+
+    public override bool Equals(object obj)
+    {
+        return Equals(obj as ILanguageScopedId);
+    }
+
+    public override int GetHashCode()
+    {
+        // Since the overridden ToString method will consistently encapsulate all of the
+        // information for this instance we use it to override the GetHashCode method,
+        // consistent with the overridden Equals implementation
+        return ToString().GetHashCode();
+    }
+
+    public override string ToString()
+    {
+        return String.Format("{0}:{1}-{2}", base.ToString(), Id, Language);
+    }
+}
+
+public sealed class : ILanguageScopedId
+{
+    public NonLanguageScopedId(int id)
+    {
+        Id = id;
+    }
+
+    public int Id { get; private set; }
+
+    public bool IsApplicableForLanguage(int language)
+    {
+        return true;
+    }
+
+    public bool Equals(ILanguageScopedId obj)
+    {
+        var objLanguageScopedId = obj as NonLanguageScopedId;
+        if (objLanguageScopedId == null)
+            return false;
+
+        return (objLanguageScopedId.Id == Id);
+    }
+
+    public override bool Equals(object obj)
+    {
+        return Equals(obj as ILanguageScopedId);
+    }
+
+    public override int GetHashCode()
+    {
+        // Since the overridden ToString method will consistently encapsulate all of the
+        // information for this instance we use it to override the GetHashCode method,
+        // consistent with the overridden Equals implementation
+        return ToString().GetHashCode();
+    }
+
+    public override string ToString()
+    {
+        return String.Format("{0}:{1}", base.ToString(), Id);
+    }
+}
+</code></pre>
+
+<p>There are two implementations to account for it's feasible that not <em>all</em> content will be multi-lingual (see the Article class further down). I only really included IEquatable&lt;ILanguageScopedId&gt; in the ILanguageScopedId so that it would be easy to write the KeyComparer that the IndexGenerator requires (this was the same motivation for having implementations being sealed, since they can't be inherited from the type comparisons are easier in the Equals methods) -</p>
+
+<pre><code>/// &lt;summary&gt;
+/// As the ILanguageScopedId interface implements IEquatable ILanguageScopedId, this class
+/// has very little work to do
+/// &lt;/summary&gt;
+public class LanguageScopedIdComparer : IEqualityComparer&lt;ILanguageScopedId&gt;
+{
+    public bool Equals(ILanguageScopedId x, ILanguageScopedId y)
+    {
+        if ((x == null) &amp;&amp; (y == null))
+            return true;
+        else if ((x == null) || (y == null))
+            return false;
+        return x.Equals(y);
+    }
+
+    public int GetHashCode(ILanguageScopedId obj)
+    {
+        if (obj == null)
+            throw new ArgumentNullException("obj");
+
+        return obj.GetHashCode();
+    }
+}
+</code></pre>
+
+<p>The previous posts used an Article class as an illustration. Here I'll expand that class such that the Title and Content have content that may vary across different languages (represented by the MultiLingualContent class, also below) while Author will not (and so is just a string) -</p>
+
+<pre><code>public class Article
+{
+    public Article(
+        int id,
+        DateTime lastModified,
+        MultiLingualContent title,
+        string author,
+        MultiLingualContent content)
+    {
+        if (title == null)
+            throw new ArgumentNullException("title");
+        if (string.IsNullOrWhiteSpace(author))
+            throw new ArgumentException("Null/blank author specified");
+        if (content == null)
+            throw new ArgumentNullException("content");
+
+        Id = id;
+        LastModified = lastModified;
+        Title = title;
+        Author = author.Trim();
+        Content = content;
+    }
+
+    public int Id { get; private set; }
+
+    public bool IsActive { get; private set; }
+
+    public DateTime LastModified { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null
+    /// &lt;/summary&gt;
+    public MultiLingualContent Title { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null or blank
+    /// &lt;/summary&gt;
+    public string Author { get; private set; }
+
+    /// &lt;summary&gt;
+    /// This will never be null
+    /// &lt;/summary&gt;
+    public MultiLingualContent Content { get; private set; }
+}
+
+public class MultiLingualContent
+{
+    private string _defaultContent;
+    private ImmutableDictionary&lt;int, string&gt; _languageOverrides;
+    public MultiLingualContent(
+        string defaultContent,
+        ImmutableDictionary&lt;int, string&gt; languageOverrides)
+    {
+        if (string.IsNullOrWhiteSpace(defaultContent))
+            throw new ArgumentException("Null/blank defaultContent specified");
+        if (languageOverrides == null)
+            throw new ArgumentNullException("languageOverrides");
+        if (languageOverrides.Keys.Select(key =&gt; languageOverrides[key]).Any(
+            value =&gt; string.IsNullOrWhiteSpace(value))
+        )
+            throw new ArgumentException("Null/blank encountered in languageOverrides data");
+
+        _defaultContent = defaultContent.Trim();
+        _languageOverrides = languageOverrides;
+    }
+
+    /// &lt;summary&gt;
+    /// This will never return null or blank. If there is no language-specific content for
+    /// the specified language then the default will be returned.
+    /// &lt;/summary&gt;
+    public string GetContent(int language)
+    {
+        if (_languageOverrides.ContainsKey(language))
+            return _languageOverrides[language].Trim();
+        return _defaultContent;
+    }
+}
+</code></pre>
+
+<p><strong>Note:</strong> The ImmutableDictionary (along with the NonNullImmutableList and the ToNonNullImmutableList extension method which are seen elsewhere in the code) can be found in the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer repo on Bitbucket</a>.</p>
+
+<h3>Generating and querying the new Index format</h3>
+
+<p>For the purposes of this example, I'm going to assume that all of the possible languages are known upfront (if not then each time an Index is built, it's feasible that the source Article data could be analysed each time to determine which languages are present but for now I'm going to go with the easier case of knowledge of all options beforehand).</p>
+
+<p>As we've seen before, we need to prepare an IndexGenerator (this time IndexGenerator&lt;ArticleI, LanguageScopedId&gt; instead of IndexGenerator&lt;ArticleI, int&gt; since the key type of the IIndexData that will be produced is no longer an int) with Content Retrievers, a Key Comparer, Token Breaker, Weighted Entry Combiner and Logger. Here there are more Content Retrievers as the multi-lingual content must be requested for each supported language (though the non-multi-lingual content - the Author field on Article instances - only needs a single retriever).</p>
+
+<pre><code>var languages = new[] { 1, 2, 3 };
+
+var contentRetrievers = 
+    new[]
+    {
+        new ContentRetriever&lt;Article, ILanguageScopedId&gt;(
+            article =&gt; new PreBrokenContent&lt;ILanguageScopedId&gt;(
+                new NonLanguageScopedId(article.Id),
+                article.Author
+            ),
+            token =&gt; 1f
+        )
+    }
+    .Concat(
+        languages.SelectMany(language =&gt; new[]
+        {
+            new ContentRetriever&lt;Article, ILanguageScopedId&gt;(
+                article =&gt; new PreBrokenContent&lt;ILanguageScopedId&gt;(
+                    new LanguageScopedId(article.Id, language),
+                    article.Title.GetContent(language)
+                ),
+                token =&gt; 5f
+            ),
+            new ContentRetriever&lt;Article, ILanguageScopedId&gt;(
+                article =&gt; new PreBrokenContent&lt;ILanguageScopedId&gt;(
+                    new LanguageScopedId(article.Id, language),
+                    article.Content.GetContent(language)
+                ),
+                token =&gt; 1f
+            )
+        }
+    ));
+
+var indexGenerator = new IndexGenerator&lt;Article, ILanguageScopedId&gt;(
+    contentRetrievers.ToNonNullImmutableList(),
+    new LanguageScopedIdComparer(),
+    new DefaultStringNormaliser(),
+    new WhiteSpaceTokenBreaker(),
+    weightedValues =&gt; weightedValues.Sum(),
+    new NullLogger()
+);
+
+var index = indexGenerator.Generate(new NonNullImmutableList&lt;Article&gt;(new[]
+{
+    new Article(
+        1,
+        new DateTime(2012, 7, 24),
+        new ContentBuilder("One").AddLanguage(2, "Un").Get(),
+        "Terrence",
+        new ContentBuilder("First Entry").AddLanguage(2, "Première entrée").Get()
+    ),
+    new Article(
+        2,
+        new DateTime(2012, 8, 24),
+        new ContentBuilder("Two").AddLanguage(2, "Deux").Get(),
+        "Jeroshimo",
+        new ContentBuilder("Second Entry").AddLanguage(2, "Deuxième entrée").Get()
+    )
+}));
+</code></pre>
+
+<p>Finally, there's a slight change to the querying mechanism. We have to perform a lookup for all keys that match a given token and then filter out any entries that we're not interested in. And since there are multiple key types which can relate to content in the same language (because a request for content in language 1 should combine keys of type LanguageScopedId which are marked as being for language 1 alongside keys of type NonLanguageScopedId), we may have to group and combine some of the results.</p>
+
+<pre><code>var resultsEntryInLanguage1 = index.GetMatches("Entry")
+    .Where(weightedMatch =&gt; weightedMatch.Key.IsApplicableForLanguage(language))
+    .GroupBy(weightedMatch =&gt; weightedMatch.Key.Id)
+    .Select(weightedMatchGroup =&gt; new WeightedEntry&lt;int&gt;(
+        weightedMatchGroup.Key,
+        weightedMatchGroup.Sum(weightedMatch =&gt; weightedMatch.Weight)
+    ));
+</code></pre>
+
+<p>The earlier code uses a "ContentBuilder" to prepare the MultiLingualContent instances, just because it removes some of the clutter from the code. For the sake of completeness, that can be seen below:</p>
+
+<pre><code>private class ContentBuilder
+{
+    private string _defaultContent;
+    private ImmutableDictionary&lt;int, string&gt; _languageOverrides;
+
+    public ContentBuilder(string defaultContent)
+        : this(defaultContent, new ImmutableDictionary&lt;int, string&gt;()) { }
+
+    private ContentBuilder(
+        string defaultContent,
+        ImmutableDictionary&lt;int, string&gt; languageOverrides)
+    {
+        if (string.IsNullOrWhiteSpace(defaultContent))
+            throw new ArgumentException("Null/blank defaultContent specified");
+        if (languageOverrides == null)
+            throw new ArgumentNullException("languageOverrides");
+
+        _defaultContent = defaultContent;
+        _languageOverrides = languageOverrides;
+    }
+
+    public ContentBuilder AddLanguage(int language, string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            throw new ArgumentException("Null/blank content specified");
+        if (_languageOverrides.ContainsKey(language))
+            throw new ArgumentException("Duplicate language: " + language);
+
+        return new ContentBuilder(
+            _defaultContent,
+            _languageOverrides.AddOrUpdate(language, content)
+        );
+    }
+
+    public MultiLingualContent Get()
+    {
+        return new MultiLingualContent(_defaultContent, _languageOverrides);
+    }
+}
+</code></pre>
+
+<h3>Extended Key Types</h3>
+
+<p>This approach to supporting multi-lingual data is just one way of using the generic TKey type of the IndexGenerator / IndexData classes. I mentioned at the top that the data I deal with at my real job also varies descriptive data over multiple delivery channels, this could be implemented in a similar manner to the above by extending the ILanguageScopedId interface to:</p>
+
+<pre><code>public interface ILanguageScopedId : IEquatable&lt;ILanguageScopedId&gt;
+{
+    int Id { get; }
+    bool IsApplicableFor(int language, int channel);
+}
+</code></pre>
+
+<p>And, in the same way as the above code has both the LanguageScopedId and NonLanguageScopedId, there could be various implementations for content that does/doesn't vary by language and/or does/doesn't vary by delivery channel.</p>
+
+<p>In fact, since there must be a Key Comparer passed in as a constructor argument to the IndexGenerator, any kind of key can be used with the index so long as an appropriate comparer is available!</p>
+
+<h3>Performance</h3>
+
+<p>The downside to this sort of approach is, predictably, increased resource requirements in the index generation. I say predictably because it should be clear that specifying more Content Retrievers (which we are; they have to increase as the number languages of increases) means that more work will be done when an index is generated from input data.</p>
+
+<p>Also in the above example, more storage space will be required to store the results as more content is being extracted and stored in the index - it's feasible that source data could be present which doesn't have any multi-lingual data and so returns the default values from the MultiLingualContent.GetContent(language) call for every language. For each token that is recorded for the data, keys for each of the languages will be recorded in the index - each with duplicate weight data, repeated for each language. It's possible that a more intelligent key structure could reduce that amount of space taken up in these cases but that's outside the scope of this post I think (plus no solution springs immediately to mind at this time of night! :)</p>
+
+<p>The good news is that the retrieval time shouldn't be significantly increased; the additional work is to filter the matched keys and group them together on the underlying id, the lookup should still be very quick. The additional load that the filtering and grouping will incur will depend upon the structure of the key class.</p>
+
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="/the-full-text-indexer-post-roundup">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 23:56</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-full-text-indexer-adding-and-subtracting">The Full Text Indexer - Adding and Subtracting</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/dependency-injection-with-a-wcf-service">Dependency Injection with a WCF Service</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="16 Posts">FullTextIndexer</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "32";
+							var disqus_title = "The Full Text Indexer - Going International!";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

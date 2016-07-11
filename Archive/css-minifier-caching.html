@@ -1,0 +1,448 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - CSS Minifier - Caching</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/css-minifier-caching" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">12 March 2013</h3><h2><a id="Post50"></a><a href="/css-minifier-caching">CSS Minifier - Caching</a></h2>
+
+<p>A week or so ago I wrote about <a href="/extending-the-css-minifier">Extending the CSS Minifier</a> and some new facilities in my project on Bitbucket (the imaginatively-named <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a>). Particularly the <strong>EnhancedNonCachedLessCssLoaderFactory</strong> which you can use to get up and running with all of the fancy new features in no time!</p>
+
+<p>However, I didn't mention anything about the caching mechanisms, which are important when there's potentially so much processing required.</p>
+
+<p>This won't take long, but it's worth blasting through. It's also worth noting that the example code in the CSSMinifierDemo is the solution does all of this, so if you want to see it all one place then that's a good place to start (in the CSSController).</p>
+
+<h3>Last-modified-dates</h3>
+
+<p>The <strong>EnhancedNonCachedLessCssLoaderFactory</strong> utilises the <strong>SameFolderImportFlatteningCssLoader</strong> which will run through the CSS / LESS files and pull in any content fom "import" statements inline - effectively flattening them all into one chunk of stylesheet content.</p>
+
+<p>A built-in (and intentional) limitation of this class is that all imports must come from the same folder as the source file. This means you can't import stylesheets from any other folder or any server (if you were going to load a resets sheet from a CDN, perhaps).</p>
+
+<p>The benefit of this restriction is that there is a cheap "short cut" that can be taken to determine when any cached representations of the data should be expired; just take the most recent last-modified-date of any file in that folder.</p>
+
+<p>This has the disadvantage that a file in that folder may be updated that isn't related to the stylesheet being loaded but that a cache expiration will still be performed. The advantage, though, is that we don't have to fully process a file (and all of its imports) in order to determine when any of the files that it imports actually <em>was</em> updated!</p>
+
+<p>This last-modified-date can be used for returning 304 responses when the Client already has the up-to-date content and may also be used to cache stylesheet processing results on the server for Clients without the content in their browser caches.</p>
+
+<h3>In-memory caching</h3>
+
+<p>The simplest caching mechanism uses the <strong>CachingTextFileLoader</strong> which wraps a content loader (that returned by the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>, for example) and takes references to an <strong>ILastModifiedDateRetriever</strong> and <strong>ICanCacheThingsWithModifiedDates&lt;TextFileContents&gt;</strong>.</p>
+
+<pre><code>public interface ILastModifiedDateRetriever
+{
+  DateTime GetLastModifiedDate(string relativePath);
+}
+
+// Type param must be a class (not a value type) so that null may be returned from the getter to indicate
+// that the item is not present in the cache
+public interface ICacheThingsWithModifiedDates&lt;T&gt; where T : class, IKnowWhenIWasLastModified
+{
+  T this[string cacheKey] { get; }
+  void Add(string cacheKey, T value);
+  void Remove(string cacheKey);
+}
+
+public interface IKnowWhenIWasLastModified
+{
+  DateTime LastModified { get;  }
+}
+</code></pre>
+
+<p>If you're using the <strong>SameFolderImportFlatteningCssLoader</strong> then the <strong>SingleFolderLastModifiedDateRetriever</strong> will be ideal for the first reference. It requires an <strong>IRelativePathMapper</strong> reference, but so does the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>, and an ASP.Net implementation is provided below. An example ICacheThingsWithModifiedDates implementation for ASP.Net is also provided:</p>
+
+<pre><code>// The "server" reference passed to the constructor may be satisfied with the Server reference available
+// in an ASP.Net MVC Controller or a WebForms Page's Server reference may be passed if it's wrapped
+// in an HttpServerUtilityWrapper instance - eg. "new HttpServerUtilityWrapper(Server)"
+public class ServerUtilityPathMapper : IRelativePathMapper
+{
+  private HttpServerUtilityBase _server;
+  public ServerUtilityPathMapper(HttpServerUtilityBase server)
+  {
+    if (server == null)
+      throw new ArgumentNullException("server");
+
+    _server = server;
+  }
+
+  public string MapPath(string relativePath)
+  {
+    if (string.IsNullOrWhiteSpace(relativePath))
+      throw new ArgumentException("Null/blank relativePath specified");
+
+    return _server.MapPath(relativePath);
+  }
+}
+
+// The "cache" reference passed to the constructor may be satisfied with the Cache reference available
+// in an ASP.Net MVC Controller or a WebForms Page's Cache reference. There is no time-based expiration
+// of cache items (DateTime.MaxValue is passed for the cache's Add method's absoluteExpiration argument
+// since the CachingTextFileLoader will call Remove to expire entries if their source files have been
+// modified since the cached data was recorded.
+public class NonExpiringASPNetCacheCache : ICacheThingsWithModifiedDates&lt;TextFileContents&gt;
+{
+  private Cache _cache;
+  public NonExpiringASPNetCacheCache(Cache cache)
+  {
+    if (cache == null)
+      throw new ArgumentNullException("cache");
+
+    _cache = cache;
+  }
+
+  public TextFileContents this[string cacheKey]
+  {
+    get
+    {
+      var cachedData = _cache[cacheKey];
+      if (cachedData == null)
+        return null;
+
+      var cachedTextFileContentsData = cachedData as TextFileContents;
+      if (cachedTextFileContentsData == null)
+      {
+        Remove(cacheKey);
+        return null;
+      }
+
+      return cachedTextFileContentsData;
+    }
+  }
+
+  public void Add(string cacheKey, TextFileContents value)
+  {
+    _cache.Add(
+      cacheKey,
+      value,
+      null,
+      DateTime.MaxValue,
+      Cache.NoSlidingExpiration,
+      CacheItemPriority.Normal,
+      null
+    );
+  }
+
+  public void Remove(string cacheKey)
+  {
+    _cache.Remove(cacheKey);
+  }
+}
+</code></pre>
+
+<p>The <strong>CachingTextFileLoader</strong> will look in the cache to see if it has data for the specified relativePath. If so then it will try to get the last-modified-date for any of the source files. If the last-modified-date on the cached entry is current then the cached data is returned. Otherwise, the cached data is removed from the cache, the request is processed as normal, the new content stored in cache and then returned.</p>
+
+<h3>Disk caching</h3>
+
+<p>The <strong>DiskCachingTextFileLoader</strong> class is slightly more complicated, but not much. It works on the same principle of storing cache data then retrieving it and returning it for requests if none of the source files have changed since it was cached, and rebuilding and storing new content before returning if the source files <em>have</em> changed.</p>
+
+<p>Like the <strong>CachingTextFileLoader</strong>, it requires a content loader to wrap and an <strong>ILastModifiedDateRetriever</strong>. It also requires a <strong>CacheFileLocationRetriever</strong> delegate which instructs it where to store cached data on disk. A simple approach is to specify</p>
+
+<pre><code>relativePath =&gt; new FileInfo(relativePathMapper.MapPath(relativePath) + ".cache")
+</code></pre>
+
+<p>which will create a file alongside the source file with the ".cache" extension (for when "Test1.css" is processed, a file will be created alongside it called "Test1.css.cache").</p>
+
+<p>This means that we need to ignore these cache files when looking at the last-modified-dates of files, but the <strong>SingleFolderLastModifiedDateRetriever</strong> conveniently has an optional constructor parameter to specify which extensions should be considered. So it can be instantiated with</p>
+
+<pre><code>var lastModifiedDateRetriever = new SingleFolderLastModifiedDateRetriever(
+  relativePathMapper,
+  new[] { "css", "less" }
+);
+</code></pre>
+
+<p>and then you needn't worry about the cache files interfering.</p>
+
+<p>There are some additional options that must be specified for the <strong>DiskCachingTextFileLoader</strong>; whether exceptions should be raised or swallowed (after logging) for IO issues and likewise if the cache file has invalid content (the cached content will have a CSS comment injected into the start of the content that records the relative path of the original request and the last-modified-date, without these a TextFileContents instance could not be accurately recreated from the cached stylesheets - the TextFileContents could have been binary-serialised and written out as the cached data but I prefered that the cached data be CSS).</p>
+
+<h3>Bringing it all together</h3>
+
+<p>This is the updated version of the CSSController from the post last year: <a href="/onthefly-css-minification">On-the-fly CSS Minification</a>. It incorporates functionality to deal with 304 responses, to cache in-memory and on disk, to flatten imports, compile LESS, minify the output and all of the other advanced features covered in <a href="/extending-the-css-minifier">Extending the CSS Minifier</a>.</p>
+
+<p>This code is taken from the CSSMinifiedDemo project in the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> repository, the only difference being that I've swapped out the <strong>DefaultNonCachedLessCssLoaderFactory</strong> for the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>. If you don't want the source mapping, the media-query grouping and the other features then you might stick with the <strong>DefaultNonCachedLessCssLoaderFactory</strong>. If you wanted something in between then you could just take the code from either factory and tweak to meet your requirements!</p>
+
+<pre><code>using System;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Web;
+using System.Web.Mvc;
+using CSSMinifier.Caching;
+using CSSMinifier.FileLoaders;
+using CSSMinifier.FileLoaders.Factories;
+using CSSMinifier.FileLoaders.LastModifiedDateRetrievers;
+using CSSMinifier.Logging;
+using CSSMinifier.PathMapping;
+using CSSMinifierDemo.Common;
+
+namespace CSSMinifierDemo.Controllers
+{
+  public class CSSController : Controller
+  {
+    public ActionResult Process()
+    {
+      var relativePathMapper = new ServerUtilityPathMapper(Server);
+      var relativePath = Request.FilePath;
+      var fullPath = relativePathMapper.MapPath(relativePath);
+      var file = new FileInfo(fullPath);
+      if (!file.Exists)
+      {
+        Response.StatusCode = 404;
+        Response.StatusDescription = "Not Found";
+        return Content("File not found: " + relativePath, "text/css");
+      }
+
+      try
+      {
+        return Process(
+          relativePath,
+          relativePathMapper,
+          new NonExpiringASPNetCacheCache(HttpContext.Cache),
+          TryToGetIfModifiedSinceDateFromRequest()
+        );
+      }
+      catch (Exception e)
+      {
+        Response.StatusCode = 500;
+        Response.StatusDescription = "Internal Server Error";
+        return Content("Error: " + e.Message);
+      }
+    }
+
+    private ActionResult Process(
+      string relativePath,
+      IRelativePathMapper relativePathMapper,
+      ICacheThingsWithModifiedDates&lt;TextFileContents&gt; memoryCache,
+      DateTime? lastModifiedDateFromRequest)
+    {
+      if (string.IsNullOrWhiteSpace(relativePath))
+        throw new ArgumentException("Null/blank relativePath specified");
+      if (memoryCache == null)
+        throw new ArgumentNullException("memoryCache");
+      if (relativePathMapper == null)
+        throw new ArgumentNullException("relativePathMapper");
+
+      var lastModifiedDateRetriever = new SingleFolderLastModifiedDateRetriever(
+        relativePathMapper,
+        new[] { "css", "less" }
+      );
+      var lastModifiedDate = lastModifiedDateRetriever.GetLastModifiedDate(relativePath);
+      if ((lastModifiedDateFromRequest != null)
+      &amp;&amp; AreDatesApproximatelyEqual(lastModifiedDateFromRequest.Value, lastModifiedDate))
+      {
+        Response.StatusCode = 304;
+        Response.StatusDescription = "Not Modified";
+        return Content("", "text/css");
+      }
+
+      var errorBehaviour = ErrorBehaviourOptions.LogAndContinue;
+      var logger = new NullLogger();
+      var cssLoader = (new EnhancedNonCachedLessCssLoaderFactory(
+        relativePathMapper,
+        errorBehaviour,
+        logger
+      )).Get();
+
+      var diskCachingCssLoader = new DiskCachingTextFileLoader(
+        cssLoader,
+        relativePathRequested =&gt; new FileInfo(relativePathMapper.MapPath(relativePathRequested) + ".cache"),
+        lastModifiedDateRetriever,
+        DiskCachingTextFileLoader.InvalidContentBehaviourOptions.Delete,
+        errorBehaviour,
+        logger
+      );
+      var memoryAndDiskCachingCssLoader = new CachingTextFileLoader(
+        diskCachingCssLoader,
+        lastModifiedDateRetriever,
+        memoryCache
+      );
+
+      var content = memoryAndDiskCachingCssLoader.Load(relativePath);
+      if (content == null)
+        throw new Exception("Received null response from Css Loader - this should not happen");
+      if ((lastModifiedDateFromRequest != null)
+      &amp;&amp; AreDatesApproximatelyEqual(lastModifiedDateFromRequest.Value, lastModifiedDate))
+      {
+        Response.StatusCode = 304;
+        Response.StatusDescription = "Not Modified";
+        return Content("", "text/css");
+      }
+      SetResponseCacheHeadersForSuccess(content.LastModified);
+      return Content(content.Content, "text/css");
+    }
+
+    /// &lt;summary&gt;
+    /// Try to get the If-Modified-Since HttpHeader value - if not present or not valid (ie. not
+    /// interpretable as a date) then null will be returned
+    /// &lt;/summary&gt;
+    private DateTime? TryToGetIfModifiedSinceDateFromRequest()
+    {
+      var lastModifiedDateRaw = Request.Headers["If-Modified-Since"];
+      if (lastModifiedDateRaw == null)
+        return null;
+
+      DateTime lastModifiedDate;
+      if (DateTime.TryParse(lastModifiedDateRaw, out lastModifiedDate))
+        return lastModifiedDate;
+
+      return null;
+    }
+
+    /// &lt;summary&gt;
+    /// Dates from HTTP If-Modified-Since headers are only precise to whole seconds while files'
+    /// LastWriteTime are granular to milliseconds, so when
+    /// comparing them a small grace period is required
+    /// &lt;/summary&gt;
+    private bool AreDatesApproximatelyEqual(DateTime d1, DateTime d2)
+    {
+      return Math.Abs(d1.Subtract(d2).TotalSeconds) &lt; 1;
+    }
+
+    /// &lt;summary&gt;
+    /// Mark the response as being cacheable and implement content-encoding requests such that gzip is
+    /// used if supported by requester
+    /// &lt;/summary&gt;
+    private void SetResponseCacheHeadersForSuccess(DateTime lastModifiedDateOfLiveData)
+    {
+      // Mark the response as cacheable
+      // - Specify "Vary" "Content-Encoding" header to ensure that if cached by proxies that different
+      //   versions are stored for different encodings (eg. gzip'd vs non-gzip'd)
+      Response.Cache.SetCacheability(System.Web.HttpCacheability.Public);
+      Response.Cache.SetLastModified(lastModifiedDateOfLiveData);
+      Response.AppendHeader("Vary", "Content-Encoding");
+
+      // Handle requested content-encoding method
+      var encodingsAccepted = (Request.Headers["Accept-Encoding"] ?? "")
+        .Split(',')
+        .Select(e =&gt; e.Trim().ToLower())
+        .ToArray();
+      if (encodingsAccepted.Contains("gzip"))
+      {
+        Response.AppendHeader("Content-encoding", "gzip");
+        Response.Filter = new GZipStream(Response.Filter, CompressionMode.Compress);
+      }
+      else if (encodingsAccepted.Contains("deflate"))
+      {
+        Response.AppendHeader("Content-encoding", "deflate");
+        Response.Filter = new DeflateStream(Response.Filter, CompressionMode.Compress);
+      }
+    }
+  }
+}
+</code></pre>
+
+<p>Following a few bug fixes which I've made recently to the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> and <a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser</a>, I don't have any other major features to add to these projects until I make time to complete a rules validator so that the <a href="/noncascading-css-a-revolution">Non-cascading CSS</a> guidelines can optionally be enforced. I'm still working on these and trying to get them into as much use as possible since I still believe they offer a real turning point for the creation of maintainable stylesheets!</p>
+<p class="PostTime">Posted at 16:45</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/supporting-idispatch-through-the-cominteraction-wrapper">Supporting IDispatch through the COMInteraction wrapper</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-full-text-indexer-structured-queries">The Full Text Indexer - Structured Queries</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/CSS" title="9 Posts">CSS</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "50";
+							var disqus_title = "CSS Minifier - Caching";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

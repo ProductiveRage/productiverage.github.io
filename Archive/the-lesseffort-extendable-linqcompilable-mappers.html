@@ -1,0 +1,423 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - The Less-Effort Extendable LINQ-compilable Mappers</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#780c0e" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/the-lesseffort-extendable-linqcompilable-mappers" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content SinglePost">
+					<h3 class="PostDate">3 January 2012</h3><h2><a id="Post19"></a><a href="/the-lesseffort-extendable-linqcompilable-mappers">The Less-Effort Extendable LINQ-compilable Mappers</a></h2>
+
+<p>The <a href="/extendable-linqcompilable-mappers">last post</a> almost finished off something I originally started back last April and enabled the creation of Compilable Type Converters which take properties from a source type and feed them in as constructor arguments on a destination type.</p>
+
+<p>The only issue I had is that the final code to set up conversions was a bit verbose. To create a Converter from SourceEmployee to DestEmployee -</p>
+
+<pre><code>public class SourceEmployee
+{
+    public string Name { get; set; }
+    public SourceRole Role { get; set; }
+}
+
+public class SourceRole
+{
+    public string Description { get; set; }
+}
+
+public class DestEmployee
+{
+    public DestEmployee(string name, DestRole role)
+    {
+        Name = name;
+        Role = role;
+    }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+
+public class DestRole
+{
+    public DestRole(string description)
+    {
+        Description = description;
+    }
+    public string Description { get; private set; }
+}
+</code></pre>
+
+<p>the following code was required:</p>
+
+<pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+
+var roleConverterFactory = new CompilableTypeConverterByConstructorFactory(
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new CombinedCompilablePropertyGetterFactory(
+        new ICompilablePropertyGetterFactory[]
+        {
+            new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+            new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+        }
+    )
+);
+
+var employeeConverterFactory = new CompilableTypeConverterByConstructorFactory(
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new CombinedCompilablePropertyGetterFactory(
+        new ICompilablePropertyGetterFactory[]
+        {
+            new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+            new CompilableEnumConversionPropertyGetterFactory(nameMatcher),
+            new CompilableTypeConverterPropertyGetterFactory&lt;SourceRole, DestRole&gt;(
+                nameMatcher,
+                roleConverterFactory.Get&lt;SourceRole, DestRole&gt;()
+            )
+        }
+    )
+);
+
+var employeeConverter = employeeConverterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
+</code></pre>
+
+<p>For more complicated type graphs this could quickly get tiring! What I <em>really</em> wanted to do was this:</p>
+
+<pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+var converterFactory = new ExtendableCompilableTypeConverterFactory(
+    nameMatcher,
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new ICompilablePropertyGetterFactory[]
+    {
+        new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+        new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+    }
+);
+converterFactory = converterFactory.CreateMap&lt;SourceRole, DestRole&gt;();
+var converter = converterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
+</code></pre>
+
+<h3>The ExtendableCompilableTypeConverterFactory</h3>
+
+<p>This class basically wraps up the duplication seen above and returns a new ExtendableCompilableTypeConverterFactory instance each time that CreateMap is successfully called, the new instance having a Compilable Property Getter than can support that mapping. If the CreateMap calls was <em>not</em> successful then an exception will be raised - this will be case if there is no constructor on the destination type whose arguments can all be satisified by properties on the source type (this also covers cases where additional mappings are required for referenced types). This exception is equivalent to the AutoMapperMappingException that AutoMapper throws in similar circumstances.</p>
+
+<p>I'm just going to jump right in with this - if you've been reading this far then this will hold no challenges or surprises.</p>
+
+<pre><code>public class ExtendableCompilableTypeConverterFactory : ICompilableTypeConverterFactory
+{
+    private INameMatcher _nameMatcher;
+    private ITypeConverterPrioritiserFactory _converterPrioritiser;
+    private List&lt;ICompilablePropertyGetterFactory&gt; _basePropertyGetterFactories;
+    private Lazy&lt;ICompilableTypeConverterFactory&gt; _typeConverterFactory;
+    public ExtendableCompilableTypeConverterFactory(
+        INameMatcher nameMatcher,
+        ITypeConverterPrioritiserFactory converterPrioritiser,
+        IEnumerable&lt;ICompilablePropertyGetterFactory&gt; basePropertyGetterFactories)
+    {
+        if (nameMatcher == null)
+            throw new ArgumentNullException("nameMatcher");
+        if (converterPrioritiser == null)
+            throw new ArgumentNullException("converterPrioritiser");
+        if (basePropertyGetterFactories == null)
+            throw new ArgumentNullException("basePropertyGetterFactories");
+
+        var basePropertyGetterFactoryList = new List&lt;ICompilablePropertyGetterFactory&gt;();
+        foreach (var basePropertyGetterFactory in basePropertyGetterFactories)
+        {
+            if (basePropertyGetterFactory == null)
+                throw new ArgumentException("Null entry encountered in basePropertyGetterFactories");
+            basePropertyGetterFactoryList.Add(basePropertyGetterFactory);
+        }
+
+        _nameMatcher = nameMatcher;
+        _converterPrioritiser = converterPrioritiser;
+        _basePropertyGetterFactories = basePropertyGetterFactoryList;
+        _typeConverterFactory = new Lazy&lt;ICompilableTypeConverterFactory&gt;(
+            getConverterFactory,
+            true
+        );
+    }
+
+    private ICompilableTypeConverterFactory getConverterFactory()
+    {
+        return new CompilableTypeConverterByConstructorFactory(
+            _converterPrioritiser,
+            new CombinedCompilablePropertyGetterFactory(_basePropertyGetterFactories)
+        );
+    }
+
+    /// &lt;summary&gt;
+    /// This will return null if a converter could not be generated
+    /// &lt;/summary&gt;
+    public ICompilableTypeConverterByConstructor&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;()
+    {
+        return _typeConverterFactory.Value.Get&lt;TSource, TDest&gt;();
+    }
+
+    ITypeConverter&lt;TSource, TDest&gt; ITypeConverterFactory.Get&lt;TSource, TDest&gt;()
+    {
+        return Get&lt;TSource, TDest&gt;();
+    }
+
+    /// &lt;summary&gt;
+    /// This will throw an exception if unable to generate the requested mapping - it will
+    /// never return null. If the successful, the returned converter factory will be able
+    /// to convert instances of TSourceNew as well as IEnumerable / Lists of them.
+    /// &lt;/summary&gt;
+    public ExtendableCompilableTypeConverterFactory CreateMap&lt;TSourceNew, TDestNew&gt;()
+    {
+        // Try to generate a converter for the requested mapping
+        var converterNew = _typeConverterFactory.Value.Get&lt;TSourceNew, TDestNew&gt;();
+        if (converterNew == null)
+            throw new Exception("Unable to create mapping");
+        return AddNewConverter&lt;TSourceNew, TDestNew&gt;(converterNew);
+    }
+
+    /// &lt;summary&gt;
+    /// Generate a further extended converter factory that will be able to handle conversion
+    /// of instances of TSourceNew as well as IEnumerable / Lists of them. This will never
+    /// return null.
+    /// &lt;/summary&gt;
+    public ExtendableCompilableTypeConverterFactory AddNewConverter&lt;TSourceNew, TDestNew&gt;(
+        ICompilableTypeConverter&lt;TSourceNew, TDestNew&gt; converterNew)
+    {
+        if (converterNew == null)
+            throw new ArgumentNullException("converterNew");
+
+        // Create a property getter factory that retrieves and convert properties using this
+        // converter and one that does the same for IEnumerable properties, where the
+        // IEnumerables' elements are the types handled by the converter
+        var extendedPropertyGetterFactories = new List&lt;ICompilablePropertyGetterFactory&gt;(
+            _basePropertyGetterFactories
+        );
+        extendedPropertyGetterFactories.Add(
+            new CompilableTypeConverterPropertyGetterFactory&lt;TSourceNew, TDestNew&gt;(
+                _nameMatcher,
+                converterNew
+            )
+        );
+        extendedPropertyGetterFactories.Add(
+            new ListCompilablePropertyGetterFactory&lt;TSourceNew, TDestNew&gt;(
+                _nameMatcher,
+                converterNew
+            )
+        );
+
+        // Return a new ExtendableCompilableTypeConverterFactory that can make use of these
+        // new property getter factories
+        return new ExtendableCompilableTypeConverterFactory(
+            _nameMatcher,
+            _converterPrioritiser,
+            extendedPropertyGetterFactories
+        );
+    }
+}
+</code></pre>
+
+<p>Ok.. except one. I've sprung the ListCompilablePropertyGetterFactory. The ListCompilablePropertyGetter is similar to the CompilableTypeConverterPropertyGetter but will deal with properties and constructor arguments which are IEnumerable&lt;SourceType&gt; and IEnumerable&lt;DestType&gt;, resp.</p>
+
+<p>This means that the ExtendableCompilableTypeConverterFactory setup code above would have worked if the SourceType and DestType were</p>
+
+<pre><code>public class SourceEmployee
+{
+    public string Name { get; set; }
+    public SourceRole[] Role { get; set; }
+}
+
+public class DestEmployee
+{
+    public DestEmployee(string name, IEnumerable&lt;DestRole&gt; role)
+    {
+        Name = name;
+        Role = role;
+    }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+</code></pre>
+
+<p>as the CreateMap would return a Converter Factory that could map SourceRole to DestRole <em>and</em> IEnumerable&lt;SourceRole&gt; to IEnumerable&lt;DestRole&gt;.</p>
+
+<h3>CreateMap vs AddNewConverter</h3>
+
+<p>The CreateMap method will try to generate a new Converter and build new Property Getter Factories using that by passing it to AddNewConverter. If you need to add any custom mapping mechanisms then AddNewConverter may be called with an ICompilableTypeConverter.</p>
+
+<p>For example, if our types now looked like</p>
+
+<pre><code>public class SourceEmployee
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public SourceRole[] Role { get; set; }
+}
+
+public class DestEmployee
+{
+    public DestEmployee(string id, string name, IEnumerable&lt;DestRole&gt; role)
+    {
+        Id = id;
+        Name = name;
+        Role = role;
+    }
+    public string Id { get; private set; }
+    public string Name { get; private set; }
+    public DestRole Role { get; private set; }
+}
+</code></pre>
+
+<p>then we would need a way to translate int to string when the name matcher identifies the potential "Id" to "id" mapping. We could do that with AddNewConverter and a custom ICompilableTypeConverter implementation -</p>
+
+<pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
+var converterFactory = new ExtendableCompilableTypeConverterFactory(
+    nameMatcher,
+    new ArgsLengthTypeConverterPrioritiserFactory(),
+    new ICompilablePropertyGetterFactory[]
+    {
+        new CompilableAssignableTypesPropertyGetterFactory(nameMatcher),
+        new CompilableEnumConversionPropertyGetterFactory(nameMatcher)
+    }
+);
+converterFactory = converterFactory.CreateMap&lt;SourceRole, DestRole&gt;();
+converterFactory = converterFactory.AddNewConverter&lt;int, string&gt;(
+    new CompilableIntToStringTypeConverter()
+);
+var converter = converterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
+
+public class CompilableIntToStringTypeConverter : ICompilableTypeConverter&lt;int, string&gt;
+{
+    public string Convert(int src)
+    {
+        return src.ToString();
+    }
+
+    public Expression GetTypeConverterExpression(Expression param)
+    {
+        if (param == null)
+            throw new ArgumentNullException("param");
+        return Expression.Call(
+            param,
+            typeof(int).GetMethod("ToString", new Type[0])
+        );
+    }
+}
+</code></pre>
+
+<p>See, I promised last time that splitting ICompilableTypeConverter away from ICompilableTypeConverterByConstructor at some point! :)</p>
+
+<h3>Signing off</h3>
+
+<p>This has all turned into a bit of a saga! The final code for all this can be found at</p>
+
+<p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/</a></p>
+
+<p>I've not done <em>loads</em> of performance testing but the generated Converters have consistently been around 1.1 or 1.2 times as slow as hand-rolled code (ie. approximately the same), not including the work required to generate the Converters. Compared to AutoMapper, this is quite a win (which was what originally inspired me to go on this journey). But out of the box it doesn't support all the many configurations that AutoMapper does! My main use case was to map legacy WebService objects (with parameter-less constructors) onto internal objects (with verbose constructors) which is all done. But there's currently no way to map back.. I think that's something to worry about another day! :)</p>
+<p class="PostTime">Posted at 21:52</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/extendable-linqcompilable-mappers">Extendable LINQ-compilable Mappers</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/onthefly-css-minification">On-the-fly CSS Minification</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/AutoMapper" title="8 Posts">AutoMapper</a></li><li><a href="/Archive/Tag/LINQ" title="11 Posts">LINQ</a></li><li><a href="/Archive/Tag/Reflection" title="14 Posts">Reflection</a></li></ul></div>
+						<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "19";
+							var disqus_title = "The Less-Effort Extendable LINQ-compilable Mappers";
+							executeWhen(
+								function () {
+									$(document).ready(function () {
+										var dsq = document.createElement("script");
+										dsq.type = "text/javascript";
+										dsq.async = true;
+										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+									})
+								},
+								function () { return (typeof ($) !== "undefined") },
+								10
+							);
+						</script>
+				</div>
+
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future">A static type system is a wonderful message to the present and future</a></li><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li><li><a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>
