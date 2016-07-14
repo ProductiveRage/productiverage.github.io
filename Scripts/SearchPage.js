@@ -54,7 +54,7 @@
 				var $content = $("");
 				for (var intIndex = 0; intIndex < arrMatches.length; intIndex++) {
 					var intKey = arrMatches[intIndex].Key;
-					var $headerLink = $("<a href=\"" + objTitles[intKey].Slug + ".html\" />");
+					var $headerLink = $("<a href=\"/" + objTitles[intKey].Slug + "\" />");
 					$headerLink.text(objTitles[intKey].Title);
 					var $header = $("<h3/>");
 					$header.append($headerLink);
