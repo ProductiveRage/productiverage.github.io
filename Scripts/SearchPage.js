@@ -30,7 +30,7 @@
 	$elementToReplaceWithResult = $loading;
 
 	$.ajax({
-		url: "SearchIndex-SummaryDictionary.js",
+		url: "/SearchIndex-SummaryDictionary.js",
 		dataType: "json",
 		success: function (objSearchIndexSummaryData) { // TODO: Handle failure
 			Log("SearchPage.js: Loaded summary index");
@@ -163,7 +163,7 @@
 
 	function PreLoadSearchIndex() {
 		$.ajax({
-			url: "SearchIndex-SummaryDictionary.js",
+			url: "/SearchIndex-SummaryDictionary.js",
 			dataType: "json"
 		});
 	}
