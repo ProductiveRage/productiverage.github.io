@@ -4978,7 +4978,21 @@ namespace BridgeReactTutorial.Actions
 
 &lt;p&gt;&lt;em&gt;(Note: A &lt;strong&gt;MessageHistoryUpdated&lt;/strong&gt; will be emitted after a &quot;GetMessages&quot; call is made but one will also be emitted every time that a new Chuck Norris fact arrives)&lt;/em&gt;.&lt;/p&gt;
 
-&lt;p&gt;So, now, &lt;em&gt;finally&lt;/em&gt;, we can look at how to create a Store.&lt;/p&gt;
+&lt;p&gt;While we&#39;re adding actions, we&#39;re going to need a &lt;strong&gt;StoreInitialised&lt;/strong&gt; action class (I&#39;ll talk about this more later on, for now just add the following class to the &quot;Actions&quot; folder):&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;using Bridge.React;
+using BridgeReactTutorial.API;
+
+namespace BridgeReactTutorial.Actions
+{
+  public class StoreInitialised : IDispatcherAction
+  {
+    public object Store;
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Now, &lt;em&gt;finally&lt;/em&gt;, we can look at how to create a Store.&lt;/p&gt;
 
 &lt;p&gt;Create a new folder in the project root called &quot;Stores&quot; and add a new class file to it; &quot;MessageWriterStore.cs&quot; -&lt;/p&gt;
 
@@ -5600,11 +5614,12 @@ namespace BridgeReactTutorial.API
 
     public RequestId GetMessages()
     {
-      // TODO: Explain .AsEnumerable()
       // ToArray is used to return a clone of the message set - otherwise, the caller would
       // end up with a list that is updated when the internal reference within this class
       // is updated (which sounds convenient but it&#39;s not the behaviour that would be
-      // exhibited if this was really persisting messages to a server somewhere)
+      // exhibited if this was really persisting messages to a server somewhere).. and
+      // then AsEnumerable() is required since the store checks for an action of type
+      // DataUpdated&amp;lt;IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;&amp;gt;&amp;gt;
       var requestId = new RequestId();
       Window.SetTimeout(
         () =&amp;gt; _dispatcher.HandleServerAction(DataUpdated.For(requestId, _messages.ToArray().AsEnumerable())),
