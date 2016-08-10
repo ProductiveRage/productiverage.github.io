@@ -10,7 +10,7 @@
 		<description>Dan's techie ramblings</description>
 		<language>en-gb</language>
 
-		<lastBuildDate>Thu, 14 Jul 2016 19:36:00 GMT</lastBuildDate>
+		<lastBuildDate>Wed, 10 Aug 2016 21:01:00 GMT</lastBuildDate>
 		<docs>http://blogs.law.harvard.edu/tech/rss</docs>
 		
 		<image>
@@ -23,6 +23,556 @@
 
 		<xhtml:meta xmlns:xhtml="http://www.w3.org/1999/xhtml" name="robots" content="noindex" /> 
 
+		<item>
+			<title>Retrieving Performance Counter from a remote PC using C#</title>
+            <link>http://www.productiverage.com/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</link>
+			<guid>http://www.productiverage.com/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</guid>
+			<description>&lt;p&gt;&lt;a href=&quot;http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days&quot;&gt;PerfMon&lt;/a&gt; can be an invaluable tool for monitoring performance counters on the local or remote computer. It allows you to graph the information live and it allows you to write the data away to disk for future analysis.&lt;/p&gt;
+
+&lt;p&gt;However, for some performance investigation that I was doing, I wanted something slightly different to what PerfMon offers. I was testing a service under load, a service that was being hosted on a dedicated box for the performance investigation - and I was testing it by generating the load from another dedicated server. Since nothing else would be hitting the service host box, what I wanted to do for each test run was to restart the service on the host, hit it with the sample load and record the processor time, % time in GC, number of garbage collections at each generation and some other metrics until the work was fully processed - at that point, there would be no more information to gather for that particular run. The experiment could be repeated a few times and the results filed away, brought back out to compare to the same load being run after some performance tweaks had been made to the code.&lt;/p&gt;
+
+&lt;p&gt;It wouldn&#39;t be the end of the world if I had to do this manually - configure PerfMon to write the counter data to disk somewhere, restart the service before each run and then extract the data from the PerfMon logs that relate to the time period that just passed.. but it&#39;s tedious work that I don&#39;t want to bother with; I want to deploy a change then run-test-and-gather-data with a single button press. Better than that, I want to be able to perform multiple runs without any manual intervention - I want to deploy the new code then have the test harness restart the service, replay the test load, record the counter data in a file and then repeat as many times as desired.&lt;/p&gt;
+
+&lt;h3&gt;Restarting the service&lt;/h3&gt;
+
+&lt;p&gt;This part is easy, we can use a method such as this -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static void Restart(string server, string serviceName)
+{
+  if (string.IsNullOrWhiteSpace(server))
+    throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
+  if (string.IsNullOrWhiteSpace(serviceName))
+    throw new ArgumentException($&quot;Null/blank {nameof(serviceName)} specified&quot;);
+
+  // Add a reference to System.ServiceProcess to make ServiceController available
+  using (var serviceController = new ServiceController(serviceName, server))
+  {
+    serviceController.Stop();
+    serviceController.WaitForStatus(ServiceControllerStatus.Stopped);
+    serviceController.Start();
+    serviceController.WaitForStatus(ServiceControllerStatus.Running);
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3&gt;Querying a performance counter remotely&lt;/h3&gt;
+
+&lt;p&gt;This bit is a little trickier.. I started with code from an article &lt;a href=&quot;http://haishibai.blogspot.co.uk/2010/02/tiy-collect-remote-performance-counters.html&quot;&gt;TIY – Collect remote performance counters using C#&lt;/a&gt; which sounded &lt;em&gt;exactly&lt;/em&gt; like what I wanted. Unfortunately, I was getting an error with the lines&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;IntPtr userHandle = new IntPtr(0);
+LogonUser(
+  &quot;UserA&quot;,
+  &quot;DomainA&quot;,
+  &quot;PasswordA&quot;,
+  LOGON32_LOGON_INTERACTIVE,
+  LOGON32_PROVIDER_DEFAULT,
+  ref userHandle
+);
+WindowsIdentity identity = new WindowsIdentity(userHandle);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Token can not be zero&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;This essentially meant that LogonUser had failed and so the &quot;userHandle&quot; reference had not been set (and left as a zero pointer). The code should really have checked the LogonUser return value -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var logonSuccess = LogonUser(
+  &quot;UserA&quot;,
+  &quot;DomainA&quot;,
+  &quot;PasswordA&quot;,
+  LOGON32_LOGON_INTERACTIVE,
+  LOGON32_PROVIDER_DEFAULT,
+  ref userHandle
+);
+if (!logonSuccess)
+  throw new Exception(&quot;LogonUser failed&quot;);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. but that wouldn&#39;t actually fix the failure.&lt;/p&gt;
+
+&lt;p&gt;The underlying problem was explained by another article &lt;a href=&quot;https://platinumdogs.me/2008/10/30/net-c-impersonation-with-network-credentials/&quot;&gt;.NET (C#) Impersonation with Network Credentials&lt;/a&gt; that explains that&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;If you require the impersonated logon to have network credentials, you must select LOGON32_LOGON_NEW_CREDENTIALS as your logon type, which requires that you select LOGON32_PROVIDER_WINNT50 as the logon provider type&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Once I got the proof-of-concept working from these two articles, I fleshed things out into the following:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+
+namespace PerformanceCounterCapture
+{
+  public sealed class PerformanceCounterRetriever : IDisposable
+  {
+    private const int LOGON32_LOGON_NEW_CREDENTIALS = 9;
+    private const int LOGON32_PROVIDER_WINNT50 = 3;
+
+    [DllImport(&quot;advapi32.dll&quot;, CharSet = CharSet.Auto)]
+    private static extern bool LogonUser(
+      string lpszUserName,
+      string lpszDomain,
+      string lpszPassword,
+      int dwLogonType,
+      int dwLogonProvider,
+      ref IntPtr phToken);
+
+    private WindowsIdentity _identity;
+    private WindowsImpersonationContext _context;
+    private bool _disposed;
+    private readonly string _server;
+    public PerformanceCounterRetriever(string server, string domain, string user, string password)
+    {
+      if (string.IsNullOrWhiteSpace(server))
+        throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
+      if (string.IsNullOrWhiteSpace(domain))
+        throw new ArgumentException($&quot;Null/blank {nameof(domain)} specified&quot;);
+      if (string.IsNullOrWhiteSpace(user))
+        throw new ArgumentException($&quot;Null/blank {nameof(user)} specified&quot;);
+      if (password == null)
+        throw new ArgumentNullException(nameof(password));
+
+      try
+      {
+        var userHandle = new IntPtr(0);
+        var logonSuccess = LogonUser(
+          user,
+          domain,
+          password,
+          LOGON32_LOGON_NEW_CREDENTIALS,
+          LOGON32_PROVIDER_WINNT50,
+          ref userHandle
+        );
+        if (!logonSuccess)
+          throw new Exception(&quot;LogonUser failed&quot;);
+        _identity = new WindowsIdentity(userHandle);
+        _context = _identity.Impersonate();
+        _server = server;
+        _disposed = false;
+      }
+      finally
+      {
+        Dispose();
+      }
+    }
+    ~PerformanceCounterRetriever()
+    {
+      Dispose(false);
+    }
+
+    public IEnumerable&amp;lt;float&amp;gt; Get(
+      string categoryName,
+      string counterName,
+      string optionalInstanceName = null)
+    {
+      if (string.IsNullOrWhiteSpace(categoryName))
+        throw new ArgumentException($&quot;Null/blank {nameof(categoryName)} specified&quot;);
+      if (string.IsNullOrWhiteSpace(counterName))
+        throw new ArgumentException($&quot;Null/blank {nameof(counterName)} specified&quot;);
+
+      var counters = new List&amp;lt;PerformanceCounter&amp;gt;();
+      var category = new PerformanceCounterCategory(categoryName, _server);
+      foreach (var instanceName in category.GetInstanceNames())
+      {
+        if ((optionalInstanceName == null) || (instanceName == optionalInstanceName))
+          counters.Add(new PerformanceCounter(categoryName, counterName, instanceName, _server));
+      }
+      if (!counters.Any())
+        yield break;
+
+      while (true)
+      {
+        foreach (var c in counters)
+          yield return c.NextValue();
+      }
+    }
+
+    public void Dispose()
+    {
+      Dispose(true);
+      GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+      if (_disposed)
+        return;
+
+      if (_identity != null)
+      {
+        _identity.Dispose();
+        _identity = null;
+      }
+
+      if (_context != null)
+      {
+        _context.Undo();
+        _context.Dispose();
+        _context = null;
+      }
+
+      _disposed = true;
+    }
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This class may be used in the following way:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;using (var counterRetriever = new PerformanceCounterRetriever(&quot;TestBox&quot;, &quot;Home&quot;, &quot;Dan&quot;, &quot;password&quot;))
+{
+  foreach (var value in counterRetriever.Get(&quot;Process&quot;, &quot;% Processor Time&quot;, &quot;TestService&quot;))
+  {
+    Console.WriteLine(
+      &quot;[{0}] TestService: % Processor Time = {1}&quot;,
+      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
+      value
+    );
+    Thread.Sleep(1000);
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The &quot;counterRetriever.Get&quot; call returns an &lt;strong&gt;IEnumerable&amp;lt;float&amp;gt;&lt;/strong&gt; which retrieves a new value every time that a new value is requested from the enumerable reference. The code above (very roughly) imitates PerfMon in that it reads a new &quot;% Processor Time&quot; value every second.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;(Note: The code above never terminates since nothing breaks it out of the loop, which is not useful in many scenarios.. but I&#39;ll talk about dealing with that shortly)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;This is a good first step. However, when I&#39;m analysing the results of my test runs, I want to know more than just how much processor time is being used by the service.&lt;/p&gt;
+
+&lt;h3&gt;Querying multiple performance counters remotely&lt;/h3&gt;
+
+&lt;p&gt;If I want to collect the data from multiple performance counters then I need to get multiple &lt;strong&gt;IEnumerable&amp;lt;float&amp;gt;&lt;/strong&gt; instances from multiple &quot;counterRetriever.Get&quot; calls and then retrieve a value from each before pausing and repeating.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;using (var counterRetriever = new PerformanceCounterRetriever(&quot;TestBox&quot;, &quot;Home&quot;, &quot;Dan&quot;, &quot;password&quot;))
+{
+  var processorTime = counterRetriever
+    .Get(&quot;Process&quot;, &quot;% Processor Time&quot;, &quot;TestService&quot;)
+    .GetEnumerator();
+  var percentageTimeInGC = counterRetriever
+    .Get(&quot;.NET CLR Memory&quot;, &quot;% Time in GC&quot;, &quot;TestService&quot;)
+    .GetEnumerator();
+  while (true)
+  {
+    processorTime.MoveNext();
+    Console.WriteLine(
+      &quot;[{0}] TestService: % Processor Time = {1}&quot;,
+      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
+      processorTime.Current
+    );
+    percentageTimeInGC.MoveNext();
+    Console.WriteLine(
+      &quot;[{0}] TestService: % Time in GC = {1}&quot;,
+      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
+      percentageTimeInGC.Current
+    );
+    Thread.Sleep(1000);
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This could be extended to do the job (in my case, there are seven counters that I&#39;m interested in so the above could be chopped and changed to record them all) but the code will get a bit verbose and &quot;noisy&quot; quite quickly.&lt;/p&gt;
+
+&lt;h3&gt;Troublesome counters&lt;/h3&gt;
+
+&lt;p&gt;There is also a problem with writing code like the above and presuming that you can track all performance counters in the same way. For example, I also want to track the number of garbage collections that have occurred at generations 0, 1 and 2 since the service was restarted. It probably doesn&#39;t make much sense to record the values of these every second; I don&#39;t really care if there had been a single gen 0 garbage collection after 1s and after 2s and after 3s and after 4s, I&#39;d much rather see that at 1s there had been a single gen 0 collection and then, at 4s, there had been a second. I want to know when these kinds of values change and I&#39;m not interested in the repeated values between the changes.&lt;/p&gt;
+
+&lt;p&gt;As another example, I&#39;m also interested in capturing information about the rate at which bytes are allocated by the service, for which I can consult the &quot;Allocated Bytes/sec&quot; counter. However, this counter is only updated after a GC event and will report zero the result of the time. This doesn&#39;t mean that zero bytes per second really were being allocated each time that the counter reports zero, it&#39;s just that there is nothing that can accurately report a value for this counter &lt;em&gt;except&lt;/em&gt; immediately following a collection. For this counter, it&#39;s probably best for me to exclude zero values - particularly while a performance test is underway, since it is basically impossible that the service will ever be allocating &lt;em&gt;zero&lt;/em&gt; bytes per second while it&#39;s deserialising requests and processing them. As with the &quot;number of collections at gen {x}&quot; counters, it will be worth ignoring some of the counter values but it will be important to know &lt;em&gt;when&lt;/em&gt; the values that we do pay attention to were recorded (since, for the &quot;Allocated Bytes/sec&quot; counter, it should be possible to use this information to approximate the allocation rate at any given time).&lt;/p&gt;
+
+&lt;h3&gt;A complete solution&lt;/h3&gt;
+
+&lt;p&gt;To try to address all of these problems, I&#39;ve come up with the following. It&#39;s not the smallest code sample in the world but it should be easy to follow and understand if you need to extend it for your own purposes -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+namespace PerformanceCounterCapture
+{
+  public static class PerformanceCounterLogger
+  {
+    /// &amp;lt;summary&amp;gt;
+    /// This will capture useful performance counter data until the specified cancellation token
+    /// is set, at which point it will return the data (as such, it makes sense to call this from
+    /// a background thread)
+    /// &amp;lt;/summary&amp;gt;
+    public static Results Log(
+      string server,
+      string domain,
+      string user,
+      string password,
+      string serviceName,
+      CancellationToken cancellationToken,
+      TimeSpan timeBetweenCaptures)
+    {
+      if (string.IsNullOrWhiteSpace(server))
+        throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
+      if (string.IsNullOrWhiteSpace(domain))
+        throw new ArgumentException($&quot;Null/blank {nameof(domain)} specified&quot;);
+      if (string.IsNullOrWhiteSpace(user))
+        throw new ArgumentException($&quot;Null/blank {nameof(user)} specified&quot;);
+      if (password == null)
+        throw new ArgumentNullException(nameof(password));
+      if (string.IsNullOrWhiteSpace(serviceName))
+        throw new ArgumentException($&quot;Null/blank {nameof(serviceName)} specified&quot;);
+      if (cancellationToken == null)
+        throw new ArgumentNullException(nameof(cancellationToken));
+      if (timeBetweenCaptures.Ticks &amp;lt; 0)
+        throw new ArgumentOutOfRangeException($&quot;{timeBetweenCaptures} must be a non-negative duration&quot;);
+
+      // These lists will be populated periodically (according to timeBetweenCaptures) and, when the
+      // cancellation token is set, they will all be included in the returned data for analysis
+      var processorTimes = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
+      var percentageGarbageCollectorTimes = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
+      var numberOfGen0Collections = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
+      var numberOfGen1Collections = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
+      var numberOfGen2Collections = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
+      var largeObjectHeapSize = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
+      var allocatedBytesPerSeconds = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
+      using (var performanceCounterRetriever = new PerformanceCounterRetriever(
+                                                server, domain, user, password))
+      {
+        var performanceCountersToRecord = new[]
+        {
+          new PerformanceCounterDetails(
+            &quot;Process&quot;,
+            &quot;% Processor Time&quot;,
+            serviceName,
+            value =&amp;gt; processorTimes.Add(Tuple.Create(DateTime.Now, value))
+          ),
+          new PerformanceCounterDetails(
+            &quot;.NET CLR Memory&quot;,
+            &quot;% Time in GC&quot;,
+            serviceName,
+            value =&amp;gt; percentageGarbageCollectorTimes.Add(Tuple.Create(DateTime.Now, value))
+          ),
+          new PerformanceCounterDetails(
+            &quot;.NET CLR Memory&quot;,
+            &quot;# Gen 0 Collections&quot;,
+            serviceName,
+            value =&amp;gt; AddValueToListIfNew(numberOfGen0Collections, value)
+          ),
+          new PerformanceCounterDetails(
+            &quot;.NET CLR Memory&quot;,
+            &quot;# Gen 1 Collections&quot;,
+            serviceName,
+            value =&amp;gt; AddValueToListIfNew(numberOfGen1Collections, value)
+          ),
+          new PerformanceCounterDetails(
+            &quot;.NET CLR Memory&quot;,
+            &quot;# Gen 2 Collections&quot;,
+            serviceName,
+            value =&amp;gt; AddValueToListIfNew(numberOfGen2Collections, value)
+          ),
+          new PerformanceCounterDetails(
+            &quot;.NET CLR Memory&quot;,
+            &quot;Large Object Heap size&quot;,
+            serviceName,
+            value =&amp;gt; AddValueToListIfNew(largeObjectHeapSize, value)
+          ),
+          new PerformanceCounterDetails(
+            &quot;.NET CLR Memory&quot;,
+            &quot;Allocated Bytes/sec&quot;,
+            serviceName,
+            value =&amp;gt;
+            {
+              // This is only set after a GC event so there are lots of spurious zeroes that we
+              // want to ignore (this value-ignoring is the main reason that the date that the
+              // value was recorded is included in the result data, so that it&#39;s possible to
+              // approximate values during the missing periods - which may be of variable
+              // duration since the useful values recorded for this are related to GC events)
+              if (value == 0)
+                return;
+              allocatedBytesPerSeconds.Add(Tuple.Create(DateTime.Now, value));
+            }
+          )
+        };
+
+        var allCounterEnumerators = performanceCountersToRecord
+          .Select(counterDetails =&amp;gt; new {
+            Feed =
+              performanceCounterRetriever.Get(
+                counterDetails.CategoryName,
+                counterDetails.CounterName,
+                counterDetails.OptionalInstanceName
+              )
+              .GetEnumerator(),
+            ValueLogger = counterDetails.ValueLogger
+          })
+          .ToArray(); // Don&#39;t call GetFeed every time that we enumerate the set
+
+        // Keep looping and populating the lists until the cancellation token is set - at that
+        // point, return a result object that contains all of the data
+        while (!cancellationToken.IsCancellationRequested)
+        {
+          foreach (var counterEnumerator in allCounterEnumerators)
+          {
+            counterEnumerator.Feed.MoveNext();
+            var value = counterEnumerator.Feed.Current;
+            counterEnumerator.ValueLogger(value);
+          }
+          if (!cancellationToken.IsCancellationRequested)
+            Thread.Sleep(timeBetweenCaptures);
+        }
+        return new Results(
+          processorTimes,
+          percentageGarbageCollectorTimes,
+          numberOfGen0Collections,
+          numberOfGen1Collections,
+          numberOfGen2Collections,
+          largeObjectHeapSize,
+          allocatedBytesPerSeconds
+        );
+      }
+    }
+
+    private static void AddValueToListIfNew(List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; values, float value)
+    {
+      if (values == null)
+        throw new ArgumentNullException(nameof(value));
+
+      if (!values.Any() || (values.Last().Item2 != value))
+        values.Add(Tuple.Create(DateTime.Now, value));
+    }
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It also needs the following two classes for its internal initialisation and for returning results -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class PerformanceCounterDetails
+{
+  public PerformanceCounterDetails(
+    string categoryName,
+    string counterName,
+    string optionalInstanceName,
+    Action&amp;lt;float&amp;gt; valueLogger)
+  {
+    if (string.IsNullOrWhiteSpace(categoryName))
+      throw new ArgumentException($&quot;Null/blank {nameof(categoryName)} specified&quot;);
+    if (string.IsNullOrWhiteSpace(counterName))
+      throw new ArgumentException($&quot;Null/blank {nameof(counterName)} specified&quot;);
+    if (valueLogger == null)
+      throw new ArgumentNullException(nameof(valueLogger));
+
+    CategoryName = categoryName;
+    CounterName = counterName;
+    OptionalInstanceName = optionalInstanceName;
+    ValueLogger = valueLogger;
+  }
+
+  public string CategoryName { get; }
+  public string CounterName { get; }
+  public string OptionalInstanceName { get; }
+  public Action&amp;lt;float&amp;gt; ValueLogger { get; }
+}
+
+public sealed class Results
+{
+  public Results(
+    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; processorTimes,
+    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; percentageGarbageCollectorTimes,
+    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; numberOfGen0Collections,
+    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; numberOfGen1Collections,
+    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; numberOfGen2Collections,
+    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; largeObjectHeapSize,
+    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; allocatedBytesPerSeconds)
+  {
+    if (processorTimes == null)
+      throw new ArgumentNullException(nameof(processorTimes));
+    if (percentageGarbageCollectorTimes == null)
+      throw new ArgumentNullException(nameof(percentageGarbageCollectorTimes));
+    if (numberOfGen0Collections == null)
+      throw new ArgumentNullException(nameof(numberOfGen0Collections));
+    if (numberOfGen1Collections == null)
+      throw new ArgumentNullException(nameof(numberOfGen1Collections));
+    if (numberOfGen2Collections == null)
+      throw new ArgumentNullException(nameof(numberOfGen2Collections));
+    if (largeObjectHeapSize == null)
+      throw new ArgumentNullException(nameof(largeObjectHeapSize));
+    if (allocatedBytesPerSeconds == null)
+      throw new ArgumentNullException(nameof(allocatedBytesPerSeconds));
+
+    ProcessorTimes = processorTimes;
+    PercentageGarbageCollectorTimes = percentageGarbageCollectorTimes;
+    NumberOfGen0Collections = numberOfGen0Collections;
+    NumberOfGen1Collections = numberOfGen1Collections;
+    NumberOfGen2Collections = numberOfGen2Collections;
+    LargeObjectHeapSize = largeObjectHeapSize;
+    AllocatedBytesPerSeconds = allocatedBytesPerSeconds;
+  }
+
+  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; ProcessorTimes { get; }
+  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; PercentageGarbageCollectorTimes { get; }
+  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; NumberOfGen0Collections { get; }
+  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; NumberOfGen1Collections { get; }
+  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; NumberOfGen2Collections { get; }
+  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; LargeObjectHeapSize { get; }
+  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; AllocatedBytesPerSeconds { get; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;I don&#39;t think that there&#39;s a great deal that requires explaining in depth - the &lt;strong&gt;PerformanceCounterLogger&lt;/strong&gt; will periodically capture values from all of the counters that I&#39;m interested in, dealing with the special cases described earlier (garbage collection frequency, allocated bytes / sec, etc..) in a blocking manner. It continues to capture counter data until the cancellation token passed to it is set.&lt;/p&gt;
+
+&lt;p&gt;That means that it makes sense to capture the performance counter data on a seperate thread. Something like the following (which is basically what I&#39;m using in my test runs) -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// Restart the service on the test server
+Restart(&quot;TestBox&quot;, &quot;TestService&quot;);
+
+// Start recording performance counters on a separate thread
+Results performanceCounterResults = null;
+var cancellationTokenSource = new CancellationTokenSource();
+var resultsReadyIndicator = new ManualResetEvent(initialState: false);
+ThreadPool.QueueUserWorkItem(state =&amp;gt;
+{
+  performanceCounterResults = PerformanceCounterLogger.Log(
+    &quot;TestBox&quot;,
+    &quot;Home&quot;,
+    &quot;Dan&quot;,
+    &quot;password&quot;,
+    &quot;TestService&quot;,
+    cancellationTokenSource.Token,
+    TimeSpan.FromSeconds(1)
+  );
+  resultsReadyIndicator.Set();
+});
+
+// TODO: Fire load at the server...........
+
+// Tell the performance counters that it&#39;s time to stop capturing and wait for it to acknowledge
+cancellationTokenSource.Cancel();
+resultsReadyIndicator.WaitOne();
+
+// TODO: Write the &quot;performanceCounterResults&quot; data away to analyse later...........
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;There are two big TODOs in the above code - somehow the request payload needs to be fired at the remote server that is being measured and somehow the performance counter results need to be compared between one run and the next. Obviously, these will vary from one project to the next and so they will be very dependent upon what kind of service that you&#39;re testing (and what performance counters you&#39;re interested in). In my case, I already had a decent system available for replaying old requests so that changes to the system could be examined, all I needed on top of that was a way to capture some performance counters to bring some &lt;em&gt;cold hard numbers&lt;/em&gt; into proceedings - if you&#39;re in a similar position then hopefully this post will be helpful!&lt;/p&gt;
+
+&lt;h3&gt;Shameless plug&lt;/h3&gt;
+
+&lt;p&gt;Although I had a system in place to replay historical requests in order to simulate load, there was a slight problem with this in that the service would read from a database and it was totally feasible that the data persisted there could vary from hour to hour (if not more frequently). This could mean that one performance run would not be directly comparable to the next - one run may return more or less results for a particular query, for example, or have to process some of those results in a different (ie. more or less expensive) manner.&lt;/p&gt;
+
+&lt;p&gt;This would make meaningful comparisons difficult - really, each run should return precisely the same data as the next.&lt;/p&gt;
+
+&lt;p&gt;For this particular service, a few things were in my favour on this front; the service was read only, its job is only to deliver data for rendering on various web sites and it does not have to perform any write operations. It also only specifies a database connection in a fairly limited number of places. This allowed me to add a config option to the service that would (when in a particular test mode) create database connections that get their data from a proxy service instead of going directly to the SQL database.&lt;/p&gt;
+
+&lt;p&gt;The proxy service can be run in either &quot;record&quot; or &quot;replay&quot; mode. First, the service that is under test should have the batch of requests that the processing performance is being measured for replayed while the database proxy service is in &quot;record&quot; mode - this allows the proxy service to populate a cache on disk that contains all of the result sets for all of the database queries performed. After this, all subsequent performance runs are made with the proxy service in &quot;replay&quot; mode - in this configuration, the service will never hit the database and will always return data from its cache. This ensures that the data retrieved during each performance run is consistent, which makes it much easier to reach useful conclusions and make meaningful comparisons.&lt;/p&gt;
+
+&lt;p&gt;The library that I wrote for this database proxy service is called &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;SqlProxyAndReplay&lt;/a&gt; and is available on GitHub and via NuGet (the client needs &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Client&quot;&gt;ProductiveRage.SqlProxyAndReplay.Client&lt;/a&gt; and the server needs &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Service&quot;&gt;ProductiveRage.SqlProxyAndReplay.Service&lt;/a&gt; and &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Service.Example&quot;&gt;ProductiveRage.SqlProxyAndReplay.Service.Example&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;There are some caveats - under the hood, this uses a WCF (binary endpoint) service and it won&#39;t be as fast as hitting a database directly. And, as a .net library, there will be some garbage collection overhead since it will result in additional allocations. However, for testing how the &lt;em&gt;internals&lt;/em&gt; of a service (and not, say, tweaking individual SQL queries to try to eke out more performance) then this shouldn&#39;t be a huge problem since the overhead should be consistent from one run to the next. So long as you are measuring changes in performance runs &lt;em&gt;before&lt;/em&gt; you deploy an update and performance runs &lt;em&gt;after&lt;/em&gt; an update (hopefully improvements!) then the overhead of the database proxy shouldn&#39;t matter.&lt;/p&gt;
+
+&lt;p&gt;Sometimes, of course, the database &lt;em&gt;is&lt;/em&gt; your bottle neck and so you want to capture real queries as they hit it so that you can performance tune them. There are already lot of good tools for this (you can get a long way by attaching SQL Profiler and looking for the most expensive or most frequent quite-expensive queries) but I hadn&#39;t found something useful for my use case, where I wanted to optimise what happened &lt;em&gt;after&lt;/em&gt; any database access and just wanted the database access layer to magically return consistent data time after time. At least, I couldn&#39;t find one that didn&#39;t entail significant work in writing some sort of mock / cached database access layer.&lt;/p&gt;
+
+&lt;p&gt;While the &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;SqlProxyAndReplay&lt;/a&gt; service / library may not be as useful if you have to test a service or application that needs to persist changes made to the backing store, I imagine that it&#39;s common for a lot of large scale applications to want to cache and optimise read operations and so this may well be useful for other people. The &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;linked GitHub&lt;/a&gt; repo has more information in its README and there&#39;s a &quot;Tester&quot; console application to demonstrate it in action.&lt;/p&gt;
+</description>
+			<pubDate>Wed, 10 Aug 2016 21:01:00 GMT</pubDate>
+		</item>
 		<item>
 			<title>Why is saving Performance Monitor (PerfMon) settings so difficult these days?!</title>
             <link>http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</link>
@@ -7317,588 +7867,6 @@ numbers = numbers.SetValue(2, 4);
 &lt;p&gt;&lt;em&gt;(Now seems like a good time to remind you of my post &quot;&lt;a href=&quot;http://www.productiverage.com/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&quot;, which illustrates how to use the &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; NuGet package to make defining immutable classes just that bit easier).&lt;/em&gt;&lt;/p&gt;
 &lt;div class=&quot;Related&quot;&gt;&lt;h3&gt;You may also be interested in&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;a href=&quot;http://www.productiverage.com/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&lt;/li&gt;&lt;li&gt;&lt;a href=&quot;http://www.productiverage.com/react-and-flux-with-bridgenet-redux&quot;&gt;React (and Flux) with Bridge.net - Redux&lt;/a&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;</description>
 			<pubDate>Thu, 11 Feb 2016 20:11:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>Using Roslyn to identify unused and undeclared variables in VBScript WSC components</title>
-            <link>http://www.productiverage.com/using-roslyn-to-identify-unused-and-undeclared-variables-in-vbscript-wsc-components</link>
-			<guid>http://www.productiverage.com/using-roslyn-to-identify-unused-and-undeclared-variables-in-vbscript-wsc-components</guid>
-			<description>&lt;p&gt;&lt;em&gt;(&lt;strong&gt;Note:&lt;/strong&gt; I had intended to keep this aside for April Fools since it&#39;s intended to be a bit tongue-in-cheek and really just an excuse to play with technology for technology&#39;s sake.. but I haven&#39;t got many other posts that I&#39;m working on at the moment so I&#39;m going to just unleash this now, rather than waiting!)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;Imagine that you maintain a project which was migrated over time from an old and fragile platform to a new and improved (C#) code base. But there are various complicated external components that have been left untouched since they were (mostly) working and the new code could continue to use them - allowing the valuable rewriting time to be spent elsewhere, on less compartmentalised areas of code.&lt;/p&gt;
-
-&lt;p&gt;For some projects, these could be C++ COM components - I&#39;m no expert on C++, but since people are still writing a lot of code in it and there are powerful IDEs to support this (such as Visual Studio), I presume that maintaining these sorts of components is possibly a little annoying (because COM) but not the worst thing in the world. For other projects, though, these could be &quot;&lt;a href=&quot;https://msdn.microsoft.com/en-us/library/ms524594(v=vs.90).aspx&quot;&gt;Windows Scripting Components&lt;/a&gt;&quot; - these are basically COM components that are written in scripting languages, such as VBScript. They look something like the following:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;?xml version=&quot;1.0&quot; ?&amp;gt;
-&amp;lt;?component error=&quot;false&quot; debug=&quot;false&quot; ?&amp;gt;
-&amp;lt;package&amp;gt;
-  &amp;lt;component id=&quot;ExampleComponent&quot;&amp;gt;
-    &amp;lt;registration progid=&quot;ExampleComponent&quot; description=&quot;Example Component&quot; version=&quot;1&quot; /&amp;gt;
-    &amp;lt;public&amp;gt;
-      &amp;lt;method name=&quot;DoSomething&quot; /&amp;gt;
-    &amp;lt;/public&amp;gt;
-    &amp;lt;script language=&quot;VBScript&quot;&amp;gt;
-    &amp;lt;![CDATA[
-
-      Function DoSomething(ByVal objOutput)
-        Dim intIndex: For intIndex = 1 To 5
-          objOutput.WriteLine &quot;Entry &quot; &amp;amp; iIndex
-        Next
-      End Function
-
-    ]]&amp;gt;
-    &amp;lt;/script&amp;gt;
-  &amp;lt;/component&amp;gt;
-&amp;lt;/package&amp;gt;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Creating &quot;Classic ASP&quot; web projects using these components had the advantage that interfaces between components could be limited and documented, enabling a semblance of organisation to be brought to bear on large solutions.. but &quot;Classic ASP&quot; and VBScript are technologies that, by this point, should have long since been put to bed. They do &lt;em&gt;not&lt;/em&gt; have good IDE support or debugging tools (nor do they perform well, nor is it easy to hire good people to work on your solutions that contain code in this language).&lt;/p&gt;
-
-&lt;p&gt;If you have components that work and that will never be needed to change, then maybe that&#39;s no big deal. Or maybe there is something in the migration plan that says that legacy components that work (and do not require adapting or extending) will be left as-is and any components that need work will be rewritten.&lt;/p&gt;
-
-&lt;p&gt;If this is the case, then it&#39;s easy enough to use these working components from C# -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;var filename = &quot;ExampleComponent.wsc&quot;;
-dynamic component = Microsoft.VisualBasic.Interaction.GetObject(
-  &quot;script:&quot; + new FileInfo(filename).FullName,
-  null
-);
-component.DoSomething(new ConsoleWriter());
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;em&gt;Note: In order for the above code to run with the WSC presented further up, the C# code needs to provide a ComVisible &quot;objOutput&quot; reference which has a &quot;WriteLine&quot; method that takes a single (string) argument. The snippet above uses a &lt;strong&gt;ConsoleWriter&lt;/strong&gt; class, which could be implemented as follows:&lt;/em&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;[ComVisible(true)]
-public class ConsoleWriter
-{
-  public void WriteLine(string value)
-  {
-    Console.WriteLine(value);
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;But what if there &lt;em&gt;isn&#39;t&lt;/em&gt; an agreement to rewrite any WSCs that need work and what if there are some that need bug-fixing or new functionality? Well, good luck! Error messages from these components tend to be vague and - just to really add a little extra joy to your life - they don&#39;t include line numbers. Oh, &quot;Object expected&quot;? Great.. will you tell me where? No. Oh, good.&lt;/p&gt;
-
-&lt;p&gt;If you were so intrigued by what I&#39;ve written here so far that you&#39;ve actually been playing along and have saved the WSC content from the top of this post into a file and executed it using the C# above, you might have noticed another problem when you ran it. Below is what is output to the console:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Entry&lt;/p&gt;
-  
-  &lt;p&gt;Entry&lt;/p&gt;
-  
-  &lt;p&gt;Entry&lt;/p&gt;
-  
-  &lt;p&gt;Entry&lt;/p&gt;
-  
-  &lt;p&gt;Entry&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;But, since the VBScript is performing a simple loop and writing a message that includes that loop variable in it, shouldn&#39;t it be this instead??&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Entry 1&lt;/p&gt;
-  
-  &lt;p&gt;Entry 2&lt;/p&gt;
-  
-  &lt;p&gt;Entry 3&lt;/p&gt;
-  
-  &lt;p&gt;Entry 4&lt;/p&gt;
-  
-  &lt;p&gt;Entry 5&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;h3&gt;Identifying unused and undeclared variables with the VBScriptTranslator and Roslyn&lt;/h3&gt;
-
-&lt;p&gt;Well, I do have a glimmer of hope for the problem above and, potentially, for other VBScript-writing pitfalls.&lt;/p&gt;
-
-&lt;p&gt;What we could do is process WSC files to -&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;Extract VBScript section(s) from them&lt;/li&gt;
-&lt;li&gt;Run the VBScript content through the &lt;a href=&quot;http://www.productiverage.com/translating-vbscript-into-c-sharp&quot;&gt;VBScriptTranslator&lt;/a&gt; to generate C#&lt;/li&gt;
-&lt;li&gt;Parse and build the resulting C# using &lt;a href=&quot;https://github.com/dotnet/roslyn/wiki/Roslyn%20Overview&quot;&gt;Roslyn&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;Use information gleaned from steps 2 and 3 to identify errors that might otherwise not be apparent before runtime&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;The packages we want are available through NuGet -&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&quot;https://www.nuget.org/packages/VBScriptTranslator&quot;&gt;https://www.nuget.org/packages/VBScriptTranslator&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&quot;https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp&quot;&gt;https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;Before I go through these steps, let me just explain briefly what the problem was in the VBScript sample code shown further up - just in case you&#39;re not familiar with VBScript or didn&#39;t spot it.&lt;/p&gt;
-
-&lt;p&gt;The loop variable in the code&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Dim intIndex: For intIndex = 1 To 5
-  objOutput.WriteLine &quot;Entry &quot; &amp;amp; iIndex
-Next
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;is named &quot;intIndex&quot; but the line that writes out the text refers to &quot;iIndex&quot;, which is an undeclared variable.&lt;/p&gt;
-
-&lt;p&gt;In C#, if we tried to do something similar then the compiler would bring it immediately to our attention - eg.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;for (var i = 1; i &amp;lt;= 5; i++)
-  Console.WriteLine(&quot;Entry &quot; + j);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Presuming that &quot;j&quot; was not defined elsewhere within the scope of the above code, we would be informed that&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;The name &#39;j&#39; does not exist in the current context&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;But VBScript doesn&#39;t care about this, declaring variables (such as with the use of &quot;Dim intIndex&quot;) is generally optional. The &quot;iIndex&quot; value in the code above is never defined, which means it gets the special VBScript &quot;Empty&quot; value, which is treated as an empty string when introduced into a string concatenation operation.&lt;/p&gt;
-
-&lt;p&gt;VBScript does support a mode that requires that variables be declared before they are referenced; &quot;Option Explicit&quot;. If we changed the code to the following:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Option Explicit
-
-Dim intIndex: For intIndex = 1 To 5
-  objOutput.WriteLine &quot;Entry &quot; &amp;amp; iIndex
-Next
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;then we would get an error at runtime:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Variable is undefined: &#39;iIndex&#39;&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Which seems much better, but there&#39;s one big gotcha to &quot;Option Explicit&quot; - it is &lt;em&gt;not&lt;/em&gt; enforced when the VBScript code is parsed, it is only enforced as the code is executed. This means that enabling Option Explicit and having a script run successfully does &lt;em&gt;not&lt;/em&gt; mean that it contains no undeclared variables, it only means that the code path that just ran contained no undeclared variables.&lt;/p&gt;
-
-&lt;p&gt;To illustrate, the following script will run successfully &lt;em&gt;except on Saturdays&lt;/em&gt; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Option Explicit
-
-Dim intIndex: For intIndex = 1 To 5
-  If IsSaturday() Then
-    objOutput.WriteLine &quot;Entry &quot; &amp;amp; iIndex
-  Else
-    objOutput.WriteLine &quot;Entry &quot; &amp;amp; intIndex
-  End If
-Next
-
-Function IsSaturday()
-  IsSaturday = WeekDay(Now()) = 7
-End Function
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This is a pity. I think that it would have been much better for Option Explicit to have been enforced when the script was loaded. But that ship has &lt;em&gt;loooooong&lt;/em&gt; since sailed.&lt;/p&gt;
-
-&lt;p&gt;So, instead of crying about spilt milk, let&#39;s look at something positive. We&#39;ve got a four step plan to crack on with!&lt;/p&gt;
-
-&lt;h4&gt;1. Extracting VBScript content from a WSC&lt;/h4&gt;
-
-&lt;p&gt;This is the most boring step and so I&#39;ll try not to get bogged down too much here. A WSC file is xml content and we want to identify CDATA content sections within &quot;script&quot; tags that have a &quot;language&quot; attribute with the value &quot;VBScript&quot;.&lt;/p&gt;
-
-&lt;p&gt;The below is some rough-and-ready code, taken from a project that I wrote years ago, dusted off to reuse here -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;private static IEnumerable&amp;lt;Tuple&amp;lt;string, int&amp;gt;&amp;gt; GetVBScriptSections(string wscContent)
-{
-  var document = new XPathDocument(new StringReader(wscContent));
-  var nav = document.CreateNavigator();
-  if (nav.HasChildren &amp;amp;&amp;amp; nav.MoveToFirstChild())
-  {
-    while (true)
-    {
-      foreach (var scriptSection in TryToGetVBScriptContentFromNode(nav))
-        yield return scriptSection;
-      if (!nav.MoveToNext())
-        break;
-    }
-  }
-}
-
-private static IEnumerable&amp;lt;Tuple&amp;lt;string, int&amp;gt;&amp;gt; TryToGetVBScriptContentFromNode(XPathNavigator nav)
-{
-  if (nav.NodeType == XPathNodeType.Text)
-  {
-    var navParent = nav.Clone();
-    navParent.MoveToParent();
-    if (navParent.Name.Equals(&quot;script&quot;, StringComparison.OrdinalIgnoreCase)
-    &amp;amp;&amp;amp; DoesNodeHaveVBScriptLanguageAttribute(navParent))
-      yield return Tuple.Create(nav.Value, ((IXmlLineInfo)nav).LineNumber - 1);
-  }
-  if (nav.HasChildren)
-  {
-    var navChildren = nav.Clone();
-    if (navChildren.MoveToFirstChild())
-    {
-      while (true)
-      {
-        foreach (var scriptSection in TryToGetVBScriptContentFromNode(navChildren))
-          yield return scriptSection;
-        if (!navChildren.MoveToNext())
-          break;
-      }
-    }
-  }
-}
-
-private static bool DoesNodeHaveVBScriptLanguageAttribute(XPathNavigator node)
-{
-  node = node.Clone();
-  if (!node.HasAttributes || !node.MoveToFirstAttribute())
-    return false;
-
-  while (true)
-  {
-    if (node.Name.Equals(&quot;language&quot;, StringComparison.OrdinalIgnoreCase)
-    &amp;amp;&amp;amp; node.Value.Equals(&quot;VBScript&quot;, StringComparison.OrdinalIgnoreCase))
-      return true;
-    if (!node.MoveToNextAttribute())
-      return false;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The &quot;GetVBScriptSections&quot; function will return a set of Tuples - pairs of values where the first value is the VBScript content and the second value is the line index that the content starts at in the WSC. It returns a set, rather than a single Tuple, since it is valid for WSC files to contain multiple script tags.&lt;/p&gt;
-
-&lt;p&gt;The source line index will be important for identifying where in the WSC that any warnings we generate later originate.&lt;/p&gt;
-
-&lt;h4&gt;2. Translate the VBScript sections&lt;/h4&gt;
-
-&lt;p&gt;Now that we&#39;ve got VBScript content, let&#39;s translate it into C#!&lt;/p&gt;
-
-&lt;p&gt;After the &lt;a href=&quot;https://www.nuget.org/packages/VBScriptTranslator/&quot;&gt;VBScriptTranslator&lt;/a&gt; NuGet package is installed, the following code may be written -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;foreach (var vbscriptCodeSection in GetVBScriptSections(wscContent))
-{
-  // When translating the VBScript, add in new lines before the content so
-  // that the lines indexes in the only-VBScript content match the line
-  // indexes in the WSC
-  var lineIndexInSourceFile = vbscriptCodeSection.Item2;
-  var blankLinesToInject = string.Join(
-    &quot;&quot;,
-    Enumerable.Repeat(Environment.NewLine, lineIndexInSourceFile)
-  );
-
-  var vbscriptContent = vbscriptCodeSection.Item1;
-  var translatedStatements = DefaultTranslator.Translate(
-    blankLinesToInject + vbscriptContent,
-    externalDependencies: new string[0],
-    warningLogger: message =&amp;gt;
-    {
-      if (message.StartsWith(&quot;Undeclared variable:&quot;))
-        Console.WriteLine(message);
-    }
-  );
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This actually goes a long way to identifying my original problem - in order for the &lt;a href=&quot;https://bitbucket.org/DanRoberts/vbscripttranslator&quot;&gt;VBScriptTranslator&lt;/a&gt; to do its thing, it needs to identify any undeclared variables (because it will have to create explicitly declared variables in the resulting C# code). When it encounters an undeclared variable, it will log a warning message - the code above writes to the console any warnings about undeclared variables.&lt;/p&gt;
-
-&lt;p&gt;Running the above against the content at the top of this post results in the following being written out:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Undeclared variable: &quot;iIndex&quot; (line 14)&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Success! Line 14 is, indeed, the line where an undeclared variable &quot;iIndex&quot; was accessed.&lt;/p&gt;
-
-&lt;p&gt;Now that we have a C# interpretation of the source code, though, it seems like we should be able to do more by bringing the impressive array of C# analysis tools that are now available to bear (ie. Roslyn aka &quot;Microsoft.CodeAnalysis&quot;).&lt;/p&gt;
-
-&lt;p&gt;Imagine if the original VBScript content was something more like this -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Function DoSomething(ByVal objOutput)
-  Dim intIndex, strName
-
-  &#39; .. loads of code
-
-  For intIndex = 1 To 5
-    objOutput.Write &quot;Entry &quot; &amp;amp; iIndex
-  Next
-
-  &#39; .. loads more code
-
-End Function
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Those legacy VBScript writers sure did love their huge functions with 100s of lines of code! So the &quot;loads of code&quot; sections above really could be &lt;em&gt;loads&lt;/em&gt; of code.&lt;/p&gt;
-
-&lt;p&gt;One day, someone has to change this long, long function a little bit and thinks that they&#39;ve removed the only use of the &quot;strName&quot; variable from the function. But it&#39;s hard to be sure since the function is so long and it&#39;s got conditions nested so deeply that it&#39;s headache-inducing. The &lt;a href=&quot;http://programmer.97things.oreilly.com/wiki/index.php/The_Boy_Scout_Rule&quot;&gt;Boy Scout Rule&lt;/a&gt; makes it seem attractive to remove the &quot;strName&quot; declaration if it&#39;s no longer used.. the problem is that this someone is not utterly, 100% confident that it&#39;s safe to remove. And it&#39;s not like they could just remove the variable declaration then re-run and rely on Option Explicit to inform them if the variable &lt;em&gt;is&lt;/em&gt; still used somewhere (for the reason outlined earlier).&lt;/p&gt;
-
-&lt;p&gt;One way to obtain confidence as to whether a variable is used or not is to continue to the next step..&lt;/p&gt;
-
-&lt;h4&gt;3. Build the generated C# using Roslyn&lt;/h4&gt;
-
-&lt;p&gt;Adding the &lt;a href=&quot;https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp&quot;&gt;Microsoft.CodeAnalysis.CSharp&lt;/a&gt; NuGet package allows us to write:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;private static IEnumerable&amp;lt;Tuple&amp;lt;string, int&amp;gt;&amp;gt; GetUnusedVariables(string translatedContent)
-{
-  // Inspired by code from www.tugberkugurlu.com (see http://goo.gl/HYT8eo)
-  var syntaxTree = CSharpSyntaxTree.ParseText(translatedContent);
-  var compilation = CSharpCompilation.Create(
-    assemblyName: &quot;VBScriptTranslatedContent&quot;,
-    syntaxTrees: new[] { syntaxTree },
-    references:
-      new[]
-      {
-        // VBScriptTranslator content requires System, System.Collections, System.Runtime
-        // and one of its own libraries to run. To identify these assemblies, one type
-        // from each is identified, then its Assembly location is used to create the
-        // MetadataReferences that we need here
-        typeof(object),
-        typeof(List&amp;lt;string&amp;gt;),
-        typeof(ComVisibleAttribute),
-        typeof(DefaultRuntimeSupportClassFactory),
-      }
-      .Select(type =&amp;gt; MetadataReference.CreateFromFile(type.Assembly.Location)),
-    options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
-  );
-  EmitResult result;
-  using (var ms = new MemoryStream())
-  {
-    result = compilation.Emit(ms);
-  }
-  if (!result.Success)
-  {
-    var errorMessages = result.Diagnostics
-      .Where(diagnostic =&amp;gt;
-        diagnostic.IsWarningAsError || (diagnostic.Severity == DiagnosticSeverity.Error)
-      )
-      .Select(diagnostic =&amp;gt; $&quot;{diagnostic.Id}: {diagnostic.GetMessage()}&quot;);
-    throw new Exception(
-      &quot;Compilation of generated C# code failed: &quot; + string.Join(&quot;, &quot;, errorMessages)
-    );
-  }
-  return result.Diagnostics
-    .Where(diagnostic =&amp;gt; diagnostic.Id == &quot;CS0219&quot;)
-    .Select(diagnostic =&amp;gt; Tuple.Create(
-      diagnostic.GetMessage(),
-      diagnostic.Location.GetLineSpan().StartLinePosition.Line
-    ));
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This will take the VBScriptTranslator-generated C# code and return information about any unused variables; a set of Tuples where each pair of values is a message about an unused variable and the line index of this variable&#39;s declaration.&lt;/p&gt;
-
-&lt;p&gt;We&#39;ll use this information in the final step..&lt;/p&gt;
-
-&lt;h4&gt;4. Use information gleaned from steps 2 and 3 to identify errors that might otherwise not be apparent before runtime&lt;/h4&gt;
-
-&lt;p&gt;In the VBScriptTranslator-calling code from step 2, we got a list of translated statements. Each of these represents a single line of C# code and has the properties &quot;Content&quot;, &quot;IndentationDepth&quot; and &quot;LineIndexOfStatementStartInSource&quot;. If we so desired, we could use the &quot;Content&quot; and &quot;IndentationDepth&quot; properties to print to the console the generated C# in a nicely-indented format.&lt;/p&gt;
-
-&lt;p&gt;But that&#39;s not important right now, what we really want are two things; a single string for the entirety of the generated C# content (to compile with Roslyn) and we want mappings for line index values in the C# back to line index values in the source VBScript. The C# code may have more or less lines than the VBScript (the translation process is not a simple line-to-line process), which is why these line index mappings will be important.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;// Each &quot;translatedStatements&quot; item has a Content string and a
-// LineIndexOfStatementStartInSource value (these are used to
-// create a single string of C# code and to map each line in
-// the C# back to a line in the VBScript)
-var translatedContent = string.Join(
-  Environment.NewLine,
-  translatedStatements.Select(c =&amp;gt; c.Content)
-);
-var lineIndexMappings = translatedStatements
-  .Select((line, index) =&amp;gt; new { Line = line, Index = index })
-  .ToDictionary(
-    entry =&amp;gt; entry.Index,
-    entry =&amp;gt; entry.Line.LineIndexOfStatementStartInSource
-  );
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now it&#39;s a simple case of bringing things together -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;foreach (var unusedVariableWarning in GetUnusedVariables(translatedContent))
-{
-  var unusedVariableWarningMessage = unusedVariableWarning.Item1;
-  var lineIndexInTranslatedContent = unusedVariableWarning.Item2;
-  var lineIndexInSourceContent = lineIndexMappings[lineIndexInTranslatedContent];
-
-  // Line index values are zero-based but warnings messages that refer to
-  // a line generally refer to a line NUMBER, which is one-based (hence
-  // the +1 operation)
-  Console.WriteLine(
-    $&quot;{unusedVariableWarningMessage} (line {lineIndexInSourceContent + 1})&quot;
-  );
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;If this was run against our second WSC sample, then we would get a new warning reported:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;The variable &#39;strname&#39; is assigned but its value is never used (line 13)&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Which is precisely what we wanted to find out - the &quot;strName&quot; variable is declared but never used, so it&#39;s safe for our Boy Scout Developer to remove it!&lt;/p&gt;
-
-&lt;h3&gt;Ooooooo, I&#39;m excited! What else could I do??&lt;/h3&gt;
-
-&lt;p&gt;I must admit, I haven&#39;t thought too much about what other possibilities are available when some static analysis is available for VBScript code, I was just intending to mess about with Roslyn a bit. But, thinking about it, a few ideas come to mind.&lt;/p&gt;
-
-&lt;p&gt;As an example of the frankly terrible errors that you get when working with VBScript WSCs, if you took the WSC example from earlier and decided to refactor the FUNCTION into a SUB (in VBScript, a SUB is basically a FUNCTION that can not return a value) and you made the silly mistake of changing the function &quot;header&quot; but not its &quot;terminator&quot; - eg.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Sub DoSomething(ByVal objOutput)
-  Dim intIndex: For intIndex = 1 To 5
-    objOutput.Write &quot;Entry &quot; &amp;amp; iIndex
-  Next
-End Function
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Then you would get a particularly unhelpful error when trying to load the WSC into the .net runtime -&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Cannot create ActiveX component.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;The problem is that the &quot;END FUNCTION&quot; should have been changed &quot;END SUB&quot;, since the first VBScript line has had the keyword &quot;FUNCTION&quot; changed to &quot;SUB&quot;. It would seem that the VBScript interpreter would have plenty of information available to it that would allow it to raise a more descriptive error. However, it chooses not to.&lt;/p&gt;
-
-&lt;p&gt;If this WSC content was run through the VBScriptTranslator, though, then an exception with the following error message would be raised:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Encountered must-handle keyword in statement content, this should have been handled by a previous AbstractBlockHandler: &quot;End&quot;, line 16 (this often indicates a mismatched block terminator, such as an END SUB when an END FUNCTION was expected)&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Ok.. I&#39;ll admit that this is not the friendliest error message ever formed. What exactly is a &quot;must-handle keyword&quot;? What is an &quot;AbstractBlockHandler&quot;?? But the good thing is that a line number is included along with a reference to an &quot;END&quot; token - and this hopefully is enough to point you at where the problem is.&lt;/p&gt;
-
-&lt;p&gt;Another idea that springs to mind is to try to identify functions that have inconsistent return types, in terms of whether they are value types or object references. In VBScript, you must be aware of this distinction at all times - if calling a function that you expect to return an object, then you need to write the function call using the &quot;SET&quot; keyword - eg.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Set objPrice = GetPriceDetails(order)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;But if you expect it to return a value type, then you would write it as&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;sngPrice = GetPriceDetails(order)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;VBScript has a special kind of null that represents an object with no value; &quot;Nothing&quot;. This allows you to write functions that will always return an object reference, but that may return a reference that means &quot;no result&quot; - eg.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Function GetPriceDetails(ByVal x)
-  If IsObject(x) Then
-    Set GetPriceDetails = x.PriceDetails
-    Exit Function
-  End If
-  Set GetPriceDetails = Nothing
-End Function
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;However, I&#39;ve seen code that forgets this and returns a value type &quot;Null&quot; instead - eg.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Function GetPriceDetails(ByVal x)
-  If IsObject(x) Then
-    Set GetPriceDetails = x.PriceDetails
-    Exit Function
-  End If
-  GetPriceDetails = Null
-End Function
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now, when calling GetPriceDetails, you will get an object reference sometimes and a value type other times. How do you know whether to use &quot;SET&quot; when calling it if you don&#39;t know whether you are expecting an object reference or a value type back? Answer: You don&#39;t. Most likely whoever wrote the code used &quot;SET&quot; because they tested the &quot;happy case&quot; (which returns an object reference) and forgot to test the less-happy case, which returned a &quot;Null&quot; value type (and that would fail at runtime if called with use of &quot;SET&quot;).&lt;/p&gt;
-
-&lt;p&gt;Well, this is something else that the VBScriptTranslator can help with. Instead of using the &lt;strong&gt;DefaultTranslator&lt;/strong&gt;&#39;s &quot;Translate&quot; method, we can use its &quot;Parse&quot; method. This will return a syntax tree describing the source code. By examining this data, we can identify cases, like the one above, which are almost certainly mistakes.&lt;/p&gt;
-
-&lt;p&gt;Below is a complete example. I won&#39;t go too deeply into the details, since that would send me even further off track than I am now!&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;static void Main(string[] args)
-{
-  var scriptContent = @&quot;
-    Function GetPriceDetails(ByVal x)
-      If IsObject(x) Then
-        Set GetPriceDetails = x.Price
-        Exit Function
-      End If
-      GetPriceDetails = Null
-    End Function&quot;;
-
-  // Note: An &quot;AbstractFunctionBlock&quot; is a Function, a Sub, or a Property - they are
-  // all variations on a theme
-  var codeBlocks = DefaultTranslator.Parse(scriptContent);
-  foreach (var function in GetAllCodeBlocks(codeBlocks).OfType&amp;lt;AbstractFunctionBlock&amp;gt;())
-  {
-    var returnValueSetters = GetAllCodeBlocks(function.Statements)
-      .OfType&amp;lt;ValueSettingStatement&amp;gt;()
-      .Where(ValueSetterTargetIs(function.Name));
-    var valueTypeReturnValueSetterLineNumbers = returnValueSetters
-      .Where(v =&amp;gt; v.ValueSetType == ValueSettingStatement.ValueSetTypeOptions.Let)
-      .Select(v =&amp;gt; v.ValueToSet.Tokens.First().LineIndex + 1)
-      .Distinct();
-    var objectReturnValueSetterLineNumbers = returnValueSetters
-      .Where(v =&amp;gt; v.ValueSetType == ValueSettingStatement.ValueSetTypeOptions.Set)
-      .Select(v =&amp;gt; v.ValueToSet.Tokens.First().LineIndex + 1)
-      .Distinct();
-    if (valueTypeReturnValueSetterLineNumbers.Any()
-    &amp;amp;&amp;amp; objectReturnValueSetterLineNumbers.Any())
-    {
-      Console.WriteLine(
-        &quot;{0} \&quot;{1}\&quot; has both LET (lines {2}) and SET (lines {3}) return values&quot;,
-        function.GetType().Name,
-        function.Name.Content,
-        string.Join(&quot;, &quot;, valueTypeReturnValueSetterLineNumbers),
-        string.Join(&quot;, &quot;, objectReturnValueSetterLineNumbers)
-      );
-    }
-  }
-  Console.ReadLine();
-}
-
-private static IEnumerable&amp;lt;ICodeBlock&amp;gt; GetAllCodeBlocks(IEnumerable&amp;lt;ICodeBlock&amp;gt; blocks)
-{
-  foreach (var block in blocks)
-  {
-    yield return block;
-
-    var parentBlock = codeBlock as IHaveNestedContent;
-    if (parentBlock != null)
-    {
-      foreach (var nestedBlock in GetAllCodeBlocks(parentBlock.AllExecutableBlocks))
-        yield return nestedBlock;
-    }
-  }
-}
-
-private static Func&amp;lt;ValueSettingStatement, bool&amp;gt; ValueSetterTargetIs(NameToken target)
-{
-  return valueSetter =&amp;gt;
-  {
-    if (valueSetter.ValueToSet.Tokens.Count() &amp;gt; 1)
-      return false;
-    var valueSetterTarget = valueSetter.ValueToSet.Tokens.Single();
-    return
-      (valueSetterTarget is NameToken) &amp;amp;&amp;amp;
-      valueSetterTarget.Content.Equals(target.Content, StringComparison.OrdinalIgnoreCase);
-  };
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This will write out the warning&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;FunctionBlock &quot;GetPriceDetails&quot; has both LET (lines 7) and SET (lines 4) return value setters&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Hurrah! Very helpful! No more waiting for run time execution to find out that some code paths return object references and some return value types! &lt;/p&gt;
-
-&lt;p&gt;Static analysis is very valuable. It&#39;s one of the reasons why I like C# so much because there is a lot of power in static analysis - and I&#39;m always looking out for ways to leverage it further, such as more strongly-typed classes (should a phone number really be a string or should it be a &quot;PhoneNumber&quot; class?) and technologies such as code contracts (which I&#39;ve been meaning to look back into for about a year now.. must stop making excuses).&lt;/p&gt;
-
-&lt;p&gt;But there&#39;s one other thing that could be done with VBScript WSCs and the VBScriptTranslator - instead of just translating the code to analyse it, it could be translated into C# and then &lt;em&gt;executed&lt;/em&gt; as C#! This way the (very expensive) COM boundary would be removed between the .net hosting environment and the old legacy component. &lt;em&gt;And&lt;/em&gt; the translated code will execute more quickly than VBScript. Double-win!&lt;/p&gt;
-
-&lt;p&gt;The output from a &quot;DefaultTranslator.Translate&quot; call is content that may be saved into a file that will then define a class called &quot;TranslatedProgram&quot; (this string content is what we were earlier pushing through Roslyn for further analysis). This may be executed using a runtime library included in the &lt;a href=&quot;https://www.nuget.org/packages/VBScriptTranslator&quot;&gt;VBScriptTranslator&lt;/a&gt; NuGet package (or that is available on its own, in the &lt;a href=&quot;https://www.nuget.org/packages/VBScriptTranslator.RuntimeSupport&quot;&gt;VBScriptTranslator.RuntimeSupport&lt;/a&gt; NuGet package) with the following code -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;// The &quot;compatLayer&quot; provides implementations of VBScript functions (like &quot;CInt&quot;)
-// to the translated code, along with functions such as &quot;CALL&quot;, which enable late-
-// bound method calls to be executed (which are then compiled into LINQ expressions
-// and cached so that subsequent calls are close in performance to hand-written C#)
-using (var compatLayer = DefaultRuntimeSupportClassFactory.Get())
-{
-  // The Runner&#39;s &quot;Go&quot; function returns a new instance of the translated
-  // component. The &quot;DoSomething&quot; method from the component may then be
-  // called. Translated names are all lower-cased, it makes the mismatch
-  // between VBScript&#39;s case insensitivity and C#&#39;s case SENSITIVITY
-  // less important.
-  var component = new TranslatedProgram.Runner(compatLayer).Go();
-  component.dosomething(new ConsoleWriter());
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3&gt;So.. not actually &lt;em&gt;that&lt;/em&gt; much Roslyn then?&lt;/h3&gt;
-
-&lt;p&gt;Sticklers for accuracy may note, at this point, that there hasn&#39;t actually been &lt;em&gt;that&lt;/em&gt; much use of Roslyn in a post that features that word in its title. Well.. yes, that is fair enough.&lt;/p&gt;
-
-&lt;p&gt;But, then, this entire post was only intended to be a slightly silly foray into &quot;just because I can..&quot; that included a detour through Roslyn. Let&#39;s not take things too seriously, though - I mean, &lt;em&gt;really&lt;/em&gt;, who is still even using &lt;a href=&quot;https://www.youtube.com/watch?v=T55ArHjeR1c&quot;&gt;VBScript in any serious production applications these days&lt;/a&gt;??&lt;/p&gt;
-</description>
-			<pubDate>Wed, 03 Feb 2016 23:41:00 GMT</pubDate>
 		</item>
 
 	</channel>
