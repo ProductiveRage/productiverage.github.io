@@ -1,0 +1,810 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - September 2016</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#393939" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+				<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					executeWhen(
+						function () { $("div.Content p.Comments").show(); },
+						function () { return (typeof ($) !== "undefined") },
+						10
+					);
+				</script>
+
+				<div class="Content ArchiveByMonth">
+					<h3 class="PostDate">6 September 2016</h3><h2><a id="Post105"></a><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></h2>
+
+<p>On the whole, React is fast. And, on the whole, writing a web application's code in C# using <a href="http://bridge.net/">Bridge.NET</a> has little overhead compared to writing it directly in JavaScript since Bridge generates sensible JavaScript.</p>
+
+<p>However, I recently wanted to convince myself that performance would not be an issue with the sort of projects that we'll be writing at work. We have some applications that are key to the business and yet have unfortunately been left to wither into a barely-maintinable state. The plan is to, over time, rewrite sections of the application using Bridge and React so that the application continues to work at all times but the old code is pruned away. This means that we need to be sure that any crazy forms that existed in the old codebase will work fine in the new architecture. In particular, there is a configuration page that allows a user to select options from a list of almost 1,000 checkboxes. Is this good UI? Most probably not. Do we need to be able to support such configurations in the future? Unfortunately, most probably yes. With a classic server-based MVC application, this would involve 1,000 checkboxes being rendered on the page and then a ginormous form post to send the changes back when the user clicks Save. In a React app, this sort of form will require virtual re-renders each time that a checkbox is clicked on.</p>
+
+<p>I thought I'd actually go with something slightly more demanding - 5,000 rows on a form where each row has two text boxes and a checkbox. If this can be handled easily then the worst case scenario that we have in mind for our rewrites (1,000 checkboxes) will be a walk in the park.</p>
+
+<p>So I whipped up a sample app and started using the Chrome profiler.. and the news was not good.</p>
+
+<p>The total time recorded by the profiler was 838ms to deal with the changing of a single checkbox. It's said that <a href="https://www.nngroup.com/articles/response-times-3-important-limits/">100ms is "the limit for having the user feel that the system is reacting instantaneously"</a> and 838ms is not just in the same ballpark. What's even worse is that this delay is experienced not only when a checkbox state is changed but also when any change is applied to one of the text boxes. Waiting almost a second for a checkbox to change is bad but waiting that long for each key press to be registered while typing is unbearable.</p>
+
+<h3>Examining the test app</h3>
+
+<p>The test app is fairly simple (and will contain no surprises if you've read my <a href="/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles">Writing React apps using Bridge.NET - The Dan Way</a> three part mini-series). However, the performance improvements that I'm going to cover will be in versions of libraries that I haven't yet released - namely, <a href="https://github.com/ProductiveRage/Bridge.React">Bridge.React</a>, <a href="https://github.com/ProductiveRage/Bridge.Immutable">ProductiveRage.Immutable</a> and <a href="https://github.com/ProductiveRage/Bridge.Immutable.Extensions">ProductiveRage.Immutable.Extensions</a>. The ProductiveRage.Immutable.Extensions library includes types that I commonly use when writing Bridge / React apps (such as <strong>RequestId</strong> and <strong>NonBlankTrimmedString</strong>). So you won't yet be able to try out the changes that I'm going to discuss but (hopefully!) the process of identifying what changes to make will be useful.</p>
+
+<p><em>(I'm planning to release the updates to these libraries around the time that Bridge 15.0 comes out, which should hopefully be this month - this will include the change to using Roslyn for parsing the C#, rather than NRefactory, and so C# 6 syntax will finally be supported, which is wonderful news).</em></p>
+
+<p>One of the types that will be available in ProductiveRage.Immutable.Extensions is <strong>CommonProps&lt;T&gt;</strong>. It's extremely common for component classes to require the same sort of information - what the initial state is, how to record requests to change that state, what class name to apply to the component, whether it should be in a disabled state or not and what key the component has (for cases where it appears as part of a set of dynamic child components).</p>
+
+<pre><code>public sealed class CommonProps&lt;T&gt; : IAmImmutable
+{
+    public CommonProps(
+        T state,
+        Action&lt;T&gt; onChange,
+        Optional&lt;ClassName&gt; className,
+        bool disabled,
+        Optional&lt;Any&lt;string, int&gt;&gt; key)
+    {
+        this.CtorSet(_ =&gt; _.State, state);
+        this.CtorSet(_ =&gt; _.OnChange, onChange);
+        this.CtorSet(_ =&gt; _.ClassName, className);
+        this.CtorSet(_ =&gt; _.Disabled, disabled);
+        this.CtorSet(_ =&gt; _.Key, key);
+    }
+
+    public T State { get; private set; }
+    public Action&lt;T&gt; OnChange { get; private set; }
+    public Optional&lt;ClassName&gt; ClassName { get; private set; }
+    public bool Disabled { get; private set; }
+    public Optional&lt;Any&lt;string, int&gt;&gt; Key { get; private set; }
+}
+</code></pre>
+
+<p>If you have a custom text box component then you want to be able to set the initial text value and to be informed when the user is performing an action that changes the text value. If you have a row in a table that shows a message (such as in the application built up in the three part series) then each row needs to have state describing what to show in the "Content" text box and what to show in the "Author" text box. When the user tries to change of those values, the row needs to have a way to say that the current message state is changing. As a final example, if there is a Message table component then the initial state will be a set of messages to render and the "OnChange" delegate will be used whenever a user wants to change a value in an existing row or when they want to remove a row or when they want to add a row. So it's a very common pattern and having a generic class to describe it means that there's less code to write for each component, since they can use this common class rather than each component having their <em>own</em> props class.</p>
+
+<p>There are some static factory methods to make initialising <strong>CommonProps&lt;T&gt;</strong> instances easier:</p>
+
+<pre><code>public static class CommonProps
+{
+    public static CommonProps&lt;T&gt; For&lt;T&gt;(
+        T state,
+        Action&lt;T&gt; onChange,
+        Optional&lt;ClassName&gt; className,
+        bool disabled)
+    {
+        return new CommonProps&lt;T&gt;(
+            state,
+            onChange,
+            className,
+            disabled,
+            Optional&lt;Any&lt;string, int&gt;&gt;.Missing
+        );
+    }
+
+    public static CommonProps&lt;T&gt; For&lt;T&gt;(
+        T state,
+        Action&lt;T&gt; onChange,
+        Optional&lt;ClassName&gt; className,
+        bool disabled)
+        Any&lt;string, int&gt; key)
+    {
+        return new CommonProps&lt;T&gt;(state, onChange, className, disabled, key);
+    }
+}
+</code></pre>
+
+<p>With that in mind, the code below should be easy to understand. For simplicity, state changes are handled directly by the container component (there is no Dispatcher) and all that the app does is render 5,000 rows and allow the user to change either text box in each row or the checkbox that each row has. It might seem like a lot of code but that's partly due to the way that the lines are wrapped to fit in the blog post and it's partly because I've included <em>all</em> of the non-shared-library code from the app, which is important so that we can talk about what is and isn't worth altering.</p>
+
+<pre><code>public static class App
+{
+    [Ready]
+    public static void Main()
+    {
+        React.Render(
+            new AppContainer(),
+            Document.GetElementById("main")
+        );
+    }
+}
+
+public sealed class AppContainer : Component&lt;object, AppContainer.State&gt;
+{
+    public AppContainer() : base(null) { }
+
+    protected override State GetInitialState()
+    {
+        return new State(
+            Enumerable.Range(1, 5000)
+                .Select(i =&gt; Saved.For(
+                    i.ToString(),
+                    new MessageEditState("Title" + i, "Content" + i, isAwesome: false)))
+                .ToSet()
+        );
+    }
+
+    public override ReactElement Render()
+    {
+        return DOM.Div(
+            new Attributes { ClassName = "wrapper" },
+            new MessageTable(
+                state.Messages,
+                updatedMessages =&gt; SetState(new State(updatedMessages)),
+                className: new ClassName("messages"),
+                disabled: false
+            )
+        );
+    }
+
+    public sealed class State : IAmImmutable
+    {
+        public State(Set&lt;Saved&lt;MessageEditState&gt;&gt; messages)
+        {
+            this.CtorSet(_ =&gt; _.Messages, messages);
+        }
+
+        public Set&lt;Saved&lt;MessageEditState&gt;&gt; Messages { get; private set; }
+    }
+}
+
+public sealed class Saved&lt;T&gt; : IAmImmutable
+{
+    public Saved(string id, T value)
+    {
+        this.CtorSet(_ =&gt; _.Id, id);
+        this.CtorSet(_ =&gt; _.Value, value);
+    }
+
+    public string Id { get; private set; }
+    public T Value { get; private set; }
+}
+
+public static class Saved
+{
+    public static Saved&lt;T&gt; For&lt;T&gt;(string id, T value)
+    {
+        return new Saved&lt;T&gt;(id, value);
+    }
+}
+
+public sealed class MessageEditState : IAmImmutable
+{
+    public MessageEditState(string title, string content, bool isAwesome)
+    {
+        this.CtorSet(_ =&gt; _.Title, title);
+        this.CtorSet(_ =&gt; _.Content, content);
+        this.CtorSet(_ =&gt; _.IsAwesome, isAwesome);
+    }
+
+    public string Title { get; private set; }
+    public string Content { get; private set; }
+    public bool IsAwesome { get; private set; }
+}
+
+public sealed class MessageTable : PureComponent&lt;CommonProps&lt;Set&lt;Saved&lt;MessageEditState&gt;&gt;&gt;&gt;
+{
+    public MessageTable(
+        Set&lt;Saved&lt;MessageEditState&gt;&gt; state,
+        Action&lt;Set&lt;Saved&lt;MessageEditState&gt;&gt;&gt; onChange,
+        Optional&lt;ClassName&gt; className,
+        bool disabled)
+            : base(CommonProps.For(state, onChange, className, disabled)) { }
+
+    public override ReactElement Render()
+    {
+        return DOM.Div(
+            new Attributes { ClassName = props.ClassName.ToNullableString() },
+            props.State.Select((savedMessage, index) =&gt; new MessageRow(
+                savedMessage.Value,
+                updatedMessage =&gt; props.OnChange(
+                    props.State.SetValue(index, props.State[index].With(_ =&gt; _.Value, updatedMessage))
+                ),
+                className: null,
+                disabled: false,
+                key: savedMessage.Id
+            ))
+        );
+    }
+}
+
+public sealed class MessageRow : PureComponent&lt;CommonProps&lt;MessageEditState&gt;&gt;
+{
+    public MessageRow(
+        MessageEditState state,
+        Action&lt;MessageEditState&gt; onChange,
+        Optional&lt;ClassName&gt; className,
+        bool disabled,
+        Any&lt;string, int&gt; key)
+            : base(CommonProps.For(state, onChange, className, disabled, key)) { }
+
+    public override ReactElement Render()
+    {
+        return DOM.Div(new Attributes { ClassName = props.ClassName.ToNullableString() },
+            props.TextBoxFor(_ =&gt; _.Title, "title"),
+            props.TextBoxFor(_ =&gt; _.Content, "content"),
+            props.CheckboxFor(_ =&gt; _.IsAwesome, "is-awesome")
+        );
+    }
+}
+
+public static class CommonPropsRenderer
+{
+    public static ReactElement TextBoxFor&lt;T&gt;(
+        this CommonProps&lt;T&gt; props,
+        [PropertyIdentifier]Func&lt;T, string&gt; propertyIdentifier,
+        string className)
+            where T : IAmImmutable
+    {
+        if (props == null)
+            throw new ArgumentNullException("props");
+        if (propertyIdentifier == null)
+            throw new ArgumentNullException("propertyIdentifier");
+
+        return DOM.Input(new InputAttributes
+        {
+            ClassName = className,
+            Value = propertyIdentifier(props.State),
+            OnChange = e =&gt; props.OnChange(props.State.With(propertyIdentifier, e.CurrentTarget.Value))
+        });
+    }
+
+    public static ReactElement CheckboxFor&lt;T&gt;(
+        this CommonProps&lt;T&gt; props,
+        [PropertyIdentifier]Func&lt;T, bool&gt; propertyIdentifier,
+        string className)
+            where T : IAmImmutable
+    {
+        if (props == null)
+            throw new ArgumentNullException("props");
+        if (propertyIdentifier == null)
+            throw new ArgumentNullException("propertyIdentifier");
+
+        return DOM.Input(new InputAttributes
+        {
+            Type = InputType.Checkbox,
+            ClassName = className,
+            Checked = propertyIdentifier(props.State),
+            OnChange = e =&gt; props.OnChange(props.State.With(propertyIdentifier, e.CurrentTarget.Checked))
+        });
+    }
+}
+</code></pre>
+
+<p>Except for the top-level <strong>AppContainer</strong>, every component is derived from <strong>PureComponent&lt;T&gt;</strong> which means that they automatically get implementations for React's "<a href="https://facebook.github.io/react/docs/component-specs.html#updating-shouldcomponentupdate">shouldComponentUpdate</a>" component life cycle method. This means that if a component needs to be re-rendered by the virtual DOM and if the new props settings are the same as its current props settings then the component will tell React "I'm not going to change, you do not need to re-render me (nor any of my child components)". I had originally hoped that this would mean that everything would be blazing fast without any additional work. However, as I've already said, this was not to be the case.</p>
+
+<p>Before I get stuck in, it's worth bearing in mind that this really is a <em>worst case</em> scenario. If there was a page that required 5,000 entry rows spread over ten different tables then changing any single row would only require the containing table to re-render, the other nine would not need to (the <strong>PureComponent&lt;T&gt;</strong>'s "shouldComponentUpdate" logic would take take of that). The difficulty here is that all 5,000 rows are in a <em>single</em> table and so changing any value in any row requires that the table potentially re-render all of its rows. I can't imagine very many UIs where presenting a user with so many rows simultaneously would be a particularly pleasant experience. Perhaps a spreadsheet of some sort? If you needed to present an interface with tens of thousands of inputs, there are ways to make it faster sucher as "chunking up" groups of rows (so that a change to any single row only requires the other rows in the group potentially to re-render and not any other group). A more complicated (but highly efficient) approach would be to work out what data is currently visible in the browser window and to only update that.</p>
+
+<p>Rather than considering these alternatives at this point, though, I want to see what we can do with the sample app as it's presented.</p>
+
+<h3>Profiling</h3>
+
+<p><img alt="Initial timings (not good)" src="/Content/Images/Posts/BridgeReactProfiling1.png" class="NoBorder HalfWidth" /></p>
+
+<p>The first thing to do was to start measuring and digging. I loaded the page in Chrome, opened the dev tools, went to the Profiles tab, clicked "Start CPU profiling", clicked a checkbox and then "Stop CPU profiling". The result is shown here. There is a natural split between two processes - the "Render" method of the <strong>MessageTable</strong> and the "receiveComponent" / "updateComponent" within React. I know that it's the <strong>MessageTable</strong>'s Render method because it calls "select" (the LINQ function) and that will be where the <strong>MessageTable</strong> creates each <strong>MessageRow</strong>. I'm going to concentrate there first since that's where most of the time is taken and it's also what I have the most direct control over.</p>
+
+<p>Just one thing to check first, though - I'm using the development build of the React library at this point, which has some overhead compared to the production version (since it performs more checks and does more work in order to provide more helpful warnings, where required). Changing to the production build trims some time off; the <strong>MessageTable</strong> "Render" method still takes 609ms but "receiveComponent" takes about half as much time, now 128ms. Clearly, the production build is not going to magically solve all of my problems.</p>
+
+<p>The Chrome dev tools allow you to zoom in on sections of the profiler results, so I tried to make sense of what I could see under the "Render" side. The problem was that it seemed like there were lots of nested calls where none were individually very expensive, it seemed like a cumulative problem with just how many components there were. There were a lot of calls to "constructor", which suggested to me that there may be some overhead in creating Bridge classes. To try to test this theory, I added a new option to the React bindings to enable components to be created by providing a static function rather than creating a component class that is derived from <strong>Component&lt;TProps, TState&gt;</strong> or <strong>PureComponent&lt;TProps&gt;</strong>. This allows <strong>MessageRow</strong> to be rewritten as:</p>
+
+<pre><code>public static class MessageRow
+{
+    [Name("MessageRow")]
+    public static ReactElement Render(CommonProps&lt;MessageEditState&gt; props)
+    {
+        return DOM.Div(new Attributes { ClassName = props.ClassName.ToNullableString() },
+            props.TextBoxFor(_ =&gt; _.Title, "title"),
+            props.TextBoxFor(_ =&gt; _.Content, "content"),
+            props.CheckboxFor(_ =&gt; _.IsAwesome, "is-awesome")
+        );
+    }
+}
+</code></pre>
+
+<p>which requires <strong>MessageTable</strong> to be changed to:</p>
+
+<pre><code>public sealed class MessageTable : PureComponent&lt;CommonProps&lt;Set&lt;Saved&lt;MessageEditState&gt;&gt;&gt;&gt;
+{
+    public MessageTable(
+        Set&lt;Saved&lt;MessageEditState&gt;&gt; state,
+        Action&lt;Set&lt;Saved&lt;MessageEditState&gt;&gt;&gt; onChange,
+        Optional&lt;ClassName&gt; className,
+        bool disabled)
+            : base(CommonProps.For(state, onChange, className, disabled)) { }
+
+    public override ReactElement Render()
+    {
+        return DOM.Div(
+            new Attributes { ClassName = props.ClassName.ToNullableString() },
+            props.State.Select((savedMessage, index) =&gt; StaticComponent.Pure(
+                MessageRow.Render,
+                CommonProps.For(
+                    savedMessage.Value,
+                    updatedMessage =&gt; props.OnChange(
+                        props.State.SetValue(index, props.State[index].With(_ =&gt; _.Value, updatedMessage))
+                    ),
+                    className: null,
+                    disabled: false,
+                    key: savedMessage.Id
+                )
+            ))
+        );
+    }
+}
+</code></pre>
+
+<p>This way, there are 5,000 <strong>MessageRow</strong> constructor calls saved each time that the <strong>MessageTable</strong> needs to re-render. (Under the hood, there is still an object created for each row but it's a very lightweight JavaScript object).</p>
+
+<p>This reduced the "Render" time to 496ms (it didn't affect "receiveComponent", but I didn't expect it to). This was a good start and made me want to look further into the cost of class instantiation in Bridge.</p>
+
+<h3>Bridge generic classes are more expensive</h3>
+
+<p>I whipped up a quick test to try creating lots of instances of a class, like this:</p>
+
+<pre><code>public static class App
+{
+    [Ready]
+    public static void Main()
+    {
+        var x = new MyClass[10000];
+        var timer = Stopwatch.StartNew();
+        for (var i = 0; i &lt; x.Length; i++)
+            x[i] = new MyClass("test");
+        timer.Stop();
+        Console.WriteLine(timer.ElapsedMilliseconds + "ms");
+    }
+}
+
+public class MyClass
+{
+    public MyClass(string value)
+    {
+        Value = value;
+    }
+    public string Value { get; private set; }
+}
+</code></pre>
+
+<p>That only reported 3ms, which didn't seem like it could be the source of the problem.</p>
+
+<p>Next I tried going one step more complicated. The <strong>MessageRow</strong> class that I've replaced with a static function was derived from <strong>PureComponent&lt;T&gt;</strong>, which means that each <strong>MessageRow</strong> instantiation also involved an instantiation of a generic base class. Clearly <em>something</em> is still taking up a lot time.. since the <strong>CommonProps&lt;T&gt;</strong> class used for <strong>MessageRow</strong> props was a generic type, maybe it's something specifically to  do with generic types.</p>
+
+<pre><code>public static class App
+{
+    [Ready]
+    public static void Main()
+    {
+        var x = new MyClass&lt;string&gt;[10000];
+        var timer = Stopwatch.StartNew();
+        for (var i = 0; i &lt; x.Length; i++)
+            x[i] = new MyClass&lt;string&gt;("test");
+        timer.Stop();
+        Console.WriteLine(timer.ElapsedMilliseconds + "ms");
+    }
+}
+
+public class MyClass&lt;T&gt;
+{
+    public MyClass(T value)
+    {
+        Value = value;
+    }
+    public T Value { get; private set; }
+}
+</code></pre>
+
+<p>This time it reported 35ms. Still not an earth-shattering duration in isolation but a big step up from the non-generic class' 3ms.</p>
+
+<p>One of the nice things about Bridge is that it allows you to tweak the way that the JavaScript is generated. By default, it will strike a good balance between creating reasonable JavaScript while also creating code that is faithful to the C# representation. For example, the <strong>MyClass&lt;T&gt;</strong> class will get the following JavaScript definition:</p>
+
+<pre><code>Bridge.define('Demo.MyClass$1', function (T) { return {
+    config: {
+        properties: {
+            Value: Bridge.getDefaultValue(T)
+        }
+    },
+    constructor: function (value) {
+        this.setValue(value);
+    }
+}; });
+</code></pre>
+
+<p>It's important that the type param "T" be available as a reference at runtime in case you ever need to access it (such as via a call to "default(T)" or when needing to instantiate another generic type whose type param will also be "T"). If the type "T" was not known to the runtime then it wouldn't be possible for the JavaScript code to do things like create a "default(T)" value appropriate to whatever "T" is; it should be null for a reference type, zero for a numeric type and false for a boolean.</p>
+
+<p>However, this creation of a class that encapsulates the type parameters must incur some overhead. For comparison, the non-generic class is defined in JavaScript with the following (note the lack of the function that captures "T") -</p>
+
+<pre><code>Bridge.define('Demo.MyClass', {
+    config: {
+        properties: {
+            Value: null
+        }
+    },
+    constructor: function (value) {
+        this.setValue(value);
+    }
+});
+</code></pre>
+
+<p>One of the options that Bridge has to affect what JavaScript is emitted is the [IgnoreGeneric] attribute. If this is applied to a class then it <em>won't</em> be given a JavaScript definition that includes the type parameter. This means that we can create a generic C# class (and continue to fully take advantage of the safety of the C# type system) but have Bridge generate a cheaper-to-instantiate JavaScript representation.</p>
+
+<p>There is one problem with this, though. The C# code:</p>
+
+<pre><code>[IgnoreGeneric]
+public class MyClass&lt;T&gt;
+{
+    public MyClass(T value)
+    {
+        Value = value;
+    }
+    public T Value { get; private set; }
+}
+</code></pre>
+
+<p>will result in the following JavaScript:</p>
+
+<pre><code>Bridge.define('Demo.MyClass$1', {
+    config: {
+        properties: {
+            Value: Bridge.getDefaultValue(T)
+        }
+    },
+    constructor: function (value) {
+        this.setValue(value);
+    }
+});
+</code></pre>
+
+<p>All properties are set to default values before any instances are created. This is important for cases where there are constructors where one or more properties are not explicitly set since they can't be left undefined. In C#, if you don't set a property on a class instance then it will be left as its default value (null for a reference type, zero for a number, etc..) and Bridge has to maintain this behaviour in JavaScript in order to be consistent. The problem here is that the type "T" is not available and so the "Value" property <em>can't</em> reliably be set to the correct default value.</p>
+
+<p>Since I'm considering tweaking the <strong>CommonProps&lt;T&gt;</strong> class, this doesn't apply - every property will explicitly be set in the constructor and so I don't have to worry about the case of a property needing to be left with the default value for the type.</p>
+
+<p>Thankfully, Bridge has <em>another</em> way to control the JavaScript that will be helpful. The [Template] attribute may be applied to property getters and setters and will change how these are represented. The default is for "setValue(x)" and "getValue()" methods to be created on the class (this may be seen in the above code, where "this.setValue(value)" is called in the constructor). If the getter is marked with [Template("value")] then anywhere that would previously have called "getValue()" will now simply access "value" and if the setter is marked with [Template("this.value")] then the property-setting (which only happens in the constructor for <strong>CommonProps&lt;T&gt;</strong>) will not be a call to "setValue", it will simply set "this.value".</p>
+
+<p>To apply this to the <strong>MyClass&lt;T&gt;</strong> class, the following C#:</p>
+
+<pre><code>[IgnoreGeneric]
+public class MyClass&lt;T&gt;
+{
+    public MyClass(T value)
+    {
+        Value = value;
+    }
+    public T Value { [Template("value")]get; [Template("this.value")]private set; }
+}
+</code></pre>
+
+<p>would result in the following JavaScript:</p>
+
+<pre><code>Bridge.define('Demo.MyClass$1', {
+    constructor: function (value) {
+        this.value = value;
+    }
+});
+</code></pre>
+
+<p>Note that the set-properties-to-default-values code is no longer present in the JavaScript class definition.</p>
+
+<p>Also, it's worth noting that this will affect anywhere that the property is accessed by code outside of the class. For example, if there is C# like this:</p>
+
+<pre><code>var x = new MyClass&lt;string&gt;("test");
+Console.WriteLine(x.Value);
+</code></pre>
+
+<p>.. then, instead of the property being accessed through a getter method -</p>
+
+<pre><code>var x = new Demo.MyClass$1("test");
+Bridge.Console.log(x.getValue());
+</code></pre>
+
+<p>.. it will be accessed directly -</p>
+
+<pre><code>var x = new Demo.MyClass$1("test");
+Bridge.Console.log(x.value);
+</code></pre>
+
+<p>This means that the JavaScript is a slightly less faithful representation of the C# code. However, the C# compiler is complete unaware of these changes and it will continue to enforce the type system in the same way that it always does. So (presuming you are writing all of your front end code in C#, using Bridge) you are not losing anything. In fact, there will be some more performance gains to be had by accessing properties directly like this - there is a small overhead to calling functions to return values (small, but not zero) as opposed to retrieving them directly.</p>
+
+<p>If this is applied to <strong>CommonProps&lt;T&gt;</strong> then we get the following:</p>
+
+<pre><code>[IgnoreGeneric]
+public sealed class CommonProps&lt;T&gt;
+{
+    public CommonProps(
+        T state,
+        Action&lt;T&gt; onChange,
+        Optional&lt;ClassName&gt; className,
+        bool disabled,
+        Optional&lt;Any&lt;string, int&gt;&gt; key)
+    {
+        if (state == null)
+            throw new ArgumentNullException("state");
+        if (onChange == null)
+            throw new ArgumentNullException("onChange");
+
+        State = state;
+        OnChange = onChange;
+        ClassName = className;
+        Disabled = disabled;
+        Key = key;
+    }
+
+    public T State
+    {
+        [Template("state")]get; [Template("this.state")]private set;
+    }
+    public Action&lt;T&gt; OnChange
+    {
+        [Template("onChange")]get; [Template("this.onChange")]private set;
+    }
+    public Optional&lt;ClassName&gt; ClassName
+    {
+        [Template("className")]get; [Template("this.className")]private set;
+    }
+    public bool Disabled
+    {
+        [Template("disabled")]get; [Template("this.disabled")]private set;
+    }
+    public Optional&lt;Any&lt;string, int&gt;&gt; Key
+    {
+        [Template("key")]get; [Template("this.key")]private set; 
+    }
+}
+</code></pre>
+
+<p>In order to do this, <strong>CommonProps&lt;T&gt;</strong> could no longer be an <strong>IAmImmutable</strong> type since the "CtorSet" and "With" methods won't work with properties that rely upon any fancy shenanigans like [Template]. This isn't a huge deal with the props on components since they are always created fresh for every render, unlike the other data types that represent state. For example, when the title value of a single row is edited, a new <strong>MessageEditState</strong> instance is created using something like the following:</p>
+
+<pre><code>newMessage = currentMessage.With(_ =&gt; _.Title, newTitle)
+</code></pre>
+
+<p>This is important for two reasons. Firstly, if "newTitle" is the same as the current title (which can happen if the user does something to a text box that doesn't actually change ft's value - such as paste a value into the box that is the same as the current value; React will identfy this as an input change even though the value hasn't actually been altered) then a new message instance is <em>not</em> created. When the <strong>MessageRow</strong> is re-rendered, because the <strong>MessageEditState</strong> reference won't have changed, the <strong>PureComponent</strong> logic will tell React that there is no need to re-render the row, which saves React some work. Secondly, it's very convenient to be able to get a new instance of a data type with a single property changed in this manner - otherwise you would have to deal with the has-this-value-really-changed logic and either define "With{x}" methods for each individual property or call the constructor with the value that has changed <em>and</em> all of the ones that haven't. Which gets old very quickly. (You <em>could</em> use mutable data types but then you wouldn't be able perform inexpensive reference equality checks when trying to determine whether a component needs to re-render and so you end up contemplating expensive deep equality checks or you give up on implementing "shouldComponentUpdate" and force React to do much more work).</p>
+
+<p>One final note: the CtorSet method that <strong>IAmImmutable</strong> types can use ensures that no value is ever null (if you have a property that may or may not have a value then use the <strong>Optional&lt;T&gt;</strong> type - which can never be null itself since it's a struct). Since <strong>CommonProps&lt;T&gt;</strong> isn't using CtorSet any more, the constructor needs to include explicit checks for null "state" and "onChange" constructor arguments.</p>
+
+<p>With this change to <strong>CommonProps&lt;T&gt;</strong>, the "Render" time is now 124ms in the React development build. Interestingly, in the React production, the "Render" time is reduced to 69ms and the "receiveComponent" drops to 98ms. A combined 167ms is much better than the original 838ms.</p>
+
+<p>With these improvements, there is only a slightly perceptible delay felt when clicking a checkbox. Unfortunately, though, trying to type into a text box when there is a 167ms delay between key presses being recognised is not pleasant. So it's back to the profiler..</p>
+
+<h3>Optional&lt;T&gt;</h3>
+
+<p>Taking another snapshot with the profiler, I'm still going to concentrate on the "Render" method (for the same reasons as before; it's still the slower part of the work and it's still what I can most easily control). This time I see a lot of calls to a generic constructor resulting from "op_Implicit" calls.</p>
+
+<p><img alt="Unnecessary Optional instantiation" src="/Content/Images/Posts/BridgeReactProfiling2.png" class="NoBorder FullWidth" /></p>
+
+<p>The "op_Implicit" methods are the JavaScript representations of implicit operator methods in C#. So, where the <strong>Optional&lt;T&gt;</strong> struct has an implicit operator from "T" -</p>
+
+<pre><code>public static implicit operator Optional&lt;T&gt;(T value)
+{
+    return new Optional&lt;T&gt;(value);
+}
+</code></pre>
+
+<p>the following JavaScript is generated:</p>
+
+<pre><code>op_Implicit: function (value) {
+    return new (ProductiveRage.Immutable.Optional$1(T)).$constructor1(value);
+}
+</code></pre>
+
+<p>When a <strong>CommonProps</strong> instance is created with a null "className" argument (which is the case for every <strong>MessageRow</strong> in the sample app), each call to the <strong>CommonProps</strong> "For" method requires the null reference to be implicitly cast to an <strong>Optional&lt;ClassName&gt;</strong>.</p>
+
+<pre><code>public static CommonProps&lt;T&gt; For&lt;T&gt;(
+    T state,
+    Action&lt;T&gt; onChange,
+    Optional&lt;ClassName&gt; className,
+    bool disabled,
+    Any&lt;string, int&gt; key)
+</code></pre>
+
+<p>Each implicit cast requires a call to the implicit operator, which creates a new <strong>Optional&lt;ClassName&gt;</strong> instance. This feels like unnecessary work.</p>
+
+<p>The <strong>Optional&lt;T&gt;</strong> has a public static "Missing" property, so one way to avoid the creation of unnecessary instances would be to use</p>
+
+<pre><code>className: Optional&lt;ClassName&gt;.Missing
+</code></pre>
+
+<p>instead of</p>
+
+<pre><code>className: null
+</code></pre>
+
+<p>But there were a few problems with this. Firstly, <strong>Optional&lt;T&gt;</strong> is part of the ProductiveRage.Immutable library and I would like it to be as easy to use as possible. I think that it would be quite difficult to justify a significant performance cost in passing null as an Optional rather than "Missing" when there is an implicit cast to perform the translation. Secondly, the "Missing" property was implemented as</p>
+
+<pre><code>    public static Optional&lt;T&gt; Missing { get { new Optional&lt;T&gt;(default(T), false); } }
+</code></pre>
+
+<p>.. which means that a new instance is created each time it's called anyway, so actually the "Missing" property wouldn't magically solve anything.</p>
+
+<p>It would make more sense for the "Missing" property to be set only once, something like:</p>
+
+<pre><code>public static Optional&lt;T&gt; Missing { get { return _missing; } }
+private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(default(T), false);
+</code></pre>
+
+<p>When I first wrote the <strong>Optional&lt;T&gt;</strong> struct, that is how I did it. Unfortunately, there was a problem with Bridge 1.10 and I removed the private "_missing" field as a workaround. The Bridge Team have long since resolved that issue and so I can put the code back how I want it.</p>
+
+<p>This also allows for a tweak to the implicit operator method -</p>
+
+<pre><code>public static implicit operator Optional&lt;T&gt;(T value)
+{
+    if (value == null)
+        return _missing;
+    return new Optional&lt;T&gt;(value);
+}
+</code></pre>
+
+<p>Now, one might presume, there would now be no unnecessary instantiations whether "className: Optional&lt;ClassName&gt;.Missing" <em>or</em> "className: null" was specified. Unfortunately, we're not quite there yet..</p>
+
+<p>When structs are passed around in C#, they are copied. This is why they appear to be passed "by value" rather than "by reference" - if a mutable struct is instantiated in method F1 and passed to F2, any changes made to it in F2 are not visible in F1 since they both have different copies of the struct. To ensure consistency with .net, Bridge's JavaScript must do something similar - any time that a struct is passed around, it is copied. This means that a new instance <em>will</em> be created each time that "Missing" or "_missing" is accessed. This is wasteful with the <strong>Optional&lt;T&gt;</strong> struct since it's immutable; since nothing can alter its contents, there is no need to copy it when passing it around.</p>
+
+<p>Bridge has another workaround for this, the [Immutable] attribute. When applied to the <strong>Optional&lt;T&gt;</strong> struct, the Bridge compiler will not copy instances when they are passed from one method to another. These changes reduce the "Render" time to 93ms in the React development build and 61ms in production.</p>
+
+<p>While this is an improvement, I can still see what looks like a lot of time spent on generic type <em>stuff</em> in the profiler. Even though the op_Implicit calls for null values are sharing instances now, in order to get to the static op_Implicit method it is necessary to access the representation of the <strong>Optional&lt;T&gt;</strong> struct for the particular type. And, I suspect, this incurs a similar cost to instantiating a new instance.</p>
+
+<p>To confirm this, I added [IgnoreGeneric] to <strong>Optional&lt;T&gt;</strong>. This was not something I really wanted to do since it would require a minor change to the struct's public interface. There are two properties; IsDefined and Value. Currently there are two states - a state where IsDefined is true and Value has a specified "T" value and a state where IsDefined is false and Value has the default value of "T" (null for a reference type, zero for a number). With the [IgnoreGeneric] attribute, it would not be possible to set the default value of "T" for the "Missing" value state since "T" would not be available at runtime. If I was to apply [IgnoreGeneric] to the struct then "Value" would have to be considered undefined if IsDefined was false. This isn't a huge deal since I think that that's how it should have been interpreted anyway, really (an alternative would have been to be more aggressive and throw an exception from the Value property getter if IsDefined is false) but it's still a change.</p>
+
+<p>When I added [IgnoreGeneric] to the <strong>CommonProps&lt;T&gt;</strong> class, I had to apply some workarounds to deal with the type "T" not being available at runtime. I had to do similar with <strong>Optional&lt;T&gt;</strong>. The first change was that the following line clearly wouldn't work:</p>
+
+<pre><code>private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(default(T), false);
+</code></pre>
+
+<p>so it was replaced with this:</p>
+
+<pre><code>private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(Script.Write&lt;T&gt;("null"), false);
+</code></pre>
+
+<p>The "Script.Write&lt;T&gt;" method in Bridge is a way to directly emit JavaScript (simply "null" in this case) and to tell the C# type system that a value of type "T" is being returned. So, here, the "T" is only used by the C# compiler and does not have any impact on runtime. The compromise is that "null" is being used for the Value property of the "Missing" instance regardless of the type of "T". So Value will be null even if "T" is an int or a bool in cases where IsDefined is false.</p>
+
+<p>The other change required completely removing the C# backing field for the Value property -</p>
+
+<pre><code>private readonly T value;
+</code></pre>
+
+<p>The problem was that Bridge would generate a struct definition that would try to set "value" to default(T), which it would not be able to do since "T" would not be available at runtime.</p>
+
+<p>Instead, the value would be written directly by more raw JavaScript. The constructor changed from:</p>
+
+<pre><code>public Optional(T value) : this(value, value != null) { }
+    this.isDefined = isDefined &amp;&amp; (value != null);
+    this.value = value;
+}
+</code></pre>
+
+<p>to:</p>
+
+<pre><code>public Optional(T value) : this(value, value != null) { }
+    this.isDefined = isDefined &amp;&amp; (value != null);
+    Script.Write("this.value = {0}", value);
+}
+</code></pre>
+
+<p>and the property getter changed from:</p>
+
+<pre><code>public T Value { get { return this.value; } }
+</code></pre>
+
+<p>to:</p>
+
+<pre><code>public T Value { get { return Script.Write&lt;T&gt;("this.value"); } }
+</code></pre>
+
+<p>Finally, anywhere in the struct that the backing field was accessed was changed so that it went via the public "Value" property getter.</p>
+
+<p>This meant that there were no potential runtime errors waiting to occur within the struct (none of the code relied on access to the type "T"), that there was type safety for any code instantiating or accessing the struct in C# <em>and</em> it meant that the struct could have [IgnoreGeneric] applied and hence (theoretically) allow the application to work more efficiently.</p>
+
+<p>It worked. Using the development build of React, the "Render" time of the <strong>MessageTable</strong> was now 36ms and the "receiveComponent" time 141ms. With the production build, "Render" took "9ms" and "receiveComponent" 49ms.</p>
+
+<p>That's sufficiently fast that there is no perceived delay while typing into the text boxes. And, to put things back into context, the original "worst case scenario" that I was planning for was to deal with up to 1,000 checkboxes. I've been measuring the time for 5,000 rows that include two text boxes <em>and</em> a checkbox. If the sample app was changed to render only 1,000 rows then the React production build handles changes to elements by spending 5ms in "Render" and 17ms in "receiveComponent". This means that there is no chance of perceptible lag in typing and certainly no perceptible delay in checking or unchecking a checkbox.</p>
+
+<h3>To summarise</h3>
+
+<p>I think that it's fair to call this a success! There are several things that I've particuarly enjoyed in this investigation. Firstly, it's been a good reminder of just how powerful the dev tools are that come free with browsers these days. I was using Chrome but I believe that IE and Firefox have equivalent functionality. Secondly, the options that the Bridge Team have made available are really well thought out and very clever when you examine them - in isolation, each seems quite simple but it's the recognition that <em>sometimes</em> it might be beneficial to have more control over the generated JavaScript that helps make Bridge so powerful and to enable me to do what I've done here. Thirdly, almost all of the changes that I've talked about here were made to my "Bridge.React", "ProductiveRage.Immutable", "ProductiveRage.Immutable.Extensions" libraries. That means that, when I make these changes live, anyone using those libraries will automatically reap the benefit. The only change that I made to the sample app was to change the <strong>MessageRow</strong> implementation from being a component class to being a static function.</p>
+
+<p><em>Note: I tried reverting <strong>MessageRow</strong> back to being a component class and the "Render" time was still only 20ms when editing one of 1,000 rows (compared to 5ms when <strong>MessageRow</strong> is implemented as a static function). The time spent by React in "receiveComponent" was unaffected. This means that simply updating the Bridge.React, ProductiveRage.Immutable and ProductiveRage.Immutable.Extensions packages could significantly improve the performance of complex applications with zero code changes.</em></p>
+
+<p>This is one of the benefits of using libraries where the authors care about performance and strive to improve it over time. It reminds me of when the Bridge Team added compiler support for "<a href="http://bridge.net/bridge-1-11-released/#Lifted_Anonymous_Functions">Lifted Anonyomous Functions</a>" (something I suggested after going on a bit of a JavaScript performance research binge a few months ago - but something that the team there deserve much credit for making work) and it reminds me of articles that I've read about React which talk about how there are many optimisations yet to be made that their current API will make possible (see "<a href="https://github.com/acdlite/react-fiber-architecture">React Fiber Architecture</a>"); all that we'll have to do in the future is upgrade the version of the library being used and get more performance!</p>
+
+<h3>Update: The Bridge Team ruin my fun</h3>
+
+<p>I've been researching and writing this post over the space of a couple of weeks. Once I had observed that generic classes are slower to instantiate in Bridge than non-generic classes, and while I was looking into the workarounds required sometimes in order to use [IgnoreGeneric], I raised a bug on the <a href="http://forums.bridge.net/forum/bridge-net-pro/bugs">Bridge Forums</a> relating to properties that are initially to default(T) (which fails when "T" is not available at runtime).</p>
+
+<p>While looking into the issue for me, they noted that they found a way to optimise the instantiation of generic types (looking at the <a href="https://github.com/bridgedotnet/Bridge/pull/1740/files">pull request</a> it seems like the work required to form a new specialisation of a class / struct for a given "T" is now cached rather than being repeated each time that a new <strong>Whatever&lt;T&gt;</strong> is created).</p>
+
+<p>The good news is that this means that there will very soon be almost zero overhead to generic types in Bridge! The bad news is that many of the findings documented here are unnecessary.. However, that's the sort of bad news that I'm happy to accept! The compromise around <strong>Optional&lt;T&gt;</strong>'s "Value" property (for cases where "IsDefined" is false) will no longer be necessary. And I won't have to worry so much in the future; if I'm creating a library class, should I be avoiding generics (or using [IgnoreGeneric]) in case it's used in an expensive loop anywhere?</p>
+
+<p>Despite being out of date even before being published, I'll leave this post here for posterity. I had a lot of fun digging into performance tuning my Bridge / React app. And, in a roundabout way, I feel like I contributed to the optimisation (which I imagine will makes its way into the next release of Bridge) that everyone using Bridge can benefit from! I'm going to call that a win.</p>
+<p class="PostTime">Posted at 22:04</p>
+						<p class="Comments">
+							<a href="/performance-tuning-a-bridgenet-react-app#disqus_thread" data-disqus-identifier="105">Comments</a>
+						</p>
+				</div>
+
+				<script type="text/javascript">
+					(function () {
+						var s = document.createElement("script");
+						s.type = "text/javascript";
+						s.async = true;
+						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+					} ());
+				</script>
+
+				<div class="Footer">
+					Productive Rage 2016
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/retrieving-performance-counter-from-a-remote-pc-using-c-sharp">Retrieving Performance Counter from a remote PC using C#</a></li><li><a href="/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days">Why is saving Performance Monitor (PerfMon) settings so difficult these days?!</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary">A static type system is a wonderful message to the present and future - Supplementary</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/9/2016">September 2016 (1)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>

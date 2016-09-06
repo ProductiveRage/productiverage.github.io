@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet href="/Content/RSS.xslt" type="text/xsl" media="screen"?>
 <rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
 
@@ -10,7 +10,7 @@
 		<description>Dan's techie ramblings</description>
 		<language>en-gb</language>
 
-		<lastBuildDate>Wed, 10 Aug 2016 21:01:00 GMT</lastBuildDate>
+		<lastBuildDate>Tue, 06 Sep 2016 22:04:00 GMT</lastBuildDate>
 		<docs>http://blogs.law.harvard.edu/tech/rss</docs>
 		
 		<image>
@@ -24,10 +24,709 @@
 		<xhtml:meta xmlns:xhtml="http://www.w3.org/1999/xhtml" name="robots" content="noindex" /> 
 
 		<item>
+			<title>Performance tuning a Bridge.NET / React app</title>
+            <link>http://localhost:4252/performance-tuning-a-bridgenet-react-app</link>
+			<guid>http://localhost:4252/performance-tuning-a-bridgenet-react-app</guid>
+			<description>&lt;p&gt;On the whole, React is fast. And, on the whole, writing a web application&#39;s code in C# using &lt;a href=&quot;http://bridge.net/&quot;&gt;Bridge.NET&lt;/a&gt; has little overhead compared to writing it directly in JavaScript since Bridge generates sensible JavaScript.&lt;/p&gt;
+
+&lt;p&gt;However, I recently wanted to convince myself that performance would not be an issue with the sort of projects that we&#39;ll be writing at work. We have some applications that are key to the business and yet have unfortunately been left to wither into a barely-maintinable state. The plan is to, over time, rewrite sections of the application using Bridge and React so that the application continues to work at all times but the old code is pruned away. This means that we need to be sure that any crazy forms that existed in the old codebase will work fine in the new architecture. In particular, there is a configuration page that allows a user to select options from a list of almost 1,000 checkboxes. Is this good UI? Most probably not. Do we need to be able to support such configurations in the future? Unfortunately, most probably yes. With a classic server-based MVC application, this would involve 1,000 checkboxes being rendered on the page and then a ginormous form post to send the changes back when the user clicks Save. In a React app, this sort of form will require virtual re-renders each time that a checkbox is clicked on.&lt;/p&gt;
+
+&lt;p&gt;I thought I&#39;d actually go with something slightly more demanding - 5,000 rows on a form where each row has two text boxes and a checkbox. If this can be handled easily then the worst case scenario that we have in mind for our rewrites (1,000 checkboxes) will be a walk in the park.&lt;/p&gt;
+
+&lt;p&gt;So I whipped up a sample app and started using the Chrome profiler.. and the news was not good.&lt;/p&gt;
+
+&lt;p&gt;The total time recorded by the profiler was 838ms to deal with the changing of a single checkbox. It&#39;s said that &lt;a href=&quot;https://www.nngroup.com/articles/response-times-3-important-limits/&quot;&gt;100ms is &quot;the limit for having the user feel that the system is reacting instantaneously&quot;&lt;/a&gt; and 838ms is not just in the same ballpark. What&#39;s even worse is that this delay is experienced not only when a checkbox state is changed but also when any change is applied to one of the text boxes. Waiting almost a second for a checkbox to change is bad but waiting that long for each key press to be registered while typing is unbearable.&lt;/p&gt;
+
+&lt;h3&gt;Examining the test app&lt;/h3&gt;
+
+&lt;p&gt;The test app is fairly simple (and will contain no surprises if you&#39;ve read my &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Writing React apps using Bridge.NET - The Dan Way&lt;/a&gt; three part mini-series). However, the performance improvements that I&#39;m going to cover will be in versions of libraries that I haven&#39;t yet released - namely, &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.React&quot;&gt;Bridge.React&lt;/a&gt;, &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; and &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.Immutable.Extensions&quot;&gt;ProductiveRage.Immutable.Extensions&lt;/a&gt;. The ProductiveRage.Immutable.Extensions library includes types that I commonly use when writing Bridge / React apps (such as &lt;strong&gt;RequestId&lt;/strong&gt; and &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;). So you won&#39;t yet be able to try out the changes that I&#39;m going to discuss but (hopefully!) the process of identifying what changes to make will be useful.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;(I&#39;m planning to release the updates to these libraries around the time that Bridge 15.0 comes out, which should hopefully be this month - this will include the change to using Roslyn for parsing the C#, rather than NRefactory, and so C# 6 syntax will finally be supported, which is wonderful news).&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;One of the types that will be available in ProductiveRage.Immutable.Extensions is &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt;. It&#39;s extremely common for component classes to require the same sort of information - what the initial state is, how to record requests to change that state, what class name to apply to the component, whether it should be in a disabled state or not and what key the component has (for cases where it appears as part of a set of dynamic child components).&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class CommonProps&amp;lt;T&amp;gt; : IAmImmutable
+{
+    public CommonProps(
+        T state,
+        Action&amp;lt;T&amp;gt; onChange,
+        Optional&amp;lt;ClassName&amp;gt; className,
+        bool disabled,
+        Optional&amp;lt;Any&amp;lt;string, int&amp;gt;&amp;gt; key)
+    {
+        this.CtorSet(_ =&amp;gt; _.State, state);
+        this.CtorSet(_ =&amp;gt; _.OnChange, onChange);
+        this.CtorSet(_ =&amp;gt; _.ClassName, className);
+        this.CtorSet(_ =&amp;gt; _.Disabled, disabled);
+        this.CtorSet(_ =&amp;gt; _.Key, key);
+    }
+
+    public T State { get; private set; }
+    public Action&amp;lt;T&amp;gt; OnChange { get; private set; }
+    public Optional&amp;lt;ClassName&amp;gt; ClassName { get; private set; }
+    public bool Disabled { get; private set; }
+    public Optional&amp;lt;Any&amp;lt;string, int&amp;gt;&amp;gt; Key { get; private set; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;If you have a custom text box component then you want to be able to set the initial text value and to be informed when the user is performing an action that changes the text value. If you have a row in a table that shows a message (such as in the application built up in the three part series) then each row needs to have state describing what to show in the &quot;Content&quot; text box and what to show in the &quot;Author&quot; text box. When the user tries to change of those values, the row needs to have a way to say that the current message state is changing. As a final example, if there is a Message table component then the initial state will be a set of messages to render and the &quot;OnChange&quot; delegate will be used whenever a user wants to change a value in an existing row or when they want to remove a row or when they want to add a row. So it&#39;s a very common pattern and having a generic class to describe it means that there&#39;s less code to write for each component, since they can use this common class rather than each component having their &lt;em&gt;own&lt;/em&gt; props class.&lt;/p&gt;
+
+&lt;p&gt;There are some static factory methods to make initialising &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt; instances easier:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static class CommonProps
+{
+    public static CommonProps&amp;lt;T&amp;gt; For&amp;lt;T&amp;gt;(
+        T state,
+        Action&amp;lt;T&amp;gt; onChange,
+        Optional&amp;lt;ClassName&amp;gt; className,
+        bool disabled)
+    {
+        return new CommonProps&amp;lt;T&amp;gt;(
+            state,
+            onChange,
+            className,
+            disabled,
+            Optional&amp;lt;Any&amp;lt;string, int&amp;gt;&amp;gt;.Missing
+        );
+    }
+
+    public static CommonProps&amp;lt;T&amp;gt; For&amp;lt;T&amp;gt;(
+        T state,
+        Action&amp;lt;T&amp;gt; onChange,
+        Optional&amp;lt;ClassName&amp;gt; className,
+        bool disabled)
+        Any&amp;lt;string, int&amp;gt; key)
+    {
+        return new CommonProps&amp;lt;T&amp;gt;(state, onChange, className, disabled, key);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;With that in mind, the code below should be easy to understand. For simplicity, state changes are handled directly by the container component (there is no Dispatcher) and all that the app does is render 5,000 rows and allow the user to change either text box in each row or the checkbox that each row has. It might seem like a lot of code but that&#39;s partly due to the way that the lines are wrapped to fit in the blog post and it&#39;s partly because I&#39;ve included &lt;em&gt;all&lt;/em&gt; of the non-shared-library code from the app, which is important so that we can talk about what is and isn&#39;t worth altering.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static class App
+{
+    [Ready]
+    public static void Main()
+    {
+        React.Render(
+            new AppContainer(),
+            Document.GetElementById(&quot;main&quot;)
+        );
+    }
+}
+
+public sealed class AppContainer : Component&amp;lt;object, AppContainer.State&amp;gt;
+{
+    public AppContainer() : base(null) { }
+
+    protected override State GetInitialState()
+    {
+        return new State(
+            Enumerable.Range(1, 5000)
+                .Select(i =&amp;gt; Saved.For(
+                    i.ToString(),
+                    new MessageEditState(&quot;Title&quot; + i, &quot;Content&quot; + i, isAwesome: false)))
+                .ToSet()
+        );
+    }
+
+    public override ReactElement Render()
+    {
+        return DOM.Div(
+            new Attributes { ClassName = &quot;wrapper&quot; },
+            new MessageTable(
+                state.Messages,
+                updatedMessages =&amp;gt; SetState(new State(updatedMessages)),
+                className: new ClassName(&quot;messages&quot;),
+                disabled: false
+            )
+        );
+    }
+
+    public sealed class State : IAmImmutable
+    {
+        public State(Set&amp;lt;Saved&amp;lt;MessageEditState&amp;gt;&amp;gt; messages)
+        {
+            this.CtorSet(_ =&amp;gt; _.Messages, messages);
+        }
+
+        public Set&amp;lt;Saved&amp;lt;MessageEditState&amp;gt;&amp;gt; Messages { get; private set; }
+    }
+}
+
+public sealed class Saved&amp;lt;T&amp;gt; : IAmImmutable
+{
+    public Saved(string id, T value)
+    {
+        this.CtorSet(_ =&amp;gt; _.Id, id);
+        this.CtorSet(_ =&amp;gt; _.Value, value);
+    }
+
+    public string Id { get; private set; }
+    public T Value { get; private set; }
+}
+
+public static class Saved
+{
+    public static Saved&amp;lt;T&amp;gt; For&amp;lt;T&amp;gt;(string id, T value)
+    {
+        return new Saved&amp;lt;T&amp;gt;(id, value);
+    }
+}
+
+public sealed class MessageEditState : IAmImmutable
+{
+    public MessageEditState(string title, string content, bool isAwesome)
+    {
+        this.CtorSet(_ =&amp;gt; _.Title, title);
+        this.CtorSet(_ =&amp;gt; _.Content, content);
+        this.CtorSet(_ =&amp;gt; _.IsAwesome, isAwesome);
+    }
+
+    public string Title { get; private set; }
+    public string Content { get; private set; }
+    public bool IsAwesome { get; private set; }
+}
+
+public sealed class MessageTable : PureComponent&amp;lt;CommonProps&amp;lt;Set&amp;lt;Saved&amp;lt;MessageEditState&amp;gt;&amp;gt;&amp;gt;&amp;gt;
+{
+    public MessageTable(
+        Set&amp;lt;Saved&amp;lt;MessageEditState&amp;gt;&amp;gt; state,
+        Action&amp;lt;Set&amp;lt;Saved&amp;lt;MessageEditState&amp;gt;&amp;gt;&amp;gt; onChange,
+        Optional&amp;lt;ClassName&amp;gt; className,
+        bool disabled)
+            : base(CommonProps.For(state, onChange, className, disabled)) { }
+
+    public override ReactElement Render()
+    {
+        return DOM.Div(
+            new Attributes { ClassName = props.ClassName.ToNullableString() },
+            props.State.Select((savedMessage, index) =&amp;gt; new MessageRow(
+                savedMessage.Value,
+                updatedMessage =&amp;gt; props.OnChange(
+                    props.State.SetValue(index, props.State[index].With(_ =&amp;gt; _.Value, updatedMessage))
+                ),
+                className: null,
+                disabled: false,
+                key: savedMessage.Id
+            ))
+        );
+    }
+}
+
+public sealed class MessageRow : PureComponent&amp;lt;CommonProps&amp;lt;MessageEditState&amp;gt;&amp;gt;
+{
+    public MessageRow(
+        MessageEditState state,
+        Action&amp;lt;MessageEditState&amp;gt; onChange,
+        Optional&amp;lt;ClassName&amp;gt; className,
+        bool disabled,
+        Any&amp;lt;string, int&amp;gt; key)
+            : base(CommonProps.For(state, onChange, className, disabled, key)) { }
+
+    public override ReactElement Render()
+    {
+        return DOM.Div(new Attributes { ClassName = props.ClassName.ToNullableString() },
+            props.TextBoxFor(_ =&amp;gt; _.Title, &quot;title&quot;),
+            props.TextBoxFor(_ =&amp;gt; _.Content, &quot;content&quot;),
+            props.CheckboxFor(_ =&amp;gt; _.IsAwesome, &quot;is-awesome&quot;)
+        );
+    }
+}
+
+public static class CommonPropsRenderer
+{
+    public static ReactElement TextBoxFor&amp;lt;T&amp;gt;(
+        this CommonProps&amp;lt;T&amp;gt; props,
+        [PropertyIdentifier]Func&amp;lt;T, string&amp;gt; propertyIdentifier,
+        string className)
+            where T : IAmImmutable
+    {
+        if (props == null)
+            throw new ArgumentNullException(&quot;props&quot;);
+        if (propertyIdentifier == null)
+            throw new ArgumentNullException(&quot;propertyIdentifier&quot;);
+
+        return DOM.Input(new InputAttributes
+        {
+            ClassName = className,
+            Value = propertyIdentifier(props.State),
+            OnChange = e =&amp;gt; props.OnChange(props.State.With(propertyIdentifier, e.CurrentTarget.Value))
+        });
+    }
+
+    public static ReactElement CheckboxFor&amp;lt;T&amp;gt;(
+        this CommonProps&amp;lt;T&amp;gt; props,
+        [PropertyIdentifier]Func&amp;lt;T, bool&amp;gt; propertyIdentifier,
+        string className)
+            where T : IAmImmutable
+    {
+        if (props == null)
+            throw new ArgumentNullException(&quot;props&quot;);
+        if (propertyIdentifier == null)
+            throw new ArgumentNullException(&quot;propertyIdentifier&quot;);
+
+        return DOM.Input(new InputAttributes
+        {
+            Type = InputType.Checkbox,
+            ClassName = className,
+            Checked = propertyIdentifier(props.State),
+            OnChange = e =&amp;gt; props.OnChange(props.State.With(propertyIdentifier, e.CurrentTarget.Checked))
+        });
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Except for the top-level &lt;strong&gt;AppContainer&lt;/strong&gt;, every component is derived from &lt;strong&gt;PureComponent&amp;lt;T&amp;gt;&lt;/strong&gt; which means that they automatically get implementations for React&#39;s &quot;&lt;a href=&quot;https://facebook.github.io/react/docs/component-specs.html#updating-shouldcomponentupdate&quot;&gt;shouldComponentUpdate&lt;/a&gt;&quot; component life cycle method. This means that if a component needs to be re-rendered by the virtual DOM and if the new props settings are the same as its current props settings then the component will tell React &quot;I&#39;m not going to change, you do not need to re-render me (nor any of my child components)&quot;. I had originally hoped that this would mean that everything would be blazing fast without any additional work. However, as I&#39;ve already said, this was not to be the case.&lt;/p&gt;
+
+&lt;p&gt;Before I get stuck in, it&#39;s worth bearing in mind that this really is a &lt;em&gt;worst case&lt;/em&gt; scenario. If there was a page that required 5,000 entry rows spread over ten different tables then changing any single row would only require the containing table to re-render, the other nine would not need to (the &lt;strong&gt;PureComponent&amp;lt;T&amp;gt;&lt;/strong&gt;&#39;s &quot;shouldComponentUpdate&quot; logic would take take of that). The difficulty here is that all 5,000 rows are in a &lt;em&gt;single&lt;/em&gt; table and so changing any value in any row requires that the table potentially re-render all of its rows. I can&#39;t imagine very many UIs where presenting a user with so many rows simultaneously would be a particularly pleasant experience. Perhaps a spreadsheet of some sort? If you needed to present an interface with tens of thousands of inputs, there are ways to make it faster sucher as &quot;chunking up&quot; groups of rows (so that a change to any single row only requires the other rows in the group potentially to re-render and not any other group). A more complicated (but highly efficient) approach would be to work out what data is currently visible in the browser window and to only update that.&lt;/p&gt;
+
+&lt;p&gt;Rather than considering these alternatives at this point, though, I want to see what we can do with the sample app as it&#39;s presented.&lt;/p&gt;
+
+&lt;h3&gt;Profiling&lt;/h3&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Initial timings (not good)&quot; src=&quot;http://localhost:4252/Content/Images/Posts/BridgeReactProfiling1.png&quot; class=&quot;NoBorder HalfWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;The first thing to do was to start measuring and digging. I loaded the page in Chrome, opened the dev tools, went to the Profiles tab, clicked &quot;Start CPU profiling&quot;, clicked a checkbox and then &quot;Stop CPU profiling&quot;. The result is shown here. There is a natural split between two processes - the &quot;Render&quot; method of the &lt;strong&gt;MessageTable&lt;/strong&gt; and the &quot;receiveComponent&quot; / &quot;updateComponent&quot; within React. I know that it&#39;s the &lt;strong&gt;MessageTable&lt;/strong&gt;&#39;s Render method because it calls &quot;select&quot; (the LINQ function) and that will be where the &lt;strong&gt;MessageTable&lt;/strong&gt; creates each &lt;strong&gt;MessageRow&lt;/strong&gt;. I&#39;m going to concentrate there first since that&#39;s where most of the time is taken and it&#39;s also what I have the most direct control over.&lt;/p&gt;
+
+&lt;p&gt;Just one thing to check first, though - I&#39;m using the development build of the React library at this point, which has some overhead compared to the production version (since it performs more checks and does more work in order to provide more helpful warnings, where required). Changing to the production build trims some time off; the &lt;strong&gt;MessageTable&lt;/strong&gt; &quot;Render&quot; method still takes 609ms but &quot;receiveComponent&quot; takes about half as much time, now 128ms. Clearly, the production build is not going to magically solve all of my problems.&lt;/p&gt;
+
+&lt;p&gt;The Chrome dev tools allow you to zoom in on sections of the profiler results, so I tried to make sense of what I could see under the &quot;Render&quot; side. The problem was that it seemed like there were lots of nested calls where none were individually very expensive, it seemed like a cumulative problem with just how many components there were. There were a lot of calls to &quot;constructor&quot;, which suggested to me that there may be some overhead in creating Bridge classes. To try to test this theory, I added a new option to the React bindings to enable components to be created by providing a static function rather than creating a component class that is derived from &lt;strong&gt;Component&amp;lt;TProps, TState&amp;gt;&lt;/strong&gt; or &lt;strong&gt;PureComponent&amp;lt;TProps&amp;gt;&lt;/strong&gt;. This allows &lt;strong&gt;MessageRow&lt;/strong&gt; to be rewritten as:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static class MessageRow
+{
+    [Name(&quot;MessageRow&quot;)]
+    public static ReactElement Render(CommonProps&amp;lt;MessageEditState&amp;gt; props)
+    {
+        return DOM.Div(new Attributes { ClassName = props.ClassName.ToNullableString() },
+            props.TextBoxFor(_ =&amp;gt; _.Title, &quot;title&quot;),
+            props.TextBoxFor(_ =&amp;gt; _.Content, &quot;content&quot;),
+            props.CheckboxFor(_ =&amp;gt; _.IsAwesome, &quot;is-awesome&quot;)
+        );
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;which requires &lt;strong&gt;MessageTable&lt;/strong&gt; to be changed to:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class MessageTable : PureComponent&amp;lt;CommonProps&amp;lt;Set&amp;lt;Saved&amp;lt;MessageEditState&amp;gt;&amp;gt;&amp;gt;&amp;gt;
+{
+    public MessageTable(
+        Set&amp;lt;Saved&amp;lt;MessageEditState&amp;gt;&amp;gt; state,
+        Action&amp;lt;Set&amp;lt;Saved&amp;lt;MessageEditState&amp;gt;&amp;gt;&amp;gt; onChange,
+        Optional&amp;lt;ClassName&amp;gt; className,
+        bool disabled)
+            : base(CommonProps.For(state, onChange, className, disabled)) { }
+
+    public override ReactElement Render()
+    {
+        return DOM.Div(
+            new Attributes { ClassName = props.ClassName.ToNullableString() },
+            props.State.Select((savedMessage, index) =&amp;gt; StaticComponent.Pure(
+                MessageRow.Render,
+                CommonProps.For(
+                    savedMessage.Value,
+                    updatedMessage =&amp;gt; props.OnChange(
+                        props.State.SetValue(index, props.State[index].With(_ =&amp;gt; _.Value, updatedMessage))
+                    ),
+                    className: null,
+                    disabled: false,
+                    key: savedMessage.Id
+                )
+            ))
+        );
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This way, there are 5,000 &lt;strong&gt;MessageRow&lt;/strong&gt; constructor calls saved each time that the &lt;strong&gt;MessageTable&lt;/strong&gt; needs to re-render. (Under the hood, there is still an object created for each row but it&#39;s a very lightweight JavaScript object).&lt;/p&gt;
+
+&lt;p&gt;This reduced the &quot;Render&quot; time to 496ms (it didn&#39;t affect &quot;receiveComponent&quot;, but I didn&#39;t expect it to). This was a good start and made me want to look further into the cost of class instantiation in Bridge.&lt;/p&gt;
+
+&lt;h3&gt;Bridge generic classes are more expensive&lt;/h3&gt;
+
+&lt;p&gt;I whipped up a quick test to try creating lots of instances of a class, like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static class App
+{
+    [Ready]
+    public static void Main()
+    {
+        var x = new MyClass[10000];
+        var timer = Stopwatch.StartNew();
+        for (var i = 0; i &amp;lt; x.Length; i++)
+            x[i] = new MyClass(&quot;test&quot;);
+        timer.Stop();
+        Console.WriteLine(timer.ElapsedMilliseconds + &quot;ms&quot;);
+    }
+}
+
+public class MyClass
+{
+    public MyClass(string value)
+    {
+        Value = value;
+    }
+    public string Value { get; private set; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;That only reported 3ms, which didn&#39;t seem like it could be the source of the problem.&lt;/p&gt;
+
+&lt;p&gt;Next I tried going one step more complicated. The &lt;strong&gt;MessageRow&lt;/strong&gt; class that I&#39;ve replaced with a static function was derived from &lt;strong&gt;PureComponent&amp;lt;T&amp;gt;&lt;/strong&gt;, which means that each &lt;strong&gt;MessageRow&lt;/strong&gt; instantiation also involved an instantiation of a generic base class. Clearly &lt;em&gt;something&lt;/em&gt; is still taking up a lot time.. since the &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt; class used for &lt;strong&gt;MessageRow&lt;/strong&gt; props was a generic type, maybe it&#39;s something specifically to  do with generic types.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static class App
+{
+    [Ready]
+    public static void Main()
+    {
+        var x = new MyClass&amp;lt;string&amp;gt;[10000];
+        var timer = Stopwatch.StartNew();
+        for (var i = 0; i &amp;lt; x.Length; i++)
+            x[i] = new MyClass&amp;lt;string&amp;gt;(&quot;test&quot;);
+        timer.Stop();
+        Console.WriteLine(timer.ElapsedMilliseconds + &quot;ms&quot;);
+    }
+}
+
+public class MyClass&amp;lt;T&amp;gt;
+{
+    public MyClass(T value)
+    {
+        Value = value;
+    }
+    public T Value { get; private set; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This time it reported 35ms. Still not an earth-shattering duration in isolation but a big step up from the non-generic class&#39; 3ms.&lt;/p&gt;
+
+&lt;p&gt;One of the nice things about Bridge is that it allows you to tweak the way that the JavaScript is generated. By default, it will strike a good balance between creating reasonable JavaScript while also creating code that is faithful to the C# representation. For example, the &lt;strong&gt;MyClass&amp;lt;T&amp;gt;&lt;/strong&gt; class will get the following JavaScript definition:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Bridge.define(&#39;Demo.MyClass$1&#39;, function (T) { return {
+    config: {
+        properties: {
+            Value: Bridge.getDefaultValue(T)
+        }
+    },
+    constructor: function (value) {
+        this.setValue(value);
+    }
+}; });
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It&#39;s important that the type param &quot;T&quot; be available as a reference at runtime in case you ever need to access it (such as via a call to &quot;default(T)&quot; or when needing to instantiate another generic type whose type param will also be &quot;T&quot;). If the type &quot;T&quot; was not known to the runtime then it wouldn&#39;t be possible for the JavaScript code to do things like create a &quot;default(T)&quot; value appropriate to whatever &quot;T&quot; is; it should be null for a reference type, zero for a numeric type and false for a boolean.&lt;/p&gt;
+
+&lt;p&gt;However, this creation of a class that encapsulates the type parameters must incur some overhead. For comparison, the non-generic class is defined in JavaScript with the following (note the lack of the function that captures &quot;T&quot;) -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Bridge.define(&#39;Demo.MyClass&#39;, {
+    config: {
+        properties: {
+            Value: null
+        }
+    },
+    constructor: function (value) {
+        this.setValue(value);
+    }
+});
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;One of the options that Bridge has to affect what JavaScript is emitted is the [IgnoreGeneric] attribute. If this is applied to a class then it &lt;em&gt;won&#39;t&lt;/em&gt; be given a JavaScript definition that includes the type parameter. This means that we can create a generic C# class (and continue to fully take advantage of the safety of the C# type system) but have Bridge generate a cheaper-to-instantiate JavaScript representation.&lt;/p&gt;
+
+&lt;p&gt;There is one problem with this, though. The C# code:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;[IgnoreGeneric]
+public class MyClass&amp;lt;T&amp;gt;
+{
+    public MyClass(T value)
+    {
+        Value = value;
+    }
+    public T Value { get; private set; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;will result in the following JavaScript:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Bridge.define(&#39;Demo.MyClass$1&#39;, {
+    config: {
+        properties: {
+            Value: Bridge.getDefaultValue(T)
+        }
+    },
+    constructor: function (value) {
+        this.setValue(value);
+    }
+});
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;All properties are set to default values before any instances are created. This is important for cases where there are constructors where one or more properties are not explicitly set since they can&#39;t be left undefined. In C#, if you don&#39;t set a property on a class instance then it will be left as its default value (null for a reference type, zero for a number, etc..) and Bridge has to maintain this behaviour in JavaScript in order to be consistent. The problem here is that the type &quot;T&quot; is not available and so the &quot;Value&quot; property &lt;em&gt;can&#39;t&lt;/em&gt; reliably be set to the correct default value.&lt;/p&gt;
+
+&lt;p&gt;Since I&#39;m considering tweaking the &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt; class, this doesn&#39;t apply - every property will explicitly be set in the constructor and so I don&#39;t have to worry about the case of a property needing to be left with the default value for the type.&lt;/p&gt;
+
+&lt;p&gt;Thankfully, Bridge has &lt;em&gt;another&lt;/em&gt; way to control the JavaScript that will be helpful. The [Template] attribute may be applied to property getters and setters and will change how these are represented. The default is for &quot;setValue(x)&quot; and &quot;getValue()&quot; methods to be created on the class (this may be seen in the above code, where &quot;this.setValue(value)&quot; is called in the constructor). If the getter is marked with [Template(&quot;value&quot;)] then anywhere that would previously have called &quot;getValue()&quot; will now simply access &quot;value&quot; and if the setter is marked with [Template(&quot;this.value&quot;)] then the property-setting (which only happens in the constructor for &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt;) will not be a call to &quot;setValue&quot;, it will simply set &quot;this.value&quot;.&lt;/p&gt;
+
+&lt;p&gt;To apply this to the &lt;strong&gt;MyClass&amp;lt;T&amp;gt;&lt;/strong&gt; class, the following C#:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;[IgnoreGeneric]
+public class MyClass&amp;lt;T&amp;gt;
+{
+    public MyClass(T value)
+    {
+        Value = value;
+    }
+    public T Value { [Template(&quot;value&quot;)]get; [Template(&quot;this.value&quot;)]private set; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;would result in the following JavaScript:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Bridge.define(&#39;Demo.MyClass$1&#39;, {
+    constructor: function (value) {
+        this.value = value;
+    }
+});
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Note that the set-properties-to-default-values code is no longer present in the JavaScript class definition.&lt;/p&gt;
+
+&lt;p&gt;Also, it&#39;s worth noting that this will affect anywhere that the property is accessed by code outside of the class. For example, if there is C# like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var x = new MyClass&amp;lt;string&amp;gt;(&quot;test&quot;);
+Console.WriteLine(x.Value);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. then, instead of the property being accessed through a getter method -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var x = new Demo.MyClass$1(&quot;test&quot;);
+Bridge.Console.log(x.getValue());
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. it will be accessed directly -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var x = new Demo.MyClass$1(&quot;test&quot;);
+Bridge.Console.log(x.value);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This means that the JavaScript is a slightly less faithful representation of the C# code. However, the C# compiler is complete unaware of these changes and it will continue to enforce the type system in the same way that it always does. So (presuming you are writing all of your front end code in C#, using Bridge) you are not losing anything. In fact, there will be some more performance gains to be had by accessing properties directly like this - there is a small overhead to calling functions to return values (small, but not zero) as opposed to retrieving them directly.&lt;/p&gt;
+
+&lt;p&gt;If this is applied to &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt; then we get the following:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;[IgnoreGeneric]
+public sealed class CommonProps&amp;lt;T&amp;gt;
+{
+    public CommonProps(
+        T state,
+        Action&amp;lt;T&amp;gt; onChange,
+        Optional&amp;lt;ClassName&amp;gt; className,
+        bool disabled,
+        Optional&amp;lt;Any&amp;lt;string, int&amp;gt;&amp;gt; key)
+    {
+        if (state == null)
+            throw new ArgumentNullException(&quot;state&quot;);
+        if (onChange == null)
+            throw new ArgumentNullException(&quot;onChange&quot;);
+
+        State = state;
+        OnChange = onChange;
+        ClassName = className;
+        Disabled = disabled;
+        Key = key;
+    }
+
+    public T State
+    {
+        [Template(&quot;state&quot;)]get; [Template(&quot;this.state&quot;)]private set;
+    }
+    public Action&amp;lt;T&amp;gt; OnChange
+    {
+        [Template(&quot;onChange&quot;)]get; [Template(&quot;this.onChange&quot;)]private set;
+    }
+    public Optional&amp;lt;ClassName&amp;gt; ClassName
+    {
+        [Template(&quot;className&quot;)]get; [Template(&quot;this.className&quot;)]private set;
+    }
+    public bool Disabled
+    {
+        [Template(&quot;disabled&quot;)]get; [Template(&quot;this.disabled&quot;)]private set;
+    }
+    public Optional&amp;lt;Any&amp;lt;string, int&amp;gt;&amp;gt; Key
+    {
+        [Template(&quot;key&quot;)]get; [Template(&quot;this.key&quot;)]private set; 
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In order to do this, &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt; could no longer be an &lt;strong&gt;IAmImmutable&lt;/strong&gt; type since the &quot;CtorSet&quot; and &quot;With&quot; methods won&#39;t work with properties that rely upon any fancy shenanigans like [Template]. This isn&#39;t a huge deal with the props on components since they are always created fresh for every render, unlike the other data types that represent state. For example, when the title value of a single row is edited, a new &lt;strong&gt;MessageEditState&lt;/strong&gt; instance is created using something like the following:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;newMessage = currentMessage.With(_ =&amp;gt; _.Title, newTitle)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This is important for two reasons. Firstly, if &quot;newTitle&quot; is the same as the current title (which can happen if the user does something to a text box that doesn&#39;t actually change ft&#39;s value - such as paste a value into the box that is the same as the current value; React will identfy this as an input change even though the value hasn&#39;t actually been altered) then a new message instance is &lt;em&gt;not&lt;/em&gt; created. When the &lt;strong&gt;MessageRow&lt;/strong&gt; is re-rendered, because the &lt;strong&gt;MessageEditState&lt;/strong&gt; reference won&#39;t have changed, the &lt;strong&gt;PureComponent&lt;/strong&gt; logic will tell React that there is no need to re-render the row, which saves React some work. Secondly, it&#39;s very convenient to be able to get a new instance of a data type with a single property changed in this manner - otherwise you would have to deal with the has-this-value-really-changed logic and either define &quot;With{x}&quot; methods for each individual property or call the constructor with the value that has changed &lt;em&gt;and&lt;/em&gt; all of the ones that haven&#39;t. Which gets old very quickly. (You &lt;em&gt;could&lt;/em&gt; use mutable data types but then you wouldn&#39;t be able perform inexpensive reference equality checks when trying to determine whether a component needs to re-render and so you end up contemplating expensive deep equality checks or you give up on implementing &quot;shouldComponentUpdate&quot; and force React to do much more work).&lt;/p&gt;
+
+&lt;p&gt;One final note: the CtorSet method that &lt;strong&gt;IAmImmutable&lt;/strong&gt; types can use ensures that no value is ever null (if you have a property that may or may not have a value then use the &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; type - which can never be null itself since it&#39;s a struct). Since &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt; isn&#39;t using CtorSet any more, the constructor needs to include explicit checks for null &quot;state&quot; and &quot;onChange&quot; constructor arguments.&lt;/p&gt;
+
+&lt;p&gt;With this change to &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt;, the &quot;Render&quot; time is now 124ms in the React development build. Interestingly, in the React production, the &quot;Render&quot; time is reduced to 69ms and the &quot;receiveComponent&quot; drops to 98ms. A combined 167ms is much better than the original 838ms.&lt;/p&gt;
+
+&lt;p&gt;With these improvements, there is only a slightly perceptible delay felt when clicking a checkbox. Unfortunately, though, trying to type into a text box when there is a 167ms delay between key presses being recognised is not pleasant. So it&#39;s back to the profiler..&lt;/p&gt;
+
+&lt;h3&gt;Optional&amp;lt;T&amp;gt;&lt;/h3&gt;
+
+&lt;p&gt;Taking another snapshot with the profiler, I&#39;m still going to concentrate on the &quot;Render&quot; method (for the same reasons as before; it&#39;s still the slower part of the work and it&#39;s still what I can most easily control). This time I see a lot of calls to a generic constructor resulting from &quot;op_Implicit&quot; calls.&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Unnecessary Optional instantiation&quot; src=&quot;http://localhost:4252/Content/Images/Posts/BridgeReactProfiling2.png&quot; class=&quot;NoBorder FullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;The &quot;op_Implicit&quot; methods are the JavaScript representations of implicit operator methods in C#. So, where the &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; struct has an implicit operator from &quot;T&quot; -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static implicit operator Optional&amp;lt;T&amp;gt;(T value)
+{
+    return new Optional&amp;lt;T&amp;gt;(value);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;the following JavaScript is generated:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;op_Implicit: function (value) {
+    return new (ProductiveRage.Immutable.Optional$1(T)).$constructor1(value);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;When a &lt;strong&gt;CommonProps&lt;/strong&gt; instance is created with a null &quot;className&quot; argument (which is the case for every &lt;strong&gt;MessageRow&lt;/strong&gt; in the sample app), each call to the &lt;strong&gt;CommonProps&lt;/strong&gt; &quot;For&quot; method requires the null reference to be implicitly cast to an &lt;strong&gt;Optional&amp;lt;ClassName&amp;gt;&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static CommonProps&amp;lt;T&amp;gt; For&amp;lt;T&amp;gt;(
+    T state,
+    Action&amp;lt;T&amp;gt; onChange,
+    Optional&amp;lt;ClassName&amp;gt; className,
+    bool disabled,
+    Any&amp;lt;string, int&amp;gt; key)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Each implicit cast requires a call to the implicit operator, which creates a new &lt;strong&gt;Optional&amp;lt;ClassName&amp;gt;&lt;/strong&gt; instance. This feels like unnecessary work.&lt;/p&gt;
+
+&lt;p&gt;The &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; has a public static &quot;Missing&quot; property, so one way to avoid the creation of unnecessary instances would be to use&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;className: Optional&amp;lt;ClassName&amp;gt;.Missing
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;instead of&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;className: null
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;But there were a few problems with this. Firstly, &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; is part of the ProductiveRage.Immutable library and I would like it to be as easy to use as possible. I think that it would be quite difficult to justify a significant performance cost in passing null as an Optional rather than &quot;Missing&quot; when there is an implicit cast to perform the translation. Secondly, the &quot;Missing&quot; property was implemented as&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;    public static Optional&amp;lt;T&amp;gt; Missing { get { new Optional&amp;lt;T&amp;gt;(default(T), false); } }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. which means that a new instance is created each time it&#39;s called anyway, so actually the &quot;Missing&quot; property wouldn&#39;t magically solve anything.&lt;/p&gt;
+
+&lt;p&gt;It would make more sense for the &quot;Missing&quot; property to be set only once, something like:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static Optional&amp;lt;T&amp;gt; Missing { get { return _missing; } }
+private static Optional&amp;lt;T&amp;gt; _missing = new Optional&amp;lt;T&amp;gt;(default(T), false);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;When I first wrote the &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; struct, that is how I did it. Unfortunately, there was a problem with Bridge 1.10 and I removed the private &quot;_missing&quot; field as a workaround. The Bridge Team have long since resolved that issue and so I can put the code back how I want it.&lt;/p&gt;
+
+&lt;p&gt;This also allows for a tweak to the implicit operator method -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static implicit operator Optional&amp;lt;T&amp;gt;(T value)
+{
+    if (value == null)
+        return _missing;
+    return new Optional&amp;lt;T&amp;gt;(value);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Now, one might presume, there would now be no unnecessary instantiations whether &quot;className: Optional&amp;lt;ClassName&amp;gt;.Missing&quot; &lt;em&gt;or&lt;/em&gt; &quot;className: null&quot; was specified. Unfortunately, we&#39;re not quite there yet..&lt;/p&gt;
+
+&lt;p&gt;When structs are passed around in C#, they are copied. This is why they appear to be passed &quot;by value&quot; rather than &quot;by reference&quot; - if a mutable struct is instantiated in method F1 and passed to F2, any changes made to it in F2 are not visible in F1 since they both have different copies of the struct. To ensure consistency with .net, Bridge&#39;s JavaScript must do something similar - any time that a struct is passed around, it is copied. This means that a new instance &lt;em&gt;will&lt;/em&gt; be created each time that &quot;Missing&quot; or &quot;_missing&quot; is accessed. This is wasteful with the &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; struct since it&#39;s immutable; since nothing can alter its contents, there is no need to copy it when passing it around.&lt;/p&gt;
+
+&lt;p&gt;Bridge has another workaround for this, the [Immutable] attribute. When applied to the &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; struct, the Bridge compiler will not copy instances when they are passed from one method to another. These changes reduce the &quot;Render&quot; time to 93ms in the React development build and 61ms in production.&lt;/p&gt;
+
+&lt;p&gt;While this is an improvement, I can still see what looks like a lot of time spent on generic type &lt;em&gt;stuff&lt;/em&gt; in the profiler. Even though the op_Implicit calls for null values are sharing instances now, in order to get to the static op_Implicit method it is necessary to access the representation of the &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; struct for the particular type. And, I suspect, this incurs a similar cost to instantiating a new instance.&lt;/p&gt;
+
+&lt;p&gt;To confirm this, I added [IgnoreGeneric] to &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt;. This was not something I really wanted to do since it would require a minor change to the struct&#39;s public interface. There are two properties; IsDefined and Value. Currently there are two states - a state where IsDefined is true and Value has a specified &quot;T&quot; value and a state where IsDefined is false and Value has the default value of &quot;T&quot; (null for a reference type, zero for a number). With the [IgnoreGeneric] attribute, it would not be possible to set the default value of &quot;T&quot; for the &quot;Missing&quot; value state since &quot;T&quot; would not be available at runtime. If I was to apply [IgnoreGeneric] to the struct then &quot;Value&quot; would have to be considered undefined if IsDefined was false. This isn&#39;t a huge deal since I think that that&#39;s how it should have been interpreted anyway, really (an alternative would have been to be more aggressive and throw an exception from the Value property getter if IsDefined is false) but it&#39;s still a change.&lt;/p&gt;
+
+&lt;p&gt;When I added [IgnoreGeneric] to the &lt;strong&gt;CommonProps&amp;lt;T&amp;gt;&lt;/strong&gt; class, I had to apply some workarounds to deal with the type &quot;T&quot; not being available at runtime. I had to do similar with &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt;. The first change was that the following line clearly wouldn&#39;t work:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static Optional&amp;lt;T&amp;gt; _missing = new Optional&amp;lt;T&amp;gt;(default(T), false);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;so it was replaced with this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static Optional&amp;lt;T&amp;gt; _missing = new Optional&amp;lt;T&amp;gt;(Script.Write&amp;lt;T&amp;gt;(&quot;null&quot;), false);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The &quot;Script.Write&amp;lt;T&amp;gt;&quot; method in Bridge is a way to directly emit JavaScript (simply &quot;null&quot; in this case) and to tell the C# type system that a value of type &quot;T&quot; is being returned. So, here, the &quot;T&quot; is only used by the C# compiler and does not have any impact on runtime. The compromise is that &quot;null&quot; is being used for the Value property of the &quot;Missing&quot; instance regardless of the type of &quot;T&quot;. So Value will be null even if &quot;T&quot; is an int or a bool in cases where IsDefined is false.&lt;/p&gt;
+
+&lt;p&gt;The other change required completely removing the C# backing field for the Value property -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private readonly T value;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The problem was that Bridge would generate a struct definition that would try to set &quot;value&quot; to default(T), which it would not be able to do since &quot;T&quot; would not be available at runtime.&lt;/p&gt;
+
+&lt;p&gt;Instead, the value would be written directly by more raw JavaScript. The constructor changed from:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public Optional(T value) : this(value, value != null) { }
+    this.isDefined = isDefined &amp;amp;&amp;amp; (value != null);
+    this.value = value;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;to:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public Optional(T value) : this(value, value != null) { }
+    this.isDefined = isDefined &amp;amp;&amp;amp; (value != null);
+    Script.Write(&quot;this.value = {0}&quot;, value);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;and the property getter changed from:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public T Value { get { return this.value; } }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;to:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public T Value { get { return Script.Write&amp;lt;T&amp;gt;(&quot;this.value&quot;); } }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Finally, anywhere in the struct that the backing field was accessed was changed so that it went via the public &quot;Value&quot; property getter.&lt;/p&gt;
+
+&lt;p&gt;This meant that there were no potential runtime errors waiting to occur within the struct (none of the code relied on access to the type &quot;T&quot;), that there was type safety for any code instantiating or accessing the struct in C# &lt;em&gt;and&lt;/em&gt; it meant that the struct could have [IgnoreGeneric] applied and hence (theoretically) allow the application to work more efficiently.&lt;/p&gt;
+
+&lt;p&gt;It worked. Using the development build of React, the &quot;Render&quot; time of the &lt;strong&gt;MessageTable&lt;/strong&gt; was now 36ms and the &quot;receiveComponent&quot; time 141ms. With the production build, &quot;Render&quot; took &quot;9ms&quot; and &quot;receiveComponent&quot; 49ms.&lt;/p&gt;
+
+&lt;p&gt;That&#39;s sufficiently fast that there is no perceived delay while typing into the text boxes. And, to put things back into context, the original &quot;worst case scenario&quot; that I was planning for was to deal with up to 1,000 checkboxes. I&#39;ve been measuring the time for 5,000 rows that include two text boxes &lt;em&gt;and&lt;/em&gt; a checkbox. If the sample app was changed to render only 1,000 rows then the React production build handles changes to elements by spending 5ms in &quot;Render&quot; and 17ms in &quot;receiveComponent&quot;. This means that there is no chance of perceptible lag in typing and certainly no perceptible delay in checking or unchecking a checkbox.&lt;/p&gt;
+
+&lt;h3&gt;To summarise&lt;/h3&gt;
+
+&lt;p&gt;I think that it&#39;s fair to call this a success! There are several things that I&#39;ve particuarly enjoyed in this investigation. Firstly, it&#39;s been a good reminder of just how powerful the dev tools are that come free with browsers these days. I was using Chrome but I believe that IE and Firefox have equivalent functionality. Secondly, the options that the Bridge Team have made available are really well thought out and very clever when you examine them - in isolation, each seems quite simple but it&#39;s the recognition that &lt;em&gt;sometimes&lt;/em&gt; it might be beneficial to have more control over the generated JavaScript that helps make Bridge so powerful and to enable me to do what I&#39;ve done here. Thirdly, almost all of the changes that I&#39;ve talked about here were made to my &quot;Bridge.React&quot;, &quot;ProductiveRage.Immutable&quot;, &quot;ProductiveRage.Immutable.Extensions&quot; libraries. That means that, when I make these changes live, anyone using those libraries will automatically reap the benefit. The only change that I made to the sample app was to change the &lt;strong&gt;MessageRow&lt;/strong&gt; implementation from being a component class to being a static function.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Note: I tried reverting &lt;strong&gt;MessageRow&lt;/strong&gt; back to being a component class and the &quot;Render&quot; time was still only 20ms when editing one of 1,000 rows (compared to 5ms when &lt;strong&gt;MessageRow&lt;/strong&gt; is implemented as a static function). The time spent by React in &quot;receiveComponent&quot; was unaffected. This means that simply updating the Bridge.React, ProductiveRage.Immutable and ProductiveRage.Immutable.Extensions packages could significantly improve the performance of complex applications with zero code changes.&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;This is one of the benefits of using libraries where the authors care about performance and strive to improve it over time. It reminds me of when the Bridge Team added compiler support for &quot;&lt;a href=&quot;http://bridge.net/bridge-1-11-released/#Lifted_Anonymous_Functions&quot;&gt;Lifted Anonyomous Functions&lt;/a&gt;&quot; (something I suggested after going on a bit of a JavaScript performance research binge a few months ago - but something that the team there deserve much credit for making work) and it reminds me of articles that I&#39;ve read about React which talk about how there are many optimisations yet to be made that their current API will make possible (see &quot;&lt;a href=&quot;https://github.com/acdlite/react-fiber-architecture&quot;&gt;React Fiber Architecture&lt;/a&gt;&quot;); all that we&#39;ll have to do in the future is upgrade the version of the library being used and get more performance!&lt;/p&gt;
+
+&lt;h3&gt;Update: The Bridge Team ruin my fun&lt;/h3&gt;
+
+&lt;p&gt;I&#39;ve been researching and writing this post over the space of a couple of weeks. Once I had observed that generic classes are slower to instantiate in Bridge than non-generic classes, and while I was looking into the workarounds required sometimes in order to use [IgnoreGeneric], I raised a bug on the &lt;a href=&quot;http://forums.bridge.net/forum/bridge-net-pro/bugs&quot;&gt;Bridge Forums&lt;/a&gt; relating to properties that are initially to default(T) (which fails when &quot;T&quot; is not available at runtime).&lt;/p&gt;
+
+&lt;p&gt;While looking into the issue for me, they noted that they found a way to optimise the instantiation of generic types (looking at the &lt;a href=&quot;https://github.com/bridgedotnet/Bridge/pull/1740/files&quot;&gt;pull request&lt;/a&gt; it seems like the work required to form a new specialisation of a class / struct for a given &quot;T&quot; is now cached rather than being repeated each time that a new &lt;strong&gt;Whatever&amp;lt;T&amp;gt;&lt;/strong&gt; is created).&lt;/p&gt;
+
+&lt;p&gt;The good news is that this means that there will very soon be almost zero overhead to generic types in Bridge! The bad news is that many of the findings documented here are unnecessary.. However, that&#39;s the sort of bad news that I&#39;m happy to accept! The compromise around &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt;&#39;s &quot;Value&quot; property (for cases where &quot;IsDefined&quot; is false) will no longer be necessary. And I won&#39;t have to worry so much in the future; if I&#39;m creating a library class, should I be avoiding generics (or using [IgnoreGeneric]) in case it&#39;s used in an expensive loop anywhere?&lt;/p&gt;
+
+&lt;p&gt;Despite being out of date even before being published, I&#39;ll leave this post here for posterity. I had a lot of fun digging into performance tuning my Bridge / React app. And, in a roundabout way, I feel like I contributed to the optimisation (which I imagine will makes its way into the next release of Bridge) that everyone using Bridge can benefit from! I&#39;m going to call that a win.&lt;/p&gt;
+</description>
+			<pubDate>Tue, 06 Sep 2016 22:04:00 GMT</pubDate>
+		</item>
+		<item>
 			<title>Retrieving Performance Counter from a remote PC using C#</title>
-            <link>http://www.productiverage.com/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</link>
-			<guid>http://www.productiverage.com/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</guid>
-			<description>&lt;p&gt;&lt;a href=&quot;http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days&quot;&gt;PerfMon&lt;/a&gt; can be an invaluable tool for monitoring performance counters on the local or remote computer. It allows you to graph the information live and it allows you to write the data away to disk for future analysis.&lt;/p&gt;
+            <link>http://localhost:4252/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</link>
+			<guid>http://localhost:4252/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</guid>
+			<description>&lt;p&gt;&lt;a href=&quot;http://localhost:4252/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days&quot;&gt;PerfMon&lt;/a&gt; can be an invaluable tool for monitoring performance counters on the local or remote computer. It allows you to graph the information live and it allows you to write the data away to disk for future analysis.&lt;/p&gt;
 
 &lt;p&gt;However, for some performance investigation that I was doing, I wanted something slightly different to what PerfMon offers. I was testing a service under load, a service that was being hosted on a dedicated box for the performance investigation - and I was testing it by generating the load from another dedicated server. Since nothing else would be hitting the service host box, what I wanted to do for each test run was to restart the service on the host, hit it with the sample load and record the processor time, % time in GC, number of garbage collections at each generation and some other metrics until the work was fully processed - at that point, there would be no more information to gather for that particular run. The experiment could be repeated a few times and the results filed away, brought back out to compare to the same load being run after some performance tweaks had been made to the code.&lt;/p&gt;
 
@@ -575,13 +1274,13 @@ resultsReadyIndicator.WaitOne();
 		</item>
 		<item>
 			<title>Why is saving Performance Monitor (PerfMon) settings so difficult these days?!</title>
-            <link>http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</link>
-			<guid>http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</guid>
+            <link>http://localhost:4252/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</link>
+			<guid>http://localhost:4252/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</guid>
 			<description>&lt;p&gt;I&#39;ve been measuring and optimising a busy service recently at work and PerfMon is an invaluable tool in doing things like this - the service records its own performance counters about requests/second, cache-hits-and-misses/second and many other useful metrics, while Windows and .net also report on many helpful statistics such as CPU time per process, memory usage, bytes-allocated/second and frequency of garbage collections.&lt;/p&gt;
 
 &lt;p&gt;Performance Monitor makes it really easy to add a set of counters and format their lines so that some are bold and thick (and, so, clear at a glance) while other may be made less obtrusive, so as not to confuse the graph too much.&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/PerfMon.png&quot; alt=&quot;Performance Monitor&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/PerfMon.png&quot; alt=&quot;Performance Monitor&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;However, over the years the interface to this tool has had some changes made to it that I&#39;m not convinced are improvements. Back on Windows Server 2003, I&#39;m pretty sure that you could configure your view how you wanted it and then simply use File/Save to write an &quot;.mmc&quot; configuration file. Whenever you wanted, you could double-click that file and all of the counters would be there, configured just as you left them, quietly capturing data and displaying it how you want it. Unfortunately, that day has gone and it&#39;s not quite so easy.&lt;/p&gt;
 
@@ -607,8 +1306,8 @@ resultsReadyIndicator.WaitOne();
 		</item>
 		<item>
 			<title>Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</title>
-            <link>http://www.productiverage.com/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner</link>
-			<guid>http://www.productiverage.com/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner</guid>
+            <link>http://localhost:4252/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner</link>
+			<guid>http://localhost:4252/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner</guid>
 			<description>&lt;p&gt;I&#39;ve been meaning to try writing a post about creating analysers for a little while now - they&#39;re a technology that I think has huge promise for improving code quality and they&#39;re something that I&#39;ve successfully played around with recently.. but I&#39;m still very much in the early phases of being proficient and they&#39;re not something that I can just sit down and bang out easily (ie. not without a lot of googling).&lt;/p&gt;
 
 &lt;p&gt;So this won&#39;t be the post of an expert - but I&#39;m hoping to use that to my advantage since I hopefully remember the pain points all too well and can go through the sort of things that I try when I&#39;m hashing these out.&lt;/p&gt;
@@ -731,7 +1430,7 @@ namespace ConsoleApplication1
 
 &lt;p&gt;Having installed the &quot;.NET Compiler Platform SDK&quot; earlier, you will now have access to this tool - go to View / Other Windows / Syntax Visualizer. This shows the syntax tree for any code within your project. So, if you click on the name &quot;TestMethod2&quot; then you will see that it is an &lt;strong&gt;IdentifierToken&lt;/strong&gt; (which is the name &quot;TestMethod2&quot;) that is a child node of a &lt;strong&gt;MethodDeclaration&lt;/strong&gt; which is a child node of a &lt;strong&gt;ClassDeclaration&lt;/strong&gt; which is a child node of a &lt;strong&gt;NamespaceDeclaration&lt;/strong&gt;, which is a child node of a &lt;strong&gt;CompilationUnit&lt;/strong&gt;. You can click on any of these nodes in the Syntax Visualiser to inspect some of the properties of the node and you can open further branches to inspect more - for example, there is a &quot;Block&quot; node that will appear shortly after the &lt;strong&gt;IdentifierToken&lt;/strong&gt; that you may click to reveal the nodes that represent the statements within the method.&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/SyntaxVisualizer.png&quot; alt=&quot;The Syntax Visualizer&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/SyntaxVisualizer.png&quot; alt=&quot;The Syntax Visualizer&quot;&gt;&lt;/p&gt;
 
 &lt;h3&gt;Writing a real analyser&lt;/h3&gt;
 
@@ -944,7 +1643,7 @@ namespace ExampleAnalyser.Test
 
 &lt;p&gt;Ensuring that the Syntax Visualizer is visible (View / Other Windows / Syntax Visualizer), clicking on &quot;Multiple&quot; shows the following:&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ObjectInitializerExpression.png&quot; alt=&quot;ObjectInitializerExpression&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/ObjectInitializerExpression.png&quot; alt=&quot;ObjectInitializerExpression&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;The &lt;strong&gt;IdentifierToken&lt;/strong&gt; is the &quot;Multiple&quot; property, which is part of a &lt;strong&gt;SimpleAssignment&lt;/strong&gt; (ie. &quot;Multiple = 1&quot;) which is a child of an &lt;strong&gt;ObjectInitializerExpression&lt;/strong&gt; (which is the curly brackets around the two properties being set) which is a child of an &lt;strong&gt;ObjectCreationExpression&lt;/strong&gt; (which is the entire statement that includes &quot;new Bridge.React.SelectAttributes&quot; &lt;em&gt;and&lt;/em&gt; the setting of the two properties) and that itself is part of a &lt;strong&gt;VariableDeclaration&lt;/strong&gt; (which sets &quot;x&quot; to be the result of the object creation). With the Syntax Visualizer, we could go all the way up to the top of the method and then to the class and then to the namespace and then to the top-level CompilationUnit. However, what we&#39;re most interested in is the &lt;strong&gt;ObjectInitializerExpression&lt;/strong&gt;, since that contains the properties that we want to verify.&lt;/p&gt;
 
@@ -1470,9 +2169,9 @@ namespace ExampleAnalyser
 		</item>
 		<item>
 			<title>A static type system is a wonderful message to the present and future - Supplementary</title>
-            <link>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary</link>
-			<guid>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary</guid>
-			<description>&lt;p&gt;This is an extension of my post &quot;&lt;a href=&quot;http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future&quot;&gt;A static type system is a wonderful message to the present and future&lt;/a&gt;. I initially rolled this all together into a single article but then decided to break it into two to make the first part easier to consume.&lt;/p&gt;
+            <link>http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary</link>
+			<guid>http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary</guid>
+			<description>&lt;p&gt;This is an extension of my post &quot;&lt;a href=&quot;http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future&quot;&gt;A static type system is a wonderful message to the present and future&lt;/a&gt;. I initially rolled this all together into a single article but then decided to break it into two to make the first part easier to consume.&lt;/p&gt;
 
 &lt;p&gt;So, what else did I want to say? Rather than just saying &quot;static typing is better&quot;, I want to express some more detailed &quot;for&quot; and &quot;against&quot; arguments. Spoiler alert: despite the negatives, I still believe that static typing is worth the effort.&lt;/p&gt;
 
@@ -1480,7 +2179,7 @@ namespace ExampleAnalyser
 
 &lt;p&gt;I find that the more that I take advantage of the type system, the more reliable that my code becomes - not only in terms of how well it lasts over the years, but how likely that it is to work the first time that it compiles. Going back to some code that I wrote a few years ago, there are various parts of a particular project that deal with internationalisation - some parts want to know what language that particular content is in while some parts of more specific and want to know what language &lt;em&gt;culture&lt;/em&gt; it&#39;s in; the difference between &quot;English&quot; (the language) and &quot;English UK&quot; / &quot;en-GB&quot; (the language culture). I wish now that, for that project, I&#39;d created a type (in C#, a struct would have been the natural choice) to represent a &lt;strong&gt;LanguageKey&lt;/strong&gt; and another for a &lt;strong&gt;LanguageCultureKey&lt;/strong&gt; as I encountered several places where it was confusing which was required - some parts of the code had method arguments named &quot;language&quot; that wanted a language key while others had arguments named &quot;language&quot; that wanted a language culture key. The two parts of the project were written by different people at different times and, in both cases, it seemed natural to them to presume that &quot;language&quot; could mean a language key (since nothing more specific was required) or could mean a language culture (since they presumed that nothing &lt;em&gt;less&lt;/em&gt; specific would ever be required). This is an example of a place where better argument naming would have helped because it would have been easier to spot if a language culture key was being passed where a language key was required. However, it would have been better again if the compiler would spot the wrong key type being passed - a human might miss it if a naming convention is relied upon, but the compiler will never miss an invalid type.&lt;/p&gt;
 
-&lt;p&gt;Another example that I&#39;ve used in the past is that of React &quot;props&quot; validation - when creating React components (which are used to render DOM elements.. or OS components, if you&#39;re using &lt;a href=&quot;http://www.reactnative.com&quot;&gt;React Native&lt;/a&gt;), you must provide specific information for the component; if it&#39;s a Label, for example, then you must provide a text string and maybe a class name string. If you&#39;re using JavaScript with React then you will probably be providing the props reference using simple object notation, so you will have to be careful that you remember that the text string is named &quot;text&quot; and not &quot;labelText&quot;. The React library includes support for a &quot;propTypes&quot; object to be defined for a component - this performs validation at runtime, ensuring that required properties have values and that they are of the correct type. If a &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;strongly-typed language (such as C#)&lt;/a&gt; was used to create and consume React components, then this additional runtime validation would not be required as the component&#39;s &quot;props&quot; class would be declared as a class and all properties would have the appropriate types specified there. These would be validated at compile time, rather than having to wait until runtime. Returning to the &quot;&lt;a href=&quot;https://m.signalvnoise.com/provide-sharp-knives-cc0a22bf7934#.yv2771vf7&quot;&gt;Sharp Knives&lt;/a&gt;&quot; quote, this may be construed as being validation written for &quot;other programmers&quot; - as in, &quot;I don&#39;t want other programmers to try to use my component incorrectly&quot; - but, again, I&#39;m very happy to be the one of the &quot;other programmers&quot; in this case, it allows the type system to work as very-welcome documentation.&lt;/p&gt;
+&lt;p&gt;Another example that I&#39;ve used in the past is that of React &quot;props&quot; validation - when creating React components (which are used to render DOM elements.. or OS components, if you&#39;re using &lt;a href=&quot;http://www.reactnative.com&quot;&gt;React Native&lt;/a&gt;), you must provide specific information for the component; if it&#39;s a Label, for example, then you must provide a text string and maybe a class name string. If you&#39;re using JavaScript with React then you will probably be providing the props reference using simple object notation, so you will have to be careful that you remember that the text string is named &quot;text&quot; and not &quot;labelText&quot;. The React library includes support for a &quot;propTypes&quot; object to be defined for a component - this performs validation at runtime, ensuring that required properties have values and that they are of the correct type. If a &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;strongly-typed language (such as C#)&lt;/a&gt; was used to create and consume React components, then this additional runtime validation would not be required as the component&#39;s &quot;props&quot; class would be declared as a class and all properties would have the appropriate types specified there. These would be validated at compile time, rather than having to wait until runtime. Returning to the &quot;&lt;a href=&quot;https://m.signalvnoise.com/provide-sharp-knives-cc0a22bf7934#.yv2771vf7&quot;&gt;Sharp Knives&lt;/a&gt;&quot; quote, this may be construed as being validation written for &quot;other programmers&quot; - as in, &quot;I don&#39;t want other programmers to try to use my component incorrectly&quot; - but, again, I&#39;m very happy to be the one of the &quot;other programmers&quot; in this case, it allows the type system to work as very-welcome documentation.&lt;/p&gt;
 
 &lt;p&gt;While we&#39;re talking about React and component props, the React library always treats the props reference for a component as being immutable. If the props data needs to change then the component needs to be re-rendered with a new props reference. If you are writing your application in JavaScript then you need to respect this convention. However, if you choose to write your React application in a strongly-typed language then you may have your props classes represented by immutable types. This enforces this convention through the type system - &lt;em&gt;you&lt;/em&gt; (and anyone reviewing your code) don&#39;t have to keep a constant vigil against accidental mutations, the compiler will tell you if this is attempted (by refusing to build and pointing out where the mistake made).&lt;/p&gt;
 
@@ -1540,7 +2239,7 @@ namespace ExampleAnalyser
 
 &lt;p&gt;It can also be an invaluable form of documentation for people using your code (including you, in six months, when you&#39;ve forgotten the finer details). Good use of the type system allows for the requirements and the intent of code to be clearer. It&#39;s not just a way of communicating with the compiler, it&#39;s also a very helpful way to communicate with human consumers of your code.&lt;/p&gt;
 
-&lt;p&gt;On a personal note, this marks my 100th post on this blog. The first (&lt;a href=&quot;http://www.productiverage.com/i-love-immutable-data&quot;&gt;I love Immutable Data&lt;/a&gt;) was written about five years ago and was &lt;em&gt;also&lt;/em&gt; (basically) about leveraging the type system - by defining immutable types and the benefits that they could have. I find it reassuring that, with all that I&#39;ve seen since then (and thinking back over the time since I first started writing code.. over 25 years ago) that this still feels like a good thing. In a time where it seems like everyone&#39;s crying about JavaScript fatigue (and the frequent off-the-cuff comments about React being &quot;&lt;a href=&quot;https://camo.githubusercontent.com/a85f7c2c03b36655323ec7a3250057233e82ef55/68747470733a2f2f692e696d6775722e636f6d2f695549497571622e6a7067&quot;&gt;so hot right now&lt;/a&gt;&quot;*), I&#39;m glad that there are still plenty of principles that stand the test of time.&lt;/p&gt;
+&lt;p&gt;On a personal note, this marks my 100th post on this blog. The first (&lt;a href=&quot;http://localhost:4252/i-love-immutable-data&quot;&gt;I love Immutable Data&lt;/a&gt;) was written about five years ago and was &lt;em&gt;also&lt;/em&gt; (basically) about leveraging the type system - by defining immutable types and the benefits that they could have. I find it reassuring that, with all that I&#39;ve seen since then (and thinking back over the time since I first started writing code.. over 25 years ago) that this still feels like a good thing. In a time where it seems like everyone&#39;s crying about JavaScript fatigue (and the frequent off-the-cuff comments about React being &quot;&lt;a href=&quot;https://camo.githubusercontent.com/a85f7c2c03b36655323ec7a3250057233e82ef55/68747470733a2f2f692e696d6775722e636f6d2f695549497571622e6a7067&quot;&gt;so hot right now&lt;/a&gt;&quot;*), I&#39;m glad that there are still plenty of principles that stand the test of time.&lt;/p&gt;
 
 &lt;p&gt;* &lt;em&gt;(Since I&#39;m feeling so brave and self-assured, I&#39;m going to say that I think that React *will* still be important five years from now - maybe I&#39;ll look back in 2021 and see how this statement has fared!)&lt;/em&gt;&lt;/p&gt;
 </description>
@@ -1548,8 +2247,8 @@ namespace ExampleAnalyser
 		</item>
 		<item>
 			<title>A static type system is a wonderful message to the present and future</title>
-            <link>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</link>
-			<guid>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</guid>
+            <link>http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</link>
+			<guid>http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</guid>
 			<description>&lt;p&gt;Last week, I read the article &quot;&lt;a href=&quot;http://solnic.eu/2016/05/22/my-time-with-rails-is-up.html&quot;&gt;My time with Rails is up&lt;/a&gt;&quot; (by &lt;a href=&quot;https://twitter.com/_solnic_&quot;&gt;Piotr Solnica&lt;/a&gt;) which resulted in me reading some of &lt;a href=&quot;https://medium.com/@dhh&quot;&gt;DHH&lt;/a&gt;&#39;s latest posts and re-reading some of his  older ones.&lt;/p&gt;
 
 &lt;p&gt;Some people write articles that I enjoy reading because they have similar ideas and feelings about development that I do, that they manage to express in a new or particularly articulate way that helps me clarify it in my own head or that helps me think about whether I really do still agree with the principle. Some people write articles that come from a completely different point of view and experience to me and these also can have a lot of benefit, in that they make me reconsider where I stand on things or inspire me to try something different to see how it feels. DHH is, almost without fail, interesting to read and I like his passion and conviction.. but he&#39;s definitely not in that first category of author. There was one thing in particular, though, that really stuck out for me in his post &quot;&lt;a href=&quot;https://m.signalvnoise.com/provide-sharp-knives-cc0a22bf7934#.yv2771vf7&quot;&gt;Provide sharp knives&lt;/a&gt;&quot; -&lt;/p&gt;
@@ -1584,14 +2283,14 @@ namespace ExampleAnalyser
 
 &lt;p&gt;The fact that static typing is not enough to confirm that your code is correct, and that unit tests should be written as well, does not mean that &lt;em&gt;only&lt;/em&gt; units tests should be used.&lt;/p&gt;
 
-&lt;p&gt;I&#39;ve kept this post deliberately short because I would love for it to have some impact and experience has taught me that it&#39;s much more difficult for that to be the case with a long format post. I&#39;ve expanded on this further at &quot;&lt;a href=&quot;http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary&quot;&gt;A static type system is a wonderful message to the present and future - Supplementary&lt;/a&gt;&quot;. There&#39;s more about the benefits, more about the limitations, more examples of me saying &quot;I don&#39;t want the power to do try to do something that this code has been explicitly written not to have to deal with&quot; and &lt;em&gt;no more&lt;/em&gt; mentions of multi-threading because static typing&#39;s benefits are not restricted to especially complicated problem domains, applications may benefit regardless of their complexity.&lt;/p&gt;
+&lt;p&gt;I&#39;ve kept this post deliberately short because I would love for it to have some impact and experience has taught me that it&#39;s much more difficult for that to be the case with a long format post. I&#39;ve expanded on this further at &quot;&lt;a href=&quot;http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary&quot;&gt;A static type system is a wonderful message to the present and future - Supplementary&lt;/a&gt;&quot;. There&#39;s more about the benefits, more about the limitations, more examples of me saying &quot;I don&#39;t want the power to do try to do something that this code has been explicitly written not to have to deal with&quot; and &lt;em&gt;no more&lt;/em&gt; mentions of multi-threading because static typing&#39;s benefits are not restricted to especially complicated problem domains, applications may benefit regardless of their complexity.&lt;/p&gt;
 </description>
 			<pubDate>Tue, 31 May 2016 21:33:00 GMT</pubDate>
 		</item>
 		<item>
 			<title>Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</title>
-            <link>http://www.productiverage.com/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</link>
-			<guid>http://www.productiverage.com/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</guid>
+            <link>http://localhost:4252/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</link>
+			<guid>http://localhost:4252/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</guid>
 			<description>&lt;p&gt;This is going to be a short post about a Roslyn (or &quot;The .NET Compiler Platform&quot;, if you&#39;re from Microsoft) analyser and code fix that I&#39;ve added to a library. I&#39;m not going to try to take you through the steps required to create an analyser nor how the Roslyn object model describes the code that you&#39;ve written in the IDE* but I want to talk about the analyser itself because it&#39;s going to be very useful if you&#39;re one of the few people using my &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; library. Also, I feel like the inclusion of analysers with libraries is something that&#39;s going to become increasingly common (and I want to be able to have something to refer back to if I get the chance to say &quot;told you!&quot; in the future).&lt;/p&gt;
 
 &lt;p&gt;* &lt;em&gt;(This is largely because I&#39;m still struggling with it a bit myself; my current process is to start with &lt;a href=&quot;https://msdn.microsoft.com/en-gb/magazine/dn879356.aspx&quot;&gt;Use Roslyn to Write a Live Code Analyzer for Your API&lt;/a&gt; and the &quot;Analyzer with Code Fix (NuGet + VSIX)&quot; Visual Studio template. I then tinker around a bit and try running what I&#39;ve got so far, so that I can use the &quot;Syntax Visualizer&quot; in the Visual Studio instance that is being debugged. Then I tend to do a lot of Google searches when I feel like I&#39;m getting close to something useful.. how do I tell if a &lt;strong&gt;FieldDeclarationSyntax&lt;/strong&gt; is for a readonly field or not? Oh, good, someone else has already written some code doing something like what  I want to do - I look at the &quot;Modifiers&quot; property on the &lt;strong&gt;FieldDeclarationSyntax&lt;/strong&gt; instance).&lt;/em&gt;&lt;/p&gt;
@@ -1689,17 +2388,17 @@ namespace ExampleAnalyser
 
 &lt;p&gt;.. then you would see the following errors reported by Visual Studio (presuming you are using 2015 or later) -&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserError1.png&quot; alt=&quot;Example analyser errors raised by the ProductiveRage.Immutable library&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/ProductiveRageImmutableAnalyserError1.png&quot; alt=&quot;Example analyser errors raised by the ProductiveRage.Immutable library&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;.. which is one of the &quot;common IAmImmutable mistakes&quot; analysers identifying the problem for you.&lt;/p&gt;
 
 &lt;h3&gt;Getting Visual Studio to write code for you, using code fixes&lt;/h3&gt;
 
-&lt;p&gt;I&#39;ve been writing more code with this library and I&#39;m still, largely, happy with it. Making the move to assuming never-allow-null (which is baked into the &quot;CtorSet&quot; and &quot;With&quot; calls) means that the classes that I&#39;m writing are a lot shorter and that type signatures are more descriptive. (I wrote about all this in my post at the end of last year &quot;&lt;a href=&quot;http://www.productiverage.com/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&quot; if you&#39;re curious for more details).&lt;/p&gt;
+&lt;p&gt;I&#39;ve been writing more code with this library and I&#39;m still, largely, happy with it. Making the move to assuming never-allow-null (which is baked into the &quot;CtorSet&quot; and &quot;With&quot; calls) means that the classes that I&#39;m writing are a lot shorter and that type signatures are more descriptive. (I wrote about all this in my post at the end of last year &quot;&lt;a href=&quot;http://localhost:4252/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&quot; if you&#39;re curious for more details).&lt;/p&gt;
 
 &lt;p&gt;However.. I &lt;em&gt;still&lt;/em&gt; don&#39;t really like typing out as much code for each class as I have to. Each class has to repeat the property names four times - once in the constructor, twice in the &quot;CtorSet&quot; call and a fourth time in the public property. Similarly, the type name has to be repeated twice - once in the constructor and once in the property.&lt;/p&gt;
 
-&lt;p&gt;This is better than the obvious alternative, which is to not bother with immutable types. I will gladly take the extra lines of code (and the effort required to write them) to get the additional confidence that a &quot;stronger&quot; type system offers - I wrote about this recently in my &quot;&lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Writing React with Bridge.NET - The Dan Way&lt;/a&gt;&quot; posts; I think that it&#39;s really worthwhile to bake assumptions into the type system where possible. For example, the Props types of React components are assumed, by the React library, to be immutable - so having them defined as immutable types represents this requirement in the type system. If the Props types are &lt;em&gt;mutable&lt;/em&gt; then it would be possible to write code that tries to change that data and then bad things could happen (you&#39;re doing something that library expects not to happen). If the Props types are &lt;em&gt;immutable&lt;/em&gt; then it&#39;s not even possible to write this particular kind of bad-things-might-happen code, which is a positive thing.&lt;/p&gt;
+&lt;p&gt;This is better than the obvious alternative, which is to not bother with immutable types. I will gladly take the extra lines of code (and the effort required to write them) to get the additional confidence that a &quot;stronger&quot; type system offers - I wrote about this recently in my &quot;&lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Writing React with Bridge.NET - The Dan Way&lt;/a&gt;&quot; posts; I think that it&#39;s really worthwhile to bake assumptions into the type system where possible. For example, the Props types of React components are assumed, by the React library, to be immutable - so having them defined as immutable types represents this requirement in the type system. If the Props types are &lt;em&gt;mutable&lt;/em&gt; then it would be possible to write code that tries to change that data and then bad things could happen (you&#39;re doing something that library expects not to happen). If the Props types are &lt;em&gt;immutable&lt;/em&gt; then it&#39;s not even possible to write this particular kind of bad-things-might-happen code, which is a positive thing.&lt;/p&gt;
 
 &lt;p&gt;But &lt;em&gt;still&lt;/em&gt; I get a niggling feeling that things could be better. And now they are! With Roslyn, you can not only identify particular patterns but you can also offer automatic fixes for them. So, if you were to start writing the &lt;strong&gt;EmployeeDetails&lt;/strong&gt; class from scratch and got this far:&lt;/p&gt;
 
@@ -1715,11 +2414,11 @@ namespace ExampleAnalyser
 
 &lt;p&gt;The latest version of the ProductiveRage.Immutable library (1.7.0) does just that. The empty constructor will not only be identified with a warning but a light bulb will also appear alongside the code. Clicking this (or pressing [Ctrl]-[.] while within the empty constructor, for fellow keyboard junkies) will present an option to &quot;Populate class from constructor&quot; -&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix1.png&quot; alt=&quot;Screenshot showing the analyser identifying an empty constructor on an IAmImmutable implementation&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix1.png&quot; alt=&quot;Screenshot showing the analyser identifying an empty constructor on an IAmImmutable implementation&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;Selecting the &quot;Populate class from constructor&quot; option -&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix2.png&quot; alt=&quot;Screenshot showing the code fix that may auto-populate the incomplete IAmImmutable implementation&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix2.png&quot; alt=&quot;Screenshot showing the code fix that may auto-populate the incomplete IAmImmutable implementation&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;.. will take the constructor arguments and generate the &quot;CtorSet&quot; calls and the public properties automatically. Now you can have all of the safety of the immutable type with no more typing effort than the mutable version!&lt;/p&gt;
 
@@ -1758,9 +2457,9 @@ public sealed class EmployeeDetails
 		</item>
 		<item>
 			<title>Writing React apps using Bridge.NET - The Dan Way (Part Three)</title>
-            <link>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-three</link>
-			<guid>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-three</guid>
-			<description>&lt;p&gt;In parts &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;One&lt;/a&gt; and &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Two&lt;/a&gt;, I described how to create a simple application using React and a Flux-like architecture, written in &lt;a href=&quot;http://bridge.net/&quot;&gt;Bridge.NET&lt;/a&gt; - it covered where and how to deal with validation, how to integrate with a persistence layer, how to deal with asynchronous interactions (and how they don&#39;t need to be scary) and how the approach made the code easy to test and easy to reason about.&lt;/p&gt;
+            <link>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-three</link>
+			<guid>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-three</guid>
+			<description>&lt;p&gt;In parts &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;One&lt;/a&gt; and &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Two&lt;/a&gt;, I described how to create a simple application using React and a Flux-like architecture, written in &lt;a href=&quot;http://bridge.net/&quot;&gt;Bridge.NET&lt;/a&gt; - it covered where and how to deal with validation, how to integrate with a persistence layer, how to deal with asynchronous interactions (and how they don&#39;t need to be scary) and how the approach made the code easy to test and easy to reason about.&lt;/p&gt;
 
 &lt;p&gt;The components created using the &lt;a href=&quot;https://www.nuget.org/packages/Bridge.React&quot;&gt;React / Bridge bindings&lt;/a&gt; have their requirements / dependencies described in a strongly-typed manner since each component&#39;s &quot;props&quot; reference is a nested class with properties for each value or reference that will be needed in order for it to render.&lt;/p&gt;
 
@@ -1770,7 +2469,7 @@ public sealed class EmployeeDetails
 
 &lt;p&gt;&lt;em&gt;(C# can also be written to act as a dynamically-typed language, particularly if you use the &quot;&lt;a href=&quot;https://msdn.microsoft.com/en-us/library/dd264741.aspx&quot;&gt;dynamic&lt;/a&gt;&quot; keyword - but it&#39;s principally a statically-typed language).&lt;/em&gt;&lt;/p&gt;
 
-&lt;p&gt;I&#39;m going to describe some ways to improve the example application and, in doing so, extrapolate some rules as to how to make the code clearer (and, &lt;em&gt;again&lt;/em&gt;, easier to reason about, write and maintain - since these are extremely important qualities of code to me, that I strive for when developing and that appealed to me when I first encountered React). These will be my opinions (based upon my experiences) and you might disagree with them - but this is where we really get into &quot;The Dan Way&quot; of working with Bridge and React. If you &lt;em&gt;do&lt;/em&gt; choose to disagree, then hopefully parts &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;One&lt;/a&gt; and &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Two&lt;/a&gt; will continue to be useful (but I&#39;m afraid we can never be friends*).&lt;/p&gt;
+&lt;p&gt;I&#39;m going to describe some ways to improve the example application and, in doing so, extrapolate some rules as to how to make the code clearer (and, &lt;em&gt;again&lt;/em&gt;, easier to reason about, write and maintain - since these are extremely important qualities of code to me, that I strive for when developing and that appealed to me when I first encountered React). These will be my opinions (based upon my experiences) and you might disagree with them - but this is where we really get into &quot;The Dan Way&quot; of working with Bridge and React. If you &lt;em&gt;do&lt;/em&gt; choose to disagree, then hopefully parts &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;One&lt;/a&gt; and &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Two&lt;/a&gt; will continue to be useful (but I&#39;m afraid we can never be friends*).&lt;/p&gt;
 
 &lt;p&gt;* &lt;em&gt;(Only joking**)&lt;/em&gt;&lt;/p&gt;
 
@@ -2332,7 +3031,7 @@ new TextInput.Props(
 
 &lt;p&gt;Note: This is probably the most controversial part of my recommended approach - if you&#39;re happy to consider making your classes immutable like this, for the reasons I outlined above (which, by the way, can be applied to &lt;em&gt;all&lt;/em&gt; classes in your code, not just props types for React components) and you&#39;re willing to consider the benefits and trade-offs of building up a more detailed type system (such as using &lt;strong&gt;Optional&amp;lt;NonBlankOrTrimmedString&amp;gt;&lt;/strong&gt; instead of just &quot;string&quot; and only using &quot;string&quot; to mean &quot;non-nullable string&quot;) then I think that you&#39;ll enjoy the rest of what I&#39;ve got to say.&lt;/p&gt;
 
-&lt;p&gt;I want to extend this ostracising of nulls to the &lt;strong&gt;TextInput&lt;/strong&gt; class itself, though. At the end of &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt;, the component looked like this:&lt;/p&gt;
+&lt;p&gt;I want to extend this ostracising of nulls to the &lt;strong&gt;TextInput&lt;/strong&gt; class itself, though. At the end of &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt;, the component looked like this:&lt;/p&gt;
 
 &lt;pre&gt;&lt;code&gt;using System;
 using Bridge.Html5;
@@ -3342,7 +4041,7 @@ namespace BridgeReactTutorial.Components
 }
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;It&#39;s nice and simple since we moved nearly all of the logic that it contained in &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt; into the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; in &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;It&#39;s nice and simple since we moved nearly all of the logic that it contained in &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt; into the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; in &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt;.&lt;/p&gt;
 
 &lt;p&gt;The obvious thing to do, based on what I&#39;ve been talking about today, is to change its &lt;strong&gt;Props&lt;/strong&gt; and &lt;strong&gt;State&lt;/strong&gt; classes to implement &lt;strong&gt;IAmImmutable&lt;/strong&gt;.&lt;/p&gt;
 
@@ -4360,7 +5059,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;To recall what our example application looks like -&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;Message Editor and Message History&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;Message Editor and Message History&quot; src=&quot;http://localhost:4252/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;There are basically two parts to it; the Message Editor and the Message History. The Message Editor part changes after one of any of the following occurs -&lt;/p&gt;
 
@@ -4749,7 +5448,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;This has turned out to be a pretty huge post. But I didn&#39;t want to try to split it up because all of the principles are related, really.&lt;/p&gt;
 
-&lt;p&gt;If you&#39;d stopped reading after &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt; then I think that you would have the tools to construct client-side applications that will scale from something simple up to something massively complex. The combination of C# (which is time-proven as a language that not only enables large applications to be built and maintained over long periods of time, it is a language where it is not exceptional for this to be the case*) and React is very powerful.&lt;/p&gt;
+&lt;p&gt;If you&#39;d stopped reading after &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt; then I think that you would have the tools to construct client-side applications that will scale from something simple up to something massively complex. The combination of C# (which is time-proven as a language that not only enables large applications to be built and maintained over long periods of time, it is a language where it is not exceptional for this to be the case*) and React is very powerful.&lt;/p&gt;
 
 &lt;p&gt;* &lt;em&gt;(Languages such as PHP and JavaScript CAN be used to build and maintain large code bases, but I think that it&#39;s telling that the companies that take this work seriously rely on, and develop, additional tooling to make it manageable, like &lt;a href=&quot;http://hacklang.org/&quot;&gt;Hack&lt;/a&gt; and &lt;a href=&quot;http://flowtype.org/&quot;&gt;Flow&lt;/a&gt;).&lt;/em&gt;&lt;/p&gt;
 
@@ -4783,9 +5482,9 @@ namespace BridgeReactTutorial.API
 		</item>
 		<item>
 			<title>Writing React apps using Bridge.NET - The Dan Way (Part Two)</title>
-            <link>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two</link>
-			<guid>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two</guid>
-			<description>&lt;p&gt;To summarise where we got to in &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt;: we&#39;ve got an entry form where, after you enter Title and Content values, you may save a message. During the message-saving process, the form and save button are disabled. Once the saving has completed, the form will be cleared and it will be re-enabled. Validation logic in the &lt;strong&gt;MessageEditor&lt;/strong&gt; prevents the form from being saved while one or both of the required inputs are without value. After the save has succeeded, a read action will begin in the background - once the read operation has completed, a &lt;strong&gt;MessageHistory&lt;/strong&gt; component will display all of the saved messages. All interactions with the &lt;strong&gt;MessageApi&lt;/strong&gt; are handled by the top-level &lt;strong&gt;AppContainer&lt;/strong&gt; component. Similarly, all user interaction events are passed up to this top-level component, from where re-renders of the UI state are triggered.&lt;/p&gt;
+            <link>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two</link>
+			<guid>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two</guid>
+			<description>&lt;p&gt;To summarise where we got to in &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt;: we&#39;ve got an entry form where, after you enter Title and Content values, you may save a message. During the message-saving process, the form and save button are disabled. Once the saving has completed, the form will be cleared and it will be re-enabled. Validation logic in the &lt;strong&gt;MessageEditor&lt;/strong&gt; prevents the form from being saved while one or both of the required inputs are without value. After the save has succeeded, a read action will begin in the background - once the read operation has completed, a &lt;strong&gt;MessageHistory&lt;/strong&gt; component will display all of the saved messages. All interactions with the &lt;strong&gt;MessageApi&lt;/strong&gt; are handled by the top-level &lt;strong&gt;AppContainer&lt;/strong&gt; component. Similarly, all user interaction events are passed up to this top-level component, from where re-renders of the UI state are triggered.&lt;/p&gt;
 
 &lt;p&gt;I see this arrangement as a top-to-bottom tree in terms of rendering - the top-level component is in control of what to display in the component hierarchy beneath it, and all of the information required to display those child components is contained within the top-level component&#39;s state data.&lt;/p&gt;
 
@@ -4795,7 +5494,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;This one-way passing of data is very powerful in terms of modelling interactions that are easy to follow. As a reminder, a common way to deal with interactions like this in days gone by (ie. before React popularised &quot;one-way bindings&quot;) was for changes to elements to be reflected immediately in-place and for any interested parties to subscribe to events that those elements raise after they change. So, for the message entry form -&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial2.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://localhost:4252/Content/Images/Posts/ReactTutorial2.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;With the old method, the &quot;Title&quot; and the &quot;Content&quot; inputs would accept changes that the user makes immediately - and the fieldset legend and the save button components would need to listen out to some of these changes. The legend changes to match what is entered in the &quot;Title&quot; input (unless it&#39;s blank, in which case the legend shows &quot;Untitled&quot;). The save button needs to be enabled if both &quot;Title&quot; and &quot;Content&quot; have values and &lt;em&gt;disabled&lt;/em&gt; if one or both of them are without.&lt;/p&gt;
 
@@ -4995,7 +5694,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;Below is the classic Flux diagram -&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/FluxDiagramSimple.png&quot; class=&quot;AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://localhost:4252/Content/Images/Posts/FluxDiagramSimple.png&quot; class=&quot;AlwaysFullWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;The message bus is referred to as the &quot;Dispatcher&quot;, messages are known as &quot;Actions&quot;. The &quot;View&quot; is the React component tree (the &lt;strong&gt;AppContainer&lt;/strong&gt; listens for the &quot;OnChange&quot; event from the Store and re-renders when it receives it). Note that actions come not just from the View but also from outside the cycle; in our case we have messages coming from the &lt;strong&gt;MessageApi&lt;/strong&gt; when new Chuck Norris facts arrive. In an application with routing, there would be actions from the router when the URL changes.&lt;/p&gt;
 
@@ -5023,7 +5722,7 @@ void HandleServerAction(IDispatcherAction action);
 
 &lt;p&gt;However, we&#39;re writing in C# and we&#39;re going to take advantage of that! Our actions will be distinct types. When the store listens out messages, it won&#39;t compare an &quot;actionType&quot; string to work out what a particular action represents, instead we&#39;ll perform type comparisons and, when we find an action that we&#39;re interested in, we&#39;ll cast the current action to the matched type and then access its data in a type-safe manner.&lt;/p&gt;
 
-&lt;p&gt;Create a new folder in the project from &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt; called &quot;Actions&quot;. The simplest action to begin with is the action that would be raised by the &lt;strong&gt;AppContainer&lt;/strong&gt; when the user has clicked the Save button -&lt;/p&gt;
+&lt;p&gt;Create a new folder in the project from &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt; called &quot;Actions&quot;. The simplest action to begin with is the action that would be raised by the &lt;strong&gt;AppContainer&lt;/strong&gt; when the user has clicked the Save button -&lt;/p&gt;
 
 &lt;pre&gt;&lt;code&gt;using Bridge.React;
 using BridgeReactTutorial.ViewModels;
@@ -5268,7 +5967,7 @@ namespace BridgeReactTutorial.Components
 
 &lt;p&gt;It is now almost devoid of logic, it only exists to listen to changes from the store (which we&#39;ll define in a moment), to render components and to direct events that are passed up from these components to the Dispatcher. Note that it no longer has any dependency upon the &lt;strong&gt;MessageApi&lt;/strong&gt;.&lt;/p&gt;
 
-&lt;p&gt;A couple of things to note - the Dispatcher and Store are both passed to the component through its props, but when the Store raises a Change event the &lt;strong&gt;AppContainer&lt;/strong&gt; copies data references from the Store into its own state, meaning that &lt;em&gt;all&lt;/em&gt; of the information that the &lt;strong&gt;AppContainer&lt;/strong&gt; requires to render itself is contained within its state. This follows the &quot;Guidelines for Stateful Components&quot; that I wrote &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;last time&lt;/a&gt; -&lt;/p&gt;
+&lt;p&gt;A couple of things to note - the Dispatcher and Store are both passed to the component through its props, but when the Store raises a Change event the &lt;strong&gt;AppContainer&lt;/strong&gt; copies data references from the Store into its own state, meaning that &lt;em&gt;all&lt;/em&gt; of the information that the &lt;strong&gt;AppContainer&lt;/strong&gt; requires to render itself is contained within its state. This follows the &quot;Guidelines for Stateful Components&quot; that I wrote &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;last time&lt;/a&gt; -&lt;/p&gt;
 
 &lt;ol&gt;
 &lt;li&gt;A stateful component&#39;s &quot;props&quot; data should &lt;em&gt;only&lt;/em&gt; consist of references to external dependencies&lt;/li&gt;
@@ -5663,7 +6362,7 @@ namespace BridgeReactTutorial.Stores
 }
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;There&#39;s really nothing very complicated here at all. What I like is that all of the logic that was previously ensconced within component classes is now in a C# class which has zero UI-based dependencies. What I also like is how clear the logic is, it&#39;s very easy to read through how the various actions are matched and to see precisely what state changes will occur. In fact, the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; is just a simple state machine where each transition is based upon the action that it receives from the Dispatcher. It&#39;s reassuring that the Flux architecture is based upon these time-tested computer science devices; the message bus and &lt;a href=&quot;http://www.productiverage.com/c-sharp-state-machines&quot;&gt;state machine&lt;/a&gt; - while it might take a little while to internalise how to write applications based around this &quot;one-way binding&quot; / &quot;one-way message passing&quot; arrangement, once it clicks it feels very natural.&lt;/p&gt;
+&lt;p&gt;There&#39;s really nothing very complicated here at all. What I like is that all of the logic that was previously ensconced within component classes is now in a C# class which has zero UI-based dependencies. What I also like is how clear the logic is, it&#39;s very easy to read through how the various actions are matched and to see precisely what state changes will occur. In fact, the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; is just a simple state machine where each transition is based upon the action that it receives from the Dispatcher. It&#39;s reassuring that the Flux architecture is based upon these time-tested computer science devices; the message bus and &lt;a href=&quot;http://localhost:4252/c-sharp-state-machines&quot;&gt;state machine&lt;/a&gt; - while it might take a little while to internalise how to write applications based around this &quot;one-way binding&quot; / &quot;one-way message passing&quot; arrangement, once it clicks it feels very natural.&lt;/p&gt;
 
 &lt;p&gt;Having the core application logic in classes like this really helps ensure that code will have those two great properties that I will keep repeating through this series - that it&#39;s easy to reason about and that it&#39;s easy to test. It&#39;s easy to reason about as it&#39;s easy to see how user (and server) actions flow through the code, there are few surprises. It&#39;s easy to test because there are few dependencies - to test anything in the &lt;strong&gt;MessageWriterStore&lt;/strong&gt;, each unit test would need to provide an &lt;strong&gt;AppDispatcher&lt;/strong&gt; instance and a mock &lt;strong&gt;IReadAndWriteMessages&lt;/strong&gt; implementation, it would then push one or more messages through the Dispatcher and confirm that the public &lt;strong&gt;MessageWriterStore&lt;/strong&gt; state matches expectations at the end. For example, to test the &quot;Content&quot; text input validation, you would play back a &lt;strong&gt;MessageEditStateChanged&lt;/strong&gt; action with a blank &quot;Content&quot; string in the &lt;strong&gt;MessageEditState&lt;/strong&gt; and ensure that the expected validation message text was present in the &quot;Message&quot; reference of the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; afterwards.&lt;/p&gt;
 
@@ -6268,8 +6967,8 @@ namespace BridgeReactTutorial.API
 		</item>
 		<item>
 			<title>Writing React apps using Bridge.NET - The Dan Way (from first principles)</title>
-            <link>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles</link>
-			<guid>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles</guid>
+            <link>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles</link>
+			<guid>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles</guid>
 			<description>&lt;p&gt;I&#39;ve had a request from someone to write about how I think that someone from a .net background should write a web-based application. The short answer is that I strongly believe that using Bridge.NET with React, using a Flux-like architecture is the way forward. I think that React changed the game by trying to introduce a way to write applications that addressed the big challenges, rather than what many of the other frameworks did, which was to try to make some aspects of development easier but without tackling the underlying problems. We&#39;re going to be using these technologies to create some big applications where I work and some resources as to how best to do this will be valuable. I&#39;m going to try to roll this all together into a short series of posts about creating Bridge / React / Flux apps, where I&#39;ll try to start from the simplest approach at each point and only introduce something new when I can explain why it&#39;s valuable. So, initially, Flux will be nowhere to be seen - but, hopefully, when it &lt;em&gt;is&lt;/em&gt; introduced, it will be clear why.&lt;/p&gt;
 
 &lt;p&gt;(I&#39;m not going to expel any effort on convincing you that writing C# in Visual Studio is incredibly powerful, and that it&#39;s fantastic to be able to do this while writing browser-based applications, nor am I going to try to sell you any more on React - if you&#39;re not on board with these ideas already then there&#39;s a &lt;em&gt;chance&lt;/em&gt; that these posts will sell you on it, but that&#39;s not going to be my main focus).&lt;/p&gt;
@@ -6280,7 +6979,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;All that the application will do will be to allow the user to write a message, entering  Title and Content strings, and to save this message. There will be a &quot;Message API&quot;, which will emulate reading and writing to a remote endpoint, for data persistence, but the implementation will all be kept in-memory / in the browser, just to make things simple. It will look something like this:&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://localhost:4252/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;As more messages are written, more entries will appear in the &quot;Message History&quot;. Seems simple.&lt;/p&gt;
 
@@ -6344,7 +7043,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;Another reason that it is strongly recommended that components not update themselves (meaning that they are stateless, since the only way for a component to update itself is to change its state) is that it makes the handling of events much clearer. In the example application that I&#39;m going to refer to in this series, the &quot;Title&quot; value that is entered by the user is reflected in the fieldset legend -&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;Fieldset legend mirros the Title input value&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial2.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;Fieldset legend mirros the Title input value&quot; src=&quot;http://localhost:4252/Content/Images/Posts/ReactTutorial2.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;If the &quot;Title&quot; input box was to maintain its own state and update itself when its contents change, there still needs to be something listening for changes in order to update the fieldset legend text. If it was common for components to maintain their own state then things would quickly get out of hand as more and more components have to listen for (and react to) changes in other components. Just in the example here, there is a validation message that needs to be hidden if the &quot;Title&quot; input has a non-blank value, so that component would need to listen for the change event on the input. (Alternatively, the &lt;strong&gt;TextInput&lt;/strong&gt; component could be provided with validation logic and &lt;em&gt;it&lt;/em&gt; would be responsible for showing or hiding the validation message - which would complicate the &lt;strong&gt;TextInput&lt;/strong&gt; class). On top of this, there is the &quot;Save&quot; button which should be disabled if either of the &quot;Title&quot; or &quot;Content&quot; input boxes have no value - so the Save button component would need to listen to change events from both text inputs and decide whether or not it should be enabled based upon their states. Maybe the input form itself wants to add an &quot;invalid&quot; class to itself for styling purposes if either of the inputs are invalid - now the form component has to listen to changes to the text inputs and add or remove this class. This way lies madness.&lt;/p&gt;
 
@@ -6380,7 +7079,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;In the sample application here -&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://localhost:4252/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;The component hierarchy will look something like this:&lt;/p&gt;
 
@@ -7398,475 +8097,6 @@ fieldset.history span.title
 &lt;p&gt;All of these questions will be answered in later posts, along with further advice to try to help you do what I think React does best - write code that is easier to reason about, and thus easier to read, maintain and extend.&lt;/p&gt;
 </description>
 			<pubDate>Tue, 15 Mar 2016 23:55:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>Easy &quot;PureComponent&quot; React performance boosts for Bridge.Net</title>
-            <link>http://www.productiverage.com/easy-purecomponent-react-performance-boosts-for-bridgenet</link>
-			<guid>http://www.productiverage.com/easy-purecomponent-react-performance-boosts-for-bridgenet</guid>
-			<description>&lt;p&gt;React&#39;s great strength is that it makes creating UIs simple(r) because you can treat the view as a pure function - often, you essentially give a props reference into a top level component and it works out what to draw. Then, when something changes, you do the same again; trigger a full re-draw and rely upon React&#39;s Virtual DOM to work out what changed in an efficient manner and apply those changes to the browser DOM. The browser DOM is slow, which is why interactions with it should be minimised. The Virtual DOM is fast.&lt;/p&gt;
-
-&lt;p&gt;The common pre-React way to deal with UIs was to have some code to render the UI in an initial state and then further code that would change the UI based upon user interactions. React reduces these two types of state-handling (initial-display and update-for-specific-interaction) into one (full re-render).&lt;/p&gt;
-
-&lt;p&gt;And a lot of the time, the fast Virtual DOM performs quickly enough that you don&#39;t have to worry about what it&#39;s doing. But sometimes, you may have a UI that is so complicated that it&#39;s a lot of work for the Virtual DOM to calculate the diffs to apply to the browser DOM. Or you might have particularly demanding performance requirements, such as achieving 60 fps animations on mobile.&lt;/p&gt;
-
-&lt;p&gt;Handily, React has a way for you to give it hints - namely the &lt;a href=&quot;https://facebook.github.io/react/docs/component-specs.html#updating-shouldcomponentupdate&quot;&gt;ShouldComponentUpdate&lt;/a&gt; method that components may implement. This method can look at the component&#39;s current props and state values and the &lt;em&gt;next&lt;/em&gt; props and state values and let React know if any changes are required. The method returns a boolean - false meaning &quot;no, I don&#39;t need to redraw, this data looks the same&quot; and true meaning &quot;yes, I need to redraw for this new data&quot;. The method is optional, if a component doesn&#39;t implement it then it&#39;s equivalent to it always returning true. Remember, if a component returns true for &quot;do I need to be redrawn?&quot;, the Virtual DOM is still what is responsible for dealing with the update - and it usually deals with it in a very fast and efficient manner. Returning true is not something to necessarily be worried about. However, if you &lt;em&gt;can&lt;/em&gt; identify cases where ShouldComponentUpdate can return false then you can save the Virtual DOM from working out whether that component &lt;em&gt;or any of its child components&lt;/em&gt; need to be redrawn. If this can be done high up in a deeply-nested component tree then it could save the Virtual DOM a lot of work.&lt;/p&gt;
-
-&lt;p&gt;The problem is, though, that coming up with a mechanism to reliably and efficiently compare object references (ie. props and / or state) to determine whether they describe the same data is difficult to do in the general case.&lt;/p&gt;
-
-&lt;p&gt;Let me paint a picture by describing a very simple example React application..&lt;/p&gt;
-
-&lt;h3&gt;The Message Editor Example&lt;/h3&gt;
-
-&lt;p&gt;Imagine an app that can read a list of messages from an API and allow the user of the app to edit these messages. Each message has &quot;Content&quot; and &quot;Author&quot; properties that are strings. Either of these values may be edited in the app. These messages are part of a message group that has a title - this also may be edited in the app.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;(I didn&#39;t say that it was a useful or realistic app, it&#39;s just one to illustrate a point :)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;The way that I like to create React apps is to categorise components as one of two things; a &quot;Container Component&quot; or a &quot;Presentation Component&quot;. Presentation Components should be state-less, they should just be handed a props reference and then go off and draw themselves. Any interactions that the user makes with this component or any of its child components are effectively passed up (via change handlers on the props reference) until it reaches a Container Component. The Container Component will translate these interaction into actions to send to the Dispatcher. Actions will be handled by a store (that will be listening out for Dispatcher actions that it&#39;s interested in). When a store handles an action, it emits a change event. The Container Component will be listening out for change events on stores that it is interested in - when this happens, the Container Component will trigger a re-render of itself by updating its state based upon data now available in the store(s) it cares about. This is a fairly standard Flux architecture and, I believe, the terms &quot;Container Component&quot; / &quot;Presentation Component are in reasonably common use (I didn&#39;t make them up, I just like the principle - one of the articles that I&#39;ve read that uses these descriptions is &lt;a href=&quot;https://medium.com/making-internets/component-brick-and-mortar-8bde51899b00#.6yi3i9hou&quot;&gt;Component Brick and Mortar: The React documentation I wish I had a year ago&lt;/a&gt;).&lt;/p&gt;
-
-&lt;p&gt;So, for my example app, I might have a component hierarchy that looks this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;AppContainer
-  Title
-    TextInput
-      Input
-  MessageList
-    MessageRow
-      TextInput
-        Input
-      TextInput
-        Input
-    MessageRow
-      TextInput
-        Input
-      TextInput
-        Input
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;There will be as many &quot;MessageRow&quot; components as there are messages to edit. &lt;strong&gt;Input&lt;/strong&gt; is a standard React-rendered element and all of the others (&lt;strong&gt;AppContainer&lt;/strong&gt;, &lt;strong&gt;Title&lt;/strong&gt;, &lt;strong&gt;MessageList&lt;/strong&gt;, &lt;strong&gt;MessageRow&lt;/strong&gt; and &lt;strong&gt;TextInput&lt;/strong&gt;) are custom components.&lt;/p&gt;
-
-&lt;p&gt;(Note: This is &lt;em&gt;not&lt;/em&gt; a sufficiently deeply-nested hierarchy that React would have any problems with rendering performance, it&#39;s intended to be &lt;em&gt;just&lt;/em&gt; complicated enough to demonstrate the point that I&#39;m working up to).&lt;/p&gt;
-
-&lt;p&gt;The &lt;strong&gt;AppContainer&lt;/strong&gt; is the only &quot;Container Component&quot; and so is the only component that has a React state reference as well as props. A state reference is, essentially, what prevents a component from being what you might consider a &quot;pure function&quot; - where the props that are passed in are all that affects what is rendered out. React &quot;state&quot; is required to trigger a re-draw of the UI, but it should be present in as few places as possible - ie. there should only be one, or a small number of, top level component(s) that have state. Components that render &lt;em&gt;only&lt;/em&gt; according to their props data are much easier to reason about (and hence easier to write, extend and maintain).&lt;/p&gt;
-
-&lt;p&gt;My &lt;a href=&quot;https://www.nuget.org/packages/Bridge.React&quot;&gt;Bridge.NET React bindings&lt;/a&gt; NuGet package makes it simple to differentiate between stateful (ie. Container) components and stateless (ie. Presentation) components as it has both a &lt;strong&gt;Component&amp;lt;TProps, TState&amp;gt;&lt;/strong&gt; base class and a &lt;strong&gt;StatelessComponent&amp;lt;TProps&amp;gt;&lt;/strong&gt; base class - you derive from the appropriate one when you create custom components (for more details, see &lt;a href=&quot;http://www.productiverage.com/react-and-flux-with-bridgenet-redux&quot;&gt;React (and Flux) with Bridge.net - Redux&lt;/a&gt;).&lt;/p&gt;
-
-&lt;p&gt;To start with the simplest example, below is the &lt;strong&gt;TextInput&lt;/strong&gt; component. This just renders a text Input with a specified value and communicates up any requests to change that string value via an &quot;OnChange&quot; callback -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public class TextInput : StatelessComponent&amp;lt;TextInput.Props&amp;gt;
-{
-  public TextInput(Props props) : base(props) { }
-
-  public override ReactElement Render()
-  {
-    return DOM.Input(new InputAttributes
-    {
-      Type = InputType.Text,
-      Value = props.Content,
-      OnChange = OnTextChange
-    });
-  }
-
-  private void OnTextChange(FormEvent&amp;lt;InputElement&amp;gt; e)
-  {
-    props.OnChange(e.CurrentTarget.Value);
-  }
-
-  public class Props
-  {
-    public string Content { get; set; }
-    public Action&amp;lt;string&amp;gt; OnChange { get; set; }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;It is fairly easy to envisage how you might try to implement &quot;ShouldComponentUpdate&quot; here - given a &quot;this is the new props value&quot; reference (which gets passed into ShouldComponentUpdate as an argument called &quot;nextProps&quot;) and the current props reference, you need only  look at the &quot;Content&quot; and &quot;OnChange&quot; references on the current and next props and, if both Content/Content and OnChange/OnChange references are the same, then we can return false (meaning &quot;no, we do not need to re-draw this TextInput&quot;).&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;(Two things to note here: Firstly, it is not usually possible to directly compare the current props reference with the &quot;nextProps&quot; reference because it is common for the parent component to create a new props instance for each proposed re-render of a child component, rather than re-use a previous props instance - so the individual property values within the props references may all be consistent between the current props and nextProps, but the actual props references will usually be distinct. Secondly, the Bridge.NET React bindings only support React component life cycle method implementations on custom components derived from &lt;strong&gt;Component&amp;lt;TProps, TState&amp;gt;&lt;/strong&gt; classes and not those derived from &lt;strong&gt;StatelessComponent&amp;lt;TProps&amp;gt;&lt;/strong&gt;, so you couldn&#39;t actually write your own &quot;ShouldComponentUpdate&quot; for a &lt;strong&gt;StatelessComponent&lt;/strong&gt; - but that&#39;s not important here, we&#39;re just working through a thought experiment).&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;Now let&#39;s move on to the &lt;strong&gt;MessageList&lt;/strong&gt; and &lt;strong&gt;MessageRow&lt;/strong&gt; components, since things get more complicated there -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public class MessageList : StatelessComponent&amp;lt;MessageList.Props&amp;gt;
-{
-  public MessageList(Props props) : base(props) { }
-
-  public override ReactElement Render()
-  {
-    var messageRows = props.IdsAndMessages
-      .Select(idAndMessage =&amp;gt; new MessageRow(new MessageRow.Props
-      {
-        Key = idAndMessage.Item1,
-        Message = idAndMessage.Item2,
-        OnChange = newMessage =&amp;gt; props.OnChange(idAndMessage.Item1, newMessage)
-      }));
-    return DOM.Div(
-      new Attributes { ClassName = &quot;message-list&quot; },
-      messageRows.ToChildComponentArray()
-    );
-  }
-
-  public class Props
-  {
-    public Tuple&amp;lt;int, MessageEditState&amp;gt;[] IdsAndMessages;
-    public Action&amp;lt;int, MessageEditState&amp;gt; OnChange;
-  }
-}
-
-public class MessageRow : StatelessComponent&amp;lt;MessageRow.Props&amp;gt;
-{
-  public MessageRow(Props props) : base(props) { }
-
-  public override ReactElement Render()
-  {
-    // Note that the &quot;Key&quot; value from the props reference does not explicitly need
-    // to be mentioned here, the React bindings will deal with it (it is important
-    // to give dynamic children components unique key values, but it is handled by
-    // the bindings and the React library so long as a &quot;Key&quot; property is present
-    // on the props)
-    // - See https://facebook.github.io/react/docs/multiple-components.html for
-    //   more details
-    return DOM.Div(new Attributes { ClassName = &quot;message-row&quot; },
-      new TextInput(new TextInput.Props
-      {
-        Content = props.Message.Content,
-        OnChange = OnContentChange
-      }),
-      new TextInput(new TextInput.Props
-      {
-        Content = props.Message.Author,
-        OnChange = OnAuthorChange
-      })
-    );
-  }
-
-  private void OnContentChange(string newContent)
-  {
-    props.OnChange(new MessageEditState
-    {
-      Content = newContent,
-      Author = props.Message.Author
-    });
-  }
-  private void OnAuthorChange(string newAuthor)
-  {
-    props.OnChange(new MessageEditState
-    {
-      Content = props.Message.Content,
-      Author = newAuthor
-    });
-  }
-
-  public class Props
-  {
-    public int Key;
-    public MessageEditState Message;
-    public Action&amp;lt;MessageEditState&amp;gt; OnChange;
-  }
-}
-
-public class MessageEditState
-{
-  public string Content;
-  public string Author;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;If the &lt;strong&gt;MessageList&lt;/strong&gt; component wanted to implement &quot;ShouldComponentUpdate&quot; then its job is more difficult as it has an array of message data to check. It could do one of several things - the first, and most obviously accurate, would be to perform a &quot;deep compare&quot; of the arrays from the current props and the &quot;nextProps&quot;; ensuring firstly that there are the same number of items in both and then comparing each &quot;Content&quot; and &quot;Author&quot; value in each item of the arrays. If everything matches up then the two arrays contain the same data and (so long as the &quot;OnChange&quot; callback hasn&#39;t changed) the component doesn&#39;t need to re-render. Avoiding re-rendering this component (and, subsequently, any of its child components) would be a big win because it accounts for a large portion of the total UI. Not re-rendering it would give the Virtual DOM much less work to do. But would a deep comparison of this type actually be any cheaper than letting the Virtual DOM do what it&#39;s designed to do?&lt;/p&gt;
-
-&lt;p&gt;The second option is to presume that whoever created the props references would have re-used any &lt;strong&gt;MessageEditState&lt;/strong&gt; instances that haven&#39;t changed. So the array comparison could be reduced to ensuring that the current and next props references both have the same number of elements and then performing reference equality checks on each item.&lt;/p&gt;
-
-&lt;p&gt;The third option is to presume that whoever created the props reference would have re-used the array itself if the data hadn&#39;t changed, meaning that a simple reference equality check could be performed on the current and next props&#39; arrays.&lt;/p&gt;
-
-&lt;p&gt;The second and third options are both much cheaper than a full &quot;deep compare&quot; but they both rely upon the caller following some conventions. This is why I say that this is a difficult problem to solve for the general case.&lt;/p&gt;
-
-&lt;h3&gt;Immutability to the rescue&lt;/h3&gt;
-
-&lt;p&gt;There is actually another option to consider, the object models for the props data could be rewritten to use immutable types. These have the advantage that if you find that two references are equal then they are guaranteed to contain the same data. They also have the advantage that it&#39;s much more common to re-use instances to describe the same data - partly because there is some overhead to initialising immutable types and partly because there is no fear that &quot;if I give this reference to this function, I want to be sure that it can&#39;t change the data in &lt;em&gt;my&lt;/em&gt; reference while doing its work&quot; because it is &lt;em&gt;impossible&lt;/em&gt; to change an immutable reference&#39;s data. (I&#39;ve seen defensively-written code that clones mutable references that it passes into other functions, to be sure that no other code can change the data in the original reference - this is never required with immutable types).&lt;/p&gt;
-
-&lt;p&gt;Conveniently, I&#39;ve recently written a library to use with Bridge.NET which I think makes creating and working with immutable types easier than C# makes it on its own. I wrote about it in &quot;&lt;a href=&quot;http://www.productiverage.com/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&quot; but the gist is that you re-write &lt;strong&gt;MessageEditState&lt;/strong&gt; as:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;// You need to pull in the &quot;ProductiveRage.Immutable&quot; NuGet package to use IAmImmutable
-public class MessageEditState : IAmImmutable
-{
-  public MessageEditState(string content, string author)
-  {
-    this.CtorSet(_ =&amp;gt; _.Content, content);
-    this.CtorSet(_ =&amp;gt; _.Author, author);
-  }
-  public string Content { get; private set; }
-  public string Author { get; private set; }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;It&#39;s still a little more verbose than the mutable version, admittedly, but I&#39;m hoping to convince you that it&#39;s worth it (if you need convincing!) for the benefits that we&#39;ll get.&lt;/p&gt;
-
-&lt;p&gt;When you have an instance of this new &lt;strong&gt;MessageEditState&lt;/strong&gt; class, if you need to change one of the properties, you don&#39;t have to call the constructor each time to get a new instance, you can use the &quot;With&quot; extension methods that may be called on any &lt;strong&gt;IAmImmutable&lt;/strong&gt; instance - eg.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;var updatedMessage = message.With(_ =&amp;gt; _.Content, &quot;New information&quot;);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This would mean that the change handlers from &lt;strong&gt;MessageRow&lt;/strong&gt; could be altered from:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;private void OnContentChange(string newContent)
-{
-  props.OnChange(new MessageEditState
-  {
-    Content = newContent,
-    Author = props.Message.Author
-  });
-}
-private void OnAuthorChange(string newAuthor)
-{
-  props.OnChange(new MessageEditState
-  {
-    Content = props.Message.Content,
-    Author = newAuthor
-  });
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;and replaced with:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;private void OnContentChange(string newContent)
-{
-  props.OnChange(props.Message.With(_ =&amp;gt; _.Content, newContent));
-}
-private void OnAuthorChange(string newAuthor)
-{
-  props.OnChange(props.Message.With(_ =&amp;gt; _.Author, newAuthor));
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Immediately, the verbosity added to &lt;strong&gt;MessageEditState&lt;/strong&gt; is being offset with tidier code! (And it&#39;s nice not having to set both &quot;Content&quot; &lt;em&gt;and&lt;/em&gt; &quot;Author&quot; when only changing &lt;em&gt;one&lt;/em&gt; of them).&lt;/p&gt;
-
-&lt;p&gt;The &quot;With&quot; method also has a small trick up its sleeve in that it won&#39;t return a new instance if the new property value is the same as the old property value. This is an eventuality that &lt;em&gt;could&lt;/em&gt; happen in the code above as an &quot;Input&quot; element rendered by React will raise an &quot;OnChange&quot; event for any action that &lt;em&gt;might&lt;/em&gt; have altered the text input&#39;s content. For example, if you had a text box with the value &quot;Hello&quot; in it and you selected all of that text and then pasted in text from the clipboard over the top of it, if the clipboard text was also &quot;Hello&quot; then the &quot;OnChange&quot; event will be raised, even though the actual value has not changed (it was &quot;Hello&quot; before and it&#39;s still &quot;Hello&quot; now). The &quot;With&quot; method will deal with this, though, and just pass the same instance straight back out. This is an illustration of the &quot;reuse of instances for unchanged data&quot; theme that I alluded to above.&lt;/p&gt;
-
-&lt;p&gt;The next step would be to change the array type in the &lt;strong&gt;MessageList.Props&lt;/strong&gt; type from&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public Tuple&amp;lt;int, MessageEditState&amp;gt;[] IdsAndMessages;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;to&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public Set&amp;lt;Tuple&amp;lt;int, MessageEditState&amp;gt;&amp;gt; IdsAndMessages;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The &lt;strong&gt;Set&lt;/strong&gt; class is also in the &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; NuGet package. It&#39;s basically an immutable &lt;strong&gt;IEnumerable&lt;/strong&gt; that may be used in Bridge.NET projects. A simple example of it in use is:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;// Create a new set of values (the static &quot;Of&quot; method uses type inference to determine
-// the type of &quot;T&quot; in the returned &quot;Set&amp;lt;T&amp;gt;&quot; - since 1, 2 and 3 are all ints, the
-// &quot;numbers&quot; reference will be of type &quot;Set&amp;lt;int&amp;gt;&quot;)
-var numbers = Set.Of(1, 2, 3);
-
-// SetValue takes an index and a new value, so calling SetValue(2, 4) on a set
-// containing 1, 2, 3 will return a new set containing the values 1, 2, 4
-numbers = numbers.SetValue(2, 4);
-
-// Calling SetValue(2, 4) on a set containing values 1, 2, 4 does not require any
-// changes, so the input reference is passed straight back out
-numbers = numbers.SetValue(2, 4);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;As with &lt;strong&gt;IAmImmutable&lt;/strong&gt; instances we get two big benefits - we can rely on reference equality comparisons more often, since the data with any given reference can never change, and references will be reused in many cases if operations are requested that would not actually change the data. (It&#39;s worth noting that the guarantees fall apart if any property on an &lt;strong&gt;IAmImmutable&lt;/strong&gt; reference is a of a mutable type, similarly if a &lt;strong&gt;Set&lt;/strong&gt; has elements that are a mutable type, or that have nested properties that are of a mutable type.. but so long as immutability is used &quot;all the way down&quot; then all will be well).&lt;/p&gt;
-
-&lt;p&gt;If this philosophy was followed, then suddenly the &quot;ShouldComponentUpdate&quot; implementation for the &lt;strong&gt;MessageList&lt;/strong&gt; component would be very easy to write - just perform reference equality comparisons on the &quot;IdsAndMessages&quot; and &quot;OnChange&quot; values on the current props and on the nextProps. While solving the problem for the general case is very difficult, solving it when you introduce some constraints (such as the use of immutable and persistent data types) can be very easy!&lt;/p&gt;
-
-&lt;p&gt;If we &lt;em&gt;did&lt;/em&gt; implement this &lt;strong&gt;MessageList&lt;/strong&gt; &quot;ShouldComponentUpdate&quot; method, then we could be confident that when a user makes changes to the &quot;Title&quot; text input that the Virtual DOM would not have to work out whether the &lt;strong&gt;MessageList&lt;/strong&gt; or any of its child components had changed - because we&#39;d have told the Virtual DOM that they hadn&#39;t (because the &quot;IdsAndMessages&quot; and &quot;OnChange&quot; property references wouldn&#39;t have changed).&lt;/p&gt;
-
-&lt;p&gt;We could take this a step further, though, and consider the idea of implementing &quot;ShouldComponentUpdate&quot; on other components - such as &lt;strong&gt;MessageRow&lt;/strong&gt;. If the user edits a text value within one row, then the &lt;strong&gt;MessageList&lt;/strong&gt; will have to perform some re-rendering work, since one of its child components needs to be re-rendered. But there&#39;s no need for any of the other rows to re-render, it could be &lt;em&gt;just&lt;/em&gt; the single row in which the change was requested by the user.&lt;/p&gt;
-
-&lt;p&gt;So the &lt;strong&gt;MessageRow&lt;/strong&gt; could look at its props values and, if they haven&#39;t changed between the current props and the nextProps, then inform React (via &quot;ShouldComponentUpdate&quot;) that no re-render is required.&lt;/p&gt;
-
-&lt;p&gt;And why not go even further and just do this on &lt;em&gt;all&lt;/em&gt; Presentation Components? The &lt;strong&gt;TextInput&lt;/strong&gt; could avoid the re-render of its child Input if the props&#39; &quot;Content&quot; and &quot;OnChange&quot; reference are not being updated.&lt;/p&gt;
-
-&lt;h3&gt;Introducing the Bridge.React &quot;PureComponent&quot;&lt;/h3&gt;
-
-&lt;p&gt;To make this easy, I&#39;ve added a new base class to the React bindings (available in 1.4 of &lt;a href=&quot;https://www.nuget.org/packages/Bridge.React&quot;&gt;Bridge.React&lt;/a&gt;); the &lt;strong&gt;PureComponent&amp;lt;TProps&amp;gt;&lt;/strong&gt;.&lt;/p&gt;
-
-&lt;p&gt;This, like the &lt;strong&gt;StatelessComponent&amp;lt;TProps&amp;gt;&lt;/strong&gt;, is very simple and does not support state and only allows the &quot;Render&quot; method to be implemented - no other React lifecycle functions (such &quot;ComponentWillMount&quot;, &quot;ShouldComponentUpdate&quot;, etc..) may be defined on components deriving from this class.&lt;/p&gt;
-
-&lt;p&gt;The key difference is that it has its own &quot;ShouldComponentUpdate&quot; implementation that presumes that the props data is immutable and basically does what I&#39;ve been describing above automatically - when React checks &quot;ShouldComponentUpdate&quot;, it will look at the &quot;props&quot; and &quot;nextProps&quot; instances and compare their property values. (It also deals with the cases where one or both of them are null, in case you want components whose props reference is optional).&lt;/p&gt;
-
-&lt;p&gt;This is not an original idea, by a long shot. I first became aware of people doing this in 2013 when I read &lt;a href=&quot;http://swannodette.github.io/2013/12/17/the-future-of-javascript-mvcs/&quot;&gt;The Future of JavaScript MVC Frameworks&lt;/a&gt;, which was talking about using &lt;a href=&quot;https://github.com/clojure/clojurescript&quot;&gt;ClojureScript&lt;/a&gt; and its React interface &quot;&lt;a href=&quot;https://github.com/omcljs/om&quot;&gt;Om&lt;/a&gt;&quot;. More recently, I was reading &lt;a href=&quot;http://benchling.engineering/performance-engineering-with-react/&quot;&gt;Performance Engineering with React (Part 1)&lt;/a&gt;, which talks about roughly the same subject but with vanilla JavaScript. And, of course, Facebook has long had its &lt;a href=&quot;https://facebook.github.io/react/docs/pure-render-mixin.html&quot;&gt;PureRenderMixin&lt;/a&gt; - though mixins can&#39;t be used with ES6 components (which seems to be the approach to writing components that Facebook is pushing at the moment).&lt;/p&gt;
-
-&lt;p&gt;So, this is largely just making it easy it when writing React applications with &lt;em&gt;Bridge&lt;/em&gt;. However, using Bridge to do this &lt;em&gt;does&lt;/em&gt; give us some extra advantages (on top of the joy of being able to write React apps in C#!). In the code earlier (from the &lt;strong&gt;MessageRow&lt;/strong&gt; Render method) -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;new TextInput(new TextInput.Props
-{
-  Content = props.Message.Content,
-  OnChange = OnContentChange
-})
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Bridge will bind the &quot;OnContentChange&quot; method to the current &lt;strong&gt;MessageRow&lt;/strong&gt; instance so that when it is called by the &lt;strong&gt;TextInput&lt;/strong&gt;&#39;s &quot;OnChange&quot; event, &quot;this&quot; is the &lt;strong&gt;MessageRow&lt;/strong&gt; and not the &lt;strong&gt;TextInput&lt;/strong&gt; (which is important because OnContentChange needs to access the &quot;props&quot; reference scoped to the &lt;strong&gt;MessageRow&lt;/strong&gt;).&lt;/p&gt;
-
-&lt;p&gt;This introduces a potential wrinkle in our plan, though, as this binding process creates a new JavaScript method each time and means that each time the &lt;strong&gt;TextInput&lt;/strong&gt; is rendered, the &quot;OnChange&quot; reference is new. So if we try to perform simple reference equality checks on props values, then we won&#39;t find the current &quot;OnChange&quot; and the new &quot;OnChange&quot; to be the same.&lt;/p&gt;
-
-&lt;p&gt;This problem is mentioned in the &quot;Performance Engineering&quot; article I linked above:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Unfortunately, each call to Function.bind produces a new function.. No amount of prop checking will help, and your component will always re-render.&lt;/p&gt;
-  
-  &lt;p&gt;..&lt;/p&gt;
-  
-  &lt;p&gt;The simplest solution we&#39;ve found is to pass the unbound function.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;When using Bridge, we don&#39;t have the option of using an unbound function since the function-binding is automatically introduced by the C#-to-JavaScript translation process. And it&#39;s very convenient, so it&#39;s not something that I&#39;d ideally &lt;em&gt;like&lt;/em&gt; to have to workaround.&lt;/p&gt;
-
-&lt;p&gt;Having a dig through Bridge&#39;s source code, though, revealed some useful information. When Bridge.fn.bind is called, it returns a new function (as just discussed).. but with some metadata attached to it. When it returns a new function, it sets two properties on it &quot;$scope&quot; and &quot;$method&quot;. The $scope reference is what &quot;this&quot; will be set to when the bound function is called and the $method reference is the original function that is being bound. This means that, when the props value comparisons are performed, if a value is a function and it the reference equality comparison fails, a fallback approach may be attempted - if both functions have $scope and $method references defined then compare them and, if they are both consistent between the function value on the current props and the function value on the nextProps, then consider the value to be unchanged.&lt;/p&gt;
-
-&lt;p&gt;The &lt;strong&gt;PureComponent&lt;/strong&gt;&#39;s &quot;ShouldComponentUpdate&quot; implementation deals with this automatically, so you don&#39;t have to worry about it.&lt;/p&gt;
-
-&lt;p&gt;It&#39;s possibly worth noting that the &quot;Performance Engineering&quot; post did briefly consider something similar -&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Another possibility we&#39;ve explored is using a custom bind function that stores metadata on the function itself, which in combination with a more advanced check function, could detect bound functions that haven&#39;t actually changed.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Considering that Bridge automatically includes this additional metadata, it seemed to me to be sensible to use it.&lt;/p&gt;
-
-&lt;p&gt;There&#39;s one other equality comparison that is supported; as well as simple referential equality and the function equality gymnastics described above, if both of the values are non-null and the first has an &quot;Equals&quot; function then this function will be considered. This means that any custom &quot;Equals&quot; implementations that you define on classes will be automatically taken into consideration by the &lt;strong&gt;PureComponent&lt;/strong&gt;&#39;s logic.&lt;/p&gt;
-
-&lt;h3&gt;Another Bridge.NET bonus: Lambda support&lt;/h3&gt;
-
-&lt;p&gt;When I started writing this post, there was going to be a section here with a warning about using lambdas as functions in props instances, rather than using named functions (which the examples thus far have done).&lt;/p&gt;
-
-&lt;p&gt;As with bound functions, anywhere that an anonymous function is present in JavaScript, it will result in a new function value being created. If, for example, we change the &lt;strong&gt;MessageRow&lt;/strong&gt; class from:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public class MessageRow : PureComponent&amp;lt;MessageRow.Props&amp;gt;
-{
-  public MessageRow(Props props) : base(props) { }
-
-  public override ReactElement Render()
-  {
-    return DOM.Div(new Attributes { ClassName = &quot;message-row&quot; },
-      new TextInput(new TextInput.Props
-      {
-        Content = props.Message.Content,
-        OnChange = OnContentChange
-      }),
-      new TextInput(new TextInput.Props
-      {
-        Content = props.Message.Author,
-        OnChange = OnAuthorChange
-      })
-    );
-  }
-
-  private void OnContentChange(string newContent)
-  {
-    props.OnChange(props.Message.With(_ =&amp;gt; _.Content, newContent));
-  }
-  private void OnAuthorChange(string newAuthor)
-  {
-    props.OnChange(props.Message.With(_ =&amp;gt; _.Author, newAuthor));
-  }
-
-  public class Props
-  {
-    public int Key;
-    public MessageEditState Message;
-    public Action&amp;lt;MessageEditState&amp;gt; OnChange;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;to:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public class MessageRow : PureComponent&amp;lt;MessageRow.Props&amp;gt;
-{
-  public MessageRow(Props props) : base(props) { }
-
-  public override ReactElement Render()
-  {
-    return DOM.Div(new Attributes { ClassName = &quot;message-row&quot; },
-      new TextInput(new TextInput.Props
-      {
-        Content = props.Message.Content,
-        OnChange = newContent =&amp;gt;
-          props.OnChange(props.Message.With(_ =&amp;gt; _.Content, newContent))
-      }),
-      new TextInput(new TextInput.Props
-      {
-        Content = props.Message.Author,
-        OnChange = newAuthor =&amp;gt;
-          props.OnChange(props.Message.With(_ =&amp;gt; _.Author, newAuthor))
-      })
-    );
-  }
-
-  public class Props
-  {
-    public int Key;
-    public MessageEditState Message;
-    public Action&amp;lt;MessageEditState&amp;gt; OnChange;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;then there would be problems with the &quot;OnChange&quot; props values specified because each new lambda - eg..&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;OnChange = newContent =&amp;gt;
-  props.OnChange(props.Message.With(_ =&amp;gt; _.Content, newContent))
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;would result in a new JavaScript function being passed to Bridge.fn.bind every time that it was called:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;onChange: Bridge.fn.bind(this, function (newContent) {
-  this.getprops().onChange(
-    ProductiveRage.Immutable.ImmutabilityHelpers.$with(
-      this.getprops().message,
-      function (_) { return _.getContent(); },
-      newContent
-    )
-  );
-})
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;And this would prevent the &lt;strong&gt;PureComponent&lt;/strong&gt;&#39;s &quot;ShouldComponentUpdate&quot; logic from being effective, since the $method values from the current props &quot;OnChange&quot; and the nextProps &quot;OnChange&quot; bound functions would always be different.&lt;/p&gt;
-
-&lt;p&gt;I was quite disappointed when I realised this and was considering trying to come up with some sort of workaround - maybe calling &quot;toString&quot; on both $method values and comparing their implementations.. but I couldn&#39;t find definitive information about the performance implications of this and I wasn&#39;t looking forward to constructing my own suite of tests to investigate any potential performance impact of this across different browsers and different browser versions.&lt;/p&gt;
-
-&lt;p&gt;My disappointment was two-fold: firstly, using the lambdas allows for more succinct code and less syntactic noise - since the types of the lambda&#39;s argument(s) and return value (if any) are inferred, rather than having to be explicitly typed out.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;newContent =&amp;gt; props.OnChange(props.Message.With(_ =&amp;gt; _.Content, newContent))
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;is clearly shorter than&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;private void OnContentChange(string newContent)
-{
-  props.OnChange(props.Message.With(_ =&amp;gt; _.Content, newContent));
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The other reason that I was deflated upon realising this was that it meant that the &quot;ShouldComponentUpdate&quot; implementation would, essentially, silently fail for components that used lambdas - &quot;ShouldComponentUpdate&quot; would return true in cases where I would like it to return false. There would be no compiler error and the UI code would still function, but it wouldn&#39;t be as efficient as it could be (the Virtual DOM would have to do more work than necessary).&lt;/p&gt;
-
-&lt;p&gt;Instead, I had a bit of a crazy thought.. lambdas like this, that only need to access their own arguments and the &quot;this&quot; reference, could be &quot;lifted&quot; into named functions quite easily. Essentially, I&#39;m doing this manually by writing methods such as &quot;OnContentChange&quot;. But could the Bridge translator do something like this automatically - take those C# lambdas and convert them into named functions in JavaScript? That way, I would get the benefit of the succinct lambda format in C# &lt;em&gt;and&lt;/em&gt; the &lt;strong&gt;PureComponent&lt;/strong&gt; optimisations would work.&lt;/p&gt;
-
-&lt;p&gt;Well, once again the Bridge.NET Team came through for me! I raised a &lt;a href=&quot;http://forums.bridge.net/forum/general/feature-requests/1515-open-921-lift-simple-anonymous-functions-into-named-functions-for-performance-wins&quot;&gt;Feature Request&lt;/a&gt; about this, explained what I&#39;d like in an ideal world (and why) and five days later there was a branch on GitHub where I could preview changes that did precisely what I wanted!&lt;/p&gt;
-
-&lt;p&gt;This is not just an example of fantastic support from the Bridge Team, it is also, I believe, an incredible feature for Bridge and a triumph for writing front-end code in C#! Having this &quot;translation step&quot; from C# to JavaScript provides the opportunity for handy features to be included for free - earlier we saw how the insertion of Bridge.fn.bind calls by the translator meant that we had access to $method and $scope metadata (which side-steps one of the problems that were had by the author of &lt;a href=&quot;http://benchling.engineering/performance-engineering-with-react/&quot;&gt;Performance Engineering with React&lt;/a&gt;) but, here, the translation step can remove the performance overhead that anonymous functions were going to cause for our &quot;ShouldComponentUpdate&quot; implementation, without there being &lt;em&gt;any&lt;/em&gt; burden on the developer writing the C# code.&lt;/p&gt;
-
-&lt;p&gt;It&#39;s also worth considering the fact that every allocation made in JavaScript is a reference that needs to be tidied up by the browser&#39;s garbage collector at some point. A big reason why judicious use of &quot;ShouldComponentUpdate&quot; can make UIs faster is that there is less work for the Virtual DOM to do, but it &lt;em&gt;also&lt;/em&gt; eases the load on the garbage collector because none of the memory allocations need to be made for child components of components that do not need to be re-rendered. Since anonymous JavaScript functions are created over and over again (every time that the section of code that declares the anonymous function is executed), lifting them into named functions means that there will be fewer allocations in your SPA and hence even less work for the garbage collector to do.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Note: As of the 11th of February 2016, this Bridge.NET improvement has not yet been made live - but their release cycles tend to be fairly short and so I don&#39;t imagine that it will be very long until it is included in an official release. If you were desperate to write any code with &lt;strong&gt;PureComponent&lt;/strong&gt; before then, you could either avoid lambdas in your C# code or you could use lambdas now, knowing that the &lt;strong&gt;PureComponent&lt;/strong&gt; won&#39;t be giving you the full benefit immediately - but that you WILL get the full benefit when the Bridge Team release the update.&lt;/em&gt;&lt;/p&gt;
-
-&lt;h3&gt;So it&#39;s an unequivocable success then??&lt;/h3&gt;
-
-&lt;p&gt;Well, until it transpired that the Bridge translator would be altered to convert these sorts of lambdas into named functions, I was going to say &quot;this is good, but..&quot;. However, &lt;em&gt;with&lt;/em&gt; that change in sight, I&#39;m just going to say outright &quot;yes, and I&#39;m going to change all classes that derive from &lt;strong&gt;StatelessComponent&lt;/strong&gt; in my projects to derive from &lt;strong&gt;PureComponent&lt;/strong&gt;&quot;. This will work fine, so long as your props references are all immutable (meaning that they are immutable &lt;em&gt;all the way down&lt;/em&gt; - you shouldn&#39;t have, say, a props property that is an immutable &lt;strong&gt;Set&lt;/strong&gt; of references, but where those references have mutable properties).&lt;/p&gt;
-
-&lt;p&gt;And, if you&#39;re not using immutable props types - sort yourself out! While a component is being rendered (according to the &lt;a href=&quot;https://facebook.github.io/react/docs/tutorial.html&quot;&gt;Facebook React Tutorial&lt;/a&gt;):&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;props are immutable: they are passed from the parent and are &quot;owned&quot; by the parent&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;So, rather than having props only be immutable during component renders (by a convention that the React library enforces), why not go whole-hog and use fully immutable classes to describe your props types - that way props are &lt;em&gt;fully&lt;/em&gt; immutable and you can use the &lt;a href=&quot;https://www.nuget.org/packages/Bridge.React&quot;&gt;Bridge.React&lt;/a&gt;&#39;s &lt;strong&gt;PureComponent&lt;/strong&gt; to get performance boosts for free!&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;(Now seems like a good time to remind you of my post &quot;&lt;a href=&quot;http://www.productiverage.com/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&quot;, which illustrates how to use the &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; NuGet package to make defining immutable classes just that bit easier).&lt;/em&gt;&lt;/p&gt;
-&lt;div class=&quot;Related&quot;&gt;&lt;h3&gt;You may also be interested in&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;a href=&quot;http://www.productiverage.com/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&lt;/li&gt;&lt;li&gt;&lt;a href=&quot;http://www.productiverage.com/react-and-flux-with-bridgenet-redux&quot;&gt;React (and Flux) with Bridge.net - Redux&lt;/a&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;</description>
-			<pubDate>Thu, 11 Feb 2016 20:11:00 GMT</pubDate>
 		</item>
 
 	</channel>
