@@ -10,7 +10,7 @@
 		<description>Dan's techie ramblings</description>
 		<language>en-gb</language>
 
-		<lastBuildDate>Tue, 06 Sep 2016 22:04:00 GMT</lastBuildDate>
+		<lastBuildDate>Wed, 21 Sep 2016 20:12:00 GMT</lastBuildDate>
 		<docs>http://blogs.law.harvard.edu/tech/rss</docs>
 		
 		<image>
@@ -23,6 +23,193 @@
 
 		<xhtml:meta xmlns:xhtml="http://www.w3.org/1999/xhtml" name="robots" content="noindex" /> 
 
+		<item>
+			<title>When a disk cache performs better than an in-memory cache (befriending the .net GC)</title>
+            <link>http://www.productiverage.com/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc</link>
+			<guid>http://www.productiverage.com/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc</guid>
+			<description>&lt;h3&gt;TL;DR (especially for Bud Goode)&lt;/h3&gt;
+
+&lt;p&gt;The .net garbage collector is a complex beast. Occasionally it might infuriate but remember that it&#39;s keeping you from the misery of manual memory management and that you&#39;re better to consider it an ally than a foe.&lt;/p&gt;
+
+&lt;p&gt;Sometimes, ways to improve its performance seem counter-intuitive, such as intentionally keeping objects around that will have to be considered by each of the already-expensive gen 2 collections, even when we have no intention of letting those objects go (aka. object pooling) and such as using disk caching instead of in-memory caching, despite an in-memory cache &quot;obviously&quot; being more performant than having to hit the file system.&lt;/p&gt;
+
+&lt;h3&gt;The deep dive&lt;/h3&gt;
+
+&lt;p&gt;At work we have a service that handles queries from our hundreds of tourism websites and talks to the backend databases when, say, someone searches for Concerts in a particular location or wants to book a Hotel on a particular date. It caches many of the results of these queries for ten or fifteen minutes, which takes a lot of load away from the database servers and greatly reduces the average response times for users of the web sites. It handles a few million requests a day - so it&#39;s hardly Google but it&#39;s also doing enough work to be interesting from a performance point of view.&lt;/p&gt;
+
+&lt;p&gt;The load has been spread over a pair of servers for a few years now, initially for redundancy. However, there was a point at which it became clear that a single server could no longer handle the load. When there were too many concurrent requests, individual requests would take longer to be processed, which resulted in the number of concurrent requests going up and up and the individual request times following suit until requests started timing out. Over time, two servers became four servers and there is concern now that two servers could not reliably handle all of the load.&lt;/p&gt;
+
+&lt;p&gt;On top of this, the memory usage of the service on each of the servers appears to slowly-but-surely increase over time until it gets high enough and, for want of a more technical term, freaks out. The thread count in the service builds and builds as more request are backing up, waiting to be processed. The requests times get longer and longer. Using PerfMon, it looks like several CPU cores are tied up entirely on garbage collection (since we&#39;re using the &quot;server mode&quot; GC configuration, there is a separate managed heap - and a separate collection thread - for each processor). Strangely, at this point, the cores don&#39;t appear to be max&#39;ing out, the average CPU usage for the server is reliatively low, though the &quot;% time in GC&quot; is high. Every few weeks, it seems like one of the servers would need the service restarting on it due to a &quot;memory blow up&quot;.&lt;/p&gt;
+
+&lt;p&gt;The time finally came that we could no longer continue to brush this under the rug - this problem was not going to go away and the occasional &quot;uh-oh, someone is going to have to restart the service again&quot; was no longer acceptable; not only was there a minute or two downtime for the actual service restart, there was also half an hour or so leading up to it during which response times were getting unacceptably long.&lt;/p&gt;
+
+&lt;h3&gt;Blaming the GC&lt;/h3&gt;
+
+&lt;p&gt;It would seem all too easy to blame things on the garbage collector, say that the fault lies there and that there&#39;s nothing we can do about it other than avoiding giving it more load than it can deal with (in other words, throw more servers at the problem). But I recently read &lt;a href=&quot;https://twitter.com/ben_a_adams/status/767174657048993792&quot;&gt;a tweet&lt;/a&gt; that said&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Blaming perf issues on Garbage Collection is like blaming your hangover on your liver... Its the thing that&#39;s saving you from your code&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;(Courtesy of &lt;a href=&quot;https://twitter.com/ben_a_adams/status/767174657048993792&quot;&gt;Ben Adams&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;.. which helped motivate me into trying to find a better solution. On the whole, I&#39;m very grateful that the .net garbage collector works as well as it does. In the majority of cases, you just don&#39;t have to worry about it. But sometimes you do. Clearly, the data service that I&#39;m talking about is one of those cases.&lt;/p&gt;
+
+&lt;p&gt;The garbage collector uses a range of factors to decide when to collect - some are simple, such as the amount of free memory available in the system (if there&#39;s a lot then there&#39;s less pressure to collect) and the available processor time (if the system is busy doing other work then it would ideal to wait until it&#39;s quieter before throwing GC work on top of the &quot;real work&quot;). Some factors are more complex - for example, if gen 2 collections occur that release zero (or very little) memory then the GC will take this into account and try to collect it less often (since gen 2 collections are the most expensive, it makes sense for the GC to avoid them if possible; if it finds that few references are being released from gen 2 each collections then there&#39;s little point doing the collection work).&lt;/p&gt;
+
+&lt;p&gt;However, there is a limit to how much the GC can deal with things with &lt;a href=&quot;https://en.wikipedia.org/wiki/Clarke%27s_three_laws#Clarke.27s_third_law&quot;&gt;by magic&lt;/a&gt;. Sometimes you need to work &lt;em&gt;with&lt;/em&gt; the garbage collector, rather than just presuming that it will be able to deal with anything you throw at it.&lt;/p&gt;
+
+&lt;p&gt;One way to help is to simply make fewer allocations. The less allocations that are made, the less work that there is for the garbage collector to do.&lt;/p&gt;
+
+&lt;p&gt;Another approach is take on board one of Ben Watson&#39;s key principles for enabling &quot;&lt;a href=&quot;http://www.philosophicalgeek.com/2012/06/04/4-essential-tips-for-high-performance-garbage-collection-on-servers/&quot;&gt;high-performance garbage collection on servers&lt;/a&gt;&quot;, which is:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Objects Live Briefly or Forever&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;In order to think about how I can make the GC&#39;s life easier, it&#39;s worth taking a step back and describing a little bit more about what this troublesome service has to do.&lt;/p&gt;
+
+&lt;h3&gt;What the service deals with (and why this might not be GC-friendly)&lt;/h3&gt;
+
+&lt;p&gt;At its core, this service receives requests from websites, gets the required data for that request from an external source or from cache (if from an external source, such as a database, then the results will be cached for subsequent requests), massages the data into the desired form and sends it back to the client. For the majority of the time, the results include only &quot;stubs&quot; of the real data - a unique identifier, the name and its location (latitude, longitude). When the results of a query are cached, such as &quot;get me all of the hotels in Liverpool that are in the city centre and have at least a three star rating, ordered by rating (descending)&quot;, the query and the resulting stubs are cached. The response to the client will include all of those stubs but it will also include full product details for one page of data - if the client says that it wants to show the first page of results to the user and each page shows ten items, then the first ten entries in the result set will be full products and the remaining &quot;n - 10&quot; entries will be stubs. There is a separate service that is responsible for retrieving full product details for given stubs.&lt;/p&gt;
+
+&lt;p&gt;The quickest way that the service may deliver these results is if the query results are stored in cache. In which case, the requests will be dealt with using the following steps:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;The request is deserialised&lt;/li&gt;
+&lt;li&gt;Ordered stubs corresponding to the query are retrieved from the &quot;Query Cache&quot;&lt;/li&gt;
+&lt;li&gt;Full product details are retrieved for the first page (as specified by the request) of results  - this involves serialising a request for ten unique identifiers, sending it to the external product service and then receiving the details for those products back (which means that there&#39;s a step that involves deserialisation of full product records when the data comes over from the external service)&lt;/li&gt;
+&lt;li&gt;The response (which consists of 10 full products and &quot;n - 10&quot; stubs) is serialised to be sent over the wire back to the client&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;The core of the service was written in (and has been in use since) 2009, which has a spread of advantages and disadvantages. On the less-good side, it uses .net remoting (at the time, our servers only had .net 2.0 installed and so newer technologies such as WCF were out of reach) and much of the serialisation uses the &lt;strong&gt;BinaryFormatter&lt;/strong&gt; (which is unlikely to be anyone&#39;s go-to these days if they are interested in performance). On the other hand, over the years it&#39;s been proven to be largely reliable and it&#39;s been through a few optimisiation drives since the business is so reliant on it. So the places where serialisation performance is most important have had the &lt;strong&gt;BinaryFormatter&lt;/strong&gt; replaced; anywhere that the stubs are serialised/deserialised, for example, uses custom methods to read/write the fixed fields in the stub type. Similarly, the &quot;full product&quot; records are serialised using custom routines (which is a double win when responding to a request since the full product instances must be deserialised when they are received from the external product service and then &lt;em&gt;re-&lt;/em&gt;serialised to be included in the final response to the client, so that&#39;s twice that use of the slow &lt;strong&gt;BinaryFormatter&lt;/strong&gt; is avoided).&lt;/p&gt;
+
+&lt;p&gt;What I&#39;m trying to say here is that any &quot;low hanging fruit&quot; in terms of performance hotspots within the service code had been improved in the past. It genuinely did seem like it was the garbage collector that was responsible for much of the performance problem. (I did use the &lt;a href=&quot;http://www.red-gate.com/products/dotnet-development/ants-performance-profiler/&quot;&gt;ANTS Performance Profiler&lt;/a&gt; on a local installation of the service under load to confirm this but it didn&#39;t reveal anything exciting). So it was firmly in the direction of the garbage collector that I faced.&lt;/p&gt;
+
+&lt;p&gt;I&#39;ve written much of this service&#39;s code, so I&#39;m familiar with its general structure as well as many of the finer details. With this knowledge, I captured a batch* of sample requests and set up a test environment that I could replay these requests against (using &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;SqlProxyAndReplay&lt;/a&gt; to remove the database from the equation).&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;(The test queries were taken from real web site logs and replayed at the same rate and level of concurrency - so they should be a reasonable approximation of real life load)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;The plan being to try to tweak the code that was likely to offend the GC the most and measure after each change to see how it affected the work that the collector had to do. The first candidates were:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;The &quot;Query Cache&quot; needs to retrieve from, add to and remove from a structure that will be accessed concurrently be multiple threads. The very first implementation was a dictionary that required a lock for every read or write access. This was changed so that a lock was only required for write actions, which would clone the dictionary and overwrite the internal reference. Read actions wouldn&#39;t require a lock since no dictionary would ever change. However, this clone-for-every-write could mean a lot of churn.&lt;/li&gt;
+&lt;li&gt;The custom serialisation uses binary data reader and writer classes. Each individual property value is serialised into a byte array (the &lt;strong&gt;BitConverter&lt;/strong&gt; is used for many types of values and the &lt;strong&gt;UTF8Encoder&lt;/strong&gt; is used for strings) and then these bytes are added to a &lt;strong&gt;List&amp;lt;byte&amp;gt;&lt;/strong&gt; (and the reverse is done to deserialise; sections of the list are extracted into arrays and then translated back into property values). This means that there are a lot of arrays being allocated when serialising or deserialising.&lt;/li&gt;
+&lt;li&gt;When serialising/deserialising the full product records, it seems very possible that these records could be over 85,000 bytes of serialised data, which would mean that there would be lots of byte arrays created on the Large Object Heap (where &quot;lots&quot; depends upon how many requests a second are being handled, how many full product records need to be retrieved for the requests and how many of those records were more than 85,000 bytes when serialised). Allocations to the Large Object Heap can be a source of headaches, which I&#39;ll go into in a little more detail later on.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3&gt;Step 1: Bin the custom &quot;free-reading dictionary&quot;&lt;/h3&gt;
+
+&lt;p&gt;There&#39;s a &lt;a href=&quot;https://msdn.microsoft.com/en-us/library/dd287191(v=vs.110).aspx&quot;&gt;ConcurrentDictionary&lt;/a&gt; in .net these days, which should improve things when compared to the custom structure we were using. Using it means that read and write actions both lock again but the locks are much more granular (they only affect subsets of the data, rather than there being a single huge lock around the entire reference) and so there is less likely to be contention between operations.&lt;/p&gt;
+
+&lt;p&gt;The batch of test queries were run against this change and the garbage collection frequency performance counters were captured. A few runs were performed and the results averaged and.. er.. annoyingly, I&#39;ve lost my notes relating to this change! There were less collections required for each generation, which was promising. Thankfully I &lt;em&gt;do&lt;/em&gt; have some useful information for the next changes :)&lt;/p&gt;
+
+&lt;h3&gt;Step 2: Bin the custom binary reader and writer classes&lt;/h3&gt;
+
+&lt;p&gt;The .net library has &lt;a href=&quot;https://msdn.microsoft.com/en-us/library/system.io.binaryreader(v=vs.110).aspx&quot;&gt;BinaryReader&lt;/a&gt; and &lt;a href=&quot;https://msdn.microsoft.com/en-us/library/system.io.binarywriter(v=vs.110).aspx&quot;&gt;BinaryWriter&lt;/a&gt; classes that take a stream and read/write to it in a more efficient manner than the custom reader/writer classes used before (which allocated at least one array for every single property read or write). These aren&#39;t new classes, I just wasn&#39;t aware of them when I wrote the custom versions all that time ago.&lt;/p&gt;
+
+&lt;p&gt;The tests were repeated with this change and, compared to only the Query Cache change, there were on average &lt;strong&gt;56% as many gen 0 collections, 60% as many gen 1 collections and 59% as many gen 2 collections&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;h3&gt;Step 3: Pooling large byte arrays used in serialisation/deserialisation&lt;/h3&gt;
+
+&lt;p&gt;Time to talk about the Large Object Heap. The garbage collector is much happier dealing with &quot;small objects&quot; (which are decided to be those less than 85000 bytes, based upon &quot;a bunch of benchmarks&quot; according to this &lt;a href=&quot;http://stackoverflow.com/a/8953503/3813189&quot;&gt;excellent Stack Overflow answer by Hans Passant&lt;/a&gt;). With small objects, it will allocate them freely and then, after collections, compact the heap for objects that survive the collection. If the heaps are not compacted, then any gaps in between &quot;live&quot; objects (live objects are those that the GC finds to still be in use) could only be used to slot in newly allocated objects if they fit in the gaps. As objects are allocated and then tidied up, it can become more and more difficult to find somewhere to fit new allocations - it might be necessary to look at &lt;em&gt;many&lt;/em&gt; small gaps before finding one that a new object will fit in (this problem is referred to as being caused by fragmentation of the heap). Compacting the heap moves all of the objects so that they&#39;re pushed up together, with no gaps, and is relatively cheap when dealing with small objects since each individual memory operation is cheap. However, copying big chunks of memory around (such as the live objects in the Large Object Heap), which is what would be required to compact the Large Object Heap, is much harder work. Following the same sort of logic (that large objects are more expensive to deal with), the Large Object Heap is only collected during a gen 2 collection.&lt;/p&gt;
+
+&lt;p&gt;If a lot of allocations are made to the Large Object Heap then memory can appear to spiral out of control (because the Large Object Heap is only collected in gen 2 and because it&#39;s not compacted) and the pressure on the GC will increase. Unfortunately, this can be done quite easily when frequently serialising/deserialising to arrays that break the 85,000 byte limit.&lt;/p&gt;
+
+&lt;p&gt;One solution is to &quot;pool&quot; those byte arrays. In other words, to maintain a set of arrays and to reuse them, rather than creating new ones each time (which the GC will have to work hard to tidy up after). It&#39;s not difficult to imagine that this could easily become a very complicated task - whatever is responsible for pooling those arrays would need be thread safe and it would have to apply some sensible logic to when and how to reuse arrays; Should &lt;em&gt;all&lt;/em&gt; arrays be reused? Should only large arrays be reused? Should &lt;em&gt;all&lt;/em&gt; large arrays be reused? Will there be any limits to the pool? What if the limits are exceeded and more arrays are required?&lt;/p&gt;
+
+&lt;p&gt;Interestingly, I read last year about something that might be ideal for the job in the book &lt;a href=&quot;http://www.writinghighperf.net/&quot;&gt;Writing High-Performance .NET Code&lt;/a&gt; (written by Ben Watson, who I quoted earlier - it&#39;s a book I highly recommend, btw). I&#39;m going to lift the overview completely from the blog post &lt;a href=&quot;http://www.philosophicalgeek.com/2015/02/06/announcing-microsoft-io-recycablememorystream/&quot;&gt;Announcing Microsoft.IO.RecycableMemoryStream&lt;/a&gt; (which is a quote lifted from the book) -&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;In one application that suffered from too many LOH allocations, we discovered that if we pooled a single type of object, we could eliminate 99% of all problems with the LOH. This was MemoryStream, which we used for serialization and transmitting bits over the network. The actual implementation is more complex than just keeping a queue of MemoryStream objects because of the need to avoid fragmentation, but conceptually, that is exactly what it is. Every time a MemoryStream object was disposed, it was put back in the pool for reuse.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;That sounds like a very similar use case to what I have. Lots of serialisation/deserialisation for transmitting and receiving data from other servers, with byte arrays large enough to be allocated on the Large Object Heap. All of them being wrapped in &lt;strong&gt;MemoryStream&lt;/strong&gt;s (at least, &lt;strong&gt;MemoryStream&lt;/strong&gt;s were used for serialisation of these large objects after Step 2, above, was implemented).&lt;/p&gt;
+
+&lt;p&gt;So this definitely seemed worth looking into.&lt;/p&gt;
+
+&lt;p&gt;Just to recap precisely why pooling large objects might help; pooling them means keeping hold of them in memory, which seems like the opposite of what we want to do if we want to relieve memory pressure. However, the big benefit is that the Large Object Heap fragmentation will be less of a problem because we&#39;re no longer allocating large objects and then throwing them away and then trying to allocate &lt;em&gt;further&lt;/em&gt; large objects somewhere (such as in a gap that the GC has removed dead objects from or possibly resorting to tacking them on the end of the heap); instead, a &lt;strong&gt;MemoryStream&lt;/strong&gt; (and its large backing array) may be reused after it&#39;s been created once and returned to the pool, so the work to try to find a place to allocate a new large object is not required. This still feels somewhat counterintuitive because it means that there will be more objects that the garbage collector has to consider when it does a gen 2 collection and we&#39;re trying to give the GC as little work as possible - &lt;em&gt;particularly&lt;/em&gt; in gen 2, since collections there are most expensive. This is where the GC&#39;s self-tuning comes in, though. If we&#39;re trying to get towards a position where not many objects make it into gen 2 unless then are going to live forever (as pooled objects do) then the GC will be in a position where it has to evaluate the gen 2 heap but - ideally - find very little to remove. If it consistently finds very little to do then it will reduce the frequency of the gen 2 collections. So, even though it might feel like we&#39;re making the collectors life more difficult by keeping these objects alive on the gen 2 heap, we&#39;re actually making it easier.&lt;/p&gt;
+
+&lt;p&gt;With this change, after running the tests again, there were 61% as many gen 0 collections as after only Step 2, 53% as many gen 1 collections and 45% as many gen 2 collections. This means that Step 2 and Step 3 combined resulted in &lt;strong&gt;34% as many gen 0 collections than after only the changes in Step 1, 32% as many gen 1 collections and 27% as many gen 2&lt;/strong&gt;. This seemed very promising.&lt;/p&gt;
+
+&lt;h3&gt;Testing under increased load&lt;/h3&gt;
+
+&lt;p&gt;The sample data that I&#39;d been using so far wasn&#39;t particularly large, it was around 10k requests that would complete in around ten minutes. This is comparable to the request/sec that the production servers deal with during the day. While each run took place, after the changes made above, the CPU usage averaged around 40% and  the &quot;% time in GC&quot; averaged 2.5%. I had a feeling, though, that it would be while the server was having a really hard time that the original issues would occur. 40% average CPU usage is nowhere near running flat out and that remaining 60% provides a lot of head room for the garbage collector to come and do what it wants whenever it wants.&lt;/p&gt;
+
+&lt;p&gt;So I increased the load and duration. Not massively, but enough that the previous code started to get a little hot under the collar - 100k requests over an hour or so.&lt;/p&gt;
+
+&lt;p&gt;This sample load was run against both the new and the old versions of the service  (where the old version was the code as it was before Steps 1, 2 and 3 from above were applied to it) and the performance metrics compared between the two. On average, the new version required only &lt;strong&gt;84% as much CPU to be used, spent only 30% as much time in the GC, performed 62% as many gen 0 collections, 36% as many gen 1 collections and 22% as many gen 2 collection&lt;/strong&gt;. Things were still looking promising.&lt;/p&gt;
+
+&lt;h3&gt;Testing for the breaking point&lt;/h3&gt;
+
+&lt;p&gt;At this point, it was feeling like a success.&lt;/p&gt;
+
+&lt;p&gt;To stretch things further, though, I thought that I&#39;d see how it responded if I played the requests as fast as I could. In normal operation throughout the day, each server doesn&#39;t have to deal with much more than an average of 12 requests per second. There will be the odd peak of double that, but they tend to be short-lived. There will be busier times of day where the average rate may be more like 16 requests per second, but not usually for more than a few hours. I was only using a single computer to generate load in this case but that was sufficient to create a sustained load of 35-40 requests per second. I figured that if the service would deal with this then we&#39;d be doing great.&lt;/p&gt;
+
+&lt;p&gt;And for about forty minutes, things &lt;em&gt;do&lt;/em&gt; go great. The server is busy, it&#39;s serving a lot (relative to a normal load) of requests, the gen 0 heap peaks and troughs the most, the gen 1 heap blips up and down with less drama, the gen 2 heap makes slower steps up then drops back down then very gently climbs then steps up then is steady then steps up slightly then drops down, carrying on merrily enough.&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Gen 2 heap &#39;blow up&#39;&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/Memory Blow Up - Gen 2 Heap.jpg&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;Until, at some point, the gen 2 heap starts curving up dramatically, followed by many steep steps upward, then a slightly pathetic dip immediately followed by steep steps upward. Having barely hit a gigabyte in size while gently building up and dropping earlier, it&#39;s now got to around 4 gig in a very short space of time. Here, it flatlines. During this steep climb, requests have gotten slower and slower and, at this flatline, they are no longer processed. This state continues for a couple of minutes, after which some work appears to attempt to continue, though the gen 2 heap doesn&#39;t drop in size at all. Some unusual errors are seen in the logs, such as:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Timeout expired.  The timeout period elapsed prior to obtaining a connection from the pool.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;It&#39;s as if, during this time, &lt;em&gt;everything&lt;/em&gt; within the service stopped. This isn&#39;t a query timeout that occurred because the database server was taking too long, this error suggests that a SqlConnection was requested (with .net pools internally) and then the world stopped for some time.. after which, the request-for-a-connection gave up since it had been so long since it asked for it.&lt;/p&gt;
+
+&lt;p&gt;I had thought that the point of the GC server mode was to avoid this sort of thing; even if a collection for one heap was taking a long time, each core has its own separate heap (and this server has four cores - it&#39;s not a real server, they&#39;re all virtualised, but that shouldn&#39;t make a huge difference). Could all of the heaps really have got jammed up simultaneously? Hopefully from everything I&#39;ve written above, it&#39;s clear that there are a lot of subtleties to the intricate nature of the garbage collector and so it wouldn&#39;t surprise me if I&#39;d not quite got the whole picture with server mode (or if I was maybe expecting a little too much!).&lt;/p&gt;
+
+&lt;p&gt;Incidentally, after this &quot;flatline period&quot;, as requests appear to (slowly) begin being served again, the gen 2 heap grows to over 5 gig and then another flatline period is entered. This one much longer. So long, in fact, that I gave up waiting for it. Maybe my attention span is a bit short but I think that after more than five minutes of being completely stuck it&#39;s probably not much use even if the service &lt;em&gt;does&lt;/em&gt; start going again.&lt;/p&gt;
+
+&lt;p&gt;The symptoms of this condition sound identical to the occasional &quot;memory blow up&quot; that was seen with the old version of the code on the live servers. It would seem that the changes so far had not provided a magic bullet.&lt;/p&gt;
+
+&lt;h3&gt;Looking for clues&lt;/h3&gt;
+
+&lt;p&gt;&lt;img alt=&quot;GC CPU time during the &#39;blow up&#39;&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/Memory Blow Up - GC CPU.jpg&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;I wanted some insight into what was going on during these periods of apparent inactivity - well, it seemed like &lt;em&gt;my&lt;/em&gt; code was inactive, though it appeared that the GC was being very busy. The &quot;% time in GC&quot; would spike around during work but seem to get more frenzied in its peaking in the lead up to the gen 2 heap size flat line, then it too would flat line in sympathy. After the first flat line period, it would remain higher but spike up and down, then it would flatline again when the gen 2 heap size flatlined, at a higher level than the time before.&lt;/p&gt;
+
+&lt;p&gt;I initially presumed that there must be something in the requests that caused this behaviour. So, if I skipped the first {whatever} thousand requests then I should be able to get this to happen sooner. Not so - skipping 10k requests still meant that I had to wait the same period of time for the behaviour to present itself. Skipping 20k, the same. If I skipped too many then the requests would complete without blowing up at all.&lt;/p&gt;
+
+&lt;p&gt;My next step was to try to use &lt;a href=&quot;http://www.red-gate.com/products/dotnet-development/ants-memory-profiler/&quot;&gt;ANTS Memory Profiler&lt;/a&gt; and to take a couple of snapshots as the blowout started occurring. Unfortunately, by the time that the gen 2 heap size started climbing sharply, it would quickly get too big for the profiler to snapshot. There&#39;s a hard limit in the software as to how big of a memory dump it will try to process (&quot;for performance reasons&quot;). There&#39;s an option to take less information about each object so that larger dumps may be taken but even enabling that didn&#39;t work. In retrospect, it might have been worth reducing the memory in the virtual box and trying to reproduce the issue then - hopefully ANTS would have been able to deal with it then (everything got stuck when the gen 2 heap reached around four gig out of a total six gig of RAM, if the server only had four gig total then the available memory would be exhausted and the GC would presumably throw a tantrum much earlier, with a much smaller gen 2 heap).&lt;/p&gt;
+
+&lt;p&gt;After that I tried using &lt;a href=&quot;https://blogs.msdn.microsoft.com/dotnet/2012/10/09/improving-your-apps-performance-with-perfview/&quot;&gt;PerfView&lt;/a&gt; since it&#39;s discussed and recommended in the &quot;Writing High-Performance .NET Code&quot; book. I managed to take a snapshot using that, freezing the process while doing so in order to prevent the heaps growing even more (taking the snapshot took almost two hours). When I loaded the dump file into PerfView to analyse, it appeared to show very little information about what types were in use (certainly it didn&#39;t appear to show the long list of types seen in all of the screenshots and tutorial videos about PerfView). There is a small row of information at the top of the heap alloc stack window that shows a summary. This showed 99% unreachable memory. This means that most of the memory is actually ready to be reclaimed by the collector (ie. that its roots are unreachable) and so I presumed that I wouldn&#39;t be able to find out much information about it. I tried finding confirmation for this online but didn&#39;t come up with much when searching for &quot;99% unreachable memory PerfView&quot;. Another regret, looking back, is that I didn&#39;t try a bit harder to unearth information through PerfView. To be completely honest, though, I was losing patience.&lt;/p&gt;
+
+&lt;h3&gt;Giving up and guessing (I prefer to call it intuition)&lt;/h3&gt;
+
+&lt;p&gt;I was frustrated now. I was frustrated with what I was seeing, I was frustrated because I didn&#39;t understand precisely what triggered it and I was frustrated that I couldn&#39;t get any tools to tell me what was going awry. So I thought I&#39;d just take a stab in the dark and see what happened.&lt;/p&gt;
+
+&lt;p&gt;In my defence, it was more sort of an educated guess. It seemed like what the service was asking of the garbage collector was something that the collector would (given enough time) decide it didn&#39;t like. I didn&#39;t feel like it was just allocation churn, my gut* told me that references that were very short lived were not the problem, even if there were a lot of them coming into existence and then disappearing again while the request rate was high. It felt like it was all going to lie with those ten / fifteen minute caches. If the GC likes references to live for very short periods of time or to live &lt;em&gt;forever&lt;/em&gt; then this is the worst case for it. It&#39;s particularly bad since there may be many (ie. 1000s of) sets of cached results in memory at any time and each result set could potentially hold many stubs (again, 1000s).&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;(I say &quot;my gut told me&quot; but I think that what that really means is that my sub-conscious, having been stuffed full with a million articles about garbage collection, was just regurgitating information I&#39;d read..)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;The logical step, then, would be to move that cache out of process. Maybe Redis, Memcached.. something like that. This would mean that any Query Cache lookup would involve a leap out to another process. Some sort of cache key would have to be generated, any results from the other process would have to be deserialised and then compared against the original search criteria (unless the cache was just a serialised representation of the entire search criteria then there would always be a change of cache key collision, so a single cache key might actually correspond to results from multiple different searches). This seemed like a lot of extra work, compared to just accessing cached references in memory.. &lt;em&gt;but it&#39;s this just-get-bang-it-in-memory approach that has gotten me into trouble in the first place!&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;At this point, I was in no way certain that this would solve my problems and so thinking about setting up an external cache service was starting to feel like an exercise in &lt;a href=&quot;http://sethgodin.typepad.com/seths_blog/2005/03/dont_shave_that.html&quot;&gt;yak shaving&lt;/a&gt;. So I went for the simplest alternative, I implemented a disk cache layer. If I was going to use an external cache then I&#39;d still need a way to serialise the data that would need caching (so that I could send and receive it over the wire) and I&#39;d still need a way to generate cache keys from the search criteria (by hashing the options, basically). I would also have to do that if I was going to just stash the cache values on disk. There would be a few minor complications with a disk cache rather than an off-the-shelf external cache (such as ensuring that old cache files are deleted if they&#39;re not accessed again within a reasonable amount of time) but most of the work to implement a disk cache would come in handy if the hypothesis was proved and a general purpose out-of-process cache for these ten-to-fifteen-minute cache items seemed to help.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;(Just in case it&#39;s not completely obvious why a disk cache might work here, it&#39;s because the data isn&#39;t stored in memory for long periods of time any more - any time that the cached data is read from disk into memory, the in-memory representation only lives for the live of the request that the cached data is helping with - it then is free to be collected, meaning that it should never get out of gen 0).&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;So I changed the Query Cache so that it didn&#39;t maintain a &lt;strong&gt;ConcurrentDictionary&lt;/strong&gt; of data (meaning, unfortunately, that the work I did for &quot;Step 1&quot; earlier was a waste of time) and, instead, had a simple &lt;strong&gt;ICache&lt;/strong&gt; dependency injected into it. Simple in that it would only have options to read or write serialised data (as byte arrays) for particular keys - the deserialisation and subsequent checking of an &quot;ExpiresAt&quot; time would be handled within the Query Cache class. The &lt;strong&gt;ICache&lt;/strong&gt; implementation read and wrote files on disk, mapping the cache keys onto file names and running a single background thread to tidy up old files that hadn&#39;t been touched for a while. Writing an alternative &lt;strong&gt;ICache&lt;/strong&gt; implementation to talk to Redis would be very easy.&lt;/p&gt;
+
+&lt;p&gt;With this change, I was able to run the entire 100k request sample without issue. In fact, the service has been updated in production using this disk cache. While there are some challenges and compromises with a disk cache*, it&#39;s working &lt;em&gt;well enough&lt;/em&gt; for now that we&#39;re going to leave it be. If it seems like, in the future, that the overhead of persisting to disk is a bottleneck and that a dedicated external cache could significantly improve the performance of individual requests or the overall throughput of the system, then we may change to using one. However, right now, that would just be one more moving part. The advantage of the disk cache is that it&#39;s very simple.&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;(File IO of this type will suffer contention issues but this is a read-only service and so the worst case is  that some database hits that could theoretically have been avoided are processed; if a request comes in whose results are not available in cache then it will get the data live and then try to write to a cache file - if another request comes in whose search criteria gets hashed to the same key then it won&#39;t be possible to read the data for that key while the writing from the first request is taking place)&lt;/em&gt;&lt;/p&gt;
+
+&lt;h3&gt;In conclusion&lt;/h3&gt;
+
+&lt;p&gt;It has now been a couple of weeks that this code has been in production. Over that time, all of the gen 0, 1 and 2 Small Object Heaps have appeared to breathe in and out in a healthy fashion, as has the Large Object Heap. There has been no indication of the slow-memory-usage-climb-to-oblivion that would be seen before.&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;GC Memory Graph&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/GC Memory Graph.png&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;The experience has been very interesting for me, it&#39;s given me a chance to expand my understanding of the garbage collector and to apply what I already knew about it. It would have been the icing on the cake to find out more about just what was happening in the process when it was having one of its &quot;blow ups&quot;, but I&#39;m more glad that it doesn&#39;t look likely to happen again than I am curious as to what was in its mind at the time! It&#39;s given me a fresh appreciation of the garbage collector and it&#39;s served as a reminder that it really is my buddy and not my enemy.&lt;/p&gt;
+
+&lt;p&gt;It&#39;s also gratifying that this service continues to get the love it needs to grow and develop. It doesn&#39;t seem to be particularly uncommon for code to be written that doesn&#39;t expect to be in use more than two years in the future (sometimes simply because a project is released and &quot;handed off&quot; to a client, never to be maintained or updated again - necessitating its replacement in the not-too-distant-future as the real world moves further and further away from what the original solution is able to do).&lt;/p&gt;
+
+&lt;p&gt;I wrote such a large portion of the service code myself that I have to bear the blame for the bad bits as well as the glory for the successes. Those custom non-locking-for-read-but-fully-cloning-for-write dictionaries (replaced in &quot;Step 1&quot; with the more modern &lt;strong&gt;ConcurrentDictionary&lt;/strong&gt;) were my idea and implementation and seemed fanstastic at the time - but I&#39;m not upset in the slightest to have seen the back of them now! It&#39;s a great opoortunity to look back over the years and see not only how technology has moved on since then but also my own knowledge. I very much intend to see it continuing!&lt;/p&gt;
+</description>
+			<pubDate>Wed, 21 Sep 2016 20:12:00 GMT</pubDate>
+		</item>
 		<item>
 			<title>Performance tuning a Bridge.NET / React app</title>
             <link>http://www.productiverage.com/performance-tuning-a-bridgenet-react-app</link>
@@ -6964,1139 +7151,6 @@ namespace BridgeReactTutorial.API
 &lt;p&gt;Next time, now that React and Flux are dealt with, I want to look at how we can go &lt;em&gt;further&lt;/em&gt; in the quest to &lt;em&gt;make code easier to reason about and to test&lt;/em&gt; - there is a lot more that we can do with the C# type system to really express intent, requirements and limitations and I strongly believe that doing so will lead to higher quality code. As a side benefit, I&#39;ll also be showing how to make a simple tweak to components that will offer potentially huge performance benefits to highly-complex / deeply-nested UIs. I really think that using C# and Bridge can be more than just a possibility for writing React applications, it can be one of the &lt;em&gt;best&lt;/em&gt; ways to do so!&lt;/p&gt;
 </description>
 			<pubDate>Wed, 16 Mar 2016 22:50:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>Writing React apps using Bridge.NET - The Dan Way (from first principles)</title>
-            <link>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles</link>
-			<guid>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles</guid>
-			<description>&lt;p&gt;I&#39;ve had a request from someone to write about how I think that someone from a .net background should write a web-based application. The short answer is that I strongly believe that using Bridge.NET with React, using a Flux-like architecture is the way forward. I think that React changed the game by trying to introduce a way to write applications that addressed the big challenges, rather than what many of the other frameworks did, which was to try to make some aspects of development easier but without tackling the underlying problems. We&#39;re going to be using these technologies to create some big applications where I work and some resources as to how best to do this will be valuable. I&#39;m going to try to roll this all together into a short series of posts about creating Bridge / React / Flux apps, where I&#39;ll try to start from the simplest approach at each point and only introduce something new when I can explain why it&#39;s valuable. So, initially, Flux will be nowhere to be seen - but, hopefully, when it &lt;em&gt;is&lt;/em&gt; introduced, it will be clear why.&lt;/p&gt;
-
-&lt;p&gt;(I&#39;m not going to expel any effort on convincing you that writing C# in Visual Studio is incredibly powerful, and that it&#39;s fantastic to be able to do this while writing browser-based applications, nor am I going to try to sell you any more on React - if you&#39;re not on board with these ideas already then there&#39;s a &lt;em&gt;chance&lt;/em&gt; that these posts will sell you on it, but that&#39;s not going to be my main focus).&lt;/p&gt;
-
-&lt;h3&gt;From the very start&lt;/h3&gt;
-
-&lt;p&gt;I&#39;m going to begin from a completely fresh project, so if you&#39;ve got any experience with Bridge then these steps will be familiar. But I&#39;ll go through them quickly and then start building the application itself. It&#39;s going to be extremely simple but will illustrate how to work with React and how to deal with user input and Virtual DOM re-rendering, how and where to implement validation and how to make &lt;em&gt;all the things&lt;/em&gt; asynchronous so that async is not only used for scary edge cases and can be seen as a valuable tool to decouple code (and, in doing so, async will become a not-at-all-scary thing).&lt;/p&gt;
-
-&lt;p&gt;All that the application will do will be to allow the user to write a message, entering  Title and Content strings, and to save this message. There will be a &quot;Message API&quot;, which will emulate reading and writing to a remote endpoint, for data persistence, but the implementation will all be kept in-memory / in the browser, just to make things simple. It will look something like this:&lt;/p&gt;
-
-&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;As more messages are written, more entries will appear in the &quot;Message History&quot;. Seems simple.&lt;/p&gt;
-
-&lt;h3&gt;React components&lt;/h3&gt;
-
-&lt;p&gt;Before getting into any React-with-Bridge specifics, I want to talk a little about React components; how to arrange them into a hierarchy and how they should and shouldn&#39;t talk to each other.&lt;/p&gt;
-
-&lt;p&gt;Almost all of the time, components that you use will be &quot;&lt;a href=&quot;https://facebook.github.io/react/docs/forms.html#controlled-components&quot;&gt;controlled components&lt;/a&gt;&quot; -&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;A Controlled component does not maintain its own internal state; the component renders purely based on props.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;This means that when you render a text input, you give it a &quot;value&quot; property and an &quot;onChange&quot; property - when the user tries to change what&#39;s in the text box (whether by pressing a number or letter, or by pressing backspace or by pasting something in) then the &quot;onChange&quot; callback is executed. The text box is &lt;em&gt;not&lt;/em&gt; updated automatically, all that happens is that a callback is made that indicates that the user has done something that means that the text input probably &lt;em&gt;should&lt;/em&gt; be updated.&lt;/p&gt;
-
-&lt;p&gt;This seems odd at the very start since you may be used to events being driven by html elements and the updates being broadcast elsewhere; with React, events arise from components that describe the desire for a change to be made, but the change does not happen automatically. This is what is meant in the quote above when it says that a controlled component &quot;does not maintain its own internal state&quot;.&lt;/p&gt;
-
-&lt;p&gt;This hints at one of the key aims of React - to make code explicit and easy to reason about. If a component &lt;em&gt;only&lt;/em&gt; varies based upon its props, then it&#39;s very easy to reason about; given this props data, draw in this manner. (If user-entered changes to a text input were automatically reflected in the text box then the component would &lt;em&gt;not&lt;/em&gt; solely vary by its props, it would vary according to its props and whatever else the user has done to it).&lt;/p&gt;
-
-&lt;p&gt;The only way for a component to update / re-render itself (and any child components that it may have) is for it to changes its &quot;state&quot;. This is a special concept in React - if &quot;SetState&quot; is called then the component will re-render, but now it may have to consider both its props &lt;em&gt;and&lt;/em&gt; its new state. If we really wanted to have a text input that would automatically update its own value as well as raise a change event, we could write a component to do so -&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;(Note: if you&#39;re coming into this fresh, don&#39;t worry about how to compile this C# code into a React application, I&#39;ll be getting to that after I&#39;ve finished giving my view on React components).&lt;/em&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public class TextInput : Component&amp;lt;TextInput.Props, TextInput.State&amp;gt;
-{
-  public TextInput(Props props) : base(props) { }
-
-  public override ReactElement Render()
-  {
-    return DOM.Input(new InputAttributes
-    {
-      Type = InputType.Text,
-      Value = (state == null) ? props.InitialValue : state.Value,
-      OnChange = ev =&amp;gt;
-      {
-        var newValue = ev.CurrentTarget.Value;
-        SetState(new State { Value = newValue });
-        props.OnChange(newValue);
-      }
-    });
-  }
-
-  public class Props
-  {
-    public string InitialValue;
-    public Action&amp;lt;string&amp;gt; OnChange;
-  }
-
-  public class State
-  {
-    public string Value;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The problem here is that now the component depends upon two things whenever it has to render - its props &lt;em&gt;and&lt;/em&gt; its state. It can change its own state but it can&#39;t change its props (React demands that a components props be considered to be immutable).&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;This&lt;/em&gt; means that the component becomes more difficult to reason about, it was much easier when it didn&#39;t have to worry about state. (Granted, there may have been some question as to who would receive that OnChange callback to get the component to re-render, but we&#39;re going to get to that shortly).&lt;/p&gt;
-
-&lt;p&gt;Partly for this reason, it&#39;s strongly recommended that the vast majority of components be stateless - meaning that they render according to their props and nothing else.&lt;/p&gt;
-
-&lt;p&gt;Another reason that it is strongly recommended that components not update themselves (meaning that they are stateless, since the only way for a component to update itself is to change its state) is that it makes the handling of events much clearer. In the example application that I&#39;m going to refer to in this series, the &quot;Title&quot; value that is entered by the user is reflected in the fieldset legend -&lt;/p&gt;
-
-&lt;p&gt;&lt;img alt=&quot;Fieldset legend mirros the Title input value&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial2.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;If the &quot;Title&quot; input box was to maintain its own state and update itself when its contents change, there still needs to be something listening for changes in order to update the fieldset legend text. If it was common for components to maintain their own state then things would quickly get out of hand as more and more components have to listen for (and react to) changes in other components. Just in the example here, there is a validation message that needs to be hidden if the &quot;Title&quot; input has a non-blank value, so that component would need to listen for the change event on the input. (Alternatively, the &lt;strong&gt;TextInput&lt;/strong&gt; component could be provided with validation logic and &lt;em&gt;it&lt;/em&gt; would be responsible for showing or hiding the validation message - which would complicate the &lt;strong&gt;TextInput&lt;/strong&gt; class). On top of this, there is the &quot;Save&quot; button which should be disabled if either of the &quot;Title&quot; or &quot;Content&quot; input boxes have no value - so the Save button component would need to listen to change events from both text inputs and decide whether or not it should be enabled based upon their states. Maybe the input form itself wants to add an &quot;invalid&quot; class to itself for styling purposes if either of the inputs are invalid - now the form component has to listen to changes to the text inputs and add or remove this class. This way lies madness.&lt;/p&gt;
-
-&lt;p&gt;In summary, most components should &lt;em&gt;not&lt;/em&gt; try to update themselves and so do not need state. The React bindings make it easy to write components that don&#39;t use state (again, I&#39;ll talk about using these bindings more shortly, I just wanted to point out now that the distinction between stateful and stateless components is an important one and that the bindings reflect this) -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public class TextInput : StatelessComponent&amp;lt;TextInput.Props&amp;gt;
-{
-  public TextInput(Props props) : base(props) { }
-
-  public override ReactElement Render()
-  {
-    return DOM.Input(new InputAttributes
-    {
-      Type = InputType.Text,
-      Value = props.Value,
-      OnChange = ev =&amp;gt; props.OnChange(ev.CurrentTarget.Value)
-    });
-  }
-
-  public class Props
-  {
-    public string Value;
-    public Action&amp;lt;string&amp;gt; OnChange;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The component code is much more succinct this way, as well as helping us avoid the nightmare scenario described above.&lt;/p&gt;
-
-&lt;p&gt;It does leave one big question, though.. if these components don&#39;t update themselves, &lt;em&gt;then what does?&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;Answer: There should be a top-level &quot;Container Component&quot; that maintains state for the application. This should be the only stateful component, all components further down the hierarchy should be stateless.&lt;/p&gt;
-
-&lt;p&gt;In the sample application here -&lt;/p&gt;
-
-&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;The component hierarchy will look something like this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;AppContainer
-  MessageEditor
-    Span (&quot;Title&quot;)
-    ValidatedTextInput
-      Input
-    Span (&quot;Content&quot;)
-    ValidatedTextInput
-      Input
-    Button
-  MessageHistory
-    Div
-      Span (Message Title)
-      Span (Message Content)
-    Div
-      Span (Message Title)
-      Span (Message Content)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The &lt;strong&gt;MessageHistory&lt;/strong&gt; will be a read-only component tree (it just shows saved messages) and so is very simple (there are no callbacks to handle). The &lt;strong&gt;MessageEditor&lt;/strong&gt; will render Span labels (&quot;Title&quot; and &quot;Content&quot;), two &lt;strong&gt;ValidatedTextInput&lt;/strong&gt; components and a &quot;Save&quot; button. The &lt;strong&gt;ValidatedTextInput&lt;/strong&gt; has props for a current text input value, an on-change callback and an optional validation message.&lt;/p&gt;
-
-&lt;p&gt;When an input component&#39;s on-change callback is executed, it is an action with a single argument; the html element. In the &lt;strong&gt;TextInput&lt;/strong&gt; example class above, the new value is extracted from that element (&quot;ev.CurrentTarget.Value&quot;) and then passed into the on-change callback of the &lt;strong&gt;TextInput&lt;/strong&gt;, which is an action with a simple string argument. &lt;strong&gt;ValidatedTextInput&lt;/strong&gt; will be very similar (it will wrap the &lt;strong&gt;Action&amp;lt;InputElement&amp;gt;&lt;/strong&gt; callback that the input raises in a simpler &lt;strong&gt;Action&amp;lt;string&amp;gt;&lt;/strong&gt;). The only difference between it and the &lt;strong&gt;TextInput&lt;/strong&gt; example class earlier is that it  will also be responsible for rendering a validation message element if its props value has a non-blank validation message to show (and it may apply an &quot;invalid&quot; class name to its wrapper if there is a validation message to show).&lt;/p&gt;
-
-&lt;p&gt;When the Title or Content &lt;strong&gt;ValidatedTextInput&lt;/strong&gt; raise an on-change event, the &lt;strong&gt;MessageEditor&lt;/strong&gt; will execute some code that translates this callback further. The &lt;strong&gt;MessageEditor&lt;/strong&gt; will have an on-change props value whose single argument is a &lt;strong&gt;MessageDetails&lt;/strong&gt; - this will have have values for the current &quot;Title&quot; and &quot;Content&quot;. Just as an on-change from an input element resulted in an on-change being raised by a &lt;strong&gt;ValidatedTextInput&lt;/strong&gt;, an on-change by a &lt;strong&gt;ValidatedTextInput&lt;/strong&gt; will result in an on-change from the &lt;strong&gt;MessageEditor&lt;/strong&gt;. Each on-change event changes the type of value that the on-change describes (from an input element to a string to a &lt;strong&gt;MessageDetails&lt;/strong&gt;). The &lt;strong&gt;MessageEditor&lt;/strong&gt;&#39;s on-change will be received by the &lt;strong&gt;AppContainer&lt;/strong&gt; Component, which is where the change will result in the component tree being re-rendered.&lt;/p&gt;
-
-&lt;p&gt;The &lt;strong&gt;AppContainer&lt;/strong&gt; component will re-render by calling &quot;SetState&quot; and creating a new state reference for itself that include the new &lt;strong&gt;MessageDetails&lt;/strong&gt; reference (that was passed up in the on-change callback from the &lt;strong&gt;MessageEditor&lt;/strong&gt;). The call to &quot;SetState&quot; will result in the component being re-rendered, which will result in it rendering a new version of the &lt;strong&gt;MessageEditor&lt;/strong&gt;. When the &lt;strong&gt;MessageEditor&lt;/strong&gt; is rendered, the current &quot;Title&quot; value will be used to populate the text input &lt;em&gt;and&lt;/em&gt; to set the text in the legend of the fieldset that wraps the editor&#39;s input boxes. This is how the &quot;nightmare scenario&quot; described earlier is avoided - instead of having lots of components listen out to events from lots of &lt;em&gt;other&lt;/em&gt; components, all components just pass their events up to the top and then the entire UI is re-rendered in React&#39;s Virtual DOM.&lt;/p&gt;
-
-&lt;p&gt;I&#39;m going to repeat that part about event-handling because it&#39;s important; events are passed &lt;em&gt;up&lt;/em&gt; from where they occur, up to the top-level component. This will trigger a re-render, which works all the way &lt;em&gt;down&lt;/em&gt; through the component tree, so that the requested change is then reflected in the UI.&lt;/p&gt;
-
-&lt;p&gt;The Virtual DOM determines what (if anything) needs to change in the browser&#39;s DOM and applies those changes - this works well because the Virtual DOM is very fast (and so we can do these &quot;full Virtual DOM re-renders&quot; frequently) and it minimises changes to the browser DOM (which is much slower).&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;(The Facebook tutorial &lt;a href=&quot;https://facebook.github.io/react/docs/thinking-in-react.html&quot;&gt;Thinking in React&lt;/a&gt; talks about how to mentally break down a UI into components and talks about passing state up the tree, but I wanted to try to really drive home how components should be put together and how they should communicate before fobbing you off with a Facebook link)&lt;/em&gt;.&lt;/p&gt;
-
-&lt;p&gt;I have some more recommendations on how to decide what to put into props and what into state when creating stateful container components, but I&#39;ll cover that ground after some more practical work.&lt;/p&gt;
-
-&lt;h3&gt;Let&#39;s start coding then!&lt;/h3&gt;
-
-&lt;p&gt;Open up Visual Studio (the version isn&#39;t too important, but if you&#39;re using 2015 then bear in mind that Bridge.NET doesn&#39;t yet support C# 6 syntax). Create a new &quot;Class Library&quot; project. Using NuGet, add the &quot;Bridge&quot; and the &quot;Bridge.React&quot; packages. This will bring in bindings for React as well as pulling in Bridge itself - the Bridge package removes the usual System, System.Collections, etc.. references and replaces them with a single &quot;Bridge&quot; reference, which re-implements those framework methods in code that has JavaScript translations.&lt;/p&gt;
-
-&lt;p&gt;The Bridge package also adds some README files and a bridge.json file (under the Bridge folder in the project), which instructs Bridge how to compile your C# code into JavaScript. Change bridge.json&#39;s content to:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;{
-  &quot;output&quot;: &quot;Bridge/output&quot;,
-  &quot;combineScripts&quot;:  true
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This will tell it create a single JavaScript file when translating, including the Bridge library content and the React bindings and JavaScript generated from code that you write. The name of the file that it generates is based upon the name of your project. I named mine &quot;BridgeReactTutorial&quot; and so the Bridge compiler will generate &quot;BridgeReactTutorial.js&quot; and &quot;BridgeReactTutorial.min.js&quot; files in the &quot;Bridge/output&quot; folder on each build of the project.&lt;/p&gt;
-
-&lt;p&gt;Now change demo.html (which is another file that the Bridge NuGet package created, it will be in the Brige/www folder) to the following:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;!DOCTYPE html&amp;gt;
-&amp;lt;html lang=&quot;en&quot; xmlns=&quot;http://www.w3.org/1999/xhtml&quot;&amp;gt;
-&amp;lt;head&amp;gt;
-  &amp;lt;meta charset=&quot;utf-8&quot; /&amp;gt;
-  &amp;lt;title&amp;gt;Bridge.React Tutorial&amp;lt;/title&amp;gt;
-  &amp;lt;link rel=&quot;Stylesheet&quot; type=&quot;text/css&quot; href=&quot;styles.css&quot; media=&quot;screen&quot; /&amp;gt;
-&amp;lt;/head&amp;gt;
-&amp;lt;body&amp;gt;
-  &amp;lt;noscript&amp;gt;JavaScript is required&amp;lt;/noscript&amp;gt;
-  &amp;lt;div id=&quot;main&quot; class=&quot;loading&quot;&amp;gt;Loading..&amp;lt;/div&amp;gt;
-  &amp;lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/react/0.14.7/react.js&quot;&amp;gt;&amp;lt;/script&amp;gt;
-  &amp;lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/react/0.14.7/react-dom.js&quot;&amp;gt;&amp;lt;/script&amp;gt;
-  &amp;lt;script src=&quot;../output/BridgeReactTutorial.js&quot;&amp;gt;&amp;lt;/script&amp;gt;
-&amp;lt;/body&amp;gt;
-&amp;lt;/html&amp;gt;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;em&gt;(If you called your project something other than &quot;BridgeReactTutorial&quot; then you might have to change the filename in that last script tag).&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;This file will load in the latest (0.14.7, as of March 2016) version of the React library along with the Bridge / React-bindings / your-code bundle. All we need to do now is write some &quot;your-code&quot; content.&lt;/p&gt;
-
-&lt;p&gt;When you created the class library project, a Class1.cs file will have been added to the project. Change its contents -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System.Linq;
-using Bridge.Html5;
-using Bridge.React;
-
-namespace BridgeReactTutorial
-{
-  public class Class1
-  {
-    [Ready]
-    public static void Main()
-    {
-      var container = Document.GetElementById(&quot;main&quot;);
-      container.ClassName = string.Join(
-        &quot; &quot;,
-        container.ClassName.Split().Where(c =&amp;gt; c != &quot;loading&quot;)
-      );
-      React.Render(
-        DOM.Div(new Attributes { ClassName = &quot;welcome&quot; }, &quot;Hi!&quot;),
-        container
-      );
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Build the solution and then right-click on the &quot;demo.html&quot; file in the project and click on &quot;View in Browser&quot;. You should see a happy little &quot;Hi!&quot; welcome message, rendered using React by JavaScript that was translated from C# - an excellent start!&lt;/p&gt;
-
-&lt;p&gt;There are some subtle touches here, such as the &quot;JavaScript is required&quot; message that is displayed if the browser has JavaScript disabled (just in case you ever turn it off and forget!) and a &quot;loading&quot; message that is displayed while the JavaScript sorts itself out (usually this will be a barely-perceptibe amount of time but if the CDN host that the React library is coming from is being slow then it may not be instantaneous). The &quot;main&quot; div initially has a &quot;loading&quot; class on it, which is removed when the code above executes. Note that the [Ready] attribute on the &quot;Main&quot; function is a Bridge attribute, indicating code that should be called when the page has loaded (similar in principle to on-DOM-ready, frequently used by jQuery code).&lt;/p&gt;
-
-&lt;p&gt;To take advantage of the &quot;loading&quot; class&#39; presence / absence, it would be a nice touch to have the &quot;loading&quot; text quite pale initially (it&#39;s reassuring to know that the app is, in fact, loading, but it doesn&#39;t need to be right in your face). To do so, add a file &quot;styles.css&quot; alongside the &quot;demo.html&quot; file. It&#39;s already referenced by the markup we&#39;ve pasted into &quot;demo.html&quot;, so it will be picked up when you refresh the page. Since we&#39;re creating a stylesheet, it makes sense to include some style resets (my go-to for this is by Eric Meyer) -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;/* http://meyerweb.com/eric/tools/css/reset/ v2.0b1 | 201101 NOTE: WORK IN PROGRESS
- USE WITH CAUTION AND TEST WITH ABANDON */
-html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote,
-pre,a, abbr, acronym, address, big, cite, code, del, dfn, em, img, ins, kbd, q, s,
-samp, small, strike, strong, sub, sup, tt, var,b, u, i, center, dl, dt, dd, ol, ul,
-li, fieldset, form, label, legend, table, caption, tbody, tfoot, thead, tr, th, td,
-article, aside, canvas, details, figcaption, figure, footer, header, hgroup, menu,
-nav, section, summary, time, mark, audio, video
-{
-  margin: 0;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  font-size: 100%;
-  font: inherit;
-  vertical-align: baseline;
-}
-/* HTML5 display-role reset for older browsers */
-article, aside, details, figcaption, figure, footer, header, hgroup, menu, nav,
-section { display: block; }
-body { line-height: 1; }
-ol, ul { list-style: none; }
-blockquote, q { quotes: none; }
-blockquote:before, blockquote:after, q:before, q:after { content: &#39;&#39;; content: none; }
-/* remember to highlight inserts somehow! */ ins { text-decoration: none; }
-del { text-decoration: line-through; }
-table { border-collapse: collapse; border-spacing: 0; }
-
-div#main.loading { color: #f1f1f1; }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;At this point, I also tend to remove the &quot;App_Readme&quot; folder that the Bridge package adds to my project - if I&#39;m going to write some code and check it into source control somewhere then I don&#39;t think there&#39;s a lot of point in storing a copy of the Bridge README and LICENSE each time.&lt;/p&gt;
-
-&lt;h3&gt;Creating the Message Editor&lt;/h3&gt;
-
-&lt;p&gt;That&#39;s the theory and the project scaffolding out of the way. Now to create a form that actually does something.&lt;/p&gt;
-
-&lt;p&gt;We&#39;ve already seen how a &lt;strong&gt;TextInput&lt;/strong&gt; component is helpful for wrapping a text input and simplifying the &quot;OnChange&quot; callback. So create a &quot;Components&quot; folder with a &quot;TextInput.cs&quot; file and paste in the following content -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using Bridge.Html5;
-using Bridge.React;
-
-namespace BridgeReactTutorial.Components
-{
-  public class TextInput : StatelessComponent&amp;lt;TextInput.Props&amp;gt;
-  {
-    public TextInput(Props props) : base(props) { }
-
-    public override ReactElement Render()
-    {
-      return DOM.Input(new InputAttributes
-      {
-        Type = InputType.Text,
-        ClassName = props.ClassName,
-        Value = props.Content,
-        OnChange = e =&amp;gt; props.OnChange(e.CurrentTarget.Value)
-      });
-    }
-
-    public class Props
-    {
-      public string ClassName;
-      public string Content;
-      public Action&amp;lt;string&amp;gt; OnChange;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;em&gt;(Note: When adding a new &quot;.cs&quot; file to a project, sometimes &quot;System&quot; will sneak back into the list of references in the project - this can confuse Bridge, so ensure that you remove the reference again if it gets added).&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;Now create another folder in the root of the project called &quot;ViewModels&quot;. Add a new file to it; &quot;MessageDetails.cs&quot; and paste in the following content -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;namespace BridgeReactTutorial.ViewModels
-{
-  public class MessageDetails
-  {
-    public string Title;
-    public string Content;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now add another file to the &quot;Components&quot; folder; &quot;MessageEditor.cs&quot; and paste in this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Components
-{
-  public class MessageEditor : StatelessComponent&amp;lt;MessageEditor.Props&amp;gt;
-  {
-    public MessageEditor(Props props) : base(props) { }
-
-    public override ReactElement Render()
-    {
-      return DOM.FieldSet(new FieldSetAttributes { ClassName = props.ClassName },
-        DOM.Legend(null, string.IsNullOrWhiteSpace(props.Title) ? &quot;Untitled&quot; : props.Title),
-        DOM.Span(new Attributes { ClassName = &quot;label&quot; }, &quot;Title&quot;),
-        new TextInput(new TextInput.Props
-        {
-          ClassName = &quot;title&quot;,
-          Content = props.Title,
-          OnChange = newTitle =&amp;gt; props.OnChange(new MessageDetails
-          {
-            Title = newTitle,
-            Content = props.Content
-          })
-        }),
-        DOM.Span(new Attributes { ClassName = &quot;label&quot; }, &quot;Content&quot;),
-        new TextInput(new TextInput.Props
-        {
-          ClassName = &quot;content&quot;,
-          Content = props.Content,
-          OnChange = newContent =&amp;gt; props.OnChange(new MessageDetails
-          {
-            Title = props.Title,
-            Content = newContent
-          })
-        })
-      );
-    }
-
-    public class Props
-    {
-      public string ClassName;
-      public string Title;
-      public string Content;
-      public Action&amp;lt;MessageDetails&amp;gt; OnChange;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now things are getting interesting!&lt;/p&gt;
-
-&lt;p&gt;This is still a stateless component and so what is rendered depends solely and reliably upon its props data. When it renders, the &quot;Title&quot; value from its props is used to populate both the legend of the fieldset that it renders (unless &quot;Title&quot; is null, blank or white-space-only, in which case the legend text will be &quot;Untitled) and it&#39;s used to populate the &quot;Title&quot; &lt;strong&gt;TextInput&lt;/strong&gt;. When either of its &lt;strong&gt;TextInput&lt;/strong&gt;s raises an on-change event, the &lt;strong&gt;MessageEditor&lt;/strong&gt; raises its on-change events with a new &lt;strong&gt;MessageDetails&lt;/strong&gt; instance.&lt;/p&gt;
-
-&lt;p&gt;Note that there&#39;s no validation yet. We&#39;ll get this rough version working first and then add that later.&lt;/p&gt;
-
-&lt;p&gt;There are still a few more steps until we have an application, though. We need a container component to render the form in the first place and to deal with on-change events that bubble up. Create another class file within the &quot;Components&quot; folder named &quot;AppContainer.cs&quot; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.Html5;
-using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Components
-{
-  public class AppContainer : Component&amp;lt;object, AppContainer.State&amp;gt;
-  {
-    public AppContainer() : base(null) { }
-
-    protected override State GetInitialState()
-    {
-      return new State
-      {
-        Message = new MessageDetails { Title = &quot;&quot;, Content = &quot;&quot; }
-      };
-    }
-
-    public override ReactElement Render()
-    {
-      return new MessageEditor(new MessageEditor.Props
-      {
-        ClassName = &quot;message&quot;,
-        Title = state.Message.Title,
-        Content = state.Message.Content,
-        OnChange = newMessage =&amp;gt; SetState(new State { Message = newMessage })
-      });
-    }
-
-    public class State
-    {
-      public MessageDetails Message;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This is the &lt;em&gt;stateful&lt;/em&gt; component that will trigger re-renders when required. It doesn&#39;t actually require any props data at this time, so the &quot;TProps&quot; type parameter specified on the &lt;strong&gt;Component&amp;lt;TProps, TState&amp;gt;&lt;/strong&gt; base class is just &quot;object&quot;.&lt;/p&gt;
-
-&lt;p&gt;When the &lt;strong&gt;MessageEditor&lt;/strong&gt; raises an on-change event, the &lt;strong&gt;AppContainer&lt;/strong&gt; will call SetState to replace its current &lt;strong&gt;MessageDetails&lt;/strong&gt; instance with the new one. This will trigger a re-render of the &lt;strong&gt;MessageEditor&lt;/strong&gt;, which will be given the new &lt;strong&gt;MessageDetails&lt;/strong&gt; instance as part of a new props value. It might seem a bit silly to have the &lt;strong&gt;MessageEditor&lt;/strong&gt; pass up a new &lt;strong&gt;MessageDetails&lt;/strong&gt; instance and then to just pass this back down into another &lt;strong&gt;MessageEditor&lt;/strong&gt;, but the idea is to consider the first &lt;strong&gt;MessageEditor&lt;/strong&gt; to be dead now and for the new &lt;strong&gt;MessageEditor&lt;/strong&gt; (with the new &lt;strong&gt;MessageDetails&lt;/strong&gt;) to exist in its place. And each time a stateless component is rendered, it renders simply from its props - there is no data shared between the new instance and the instance it replaces. This, again, makes the components very easy to reason about. And code that is easy to reason about is easy to write and easy to maintain.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Note: If you&#39;re au fait with React then you might know that components written as ES6 classes - which seems to be the way that is encouraged at the moment - don&#39;t support &quot;GetInitialState&quot; and, instead, specify initial state in the constructor. In the Bridge React bindings, &quot;GetInitialState&quot; should be used and the constructor should NOT be used - the way that the components are initialised by React means that constructors on component classes are not actually executed, so it is important that the constructor ONLY be used to pass the props and/or state to the base class.&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;The penultimate step is to change &quot;Class1.cs&quot; to render the &lt;strong&gt;AppContainer&lt;/strong&gt; instead of just rendering a &quot;Hi!&quot; div. While we&#39;re editing it, let&#39;s give it a more official-sounding name. I like the starting point of my application to be called &quot;App&quot; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System.Linq;
-using Bridge.Html5;
-using Bridge.React;
-using BridgeReactTutorial.Components;
-
-namespace BridgeReactTutorial
-{
-  public class App
-  {
-    [Ready]
-    public static void Go()
-    {
-      var container = Document.GetElementById(&quot;main&quot;);
-      container.ClassName = string.Join(
-        &quot; &quot;,
-        container.ClassName.Split().Where(c =&amp;gt; c != &quot;loading&quot;)
-      );
-      React.Render(new AppContainer(), container);
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;All that&#39;s required now is to make it look a little nicer when you view &quot;demo.html&quot;, so add the following to &quot;styles.css&quot; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;body
-{
-  font-family: &#39;Segoe UI&#39;;
-  padding: 8px;
-}
-
-fieldset
-{
-  padding: 8px;
-  border: 1px solid #f1f1f1;
-  border-radius: 4px;
-}
-fieldset legend
-{
-  color: blue;
-  padding: 0 8px;
-}
-fieldset.message span.label { padding: 0 8px; }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;That&#39;s the first major milestone reached! A very basic framework for constructing component hierarchies has been demonstrated, along with a way to handle events and re-render as required. There&#39;s nothing very radical, it&#39;s just what was described earlier; but it&#39;s good to see the theory executed in practice.&lt;/p&gt;
-
-&lt;p&gt;I&#39;m far from finished for today, though - I want to add a way to persist messages, a message history component and some validation. Best get cracking!&lt;/p&gt;
-
-&lt;h3&gt;Message persistence&lt;/h3&gt;
-
-&lt;p&gt;While I want to simulate a server-based API, where read / write requests aren&#39;t instantaneous and we need to think about how to deal with async calls, I don&#39;t want the overhead of needing an endpoint to be configured somewhere. So we&#39;ll go with a simple interface that will be implemented in an entirely client-side class, that introduces artifical delays to mimic server-calling time.&lt;/p&gt;
-
-&lt;p&gt;Create a new folder in the project root called &quot;API&quot; and add a new .cs file &quot;IReadAndWriteMessages.cs&quot;, the contents of which should be:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System.Threading.Tasks;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.API
-{
-  public interface IReadAndWriteMessages
-  {
-    Task SaveMessage(MessageDetails message);
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;We&#39;ll be using dependency injection to provide the &lt;strong&gt;AppContainer&lt;/strong&gt; with an API implementation. In order to enable unit testing (which will come later) we need to be able to work against an interface. For now, the interface only has a &quot;SaveMessage&quot; method, we&#39;ll work on reading message history data later.&lt;/p&gt;
-
-&lt;p&gt;Add another file into the &quot;API&quot; folder, &quot;MessageApi.cs&quot; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Threading.Tasks;
-using Bridge.Html5;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.API
-{
-  public class MessageApi : IReadAndWriteMessages
-  {
-    public Task SaveMessage(MessageDetails message)
-    {
-      if (message == null)
-        throw new ArgumentNullException(&quot;message&quot;);
-      if (string.IsNullOrWhiteSpace(message.Title))
-        throw new ArgumentException(&quot;A title value must be provided&quot;);
-      if (string.IsNullOrWhiteSpace(message.Content))
-        throw new ArgumentException(&quot;A content value must be provided&quot;);
-
-      var task = new Task&amp;lt;object&amp;gt;(null);
-      Window.SetTimeout(
-        () =&amp;gt; task.Complete(),
-        1000 // Simulate a roundtrip to the server
-      );
-      return task;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Bridge supports the C# &quot;async&quot; keyword and provides its own implementation of Tasks, which are used above to pretend that this class is communicating with a server when a save is requested.&lt;/p&gt;
-
-&lt;p&gt;In order to enable saving, the &lt;strong&gt;MessageEditor&lt;/strong&gt; needs a &quot;Save&quot; button and it needs an &quot;on-save&quot; callback to be specified on its props. While saving, the form should be disabled, so the &lt;strong&gt;MessageEditor&lt;/strong&gt; props need a &quot;Disabled&quot; flag as well.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;When designing an SPA like this, you need to think about whether you will support &quot;optimistic updates&quot;, where clicking Save clears the form and acts as if the save action was instanteously accepted - but brings it to the user&#39;s attention somehow if the save failed or was rejected. I&#39;m going to go for a simpler &quot;pessimistic update&quot; flow, where the form is disabled until the save is acknowledged, at which point the form will be cleared and re-enabled so that a further entry may be written and then saved.&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;The &lt;strong&gt;MessageEditor&lt;/strong&gt; should now looks like this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Components
-{
-  public class MessageEditor : StatelessComponent&amp;lt;MessageEditor.Props&amp;gt;
-  {
-    public MessageEditor(Props props) : base(props) { }
-
-    public override ReactElement Render()
-    {
-      return DOM.FieldSet(new FieldSetAttributes { ClassName = props.ClassName },
-        DOM.Legend(null, string.IsNullOrWhiteSpace(props.Title) ? &quot;Untitled&quot; : props.Title),
-        DOM.Span(new Attributes { ClassName = &quot;label&quot; }, &quot;Title&quot;),
-        new TextInput(new TextInput.Props
-        {
-          ClassName = &quot;title&quot;,
-          Disabled = props.Disabled,
-          Content = props.Title,
-          OnChange = newTitle =&amp;gt; props.OnChange(new MessageDetails
-          {
-            Title = newTitle,
-            Content = props.Content
-          })
-        }),
-        DOM.Span(new Attributes { ClassName = &quot;label&quot; }, &quot;Content&quot;),
-        new TextInput(new TextInput.Props
-        {
-          ClassName = &quot;content&quot;,
-          Disabled = props.Disabled,
-          Content = props.Content,
-          OnChange = newContent =&amp;gt; props.OnChange(new MessageDetails
-          {
-            Title = props.Title,
-            Content = newContent
-          })
-        }),
-        DOM.Button(
-          new ButtonAttributes { Disabled = props.Disabled, OnClick = e =&amp;gt; props.OnSave() },
-          &quot;Save&quot;
-        )
-      );
-    }
-
-    public class Props
-    {
-      public string ClassName;
-      public string Title;
-      public string Content;
-      public Action&amp;lt;MessageDetails&amp;gt; OnChange;
-      public Action OnSave;
-      public bool Disabled;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The &quot;Disabled&quot; flag needs to be able to be applied to the &lt;strong&gt;TextInput&lt;/strong&gt; components, so &lt;strong&gt;TextInput&lt;/strong&gt; needs to look like this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using Bridge.Html5;
-using Bridge.React;
-
-namespace BridgeReactTutorial.Components
-{
-  public class TextInput : StatelessComponent&amp;lt;TextInput.Props&amp;gt;
-  {
-    public TextInput(Props props) : base(props) { }
-
-    public override ReactElement Render()
-    {
-      return DOM.Input(new InputAttributes
-      {
-        Type = InputType.Text,
-        ClassName = props.ClassName,
-        Disabled = props.Disabled,
-        Value = props.Content,
-        OnChange = e =&amp;gt; props.OnChange(e.CurrentTarget.Value)
-      });
-    }
-
-    public class Props
-    {
-      public string ClassName;
-      public bool Disabled;
-      public string Content;
-      public Action&amp;lt;string&amp;gt; OnChange;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This enables the &lt;strong&gt;MessageEditor&lt;/strong&gt; to initiate a save request and for a &quot;Message API&quot; to process the request. Now the &lt;strong&gt;AppContainer&lt;/strong&gt; needs to tie these two aspects together.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Note that the OnSave action on the &lt;strong&gt;MessageEditor&lt;/strong&gt; doesn&#39;t provide a new &lt;strong&gt;MessageDetails&lt;/strong&gt; instance - that is because the Title and Content value that are rendered in the &lt;strong&gt;MessageEditor&lt;/strong&gt; could not have been changed since the component was rendered, otherwise an OnChange callback would have been made before OnSave.&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;Now, the &lt;strong&gt;AppContainer&lt;/strong&gt; gets a bit more interesting because it requires props &lt;em&gt;and&lt;/em&gt; state. Its props will be external dependencies that it requires access to, while its state will be a copy of all data that is required to render the form. This is a good time to introduce my React (stateful) component guidelines -&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;A stateful component&#39;s &quot;props&quot; data should &lt;em&gt;only&lt;/em&gt; consist of references to external dependencies&lt;/li&gt;
-&lt;li&gt;A stateful component&#39;s &quot;state&quot; data should include &lt;em&gt;everything&lt;/em&gt; required to render the component tree, though the props may be required to deal with child components&#39; events&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;At this point, these rules are going to seem very straight-forward. Later, however, things will get a little more nuanced and I&#39;ll re-visit them at that point.&lt;/p&gt;
-
-&lt;p&gt;The &lt;strong&gt;AppContainer&lt;/strong&gt; will now become the following -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-using BridgeReactTutorial.API;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Components
-{
-  public class AppContainer : Component&amp;lt;AppContainer.Props, AppContainer.State&amp;gt;
-  {
-    public AppContainer(AppContainer.Props props) : base(props) { }
-
-    protected override State GetInitialState()
-    {
-      return new State
-      {
-        Message = new MessageDetails { Title = &quot;&quot;, Content = &quot;&quot; },
-        IsSaveInProgress = false
-      };
-    }
-
-    public override ReactElement Render()
-    {
-      return new MessageEditor(new MessageEditor.Props
-      {
-        ClassName = &quot;message&quot;,
-        Title = state.Message.Title,
-        Content = state.Message.Content,
-        OnChange = newMessage =&amp;gt; SetState(new State
-        {
-          Message = newMessage,
-          IsSaveInProgress = state.IsSaveInProgress
-        }),
-        OnSave = async () =&amp;gt;
-        {
-          SetState(new State { Message = state.Message, IsSaveInProgress = true });
-          await props.MessageApi.SaveMessage(state.Message);
-          SetState(new State
-          {
-            Message = new MessageDetails { Title = &quot;&quot;, Content = &quot;&quot; },
-            IsSaveInProgress = false
-          });
-        },          
-        Disabled = state.IsSaveInProgress
-      });
-    }
-
-    public class Props
-    {
-      public IReadAndWriteMessages MessageApi;
-    }
-
-    public class State
-    {
-      public MessageDetails Message;
-      public bool IsSaveInProgress;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;You will need to update App.cs to pass a props reference with a &lt;strong&gt;MessageApi&lt;/strong&gt; instance to the &lt;strong&gt;AppContainer&lt;/strong&gt; constructor -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System.Linq;
-using Bridge.Html5;
-using Bridge.React;
-using BridgeReactTutorial.API;
-using BridgeReactTutorial.Components;
-
-namespace BridgeReactTutorial
-{
-  public class App
-  {
-    [Ready]
-    public static void Go()
-    {
-      var container = Document.GetElementById(&quot;main&quot;);
-      container.ClassName = string.Join(
-        &quot; &quot;,
-        container.ClassName.Split().Where(c =&amp;gt; c != &quot;loading&quot;)
-      );
-      React.Render(
-        new AppContainer(new AppContainer.Props { MessageApi = new MessageApi() }),
-        container
-      );
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;With this final piece, we have the outline of a fully functioning application! Granted, its functionality is not particular magnificent, but it &lt;em&gt;has&lt;/em&gt; illustrated some important principles. We&#39;ve seen how a component hierarchy should have a top-level &lt;em&gt;stateful&lt;/em&gt; component, with a component tree beneath it of state&lt;em&gt;less&lt;/em&gt; components (note that there are no guidelines required regarding what to put into props and what to put into state when writing a stateless component because props is your only option - another reason why stateless components are so much simpler!). We&#39;ve also seen how we can deal with dependency injection for these top level components, which are the only point at which more complicated logic appears such as &quot;a save request involves disabling the form, calling a method on the API, waiting for the result and then re-enabling the form&quot;. It&#39;s worth noting that in the next post, this logic will be moved out of the top-level component in a quest to make components as dumb as possible - but that&#39;s jumping ahead, and I want the format of these posts to be that we start simple and then get more complicated only as the benefits of doing so can be made clear.&lt;/p&gt;
-
-&lt;p&gt;At this point, however, we have something of a problem. If the &quot;Title&quot; and &quot;Content&quot; text inputs do not both have values, then an exception will be raised by the &lt;strong&gt;MessageApi&lt;/strong&gt; when a save is attempted. To avoid this, we need some..&lt;/p&gt;
-
-&lt;h3&gt;Validation&lt;/h3&gt;
-
-&lt;p&gt;I mentioned in the &quot;React components&quot; section that there would be a &lt;strong&gt;ValidatedTextInput&lt;/strong&gt;, but no code had been presented yet. So here we go, nothing in it should be particularly surprising -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using Bridge.React;
-
-namespace BridgeReactTutorial.Components
-{
-  public class ValidatedTextInput : StatelessComponent&amp;lt;ValidatedTextInput.Props&amp;gt;
-  {
-    public ValidatedTextInput(Props props) : base(props) { }
-
-    public override ReactElement Render()
-    {
-      var className = props.ClassName;
-      if (!string.IsNullOrWhiteSpace(props.ValidationMessage))
-        className = (className + &quot; invalid&quot;).Trim();
-
-      return DOM.Span(new Attributes { ClassName = className },
-        new TextInput(new TextInput.Props
-        {
-          ClassName = props.ClassName,
-          Disabled = props.Disabled,
-          Content = props.Content,
-          OnChange = props.OnChange
-        }),
-        string.IsNullOrWhiteSpace(props.ValidationMessage)
-          ? null
-          : DOM.Span(
-            new Attributes { ClassName = &quot;validation-message&quot; },
-            props.ValidationMessage
-          )
-      );
-    }
-
-    public class Props
-    {
-      public string ClassName;
-      public bool Disabled;
-      public string Content;
-      public Action&amp;lt;string&amp;gt; OnChange;
-      public string ValidationMessage;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This allows the &lt;strong&gt;MessageEditor&lt;/strong&gt; to be changed to use these &lt;strong&gt;ValidatedTextInput&lt;/strong&gt;s instead of regular &lt;strong&gt;TextInput&lt;/strong&gt;s, setting the &quot;ValidationMessage&quot; values according to whether the &quot;Content&quot; string has a value -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Components
-{
-  public class MessageEditor : StatelessComponent&amp;lt;MessageEditor.Props&amp;gt;
-  {
-    public MessageEditor(Props props) : base(props) { }
-
-    public override ReactElement Render()
-    {
-      var formIsInvalid =
-        string.IsNullOrWhiteSpace(props.Title) ||
-        string.IsNullOrWhiteSpace(props.Content);
-
-      return DOM.FieldSet(new FieldSetAttributes { ClassName = props.ClassName },
-        DOM.Legend(null, string.IsNullOrWhiteSpace(props.Title) ? &quot;Untitled&quot; : props.Title),
-        DOM.Span(new Attributes { ClassName = &quot;label&quot; }, &quot;Title&quot;),
-        new ValidatedTextInput(new ValidatedTextInput.Props
-        {
-          ClassName = &quot;title&quot;,
-          Disabled = props.Disabled,
-          Content = props.Title,
-          OnChange = newTitle =&amp;gt; props.OnChange(new MessageDetails
-          {
-            Title = newTitle,
-            Content = props.Content
-          }),
-          ValidationMessage = string.IsNullOrWhiteSpace(props.Title)
-            ? &quot;Must enter a title&quot;
-            : null
-        }),
-        DOM.Span(new Attributes { ClassName = &quot;label&quot; }, &quot;Content&quot;),
-        new ValidatedTextInput(new ValidatedTextInput.Props
-        {
-          ClassName = &quot;content&quot;,
-          Disabled = props.Disabled,
-          Content = props.Content,
-          OnChange = newContent =&amp;gt; props.OnChange(new MessageDetails
-          {
-            Title = props.Title,
-            Content = newContent
-          }),
-          ValidationMessage = string.IsNullOrWhiteSpace(props.Content)
-            ? &quot;Must enter message content&quot;
-            : null
-        }),
-        DOM.Button(
-          new ButtonAttributes
-          {
-            Disabled = props.Disabled || formIsInvalid,
-            OnClick = e =&amp;gt; props.OnSave()
-          },
-          &quot;Save&quot;
-        )
-      );
-    }
-
-    public class Props
-    {
-      public string ClassName;
-      public string Title;
-      public string Content;
-      public Action&amp;lt;MessageDetails&amp;gt; OnChange;
-      public Action OnSave;
-      public bool Disabled;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now, the &quot;Save&quot; button is disabled if the &lt;strong&gt;MessageEditor&lt;/strong&gt; is disabled (according to its props flag) &lt;em&gt;or&lt;/em&gt; if the form entry is invalid. Now, it&#39;s not possible for the user to attempt a save that we will know will fail!&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;(Moving validation logic out of the components is another thing that will come in the move towards dumb-as-possible components, but that&#39;s for part two).&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;To keep things looking pretty, adding the following to &quot;styles.css&quot; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;fieldset.message span.title, fieldset.message span.content { position: relative; }
-fieldset.message span.validation-message
-{
-  position: absolute;
-  top: -6px;
-  right: 2px;
-  padding: 2px 4px;
-  font-size: 70%;
-  background: #FFF9D8;
-  border: 1px solid #EFE9CB;
-  border-radius: 2px;
-  color: #A8A390;
-}
-fieldset.message button { margin-left: 8px; }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3&gt;Message History&lt;/h3&gt;
-
-&lt;p&gt;What&#39;s the point in saving messages if we can&#39;t read them back out again? To enable this, the &lt;strong&gt;IReadAndWriteMessages&lt;/strong&gt; needs a &quot;GetMessages&quot; method to accompany &quot;SaveMessage&quot; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.API
-{
-  public interface IReadAndWriteMessages
-  {
-    Task SaveMessage(MessageDetails message);
-    Task&amp;lt;IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;&amp;gt; GetMessages();
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This needs implementing in &lt;strong&gt;MessageApi&lt;/strong&gt; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Bridge.Html5;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.API
-{
-  public class MessageApi : IReadAndWriteMessages
-  {
-    private readonly List&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; _messages;
-    public MessageApi()
-    {
-      _messages = new List&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;();
-    }
-
-    public Task SaveMessage(MessageDetails message)
-    {
-      if (message == null)
-        throw new ArgumentNullException(&quot;message&quot;);
-      if (string.IsNullOrWhiteSpace(message.Title))
-        throw new ArgumentException(&quot;A title value must be provided&quot;);
-      if (string.IsNullOrWhiteSpace(message.Content))
-        throw new ArgumentException(&quot;A content value must be provided&quot;);
-
-      var task = new Task&amp;lt;object&amp;gt;(null);
-      Window.SetTimeout(
-        () =&amp;gt;
-        {
-          _messages.Add(Tuple.Create(_messages.Count, message));
-          task.Complete();
-        },
-        1000 // Simulate a roundtrip to the server
-      );
-      return task;
-    }
-
-    public Task&amp;lt;IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;&amp;gt; GetMessages()
-    {
-      // ToArray is used to return a clone of the message set - otherwise, the caller would
-      // end up with a list that is updated when the internal reference within this class
-      // is updated (which sounds convenient but it&#39;s not the behaviour that would be
-      // exhibited if this was really persisting messages to a server somewhere)
-      var task = new Task&amp;lt;IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;&amp;gt;(null);
-      Window.SetTimeout(
-        () =&amp;gt; task.Complete(_messages.ToArray()),
-        1000 // Simulate a roundtrip to the server
-      );
-      return task;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now, we&#39;ll need a way to render this information -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using System.Linq;
-using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Components
-{
-  public class MessageHistory : StatelessComponent&amp;lt;MessageHistory.Props&amp;gt;
-  {
-    public MessageHistory(Props props) : base(props) { }
-
-    public override ReactElement Render()
-    {
-      var className = props.ClassName;
-      if (!props.Messages.Any())
-        className = (className + &quot; zero-messages&quot;).Trim();
-
-      // Any time a set of child components is dynamically-created (meaning that the
-      // numbers of items may vary from one render to another), each must have a unique
-      // &quot;Key&quot; property set (this may be a int or a string). Here, this is simple as
-      // each message tuple is a unique id and the contents of that message (and the
-      // unique id is ideal for use as a unique &quot;Key&quot; property).
-      var messageElements = props.Messages
-        .Select(idAndMessage =&amp;gt; DOM.Div(new Attributes { Key = idAndMessage.Item1 },
-          DOM.Span(new Attributes { ClassName = &quot;title&quot; }, idAndMessage.Item2.Title),
-          DOM.Span(new Attributes { ClassName = &quot;content&quot; }, idAndMessage.Item2.Content)
-        ));
-
-      // When child components are specified (as they are through the second argument of
-      // DOM.Div), the argument is of type Any&amp;lt;ReactElement, string&amp;gt;[] (meaning that each
-      // element may be another component or it may be a simple text value)
-      // - The React  bindings have an extension method that transforms an IEnumerable
-      //   set of components (such as &quot;messageElements&quot; above) into an
-      //   Any&amp;lt;ReactElement, string&amp;gt;[]
-      return DOM.FieldSet(new FieldSetAttributes { ClassName = className },
-        DOM.Legend(null, &quot;Message History&quot;),
-        DOM.Div(null, messageElements.ToChildComponentArray())
-      );
-    }
-
-    public class Props
-    {
-      public string ClassName;
-      public IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; Messages;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This highlights an important React principle - where there are sets of dynamic child components, each must be provided a unique key. In the component above, we take &quot;props.Messages&quot; and map the data onto a set of Div elements. It&#39;s very possible that different messages will be rendered each time and so this is precisely what is meant by &quot;dynamic child components&quot;.&lt;/p&gt;
-
-&lt;p&gt;There are two reasons why it&#39;s important to provide unique keys - the first is performance; the task of React&#39;s Virtual DOM is to take the last component tree and the new component tree and work out what changed, so that the minimum changes may be applied to the browser DOM. In order to do this, it is very helpful for React to be able to track components as they move around within a dynamic set - it can allow it to reuse data internally instead of having to throw away representations of components and recreate them:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;When React reconciles the keyed children, it will ensure that any child with key will be reordered (instead of clobbered) or destroyed (instead of reused).&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;The quote above is from &lt;a href=&quot;https://facebook.github.io/react/docs/multiple-components.html#dynamic-children&quot;&gt;Facebook&#39;s docs about Dynamic Children&lt;/a&gt; - and so &quot;clobbered&quot; must be an official term!&lt;/p&gt;
-
-&lt;p&gt;The second reason why it&#39;s important is that component state can only be tracked with a component if the component itself can be tracked by React when dynamic elements move around. I&#39;m not going to dwell too long on this because it&#39;s only applicable if you are relying on dynamic components having state, which you shouldn&#39;t be since only the top-level component should be stateful (and any component that may be created as a dynamic child component should be stateless).&lt;/p&gt;
-
-&lt;p&gt;For our purposes here, providing a unique key for each &lt;strong&gt;MessageHistory&lt;/strong&gt; row is easy because the &quot;GetMessages&quot; method in the API returns a set of tuples, where each pair is a combination of id for the message and the message itself. This was easy to implement with the in-memory message store that we&#39;re using for this sample app, but it&#39;s also often easy when persisting by sending the data over the wire to a database somewhere; it&#39;s common for the database to generate unique ids for each record, and this would be returned in the data from &quot;GetMessages&quot;.&lt;/p&gt;
-
-&lt;p&gt;Now we have to return to the &lt;strong&gt;AppContainer&lt;/strong&gt; to tie everything together; we need to add the message history data to the &lt;strong&gt;AppContainer&lt;/strong&gt;&#39;s state, we need to read the message history after we save and we need to render the message history -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using Bridge.React;
-using BridgeReactTutorial.API;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Components
-{
-  public class AppContainer : Component&amp;lt;AppContainer.Props, AppContainer.State&amp;gt;
-  {
-    public AppContainer(AppContainer.Props props) : base(props) { }
-
-    protected override State GetInitialState()
-    {
-      return new State
-      {
-        Message = new MessageDetails { Title = &quot;&quot;, Content = &quot;&quot; },
-        IsSaveInProgress = false,
-        MessageHistory = new Tuple&amp;lt;int, MessageDetails&amp;gt;[0]
-      };
-    }
-
-    public override ReactElement Render()
-    {
-      return DOM.Div(null,
-        new MessageEditor(new MessageEditor.Props
-        {
-          ClassName = &quot;message&quot;,
-          Title = state.Message.Title,
-          Content = state.Message.Content,
-          OnChange = newMessage =&amp;gt; SetState(new State
-          {
-            Message = newMessage,
-            IsSaveInProgress = state.IsSaveInProgress,
-            MessageHistory = state.MessageHistory
-          }),
-          OnSave = async () =&amp;gt;
-          {
-            // Set SaveInProgress to true while the save operation is requested
-            SetState(new State {
-              Message = state.Message,
-              IsSaveInProgress = true,
-              MessageHistory = state.MessageHistory
-            });
-            await props.MessageApi.SaveMessage(state.Message);
-
-            // After the save has completed, clear the message entry form and reset
-            // SaveInProgress to false
-            SetState(new State {
-              Message = new MessageDetails { Title = &quot;&quot;, Content = &quot;&quot; },
-              IsSaveInProgress = false,
-              MessageHistory = state.MessageHistory
-            });
-
-            // Then re-load the message history state and re-render when that data arrives
-            var allMessages = await props.MessageApi.GetMessages();
-            SetState(new State {
-              Message = state.Message,
-              IsSaveInProgress = state.IsSaveInProgress,
-              MessageHistory = allMessages
-            });
-          },
-          Disabled = state.IsSaveInProgress
-        }),
-        new MessageHistory(new MessageHistory.Props
-        {
-          ClassName = &quot;history&quot;,
-          Messages = state.MessageHistory
-        })
-      );
-    }
-
-    public class Props
-    {
-      public IReadAndWriteMessages MessageApi;
-    }
-
-    public class State
-    {
-      public MessageDetails Message;
-      public bool IsSaveInProgress;
-      public IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; MessageHistory;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The logic in this component is getting more complicated now, which is down to the event-handling; what needs to happen when this happens and then this happens and then this happens (eg. the user clicks save, we initiate a save request, the API completes the request, we update the UI to clear the form and then start loading the updated message history, then we update the UI with the new message content).&lt;/p&gt;
-
-&lt;p&gt;One of the goals going forward will be to separate out this logic, away from the React components. The reason that I&#39;ve made a couple of mentions of moving towards &quot;dumb components&quot; is that it makes unit testing much easier - everything outside of the React components will be simple C# / JavaScript code, which is always easier to test than UI elements, even when the UI is created using the React library. Another benefit of separating application logic from the UI components is that it makes both sides easier to reason about - and this is another theme that I&#39;ll be re-visiting during this mini-series.&lt;/p&gt;
-
-&lt;p&gt;It&#39;s worth mentioning that, even though it&#39;s gotten more complicated, the &lt;strong&gt;AppContainer&lt;/strong&gt; (the only stateful component in the application) still adheres to the stateful component guidelines:&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;A stateful component&#39;s &quot;props&quot; data should &lt;em&gt;only&lt;/em&gt; consist of references to external dependencies&lt;/li&gt;
-&lt;li&gt;A stateful component&#39;s &quot;state&quot; data should include &lt;em&gt;everything&lt;/em&gt; required to render the component tree, though the props may be required to deal with child components&#39; events&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;&lt;em&gt;All&lt;/em&gt; of the data required to render the UI is present in the state. The props data is only required within &quot;Render&quot; in order to process some of the callbacks from the child components. Any changes that must then be reflected in the UI come through a call to SetState - at the point of the SetState-triggered re-render, all of the data required to generate the child components will, once again, be present entirely within the state data.&lt;/p&gt;
-
-&lt;p&gt;To keep things look nice, add the following to &quot;styles.css&quot; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;fieldset.history
-{
-  opacity: 1;
-  transition: opacity .5s ease-in-out;
-}
-fieldset.history.zero-messages { opacity: 0; }
-fieldset.history span.title
-{
-  padding: 0 8px;
-  font-weight: bold;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This will have the &lt;strong&gt;MessageHistory&lt;/strong&gt; invisible to begin with, fading in when the first message is available to display.&lt;/p&gt;
-
-&lt;h3&gt;Coming in Part Two..&lt;/h3&gt;
-
-&lt;p&gt;I think this makes a good point at which to draw the first part of this series to a close. To be honest, we haven&#39;t got very close at all yet to the &quot;The Dan Way&quot; of writing React applications - so far, it&#39;s been fairly straight-forward and in-line with the basic React guidelines from Facebook.&lt;/p&gt;
-
-&lt;p&gt;Which isn&#39;t to save that we haven&#39;t covered a lot of good ground! This will serve as a good base from which we can improve things. But we haven&#39;t seen the &quot;Flux architecture&quot; at all yet, and have only hinted at why we would want it. I&#39;m not happy with how many of the properties on the various props, state and other data types are presented - one of my pet peeves with APIs is not knowing what can and can&#39;t be null; on the &lt;strong&gt;TextInput&lt;/strong&gt;&#39;s &lt;strong&gt;Props&lt;/strong&gt; class, the &quot;ClassName&quot; string &lt;em&gt;may&lt;/em&gt; be null but the &quot;OnChange&quot; callback must not be. These facts are not clear from just looking at the class. Similarly, it would be nice to know whether or not there are any guarantees about the &quot;Title&quot; and &quot;Content&quot; strings on the &lt;strong&gt;MessageDetails&lt;/strong&gt; class (is it ever really acceptable for them to be null?). Finally, the reading and writing of messages through the &lt;strong&gt;MessageApi&lt;/strong&gt; implementation we have here works fine for one person doing all the writing, but how could we deal with it if the &lt;strong&gt;MessageApi&lt;/strong&gt; simulated a server-based API that received new messages from &lt;em&gt;other&lt;/em&gt; uses, either through some sort of polling or through a push mechanism? This is an important question for systems that have to support multiple users.&lt;/p&gt;
-
-&lt;p&gt;All of these questions will be answered in later posts, along with further advice to try to help you do what I think React does best - write code that is easier to reason about, and thus easier to read, maintain and extend.&lt;/p&gt;
-</description>
-			<pubDate>Tue, 15 Mar 2016 23:55:00 GMT</pubDate>
 		</item>
 
 	</channel>
