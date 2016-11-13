@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet href="/Content/RSS.xslt" type="text/xsl" media="screen"?>
 <rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
 
@@ -10,7 +10,7 @@
 		<description>Dan's techie ramblings</description>
 		<language>en-gb</language>
 
-		<lastBuildDate>Wed, 21 Sep 2016 20:12:00 GMT</lastBuildDate>
+		<lastBuildDate>Sun, 13 Nov 2016 13:38:00 GMT</lastBuildDate>
 		<docs>http://blogs.law.harvard.edu/tech/rss</docs>
 		
 		<image>
@@ -24,9 +24,395 @@
 		<xhtml:meta xmlns:xhtml="http://www.w3.org/1999/xhtml" name="robots" content="noindex" /> 
 
 		<item>
+			<title>Migrating my Full Text Indexer to .NET Core (supporting multi-target NuGet packages)</title>
+            <link>http://www.productiverage.com/migrating-my-full-text-indexer-to-net-core-supporting-multitarget-nuget-packages</link>
+			<guid>http://www.productiverage.com/migrating-my-full-text-indexer-to-net-core-supporting-multitarget-nuget-packages</guid>
+			<description>&lt;p&gt;So it looks increasingly like .NET Core is going to be an important technology in the near future, in part because Microsoft is developing much of it in the open (in a significant break from their past approach to software), in part because some popular projects support it (&lt;a href=&quot;https://github.com/StackExchange/dapper-dot-net&quot;&gt;Dapper&lt;/a&gt;, &lt;a href=&quot;http://automapper.org/&quot;&gt;AutoMapper&lt;/a&gt;, &lt;a href=&quot;http://www.newtonsoft.com/json&quot;&gt;Json.NET&lt;/a&gt;) and in part because of excitement from blog posts such as &lt;a href=&quot;http://web.ageofascent.com/asp-net-core-exeeds-1-15-million-requests-12-6-gbps/&quot;&gt;ASP.NET Core – 2300% More Requests Served Per Second&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;All I really knew about it was that it was a cut-down version of the .NET framework which should be able to run on platforms other than Windows, which &lt;em&gt;might&lt;/em&gt; be faster in some cases and which may still undergo some important changes in the near future (such as moving away from the new &quot;project.json&quot; project files and back to something more traditional in terms of Visual Studio projects - see &lt;a href=&quot;https://wildermuth.com/2016/05/12/The-Future-of-project-json-in-ASP-NET-Core&quot;&gt;The Future of project.json in ASP.NET Core&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;To try to find out more, I&#39;ve taken a codebase that I wrote years ago and have migrated it to .NET Core. It&#39;s not enormous but it spans multiple projects, has a (small-but-better-than-nothing) test suite and supports serialising search indexes to and from disk for caching purposes. My hope was that I would be able to probe some of the limitations of .NET Core with this non-trivial project but that it wouldn&#39;t be such a large task that it take more than a few sessions spaced over a few days to complete.&lt;/p&gt;
+
+&lt;h4&gt;Spoilers&lt;/h4&gt;
+
+&lt;p&gt;&lt;strong&gt;Would I be able to migrate one project at a time within the solution to .NET Core and still have the whole project building successfully (while some of the other projects were still targeting the &quot;full fat&quot; .NET framework)?&lt;/strong&gt; Yes, but some hacks are required.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Would it be easy (or even possible) to create a NuGet package that would work on both .NET Core and .NET 4.5?&lt;/strong&gt; Yes.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Would the functionality that is no longer present in .NET Core cause me problems?&lt;/strong&gt; Largely, no. The restricted reflection capabilities, no - if I pull in an extra dependency. The restricted serialisation facilities, &lt;em&gt;yes&lt;/em&gt; (but I&#39;m fairly happy with the solution and compromises that I ended up with).&lt;/p&gt;
+
+&lt;h3&gt;What, really, is .NET Core (and what is the Full Text Indexer)?&lt;/h3&gt;
+
+&lt;p&gt;Essentially,&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;.NET Core is a new cross-platform .NET Product .. [and] is composed of the following parts: A .NET runtime .. A set of framework libraries .. A set of SDK tools and language compilers .. The &#39;dotnet&#39; app host, which is used to launch .NET Core apps&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;&lt;em&gt;(from Scott Hanselman&#39;s &quot;&lt;a href=&quot;http://www.hanselman.com/blog/NETCore10IsNowReleased.aspx&quot;&gt;.NET Core 1.0 is now released!.NET Core 1.0 is now released!&lt;/a&gt;&quot; post)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;What .NET Core means in the context of this migration is that there are new project types in Visual Studio to use that target new .NET frameworks. Instead of .NET 4.6.1, for example, there is &quot;netstandard1.6&quot; for class libraries and &quot;netcoreapp1.0&quot; for console applications.&lt;/p&gt;
+
+&lt;p&gt;The new Visual Studio project types become available after you install the &lt;a href=&quot;https://www.microsoft.com/net/core#windows&quot;&gt;Visual Studio Tooling&lt;/a&gt; - alternatively, the &quot;dotnet&quot; command line tool makes things very easy so you can could create projects using nothing more than notepad and &quot;dotnet&quot; if you want to! Since I was just getting started, I chose to stick in my Visual Studio comfort zone.&lt;/p&gt;
+
+&lt;p&gt;The Full Text Indexer code that I&#39;m migrating was something that I wrote a few years ago while I was working with a Lucene integration (&quot;this full text indexing lark.. &lt;em&gt;how hard could it really be!&lt;/em&gt;&quot;). It&#39;s a set of class libraries; &quot;Common&quot; (which has no dependencies other than the .NET framework), &quot;Core&quot; (which depends upon Common), &quot;Helpers&quot; (which depends upon both Common and Core), and &quot;Querier&quot; (which also depends upon Common and Core). Then there is a &quot;UnitTests&quot; project and a &quot;Tester&quot; console application, which loads some data from a Sqlite database file, constructs an index and then performs a search or two (just to demonstrate how it works end-to-end).&lt;/p&gt;
+
+&lt;p&gt;My plan was to try migrating one project at a time over to .NET Core, to move in baby steps so that I could be confident that everything would remain in a working state for most of the time.&lt;/p&gt;
+
+&lt;h3&gt;Creating the first .NET Core project&lt;/h3&gt;
+
+&lt;p&gt;The first thing I did was delete the &quot;Common&quot; project entirely (deleted it from Visual Studio and then manually deleted all of the files) and then created a brand new .NET Core class library called &quot;Common&quot;. I then used my source control client to revert the deletions of the class files so that they appeared within the new project&#39;s folder structure. I expected to then have to &quot;Show All Files&quot; and explicitly include these files in the project but it turns out that .NET Core project files don&#39;t specify files to include, it&#39;s presumed that all files in the folder will be included. Makes sense!&lt;/p&gt;
+
+&lt;p&gt;It wouldn&#39;t compile, though, because some of the classes have the &lt;strong&gt;[Serializable]&lt;/strong&gt; attribute on them and this doesn&#39;t exist in .NET Core. As I understand it, that&#39;s because the framework&#39;s serialisation mechanisms have been stripped right back with the intention of the framework being able to specialise at framework-y core competencies and for there to be an increased reliance on external libraries for other functionality.&lt;/p&gt;
+
+&lt;p&gt;This attribute is used through my library because there is an &lt;strong&gt;IndexDataSerialiser&lt;/strong&gt; that allows an index to be persisted to disk for caching purposes. It uses the &lt;strong&gt;BinaryFormatter&lt;/strong&gt; to do this, which requires that the types that you need to be serialised be decorated with the &lt;strong&gt;[Serializable]&lt;/strong&gt; attribute or they implement the &lt;strong&gt;ISerializable&lt;/strong&gt; interface. Neither the &lt;strong&gt;BinaryFormatter&lt;/strong&gt; nor the &lt;strong&gt;ISerializable&lt;/strong&gt; interface are available within .NET Core. I will need to decide what to do about this later - ideally, I&#39;d like to continue to be able to support reading and writing to the same format as I have done before (if only to see if it&#39;s possible when migrating to Core). For now, though, I&#39;ll just remove the &lt;strong&gt;[Serializable]&lt;/strong&gt; attributes and worry about it later.&lt;/p&gt;
+
+&lt;p&gt;So, with very little work, the Common project was compiling for the &quot;netstandard1.6&quot; target framework.&lt;/p&gt;
+
+&lt;p&gt;Unfortunately, the projects that rely on Common weren&#39;t compiling because their references to it were removed when I removed the project from the VS solution. And, if I try to add references to the new Common project I&#39;m greeted with this:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;A reference to &#39;Common&#39; could not be added. An assembly must have a &#39;dll&#39; or &#39;exe&#39; extension in order to be referenced.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;The problem is that Common is being built for &quot;netstandard1.6&quot; but &lt;em&gt;only&lt;/em&gt; that framework. I also want it to support a &quot;full fat&quot; .NET framework, like 4.5.2 - in order to do this I need to edit the project.json file so that the build process creates multiple versions of the project, one .NET 4.5.2 as well as the one for netstandard. That means changing it from this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{
+  &quot;version&quot;: &quot;1.0.0-*&quot;,
+
+  &quot;dependencies&quot;: {
+    &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
+  },
+
+  &quot;frameworks&quot;: {
+    &quot;netstandard1.6&quot;: {
+      &quot;imports&quot;: &quot;dnxcore50&quot;
+    }
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;to this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{
+  &quot;version&quot;: &quot;1.0.0-*&quot;,
+
+  &quot;dependencies&quot;: {},
+
+  &quot;frameworks&quot;: {
+    &quot;netstandard1.6&quot;: {
+      &quot;imports&quot;: &quot;dnxcore50&quot;,
+      &quot;dependencies&quot;: {
+        &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
+      }
+    },
+    &quot;net452&quot;: {}
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Two things have happened - an additional entry has been added to the &quot;frameworks&quot; section (&quot;net452&quot; joins &quot;netstandard1.6&quot;) and the &quot;NETStandard.Library&quot; dependency has moved from being something that is always required by the project to something that is only required by the project when it&#39;s being built for netstandard.&lt;/p&gt;
+
+&lt;p&gt;Now, Common may be added as a reference to the other projects.&lt;/p&gt;
+
+&lt;p&gt;However.. they won&#39;t compile. Visual Studio will be full of errors that required classes do not exist in the current context.&lt;/p&gt;
+
+&lt;h3&gt;Adding a reference to a .NET Core project from a .NET 4.5.2 project in the same solution&lt;/h3&gt;
+
+&lt;p&gt;Although the project.json configuration does mean that two version of the Common library are being produced (looking in the bin/Debug folder, there are two sub-folders &quot;net452&quot; and &quot;netstandard1.6&quot; and each have their own binaries in), it seems that the &quot;Add Reference&quot; functionality in Visual Studio doesn&#39;t (currently) support adding references. There is an issue on GitHub about this; &lt;a href=&quot;https://github.com/dotnet/core/issues/231&quot;&gt;Allow &quot;Add Reference&quot; to .NET Core class library that uses .NET Framework from a traditional class library&lt;/a&gt; but it seems like the conclusion is that this will be fixed in the future, when the changes have been completed that move away from .NET Core projects having a project.json file and towards a new kind of &quot;.csproj&quot; file.&lt;/p&gt;
+
+&lt;p&gt;There is a workaround, though. Instead of selecting the project from the Add Reference dialog, you click &quot;Browse&quot; and then select that file in the &quot;Common/bin/Debug/net452&quot; folder. Then the project &lt;em&gt;will&lt;/em&gt; build. This isn&#39;t a perfect solution, though, since it will &lt;em&gt;always&lt;/em&gt; reference the Debug build. When building in Release configuration, you also want the referenced binaries from other projects to be built in Release configuration. To do that, I had to open each &quot;.csproj&quot; file notepad and change&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;Reference Include=&quot;Common&quot;&amp;gt;
+  &amp;lt;HintPath&amp;gt;..\Common\bin\Debug\net452\Common.dll&amp;lt;/HintPath&amp;gt;
+&amp;lt;/Reference&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;to&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;Reference Include=&quot;Common&quot;&amp;gt;
+  &amp;lt;HintPath&amp;gt;..\Common\bin\$(Configuration)\net452\Common.dll&amp;lt;/HintPath&amp;gt;
+&amp;lt;/Reference&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;A little bit annoying but not the end of the world (credit for this fix, btw, goes to this Stack Overflow answer to &lt;a href=&quot;http://stackoverflow.com/a/37323585/3813189&quot;&gt;Attach unit tests to ASP.NET Core project&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;What makes it even more annoying is the link from the referencing project (say, the Core project) to the &lt;em&gt;referenced&lt;/em&gt; project (the Common project) is not as tightly integrated as when a project reference is normally added through Visual Studio. For example, while you can set breakpoints on the Common project and they will be hit when the Core project calls into that code, using &quot;Go To Definition&quot; to navigate from code in the Core project into code in the referenced Common project &lt;em&gt;doesn&#39;t&lt;/em&gt; work (it takes you to a &quot;from metadata&quot; view rather than taking you to the actual file). On top of this, the referencing project doesn&#39;t know that it needs to be rebuilt if the referenced project is rebuilt - so, if the Common library is changed and rebuilt then the Core library may continue to work against an old version of the Common binary unless you explicitly rebuild Core as well.&lt;/p&gt;
+
+&lt;p&gt;These are frustrations that I would not want to live with long term. However, the plan here is to migrate all of the projects over to .NET Core and so I think that I can put up with these limitations so long as they only affect me as I migrate the projects over one-by-one.&lt;/p&gt;
+
+&lt;h3&gt;The second project (additional dependencies required)&lt;/h3&gt;
+
+&lt;p&gt;I repeated the procedure for second project; &quot;Core&quot;. This also contained files with types marked as &lt;strong&gt;[Serializable]&lt;/strong&gt; (which I just removed for now) and there was the &lt;strong&gt;IndexDataSerialiser&lt;/strong&gt; class that used the &lt;strong&gt;BinaryFormatter&lt;/strong&gt; to allow data to be persisted to disk - this also had to go, since there was no support for it in .NET Core (I&#39;ll talk about what I did with serialisation later on). I needed to add a reference to the Common project - thankfully adding a reference to a .NET Core project &lt;em&gt;from&lt;/em&gt; a .NET Core project works perfectly, so the workaround that I had to apply before (when the Core project was still .NET 4.5.2) wasn&#39;t necessary.&lt;/p&gt;
+
+&lt;p&gt;However, it still didn&#39;t compile.&lt;/p&gt;
+
+&lt;p&gt;In the &quot;Core&quot; project lives the &lt;strong&gt;EnglishPluralityStringNormaliser&lt;/strong&gt; class, which
+is used to adjust tokens (ie. words) so that the singular and plural versions of the same word are considered equivalent (eg. &quot;cat&quot; and &quot;cats&quot;, &quot;category&quot; and &quot;categories&quot;). Internally, it generates a compiled LINQ expression to try to perform its work as efficiently as possible and it requires reflection to do that. Calling &quot;GetMethod&quot; and &quot;GetProperty&quot; on a &lt;strong&gt;Type&lt;/strong&gt; is not supported in netstandard, though, and an additional dependency is required. So the Core project.json file needed to be changed to look like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{
+  &quot;version&quot;: &quot;1.0.0-*&quot;,
+
+  &quot;dependencies&quot;: {
+    &quot;Common&quot;: &quot;1.0.0-*&quot;
+  },
+
+  &quot;frameworks&quot;: {
+    &quot;netstandard1.6&quot;: {
+      &quot;imports&quot;: &quot;dnxcore50&quot;,
+      &quot;dependencies&quot;: {
+        &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
+        &quot;System.Reflection.TypeExtensions&quot;: &quot;4.1.0&quot;
+      }
+    },
+    &quot;net452&quot;: {}
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The Common project is a dependency regardless of what the target framework is during the build process but the &quot;System.Reflection.TypeExtensions&quot; package is also required when building for netstandard (but not .NET 4.5.2), as this includes extensions methods for &lt;strong&gt;Type&lt;/strong&gt; such as &quot;GetMethod&quot; and &quot;GetProperty&quot;.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Note: Since these are extension methods in netstandard, a &quot;using System.Reflection;&quot; statement is required at the top of the class - this is not required when building for .NET 4.5.2 because &quot;GetMethod&quot; and &quot;GetProperty&quot; are instance methods on &lt;strong&gt;Type&lt;/strong&gt;.&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;There was one other dependency that was required for Core to build - &quot;System.Globalization.Extensions&quot;. This was because the &lt;strong&gt;DefaultStringNormaliser&lt;/strong&gt; class includes the line&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var normalisedValue = value.Normalize(NormalizationForm.FormKD);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;which resulted in the error&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;&#39;string&#39; does not contain a definition for &#39;Normalize&#39; and no extension method &#39;Normalize&#39; accepting a first argument of type &#39;string&#39; could be found (are you missing a using directive or an assembly reference?)&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;This is another case of functionality that is in .NET 4.5.2 but that is an optional package for .NET Core. Thankfully, it&#39;s easy to find out what additional package needs to be included - the &quot;lightbulb&quot; code fix options will try to look for a package to resolve the problem and it correctly identifies that &quot;System.Globalization.Extensions&quot; contains a relevant extension method (as illustrated below).&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;TODO&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/SystemGlobalizationExtensionsDependency.png&quot; class=&quot;AlwaysFullWidth NoBorder&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Note: Selecting the &quot;Add package System.Globalization.Extensions 4.0.1&quot; option will add the package as a dependecy for netstandard in the project.json file and it will add the required &quot;using System.Globalization;&quot; statement to the class - which is very helpful of it!&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;All that remained now was to use the workaround from before to add the .NET Core version of the &quot;Core&quot; project as a reference to the projects that required it.&lt;/p&gt;
+
+&lt;h3&gt;The third and fourth projects (both class libraries)&lt;/h3&gt;
+
+&lt;p&gt;The process for the &quot;Helpers&quot; and &quot;Querier&quot; class libraries was simple. Neither required anything that wasn&#39;t included in netstandard1.6 and so it was just a case of going through the motions.&lt;/p&gt;
+
+&lt;h3&gt;The &quot;Tester&quot; Console Application&lt;/h3&gt;
+
+&lt;p&gt;At this point, all of the projects that constituted the actual &quot;Full Text Indexer&quot; were building for both the netstandard1.6 framework and .NET 4.5.2 - so I could have stopped here, really (aside from the serialisation issues I had been putting off). But I thought I might as well go all the way and see if there were any interesting differences in migrating Console Applications and xUnit test suite projects.&lt;/p&gt;
+
+&lt;p&gt;For the Tester project; no, not much was different. It has an end-to-end example integration where it loads data from a Sqlite database file of Blog posts using Dapper and then creates a search index. The posts contain markdown content and so three NuGet packages were required - &lt;a href=&quot;https://www.nuget.org/packages/Dapper&quot;&gt;Dapper&lt;/a&gt;, &lt;a href=&quot;https://www.nuget.org/packages/System.Data.Sqlite&quot;&gt;System.Data.Sqlite&lt;/a&gt; and &lt;a href=&quot;https://www.nuget.org/packages/MarkdownSharp&quot;&gt;MarkdownSharp&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Dapper supports .NET Core and so that was no problem but the other two did not. Thankfully, though, there were alternatives that &lt;em&gt;did&lt;/em&gt; support netstandard - &lt;a href=&quot;https://www.nuget.org/packages/Microsoft.Data.Sqlite&quot;&gt;Microsoft.Data.Sqlite&lt;/a&gt; and &lt;a href=&quot;https://www.nuget.org/packages/Markdown&quot;&gt;Markdown&lt;/a&gt;. Using Microsoft.Data.Sqlite required some (very minor) code changes while Markdown exposed exactly the same interface as MarkdownSharp.&lt;/p&gt;
+
+&lt;h3&gt;The xUnit Test Suite Project&lt;/h3&gt;
+
+&lt;p&gt;The &quot;UnitTests&quot; project didn&#39;t require anything &lt;em&gt;very&lt;/em&gt; different but there are a few gotchas to watch out for..&lt;/p&gt;
+
+&lt;p&gt;The first is that you need to create a &quot;Console Application (.NET Core)&quot; project since xUnit works with the &quot;netcoreapp1.0&quot; framework (which console applications target) and not &quot;netstandard1.6&quot; (which is what class libraries target).&lt;/p&gt;
+
+&lt;p&gt;The second is that, presuming you want the Visual Studio test runner integration (which, surely, you do!) you need to not only add the &quot;xunit&quot; NuGet package but also the &quot;dotnet-test-xunit&quot; package. Thirdly, you need to enable the &quot;Include prerelease&quot; option in the NuGet Package Manager to locate versions of these packages that work with .NET Core (this will, of course, change with time - but as of November 2016 these packages are only available as &quot;prereleases&quot;).&lt;/p&gt;
+
+&lt;p&gt;Fourthly, you need to add a line&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&quot;testRunner&quot;: &quot;xunit&quot;,
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;to the project.json file.&lt;/p&gt;
+
+&lt;p&gt;Having done all of this, the project should compile &lt;em&gt;and&lt;/em&gt; the tests should appear in the Test Explorer window.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Note: I wanted to fully understand each step required to create an xUnit test project but you could also just follow the instructions at &lt;a href=&quot;https://xunit.github.io/docs/getting-started-dotnet-core.html&quot;&gt;Getting started with xUnit.net (.NET Core / ASP.NET Core)&lt;/a&gt; which provides you a complete project.json to paste in - one of the nice things about .NET Core projects is that changing (and saving) the project.json is all it takes to change from being a class library (and targeting netstandard) to being a console application (and targeting netcoreapp). Similarly, references to other projects and to NuGet packges are all specified there and saving changes to that project file results in those reference immediately being resolved and any specified packages being downloaded.&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;In the class library projects, I made them all target both netstandard and net452. With the test suite project, if the project.json file is changed to target both .NET Core (&quot;netcoreapp1.0&quot;, since it&#39;s a console app) and full fat .NET (&quot;net452&quot;) then two different versions of the suite will be built. The clever thing about this is that if you use the command line to run the tests -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;dotnet test
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. then it will run the tests in both versions. Since there are going to be some differences between the different frameworks and, quite feasibly, between different versions of dependencies then it&#39;s a very handy tool to be able to run the tests against all of the versions of .NET that your libraries target.&lt;/p&gt;
+
+&lt;p&gt;There is a &quot;but&quot; here, though. While the command line test process will target both frameworks, the Visual Studio Test Explorer doesn&#39;t. I &lt;em&gt;think&lt;/em&gt; that it only targets the first framework that is specified in the project.json file but I&#39;m not completely sure. I just know that it doesn&#39;t run them both. Which is a pity. On the bright side, I do like that .NET Core is putting the command line first - not only because I&#39;m a command line junkie but also because it makes it very easy to integrate into build servers and continuous integration  processes. I do hope that one day (soon) that the VS integration will be as thorough as the command line tester, though.&lt;/p&gt;
+
+&lt;h3&gt;Building NuGet packages&lt;/h3&gt;
+
+&lt;p&gt;So, now, there are no errors and everything is building for .NET Core &lt;em&gt;and&lt;/em&gt; for &quot;classic&quot;* .NET.&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;I&#39;m still not sure what the accepted terminology is for non-.NET-Core projects, I don&#39;t really think that &quot;full fat framework&quot; is the official designation :)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;There are no nasty workarounds required for the references (like when the not-yet-migrated .NET 4.5.2 projects were referencing the .NET Core projects). It&#39;s worth mentioning that that workaround was only required when the .NET 4.5.2 project wanted to reference a .NET Core project &lt;em&gt;from within the same solution&lt;/em&gt; - if the project that targeted both &quot;netstandard1.6&quot; and &quot;net452&quot; was built into a NuGet package then that package could be added to a .NET Core project &lt;em&gt;or&lt;/em&gt; to a .NET 4.5.2 project &lt;em&gt;without any workarounds&lt;/em&gt;. Which makes me think that now is a good time to talk about building NuGet packages from .NET Core projects..&lt;/p&gt;
+
+&lt;p&gt;The project.json file has enough information that the &quot;dotnet&quot; command line can create a NuGet package from it. So, if you run the following command (you need to be in the root of the project that you&#39;re interested in to do this) -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;dotnet pack
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. then you will get a NuGet package built, ready to distribute! This is very handy, it makes things very simple. And if the project.json targets both netstandard1.6 and net452 then you will get a NuGet package that may be added to either a .NET Core project or a .NET 4.5.2 (or later) project.&lt;/p&gt;
+
+&lt;p&gt;I hadn&#39;t created the Full Text Indexer as a NuGet package before now, so this seemed like a good time to think about how exactly I wanted to do it.&lt;/p&gt;
+
+&lt;p&gt;There were a few things that I wanted to change with what &quot;dotnet pack&quot; gave me at this point -&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;The name and ID of the package comes from the project name, so the Core project resulted into a package named &quot;Core&quot;, which is too vague&lt;/li&gt;
+&lt;li&gt;I wanted to include additional metadata in the packages such as a description, project link and icon url&lt;/li&gt;
+&lt;li&gt;If each project would be built into a separate package then it might not be clear to someone what packages are required and how they work together, so it probably makes sense to have a combined package that pulls in everything&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;For points one and two, the &quot;&lt;a href=&quot;https://docs.microsoft.com/en-us/dotnet/articles/core/tools/project-json&quot;&gt;project.json reference&lt;/a&gt;&quot; documentation has a lot of useful information. It describes the &quot;name&quot; attribute -&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;The name of the project, used for the assembly name as well as the name of the package. The top level folder name is used if this property is not specified.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;So, it sounds like I could add a line to the Common project -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&quot;name&quot;: &quot;FullTextIndexer.Common&quot;,
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. which would result in the NuGet package for &quot;Common&quot; having the ID &quot;FullTextIndexer.Common&quot;. And it does!&lt;/p&gt;
+
+&lt;p&gt;However, there is a problem with doing this.&lt;/p&gt;
+
+&lt;p&gt;The &quot;Common&quot; project is going to be built into a NuGet package called &quot;FullTextIndexer.Common&quot; so the projects that depend upon it will need updating - their project.json files need to change the dependency from &quot;Common&quot; to &quot;FullTextIndexer.Common&quot;. If the Core project, for example, wasn&#39;t updated to state &quot;FullTextIndexer.Common&quot; as a dependency then the &quot;Core&quot; NuGet package would have a dependency on a package called &quot;Common&quot;, which wouldn&#39;t exist (because I want to publish it as &quot;FullTextIndexer.Common&quot;). The issue is that if Core&#39;s project.json is updated to specify &quot;FullTextIndexer.Common&quot; as a dependency then the following errors are reported:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;NuGet Package Restore failed for one or more packages. See details in the Output window.&lt;/p&gt;
+  
+  &lt;p&gt;The dependency FullTextIndexer.Common &gt;= 1.0.0-* could not be resolved.&lt;/p&gt;
+  
+  &lt;p&gt;The given key was not present in the dictionary.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;To cut a long story short, after some trial and error experimenting (and having been unable to find any documentation about this or reports of anyone having the same problem) it seems that the problem is that .NET Core dependencies within a solution depend upon the project folders having the same name as the package name - so my problem was that I had a project folder called &quot;Common&quot; that was building a NuGet package called &quot;FullTextIndexer.Common&quot;. Renaming the &quot;Common&quot; folder to &quot;FullTextIndexer.Common&quot; fixed it. It probably makes sense to keep the project name, package name and folder name consistent in general, I just wish that the error messages had been more helpful because the process of discovering this was very frustrating!&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Note: Since I renamed the project folder to &quot;FullTextIndexer.Common&quot;, I didn&#39;t need the &quot;name&quot; option in the project.json file and so I removed it (the default behaviour of using the top level folder name is fine).&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;The &lt;a href=&quot;https://docs.microsoft.com/en-us/dotnet/articles/core/tools/project-json&quot;&gt;project.json reference&lt;/a&gt; made the second task simple, though, by documenting the &quot;&lt;a href=&quot;https://docs.microsoft.com/en-us/dotnet/articles/core/tools/project-json#packoptions&quot;&gt;packOptions&lt;/a&gt;&quot; section. To cut to the chase, I changed the Common&#39;s project.json to the following:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{
+  &quot;version&quot;: &quot;1.0.0-*&quot;,
+
+  &quot;packOptions&quot;: {
+    &quot;iconUrl&quot;: &quot;https://secure.gravatar.com/avatar/6a1f781d4d5e2d50dcff04f8f049767a?s=200&quot;,
+    &quot;projectUrl&quot;: &quot;https://bitbucket.org/DanRoberts/full-text-indexer&quot;,
+    &quot;tags&quot;: [ &quot;C#&quot;, &quot;full text index&quot;, &quot;search&quot; ]
+  },
+  &quot;authors&quot;: [ &quot;ProductiveRage&quot; ],
+  &quot;copyright&quot;: &quot;Copyright 2016 ProductiveRage&quot;,
+
+  &quot;dependencies&quot;: {},
+
+  &quot;frameworks&quot;: {
+    &quot;netstandard1.6&quot;: {
+      &quot;imports&quot;: &quot;dnxcore50&quot;,
+      &quot;dependencies&quot;: {
+        &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
+      }
+    },
+    &quot;net452&quot;: {}
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;I updated the other class library projects similarly and updated the dependency names on all of the projects in the solution so that everything was consistent and compiling.&lt;/p&gt;
+
+&lt;p&gt;Finally, I created an additional project named simply &quot;FullTextIndexer&quot; whose only role in life is to generate a NuGet package that includes all of the others (it doesn&#39;t have any code of its own). Its project.json file looks like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{
+  &quot;version&quot;: &quot;1.0.0-*&quot;,
+
+  &quot;packOptions&quot;: {
+    &quot;summary&quot;: &quot;A project to try implementing a full text index service from scratch in C# and .NET Core&quot;,
+    &quot;iconUrl&quot;: &quot;https://secure.gravatar.com/avatar/6a1f781d4d5e2d50dcff04f8f049767a?s=200&quot;,
+    &quot;projectUrl&quot;: &quot;https://bitbucket.org/DanRoberts/full-text-indexer&quot;,
+    &quot;tags&quot;: [ &quot;C#&quot;, &quot;full text index&quot;, &quot;search&quot; ]
+  },
+  &quot;authors&quot;: [ &quot;ProductiveRage&quot; ],
+  &quot;copyright&quot;: &quot;Copyright 2016 ProductiveRage&quot;,
+
+  &quot;dependencies&quot;: {
+    &quot;FullTextIndexer.Common&quot;: &quot;1.0.0-*&quot;,
+    &quot;FullTextIndexer.Core&quot;: &quot;1.0.0-*&quot;,
+    &quot;FullTextIndexer.Helpers&quot;: &quot;1.0.0-*&quot;,
+    &quot;FullTextIndexer.Querier&quot;: &quot;1.0.0-*&quot;
+  },
+
+  &quot;frameworks&quot;: {
+    &quot;netstandard1.6&quot;: {
+      &quot;imports&quot;: &quot;dnxcore50&quot;,
+      &quot;dependencies&quot;: {
+        &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
+      }
+    },
+    &quot;net452&quot;: {}
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;One final note about NuGet packages before I move on - the default behaviour of &quot;dotnet pack&quot; is to build the project in Debug configuration. If you want to build in release mode then you can use the following:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;dotnet pack --configuration Release
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3&gt;&quot;Fixing&quot; the serialisation problem&lt;/h3&gt;
+
+&lt;p&gt;Serialisation in .NET Core seems to a bone of contention - the Microsoft Team are sticking to their guns in terms of not supporting it and, instead, promoting other solutions:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Binary Serialization&lt;/p&gt;
+  
+  &lt;p&gt;Justification. After a decade of servicing we&#39;ve learned that serialization is incredibly complicated and a huge compatibility burden for the types supporting it. Thus, we made the decision that serialization should be a protocol implemented on top of the available public APIs. However, binary serialization requires intimate knowledge of the types as it allows to serialize object graphs including private state.&lt;/p&gt;
+  
+  &lt;p&gt;Replacement. Choose the serialization technology that fits your goals for formatting and footprint. Popular choices include data contract serialization, XML serialization, JSON.NET, and protobuf-net.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;&lt;em&gt;(from &quot;&lt;a href=&quot;https://github.com/dotnet/corefx/blob/2b15de70c1cf9f585c4878a722de4dbe42b4940b/Documentation/project-docs/porting.md#binary-serialization&quot;&gt;Porting to .NET Core&lt;/a&gt;&quot;)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;Meanwhile, people have voiced their disagreement in GitHub issues such as &quot;&lt;a href=&quot;https://github.com/dotnet/corefx/issues/6564&quot;&gt;Question: Serialization support going forward from .Net Core 1.0&lt;/a&gt;&quot;.&lt;/p&gt;
+
+&lt;p&gt;The problem with recommendations such as &lt;a href=&quot;http://www.newtonsoft.com/json&quot;&gt;Json.NET&lt;/a&gt;) and &lt;a href=&quot;https://github.com/mgravell/protobuf-net&quot;&gt;protobuf-net&lt;/a&gt; is that they require changes to code that previously worked with BinaryFormatter - there is no simple switchover. Another consideration is that I wanted to see if it was possible to migrate my code over to supporting .NET Core while still making it compatible with any existing installation, such that it could still deserialise any disk-cached data that had been persisted in the past (the chances of this being a realistic use case are exceedingly slim - I doubt that anyone but me has used the Full Text Indexer - I just wanted to see if it seemed feasible).&lt;/p&gt;
+
+&lt;p&gt;For the sake of this post, I&#39;m going to cheat a little. While I have come up with a way to serialise index data that works with netstandard, it would probably best be covered another day (and it isn&#39;t compatible with historical data, unfortunately). A good-enough-for-now approach was to use &quot;&lt;a href=&quot;https://msdn.microsoft.com/en-us/library/4y6tbswk.aspx&quot;&gt;conditional directives&lt;/a&gt;&quot;, which are basically a way to say &quot;if you&#39;re building in this configuration then include this code (and if you&#39;re not, then don&#39;t)&quot;. This allowed me the restore all of the &lt;strong&gt;[Serializable]&lt;/strong&gt; attributes that I removed earlier - but only if building for .NET 4.5.2 (and not for .NET Core). For example:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;#if NET452
+    [Serializable]
+#endif
+    public class Whatever
+    {
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The &lt;strong&gt;[Serializable]&lt;/strong&gt; attribute will be included in the binaries for .NET 4.5.2 and not for .NET Core.&lt;/p&gt;
+
+&lt;p&gt;You need to be careful with precisely what conditions you specify, though. When I first tried this, I used the line &quot;if #net452&quot; (where the string &quot;net452&quot; is consistent with the framework target string in the project.json files) but the attribute wasn&#39;t being included in the .NET 4.5.2 builds. There was no error reported, it just wasn&#39;t getting included. I had to look up the supported values to see if I&#39;d made a silly mistake and it was the casing - it needs to be &quot;NET452&quot; and not &quot;net452&quot;.&lt;/p&gt;
+
+&lt;p&gt;I used the same approach to restore the &lt;strong&gt;ISerializable&lt;/strong&gt; implementations that some classes had and I used it to conditionally compile the entirety of the &lt;strong&gt;IndexDataSerialiser&lt;/strong&gt; (which I got back out of my source control history, having deleted it earlier).&lt;/p&gt;
+
+&lt;p&gt;This meant that if the &quot;FullTextIndexer&quot; package is added to a project building for the &quot;classic&quot; .NET framework then all of the serialisation options that were previously available still will be - any disk-cached data may be read back using the &lt;strong&gt;IndexDataSerialiser&lt;/strong&gt;. It &lt;em&gt;wouldn&#39;t&lt;/em&gt; be possible if the package is added to a .NET Core project but this compromise felt much better than nothing.&lt;/p&gt;
+
+&lt;h3&gt;Final tweaks and parting thoughts&lt;/h3&gt;
+
+&lt;p&gt;The migration is almost complete at this point. There&#39;s one minor thing I&#39;ve noticed while experimenting with .NET Core projects; if a new solution is created whose first project is a .NET Core class library or console application, the project files aren&#39;t put into the root of the solution - instead, they are in a &quot;src&quot; folder. Also, there is a &quot;global.json&quot; file in the solution root that enables.. &lt;em&gt;magic special things&lt;/em&gt;. If I&#39;m being honest, I haven&#39;t quite wrapped my head around all of the potential benefits of global.json (though there is an explanation of one of the benefits here; &lt;a href=&quot;https://ievangelist.github.io/blog/the-global-json/&quot;&gt;The power of the global.json&lt;/a&gt;). What I&#39;m getting around to saying is that I want my now-.NET-Core solution to look like a &quot;native&quot; .NET Core solution, so I tweaked the folder structure and the .sln file to be consistent with a solution that had been .NET Core from the start. I&#39;m a fan of consistency and I think it makes sense to have my .NET Core solution follow the same arrangement as everyone else&#39;s .NET Core solutions.&lt;/p&gt;
+
+&lt;p&gt;Having gone through this whole process, I think that there&#39;s an important question to answer: &lt;strong&gt;Will I now switch to defaulting to supporting .NET Core for all new projects?&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;.. and the answer is, today, if I&#39;m being honest.. no.&lt;/p&gt;
+
+&lt;p&gt;There are just a few too many rough edges and question marks. The biggest one is the change that&#39;s going to happen away from &quot;project.json&quot; and to a variation of the &quot;.csproj&quot; format. I&#39;m sure that there will be some sort of simple migration tool but I&#39;d rather know &lt;em&gt;for sure&lt;/em&gt; what the implications are going to be around this change before I commit too much to .NET Core.&lt;/p&gt;
+
+&lt;p&gt;I&#39;m also a bit annoyed that the Productivity Power Tools remove-and-sort-usings-on-save doesn&#39;t work with .NET Core projects (there&#39;s an &lt;a href=&quot;https://github.com/Microsoft/VS-PPT/issues/40&quot;&gt;issue on GitHub&lt;/a&gt; about this but it hasn&#39;t bee responded to since August 2016, so I&#39;m not sure if it will get fixed).&lt;/p&gt;
+
+&lt;p&gt;Finally, I&#39;m sure I read an issue around analysers being included in NuGet packages for .NET Core - that they weren&#39;t getting loaded correctly. I can&#39;t find the issue now so I&#39;ve done some tests to try to confirm or deny the rumour.. I&#39;ve got a very simple project that includes an analyser and whose package targets both .NET 4.5 and netstandard1.6 and the analyser &lt;em&gt;does&lt;/em&gt; seem to install correctly and be included in the build process (see &lt;a href=&quot;https://github.com/ProductiveRage/ProductiveRage.SealedClassVerification&quot;&gt;ProductiveRage.SealedClassVerification&lt;/a&gt;) but I still have a few concerns; in .csproj files, analyser are all explicitly referenced (and may be enabled or disabled in the Solution Explorer by going into References/Analyzers) but I can&#39;t see how they&#39;re referenced in .NET Core projects (and they don&#39;t appear in the Solution Explorer). Another (minor) thing is that, while the analyser does get executed and any warnings displayed in the Error List in Visual Studio, there are no squigglies underlining the offending code. I don&#39;t know why that is and it makes me worry that the integration is perhaps a bit flakey. I&#39;m a big fan of analysers and so I want to be sure that they are fully supported. Maybe this will get tidied up when the new project format comes about.. whenever that will be.&lt;/p&gt;
+
+&lt;p&gt;I think that things are &lt;em&gt;close&lt;/em&gt; (and I like that Microsoft is making this all available early on and accepting feedback on it) but I don&#39;t think that it&#39;s quite ready enough for me to switch to it full time yet.&lt;/p&gt;
+
+&lt;p&gt;Finally, should you be curious at all about the Full Text Indexer project that I&#39;ve been talking about, the source code is available here: &lt;a href=&quot;https://bitbucket.org/DanRoberts/full-text-indexer&quot;&gt;bitbucket.org/DanRoberts/full-text-indexer&lt;/a&gt; and there are a range of old posts that I wrote about how it works (see &quot;&lt;a href=&quot;http://www.productiverage.com/the-full-text-indexer-post-roundup&quot;&gt;The Full Text Indexer Post Round-up&lt;/a&gt;&quot;).&lt;/p&gt;
+</description>
+			<pubDate>Sun, 13 Nov 2016 13:38:00 GMT</pubDate>
+		</item>
+		<item>
 			<title>When a disk cache performs better than an in-memory cache (befriending the .NET GC)</title>
-            <link>http://localhost:4252/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc</link>
-			<guid>http://localhost:4252/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc</guid>
+            <link>http://www.productiverage.com/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc</link>
+			<guid>http://www.productiverage.com/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc</guid>
 			<description>&lt;h3&gt;TL;DR (especially for Bud Goode)&lt;/h3&gt;
 
 &lt;p&gt;The .NET garbage collector is a complex beast. Occasionally it might infuriate but remember that it&#39;s keeping you from the misery of manual memory management and that you&#39;re better to consider it an ally than a foe.&lt;/p&gt;
@@ -148,7 +534,7 @@
 
 &lt;p&gt;And for about forty minutes, things &lt;em&gt;do&lt;/em&gt; go great. The server is busy, it&#39;s serving a lot (relative to a normal load) of requests, the gen 0 heap peaks and troughs the most, the gen 1 heap blips up and down with less drama, the gen 2 heap makes slower steps up then drops back down then very gently climbs then steps up then is steady then steps up slightly then drops down, carrying on merrily enough.&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;Gen 2 heap &#39;blow up&#39;&quot; src=&quot;http://localhost:4252/Content/Images/Posts/Memory Blow Up - Gen 2 Heap.jpg&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;Gen 2 heap &#39;blow up&#39;&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/Memory Blow Up - Gen 2 Heap.jpg&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;Until, at some point, the gen 2 heap starts curving up dramatically, followed by many steep steps upward, then a slightly pathetic dip immediately followed by steep steps upward. Having barely hit a gigabyte in size while gently building up and dropping earlier, it&#39;s now got to around 4 gig in a very short space of time. Here, it flatlines. During this steep climb, requests have gotten slower and slower and, at this flatline, they are no longer processed. This state continues for a couple of minutes, after which some work appears to attempt to continue, though the gen 2 heap doesn&#39;t drop in size at all. Some unusual errors are seen in the logs, such as:&lt;/p&gt;
 
@@ -166,7 +552,7 @@
 
 &lt;h3&gt;Looking for clues&lt;/h3&gt;
 
-&lt;p&gt;&lt;img alt=&quot;GC CPU time during the &#39;blow up&#39;&quot; src=&quot;http://localhost:4252/Content/Images/Posts/Memory Blow Up - GC CPU.jpg&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;GC CPU time during the &#39;blow up&#39;&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/Memory Blow Up - GC CPU.jpg&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;I wanted some insight into what was going on during these periods of apparent inactivity - well, it seemed like &lt;em&gt;my&lt;/em&gt; code was inactive, though it appeared that the GC was being very busy. The &quot;% time in GC&quot; would spike around during work but seem to get more frenzied in its peaking in the lead up to the gen 2 heap size flat line, then it too would flat line in sympathy. After the first flat line period, it would remain higher but spike up and down, then it would flatline again when the gen 2 heap size flatlined, at a higher level than the time before.&lt;/p&gt;
 
@@ -200,7 +586,7 @@
 
 &lt;p&gt;It has now been a couple of weeks that this code has been in production. Over that time, all of the gen 0, 1 and 2 Small Object Heaps have appeared to breathe in and out in a healthy fashion, as has the Large Object Heap. There has been no indication of the slow-memory-usage-climb-to-oblivion that would be seen before.&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;GC Memory Graph&quot; src=&quot;http://localhost:4252/Content/Images/Posts/GC Memory Graph.png&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;GC Memory Graph&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/GC Memory Graph.png&quot; class=&quot;HalfWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;The experience has been very interesting for me, it&#39;s given me a chance to expand my understanding of the garbage collector and to apply what I already knew about it. It would have been the icing on the cake to find out more about just what was happening in the process when it was having one of its &quot;blow ups&quot;, but I&#39;m more glad that it doesn&#39;t look likely to happen again than I am curious as to what was in its mind at the time! It&#39;s given me a fresh appreciation of the garbage collector and it&#39;s served as a reminder that it really is my buddy and not my enemy.&lt;/p&gt;
 
@@ -212,8 +598,8 @@
 		</item>
 		<item>
 			<title>Performance tuning a Bridge.NET / React app</title>
-            <link>http://localhost:4252/performance-tuning-a-bridgenet-react-app</link>
-			<guid>http://localhost:4252/performance-tuning-a-bridgenet-react-app</guid>
+            <link>http://www.productiverage.com/performance-tuning-a-bridgenet-react-app</link>
+			<guid>http://www.productiverage.com/performance-tuning-a-bridgenet-react-app</guid>
 			<description>&lt;p&gt;On the whole, React is fast. And, on the whole, writing a web application&#39;s code in C# using &lt;a href=&quot;http://bridge.net/&quot;&gt;Bridge.NET&lt;/a&gt; has little overhead compared to writing it directly in JavaScript since Bridge generates sensible JavaScript.&lt;/p&gt;
 
 &lt;p&gt;However, I recently wanted to convince myself that performance would not be an issue with the sort of projects that we&#39;ll be writing at work. We have some applications that are key to the business and yet have unfortunately been left to wither into a barely-maintinable state. The plan is to, over time, rewrite sections of the application using Bridge and React so that the application continues to work at all times but the old code is pruned away. This means that we need to be sure that any crazy forms that existed in the old codebase will work fine in the new architecture. In particular, there is a configuration page that allows a user to select options from a list of almost 1,000 checkboxes. Is this good UI? Most probably not. Do we need to be able to support such configurations in the future? Unfortunately, most probably yes. With a classic server-based MVC application, this would involve 1,000 checkboxes being rendered on the page and then a ginormous form post to send the changes back when the user clicks Save. In a React app, this sort of form will require virtual re-renders each time that a checkbox is clicked on.&lt;/p&gt;
@@ -226,7 +612,7 @@
 
 &lt;h3&gt;Examining the test app&lt;/h3&gt;
 
-&lt;p&gt;The test app is fairly simple (and will contain no surprises if you&#39;ve read my &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Writing React apps using Bridge.NET - The Dan Way&lt;/a&gt; three part mini-series). However, the performance improvements that I&#39;m going to cover will be in versions of libraries that I haven&#39;t yet released - namely, &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.React&quot;&gt;Bridge.React&lt;/a&gt;, &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; and &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.Immutable.Extensions&quot;&gt;ProductiveRage.Immutable.Extensions&lt;/a&gt;. The ProductiveRage.Immutable.Extensions library includes types that I commonly use when writing Bridge / React apps (such as &lt;strong&gt;RequestId&lt;/strong&gt; and &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;). So you won&#39;t yet be able to try out the changes that I&#39;m going to discuss but (hopefully!) the process of identifying what changes to make will be useful.&lt;/p&gt;
+&lt;p&gt;The test app is fairly simple (and will contain no surprises if you&#39;ve read my &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Writing React apps using Bridge.NET - The Dan Way&lt;/a&gt; three part mini-series). However, the performance improvements that I&#39;m going to cover will be in versions of libraries that I haven&#39;t yet released - namely, &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.React&quot;&gt;Bridge.React&lt;/a&gt;, &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; and &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.Immutable.Extensions&quot;&gt;ProductiveRage.Immutable.Extensions&lt;/a&gt;. The ProductiveRage.Immutable.Extensions library includes types that I commonly use when writing Bridge / React apps (such as &lt;strong&gt;RequestId&lt;/strong&gt; and &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;). So you won&#39;t yet be able to try out the changes that I&#39;m going to discuss but (hopefully!) the process of identifying what changes to make will be useful.&lt;/p&gt;
 
 &lt;p&gt;&lt;em&gt;(I&#39;m planning to release the updates to these libraries around the time that Bridge 15.0 comes out, which should hopefully be this month - this will include the change to using Roslyn for parsing the C#, rather than NRefactory, and so C# 6 syntax will finally be supported, which is wonderful news).&lt;/em&gt;&lt;/p&gt;
 
@@ -473,7 +859,7 @@ public static class CommonPropsRenderer
 
 &lt;h3&gt;Profiling&lt;/h3&gt;
 
-&lt;p&gt;&lt;img alt=&quot;Initial timings (not good)&quot; src=&quot;http://localhost:4252/Content/Images/Posts/BridgeReactProfiling1.png&quot; class=&quot;NoBorder HalfWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;Initial timings (not good)&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/BridgeReactProfiling1.png&quot; class=&quot;NoBorder HalfWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;The first thing to do was to start measuring and digging. I loaded the page in Chrome, opened the dev tools, went to the Profiles tab, clicked &quot;Start CPU profiling&quot;, clicked a checkbox and then &quot;Stop CPU profiling&quot;. The result is shown here. There is a natural split between two processes - the &quot;Render&quot; method of the &lt;strong&gt;MessageTable&lt;/strong&gt; and the &quot;receiveComponent&quot; / &quot;updateComponent&quot; within React. I know that it&#39;s the &lt;strong&gt;MessageTable&lt;/strong&gt;&#39;s Render method because it calls &quot;select&quot; (the LINQ function) and that will be where the &lt;strong&gt;MessageTable&lt;/strong&gt; creates each &lt;strong&gt;MessageRow&lt;/strong&gt;. I&#39;m going to concentrate there first since that&#39;s where most of the time is taken and it&#39;s also what I have the most direct control over.&lt;/p&gt;
 
@@ -762,7 +1148,7 @@ public sealed class CommonProps&amp;lt;T&amp;gt;
 
 &lt;p&gt;Taking another snapshot with the profiler, I&#39;m still going to concentrate on the &quot;Render&quot; method (for the same reasons as before; it&#39;s still the slower part of the work and it&#39;s still what I can most easily control). This time I see a lot of calls to a generic constructor resulting from &quot;op_Implicit&quot; calls.&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;Unnecessary Optional instantiation&quot; src=&quot;http://localhost:4252/Content/Images/Posts/BridgeReactProfiling2.png&quot; class=&quot;NoBorder FullWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;Unnecessary Optional instantiation&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/BridgeReactProfiling2.png&quot; class=&quot;NoBorder FullWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;The &quot;op_Implicit&quot; methods are the JavaScript representations of implicit operator methods in C#. So, where the &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; struct has an implicit operator from &quot;T&quot; -&lt;/p&gt;
 
@@ -911,9 +1297,9 @@ private static Optional&amp;lt;T&amp;gt; _missing = new Optional&amp;lt;T&amp;gt
 		</item>
 		<item>
 			<title>Retrieving Performance Counter from a remote PC using C#</title>
-            <link>http://localhost:4252/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</link>
-			<guid>http://localhost:4252/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</guid>
-			<description>&lt;p&gt;&lt;a href=&quot;http://localhost:4252/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days&quot;&gt;PerfMon&lt;/a&gt; can be an invaluable tool for monitoring performance counters on the local or remote computer. It allows you to graph the information live and it allows you to write the data away to disk for future analysis.&lt;/p&gt;
+            <link>http://www.productiverage.com/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</link>
+			<guid>http://www.productiverage.com/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</guid>
+			<description>&lt;p&gt;&lt;a href=&quot;http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days&quot;&gt;PerfMon&lt;/a&gt; can be an invaluable tool for monitoring performance counters on the local or remote computer. It allows you to graph the information live and it allows you to write the data away to disk for future analysis.&lt;/p&gt;
 
 &lt;p&gt;However, for some performance investigation that I was doing, I wanted something slightly different to what PerfMon offers. I was testing a service under load, a service that was being hosted on a dedicated box for the performance investigation - and I was testing it by generating the load from another dedicated server. Since nothing else would be hitting the service host box, what I wanted to do for each test run was to restart the service on the host, hit it with the sample load and record the processor time, % time in GC, number of garbage collections at each generation and some other metrics until the work was fully processed - at that point, there would be no more information to gather for that particular run. The experiment could be repeated a few times and the results filed away, brought back out to compare to the same load being run after some performance tweaks had been made to the code.&lt;/p&gt;
 
@@ -1461,13 +1847,13 @@ resultsReadyIndicator.WaitOne();
 		</item>
 		<item>
 			<title>Why is saving Performance Monitor (PerfMon) settings so difficult these days?!</title>
-            <link>http://localhost:4252/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</link>
-			<guid>http://localhost:4252/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</guid>
+            <link>http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</link>
+			<guid>http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</guid>
 			<description>&lt;p&gt;I&#39;ve been measuring and optimising a busy service recently at work and PerfMon is an invaluable tool in doing things like this - the service records its own performance counters about requests/second, cache-hits-and-misses/second and many other useful metrics, while Windows and .net also report on many helpful statistics such as CPU time per process, memory usage, bytes-allocated/second and frequency of garbage collections.&lt;/p&gt;
 
 &lt;p&gt;Performance Monitor makes it really easy to add a set of counters and format their lines so that some are bold and thick (and, so, clear at a glance) while other may be made less obtrusive, so as not to confuse the graph too much.&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/PerfMon.png&quot; alt=&quot;Performance Monitor&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/PerfMon.png&quot; alt=&quot;Performance Monitor&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;However, over the years the interface to this tool has had some changes made to it that I&#39;m not convinced are improvements. Back on Windows Server 2003, I&#39;m pretty sure that you could configure your view how you wanted it and then simply use File/Save to write an &quot;.mmc&quot; configuration file. Whenever you wanted, you could double-click that file and all of the counters would be there, configured just as you left them, quietly capturing data and displaying it how you want it. Unfortunately, that day has gone and it&#39;s not quite so easy.&lt;/p&gt;
 
@@ -1493,8 +1879,8 @@ resultsReadyIndicator.WaitOne();
 		</item>
 		<item>
 			<title>Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</title>
-            <link>http://localhost:4252/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner</link>
-			<guid>http://localhost:4252/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner</guid>
+            <link>http://www.productiverage.com/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner</link>
+			<guid>http://www.productiverage.com/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner</guid>
 			<description>&lt;p&gt;I&#39;ve been meaning to try writing a post about creating analysers for a little while now - they&#39;re a technology that I think has huge promise for improving code quality and they&#39;re something that I&#39;ve successfully played around with recently.. but I&#39;m still very much in the early phases of being proficient and they&#39;re not something that I can just sit down and bang out easily (ie. not without a lot of googling).&lt;/p&gt;
 
 &lt;p&gt;So this won&#39;t be the post of an expert - but I&#39;m hoping to use that to my advantage since I hopefully remember the pain points all too well and can go through the sort of things that I try when I&#39;m hashing these out.&lt;/p&gt;
@@ -1617,7 +2003,7 @@ namespace ConsoleApplication1
 
 &lt;p&gt;Having installed the &quot;.NET Compiler Platform SDK&quot; earlier, you will now have access to this tool - go to View / Other Windows / Syntax Visualizer. This shows the syntax tree for any code within your project. So, if you click on the name &quot;TestMethod2&quot; then you will see that it is an &lt;strong&gt;IdentifierToken&lt;/strong&gt; (which is the name &quot;TestMethod2&quot;) that is a child node of a &lt;strong&gt;MethodDeclaration&lt;/strong&gt; which is a child node of a &lt;strong&gt;ClassDeclaration&lt;/strong&gt; which is a child node of a &lt;strong&gt;NamespaceDeclaration&lt;/strong&gt;, which is a child node of a &lt;strong&gt;CompilationUnit&lt;/strong&gt;. You can click on any of these nodes in the Syntax Visualiser to inspect some of the properties of the node and you can open further branches to inspect more - for example, there is a &quot;Block&quot; node that will appear shortly after the &lt;strong&gt;IdentifierToken&lt;/strong&gt; that you may click to reveal the nodes that represent the statements within the method.&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/SyntaxVisualizer.png&quot; alt=&quot;The Syntax Visualizer&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/SyntaxVisualizer.png&quot; alt=&quot;The Syntax Visualizer&quot;&gt;&lt;/p&gt;
 
 &lt;h3&gt;Writing a real analyser&lt;/h3&gt;
 
@@ -1830,7 +2216,7 @@ namespace ExampleAnalyser.Test
 
 &lt;p&gt;Ensuring that the Syntax Visualizer is visible (View / Other Windows / Syntax Visualizer), clicking on &quot;Multiple&quot; shows the following:&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/ObjectInitializerExpression.png&quot; alt=&quot;ObjectInitializerExpression&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ObjectInitializerExpression.png&quot; alt=&quot;ObjectInitializerExpression&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;The &lt;strong&gt;IdentifierToken&lt;/strong&gt; is the &quot;Multiple&quot; property, which is part of a &lt;strong&gt;SimpleAssignment&lt;/strong&gt; (ie. &quot;Multiple = 1&quot;) which is a child of an &lt;strong&gt;ObjectInitializerExpression&lt;/strong&gt; (which is the curly brackets around the two properties being set) which is a child of an &lt;strong&gt;ObjectCreationExpression&lt;/strong&gt; (which is the entire statement that includes &quot;new Bridge.React.SelectAttributes&quot; &lt;em&gt;and&lt;/em&gt; the setting of the two properties) and that itself is part of a &lt;strong&gt;VariableDeclaration&lt;/strong&gt; (which sets &quot;x&quot; to be the result of the object creation). With the Syntax Visualizer, we could go all the way up to the top of the method and then to the class and then to the namespace and then to the top-level CompilationUnit. However, what we&#39;re most interested in is the &lt;strong&gt;ObjectInitializerExpression&lt;/strong&gt;, since that contains the properties that we want to verify.&lt;/p&gt;
 
@@ -2356,9 +2742,9 @@ namespace ExampleAnalyser
 		</item>
 		<item>
 			<title>A static type system is a wonderful message to the present and future - Supplementary</title>
-            <link>http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary</link>
-			<guid>http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary</guid>
-			<description>&lt;p&gt;This is an extension of my post &quot;&lt;a href=&quot;http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future&quot;&gt;A static type system is a wonderful message to the present and future&lt;/a&gt;. I initially rolled this all together into a single article but then decided to break it into two to make the first part easier to consume.&lt;/p&gt;
+            <link>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary</link>
+			<guid>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary</guid>
+			<description>&lt;p&gt;This is an extension of my post &quot;&lt;a href=&quot;http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future&quot;&gt;A static type system is a wonderful message to the present and future&lt;/a&gt;. I initially rolled this all together into a single article but then decided to break it into two to make the first part easier to consume.&lt;/p&gt;
 
 &lt;p&gt;So, what else did I want to say? Rather than just saying &quot;static typing is better&quot;, I want to express some more detailed &quot;for&quot; and &quot;against&quot; arguments. Spoiler alert: despite the negatives, I still believe that static typing is worth the effort.&lt;/p&gt;
 
@@ -2366,7 +2752,7 @@ namespace ExampleAnalyser
 
 &lt;p&gt;I find that the more that I take advantage of the type system, the more reliable that my code becomes - not only in terms of how well it lasts over the years, but how likely that it is to work the first time that it compiles. Going back to some code that I wrote a few years ago, there are various parts of a particular project that deal with internationalisation - some parts want to know what language that particular content is in while some parts of more specific and want to know what language &lt;em&gt;culture&lt;/em&gt; it&#39;s in; the difference between &quot;English&quot; (the language) and &quot;English UK&quot; / &quot;en-GB&quot; (the language culture). I wish now that, for that project, I&#39;d created a type (in C#, a struct would have been the natural choice) to represent a &lt;strong&gt;LanguageKey&lt;/strong&gt; and another for a &lt;strong&gt;LanguageCultureKey&lt;/strong&gt; as I encountered several places where it was confusing which was required - some parts of the code had method arguments named &quot;language&quot; that wanted a language key while others had arguments named &quot;language&quot; that wanted a language culture key. The two parts of the project were written by different people at different times and, in both cases, it seemed natural to them to presume that &quot;language&quot; could mean a language key (since nothing more specific was required) or could mean a language culture (since they presumed that nothing &lt;em&gt;less&lt;/em&gt; specific would ever be required). This is an example of a place where better argument naming would have helped because it would have been easier to spot if a language culture key was being passed where a language key was required. However, it would have been better again if the compiler would spot the wrong key type being passed - a human might miss it if a naming convention is relied upon, but the compiler will never miss an invalid type.&lt;/p&gt;
 
-&lt;p&gt;Another example that I&#39;ve used in the past is that of React &quot;props&quot; validation - when creating React components (which are used to render DOM elements.. or OS components, if you&#39;re using &lt;a href=&quot;http://www.reactnative.com&quot;&gt;React Native&lt;/a&gt;), you must provide specific information for the component; if it&#39;s a Label, for example, then you must provide a text string and maybe a class name string. If you&#39;re using JavaScript with React then you will probably be providing the props reference using simple object notation, so you will have to be careful that you remember that the text string is named &quot;text&quot; and not &quot;labelText&quot;. The React library includes support for a &quot;propTypes&quot; object to be defined for a component - this performs validation at runtime, ensuring that required properties have values and that they are of the correct type. If a &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;strongly-typed language (such as C#)&lt;/a&gt; was used to create and consume React components, then this additional runtime validation would not be required as the component&#39;s &quot;props&quot; class would be declared as a class and all properties would have the appropriate types specified there. These would be validated at compile time, rather than having to wait until runtime. Returning to the &quot;&lt;a href=&quot;https://m.signalvnoise.com/provide-sharp-knives-cc0a22bf7934#.yv2771vf7&quot;&gt;Sharp Knives&lt;/a&gt;&quot; quote, this may be construed as being validation written for &quot;other programmers&quot; - as in, &quot;I don&#39;t want other programmers to try to use my component incorrectly&quot; - but, again, I&#39;m very happy to be the one of the &quot;other programmers&quot; in this case, it allows the type system to work as very-welcome documentation.&lt;/p&gt;
+&lt;p&gt;Another example that I&#39;ve used in the past is that of React &quot;props&quot; validation - when creating React components (which are used to render DOM elements.. or OS components, if you&#39;re using &lt;a href=&quot;http://www.reactnative.com&quot;&gt;React Native&lt;/a&gt;), you must provide specific information for the component; if it&#39;s a Label, for example, then you must provide a text string and maybe a class name string. If you&#39;re using JavaScript with React then you will probably be providing the props reference using simple object notation, so you will have to be careful that you remember that the text string is named &quot;text&quot; and not &quot;labelText&quot;. The React library includes support for a &quot;propTypes&quot; object to be defined for a component - this performs validation at runtime, ensuring that required properties have values and that they are of the correct type. If a &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;strongly-typed language (such as C#)&lt;/a&gt; was used to create and consume React components, then this additional runtime validation would not be required as the component&#39;s &quot;props&quot; class would be declared as a class and all properties would have the appropriate types specified there. These would be validated at compile time, rather than having to wait until runtime. Returning to the &quot;&lt;a href=&quot;https://m.signalvnoise.com/provide-sharp-knives-cc0a22bf7934#.yv2771vf7&quot;&gt;Sharp Knives&lt;/a&gt;&quot; quote, this may be construed as being validation written for &quot;other programmers&quot; - as in, &quot;I don&#39;t want other programmers to try to use my component incorrectly&quot; - but, again, I&#39;m very happy to be the one of the &quot;other programmers&quot; in this case, it allows the type system to work as very-welcome documentation.&lt;/p&gt;
 
 &lt;p&gt;While we&#39;re talking about React and component props, the React library always treats the props reference for a component as being immutable. If the props data needs to change then the component needs to be re-rendered with a new props reference. If you are writing your application in JavaScript then you need to respect this convention. However, if you choose to write your React application in a strongly-typed language then you may have your props classes represented by immutable types. This enforces this convention through the type system - &lt;em&gt;you&lt;/em&gt; (and anyone reviewing your code) don&#39;t have to keep a constant vigil against accidental mutations, the compiler will tell you if this is attempted (by refusing to build and pointing out where the mistake made).&lt;/p&gt;
 
@@ -2426,7 +2812,7 @@ namespace ExampleAnalyser
 
 &lt;p&gt;It can also be an invaluable form of documentation for people using your code (including you, in six months, when you&#39;ve forgotten the finer details). Good use of the type system allows for the requirements and the intent of code to be clearer. It&#39;s not just a way of communicating with the compiler, it&#39;s also a very helpful way to communicate with human consumers of your code.&lt;/p&gt;
 
-&lt;p&gt;On a personal note, this marks my 100th post on this blog. The first (&lt;a href=&quot;http://localhost:4252/i-love-immutable-data&quot;&gt;I love Immutable Data&lt;/a&gt;) was written about five years ago and was &lt;em&gt;also&lt;/em&gt; (basically) about leveraging the type system - by defining immutable types and the benefits that they could have. I find it reassuring that, with all that I&#39;ve seen since then (and thinking back over the time since I first started writing code.. over 25 years ago) that this still feels like a good thing. In a time where it seems like everyone&#39;s crying about JavaScript fatigue (and the frequent off-the-cuff comments about React being &quot;&lt;a href=&quot;https://camo.githubusercontent.com/a85f7c2c03b36655323ec7a3250057233e82ef55/68747470733a2f2f692e696d6775722e636f6d2f695549497571622e6a7067&quot;&gt;so hot right now&lt;/a&gt;&quot;*), I&#39;m glad that there are still plenty of principles that stand the test of time.&lt;/p&gt;
+&lt;p&gt;On a personal note, this marks my 100th post on this blog. The first (&lt;a href=&quot;http://www.productiverage.com/i-love-immutable-data&quot;&gt;I love Immutable Data&lt;/a&gt;) was written about five years ago and was &lt;em&gt;also&lt;/em&gt; (basically) about leveraging the type system - by defining immutable types and the benefits that they could have. I find it reassuring that, with all that I&#39;ve seen since then (and thinking back over the time since I first started writing code.. over 25 years ago) that this still feels like a good thing. In a time where it seems like everyone&#39;s crying about JavaScript fatigue (and the frequent off-the-cuff comments about React being &quot;&lt;a href=&quot;https://camo.githubusercontent.com/a85f7c2c03b36655323ec7a3250057233e82ef55/68747470733a2f2f692e696d6775722e636f6d2f695549497571622e6a7067&quot;&gt;so hot right now&lt;/a&gt;&quot;*), I&#39;m glad that there are still plenty of principles that stand the test of time.&lt;/p&gt;
 
 &lt;p&gt;* &lt;em&gt;(Since I&#39;m feeling so brave and self-assured, I&#39;m going to say that I think that React *will* still be important five years from now - maybe I&#39;ll look back in 2021 and see how this statement has fared!)&lt;/em&gt;&lt;/p&gt;
 </description>
@@ -2434,8 +2820,8 @@ namespace ExampleAnalyser
 		</item>
 		<item>
 			<title>A static type system is a wonderful message to the present and future</title>
-            <link>http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</link>
-			<guid>http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</guid>
+            <link>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</link>
+			<guid>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</guid>
 			<description>&lt;p&gt;Last week, I read the article &quot;&lt;a href=&quot;http://solnic.eu/2016/05/22/my-time-with-rails-is-up.html&quot;&gt;My time with Rails is up&lt;/a&gt;&quot; (by &lt;a href=&quot;https://twitter.com/_solnic_&quot;&gt;Piotr Solnica&lt;/a&gt;) which resulted in me reading some of &lt;a href=&quot;https://medium.com/@dhh&quot;&gt;DHH&lt;/a&gt;&#39;s latest posts and re-reading some of his  older ones.&lt;/p&gt;
 
 &lt;p&gt;Some people write articles that I enjoy reading because they have similar ideas and feelings about development that I do, that they manage to express in a new or particularly articulate way that helps me clarify it in my own head or that helps me think about whether I really do still agree with the principle. Some people write articles that come from a completely different point of view and experience to me and these also can have a lot of benefit, in that they make me reconsider where I stand on things or inspire me to try something different to see how it feels. DHH is, almost without fail, interesting to read and I like his passion and conviction.. but he&#39;s definitely not in that first category of author. There was one thing in particular, though, that really stuck out for me in his post &quot;&lt;a href=&quot;https://m.signalvnoise.com/provide-sharp-knives-cc0a22bf7934#.yv2771vf7&quot;&gt;Provide sharp knives&lt;/a&gt;&quot; -&lt;/p&gt;
@@ -2470,14 +2856,14 @@ namespace ExampleAnalyser
 
 &lt;p&gt;The fact that static typing is not enough to confirm that your code is correct, and that unit tests should be written as well, does not mean that &lt;em&gt;only&lt;/em&gt; units tests should be used.&lt;/p&gt;
 
-&lt;p&gt;I&#39;ve kept this post deliberately short because I would love for it to have some impact and experience has taught me that it&#39;s much more difficult for that to be the case with a long format post. I&#39;ve expanded on this further at &quot;&lt;a href=&quot;http://localhost:4252/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary&quot;&gt;A static type system is a wonderful message to the present and future - Supplementary&lt;/a&gt;&quot;. There&#39;s more about the benefits, more about the limitations, more examples of me saying &quot;I don&#39;t want the power to do try to do something that this code has been explicitly written not to have to deal with&quot; and &lt;em&gt;no more&lt;/em&gt; mentions of multi-threading because static typing&#39;s benefits are not restricted to especially complicated problem domains, applications may benefit regardless of their complexity.&lt;/p&gt;
+&lt;p&gt;I&#39;ve kept this post deliberately short because I would love for it to have some impact and experience has taught me that it&#39;s much more difficult for that to be the case with a long format post. I&#39;ve expanded on this further at &quot;&lt;a href=&quot;http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary&quot;&gt;A static type system is a wonderful message to the present and future - Supplementary&lt;/a&gt;&quot;. There&#39;s more about the benefits, more about the limitations, more examples of me saying &quot;I don&#39;t want the power to do try to do something that this code has been explicitly written not to have to deal with&quot; and &lt;em&gt;no more&lt;/em&gt; mentions of multi-threading because static typing&#39;s benefits are not restricted to especially complicated problem domains, applications may benefit regardless of their complexity.&lt;/p&gt;
 </description>
 			<pubDate>Tue, 31 May 2016 21:33:00 GMT</pubDate>
 		</item>
 		<item>
 			<title>Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</title>
-            <link>http://localhost:4252/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</link>
-			<guid>http://localhost:4252/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</guid>
+            <link>http://www.productiverage.com/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</link>
+			<guid>http://www.productiverage.com/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</guid>
 			<description>&lt;p&gt;This is going to be a short post about a Roslyn (or &quot;The .NET Compiler Platform&quot;, if you&#39;re from Microsoft) analyser and code fix that I&#39;ve added to a library. I&#39;m not going to try to take you through the steps required to create an analyser nor how the Roslyn object model describes the code that you&#39;ve written in the IDE* but I want to talk about the analyser itself because it&#39;s going to be very useful if you&#39;re one of the few people using my &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; library. Also, I feel like the inclusion of analysers with libraries is something that&#39;s going to become increasingly common (and I want to be able to have something to refer back to if I get the chance to say &quot;told you!&quot; in the future).&lt;/p&gt;
 
 &lt;p&gt;* &lt;em&gt;(This is largely because I&#39;m still struggling with it a bit myself; my current process is to start with &lt;a href=&quot;https://msdn.microsoft.com/en-gb/magazine/dn879356.aspx&quot;&gt;Use Roslyn to Write a Live Code Analyzer for Your API&lt;/a&gt; and the &quot;Analyzer with Code Fix (NuGet + VSIX)&quot; Visual Studio template. I then tinker around a bit and try running what I&#39;ve got so far, so that I can use the &quot;Syntax Visualizer&quot; in the Visual Studio instance that is being debugged. Then I tend to do a lot of Google searches when I feel like I&#39;m getting close to something useful.. how do I tell if a &lt;strong&gt;FieldDeclarationSyntax&lt;/strong&gt; is for a readonly field or not? Oh, good, someone else has already written some code doing something like what  I want to do - I look at the &quot;Modifiers&quot; property on the &lt;strong&gt;FieldDeclarationSyntax&lt;/strong&gt; instance).&lt;/em&gt;&lt;/p&gt;
@@ -2575,17 +2961,17 @@ namespace ExampleAnalyser
 
 &lt;p&gt;.. then you would see the following errors reported by Visual Studio (presuming you are using 2015 or later) -&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/ProductiveRageImmutableAnalyserError1.png&quot; alt=&quot;Example analyser errors raised by the ProductiveRage.Immutable library&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserError1.png&quot; alt=&quot;Example analyser errors raised by the ProductiveRage.Immutable library&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;.. which is one of the &quot;common IAmImmutable mistakes&quot; analysers identifying the problem for you.&lt;/p&gt;
 
 &lt;h3&gt;Getting Visual Studio to write code for you, using code fixes&lt;/h3&gt;
 
-&lt;p&gt;I&#39;ve been writing more code with this library and I&#39;m still, largely, happy with it. Making the move to assuming never-allow-null (which is baked into the &quot;CtorSet&quot; and &quot;With&quot; calls) means that the classes that I&#39;m writing are a lot shorter and that type signatures are more descriptive. (I wrote about all this in my post at the end of last year &quot;&lt;a href=&quot;http://localhost:4252/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&quot; if you&#39;re curious for more details).&lt;/p&gt;
+&lt;p&gt;I&#39;ve been writing more code with this library and I&#39;m still, largely, happy with it. Making the move to assuming never-allow-null (which is baked into the &quot;CtorSet&quot; and &quot;With&quot; calls) means that the classes that I&#39;m writing are a lot shorter and that type signatures are more descriptive. (I wrote about all this in my post at the end of last year &quot;&lt;a href=&quot;http://www.productiverage.com/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&quot; if you&#39;re curious for more details).&lt;/p&gt;
 
 &lt;p&gt;However.. I &lt;em&gt;still&lt;/em&gt; don&#39;t really like typing out as much code for each class as I have to. Each class has to repeat the property names four times - once in the constructor, twice in the &quot;CtorSet&quot; call and a fourth time in the public property. Similarly, the type name has to be repeated twice - once in the constructor and once in the property.&lt;/p&gt;
 
-&lt;p&gt;This is better than the obvious alternative, which is to not bother with immutable types. I will gladly take the extra lines of code (and the effort required to write them) to get the additional confidence that a &quot;stronger&quot; type system offers - I wrote about this recently in my &quot;&lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Writing React with Bridge.NET - The Dan Way&lt;/a&gt;&quot; posts; I think that it&#39;s really worthwhile to bake assumptions into the type system where possible. For example, the Props types of React components are assumed, by the React library, to be immutable - so having them defined as immutable types represents this requirement in the type system. If the Props types are &lt;em&gt;mutable&lt;/em&gt; then it would be possible to write code that tries to change that data and then bad things could happen (you&#39;re doing something that library expects not to happen). If the Props types are &lt;em&gt;immutable&lt;/em&gt; then it&#39;s not even possible to write this particular kind of bad-things-might-happen code, which is a positive thing.&lt;/p&gt;
+&lt;p&gt;This is better than the obvious alternative, which is to not bother with immutable types. I will gladly take the extra lines of code (and the effort required to write them) to get the additional confidence that a &quot;stronger&quot; type system offers - I wrote about this recently in my &quot;&lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Writing React with Bridge.NET - The Dan Way&lt;/a&gt;&quot; posts; I think that it&#39;s really worthwhile to bake assumptions into the type system where possible. For example, the Props types of React components are assumed, by the React library, to be immutable - so having them defined as immutable types represents this requirement in the type system. If the Props types are &lt;em&gt;mutable&lt;/em&gt; then it would be possible to write code that tries to change that data and then bad things could happen (you&#39;re doing something that library expects not to happen). If the Props types are &lt;em&gt;immutable&lt;/em&gt; then it&#39;s not even possible to write this particular kind of bad-things-might-happen code, which is a positive thing.&lt;/p&gt;
 
 &lt;p&gt;But &lt;em&gt;still&lt;/em&gt; I get a niggling feeling that things could be better. And now they are! With Roslyn, you can not only identify particular patterns but you can also offer automatic fixes for them. So, if you were to start writing the &lt;strong&gt;EmployeeDetails&lt;/strong&gt; class from scratch and got this far:&lt;/p&gt;
 
@@ -2601,11 +2987,11 @@ namespace ExampleAnalyser
 
 &lt;p&gt;The latest version of the ProductiveRage.Immutable library (1.7.0) does just that. The empty constructor will not only be identified with a warning but a light bulb will also appear alongside the code. Clicking this (or pressing [Ctrl]-[.] while within the empty constructor, for fellow keyboard junkies) will present an option to &quot;Populate class from constructor&quot; -&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix1.png&quot; alt=&quot;Screenshot showing the analyser identifying an empty constructor on an IAmImmutable implementation&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix1.png&quot; alt=&quot;Screenshot showing the analyser identifying an empty constructor on an IAmImmutable implementation&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;Selecting the &quot;Populate class from constructor&quot; option -&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&quot;http://localhost:4252/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix2.png&quot; alt=&quot;Screenshot showing the code fix that may auto-populate the incomplete IAmImmutable implementation&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix2.png&quot; alt=&quot;Screenshot showing the code fix that may auto-populate the incomplete IAmImmutable implementation&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;.. will take the constructor arguments and generate the &quot;CtorSet&quot; calls and the public properties automatically. Now you can have all of the safety of the immutable type with no more typing effort than the mutable version!&lt;/p&gt;
 
@@ -2644,9 +3030,9 @@ public sealed class EmployeeDetails
 		</item>
 		<item>
 			<title>Writing React apps using Bridge.NET - The Dan Way (Part Three)</title>
-            <link>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-three</link>
-			<guid>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-three</guid>
-			<description>&lt;p&gt;In parts &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;One&lt;/a&gt; and &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Two&lt;/a&gt;, I described how to create a simple application using React and a Flux-like architecture, written in &lt;a href=&quot;http://bridge.net/&quot;&gt;Bridge.NET&lt;/a&gt; - it covered where and how to deal with validation, how to integrate with a persistence layer, how to deal with asynchronous interactions (and how they don&#39;t need to be scary) and how the approach made the code easy to test and easy to reason about.&lt;/p&gt;
+            <link>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-three</link>
+			<guid>http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-three</guid>
+			<description>&lt;p&gt;In parts &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;One&lt;/a&gt; and &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Two&lt;/a&gt;, I described how to create a simple application using React and a Flux-like architecture, written in &lt;a href=&quot;http://bridge.net/&quot;&gt;Bridge.NET&lt;/a&gt; - it covered where and how to deal with validation, how to integrate with a persistence layer, how to deal with asynchronous interactions (and how they don&#39;t need to be scary) and how the approach made the code easy to test and easy to reason about.&lt;/p&gt;
 
 &lt;p&gt;The components created using the &lt;a href=&quot;https://www.nuget.org/packages/Bridge.React&quot;&gt;React / Bridge bindings&lt;/a&gt; have their requirements / dependencies described in a strongly-typed manner since each component&#39;s &quot;props&quot; reference is a nested class with properties for each value or reference that will be needed in order for it to render.&lt;/p&gt;
 
@@ -2656,7 +3042,7 @@ public sealed class EmployeeDetails
 
 &lt;p&gt;&lt;em&gt;(C# can also be written to act as a dynamically-typed language, particularly if you use the &quot;&lt;a href=&quot;https://msdn.microsoft.com/en-us/library/dd264741.aspx&quot;&gt;dynamic&lt;/a&gt;&quot; keyword - but it&#39;s principally a statically-typed language).&lt;/em&gt;&lt;/p&gt;
 
-&lt;p&gt;I&#39;m going to describe some ways to improve the example application and, in doing so, extrapolate some rules as to how to make the code clearer (and, &lt;em&gt;again&lt;/em&gt;, easier to reason about, write and maintain - since these are extremely important qualities of code to me, that I strive for when developing and that appealed to me when I first encountered React). These will be my opinions (based upon my experiences) and you might disagree with them - but this is where we really get into &quot;The Dan Way&quot; of working with Bridge and React. If you &lt;em&gt;do&lt;/em&gt; choose to disagree, then hopefully parts &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;One&lt;/a&gt; and &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Two&lt;/a&gt; will continue to be useful (but I&#39;m afraid we can never be friends*).&lt;/p&gt;
+&lt;p&gt;I&#39;m going to describe some ways to improve the example application and, in doing so, extrapolate some rules as to how to make the code clearer (and, &lt;em&gt;again&lt;/em&gt;, easier to reason about, write and maintain - since these are extremely important qualities of code to me, that I strive for when developing and that appealed to me when I first encountered React). These will be my opinions (based upon my experiences) and you might disagree with them - but this is where we really get into &quot;The Dan Way&quot; of working with Bridge and React. If you &lt;em&gt;do&lt;/em&gt; choose to disagree, then hopefully parts &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;One&lt;/a&gt; and &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Two&lt;/a&gt; will continue to be useful (but I&#39;m afraid we can never be friends*).&lt;/p&gt;
 
 &lt;p&gt;* &lt;em&gt;(Only joking**)&lt;/em&gt;&lt;/p&gt;
 
@@ -3218,7 +3604,7 @@ new TextInput.Props(
 
 &lt;p&gt;Note: This is probably the most controversial part of my recommended approach - if you&#39;re happy to consider making your classes immutable like this, for the reasons I outlined above (which, by the way, can be applied to &lt;em&gt;all&lt;/em&gt; classes in your code, not just props types for React components) and you&#39;re willing to consider the benefits and trade-offs of building up a more detailed type system (such as using &lt;strong&gt;Optional&amp;lt;NonBlankOrTrimmedString&amp;gt;&lt;/strong&gt; instead of just &quot;string&quot; and only using &quot;string&quot; to mean &quot;non-nullable string&quot;) then I think that you&#39;ll enjoy the rest of what I&#39;ve got to say.&lt;/p&gt;
 
-&lt;p&gt;I want to extend this ostracising of nulls to the &lt;strong&gt;TextInput&lt;/strong&gt; class itself, though. At the end of &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt;, the component looked like this:&lt;/p&gt;
+&lt;p&gt;I want to extend this ostracising of nulls to the &lt;strong&gt;TextInput&lt;/strong&gt; class itself, though. At the end of &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt;, the component looked like this:&lt;/p&gt;
 
 &lt;pre&gt;&lt;code&gt;using System;
 using Bridge.Html5;
@@ -4228,7 +4614,7 @@ namespace BridgeReactTutorial.Components
 }
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;It&#39;s nice and simple since we moved nearly all of the logic that it contained in &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt; into the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; in &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;It&#39;s nice and simple since we moved nearly all of the logic that it contained in &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt; into the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; in &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt;.&lt;/p&gt;
 
 &lt;p&gt;The obvious thing to do, based on what I&#39;ve been talking about today, is to change its &lt;strong&gt;Props&lt;/strong&gt; and &lt;strong&gt;State&lt;/strong&gt; classes to implement &lt;strong&gt;IAmImmutable&lt;/strong&gt;.&lt;/p&gt;
 
@@ -5246,7 +5632,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;To recall what our example application looks like -&lt;/p&gt;
 
-&lt;p&gt;&lt;img alt=&quot;Message Editor and Message History&quot; src=&quot;http://localhost:4252/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt=&quot;Message Editor and Message History&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/ReactTutorial1.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
 
 &lt;p&gt;There are basically two parts to it; the Message Editor and the Message History. The Message Editor part changes after one of any of the following occurs -&lt;/p&gt;
 
@@ -5635,7 +6021,7 @@ namespace BridgeReactTutorial.API
 
 &lt;p&gt;This has turned out to be a pretty huge post. But I didn&#39;t want to try to split it up because all of the principles are related, really.&lt;/p&gt;
 
-&lt;p&gt;If you&#39;d stopped reading after &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt; then I think that you would have the tools to construct client-side applications that will scale from something simple up to something massively complex. The combination of C# (which is time-proven as a language that not only enables large applications to be built and maintained over long periods of time, it is a language where it is not exceptional for this to be the case*) and React is very powerful.&lt;/p&gt;
+&lt;p&gt;If you&#39;d stopped reading after &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-two&quot;&gt;Part Two&lt;/a&gt; then I think that you would have the tools to construct client-side applications that will scale from something simple up to something massively complex. The combination of C# (which is time-proven as a language that not only enables large applications to be built and maintained over long periods of time, it is a language where it is not exceptional for this to be the case*) and React is very powerful.&lt;/p&gt;
 
 &lt;p&gt;* &lt;em&gt;(Languages such as PHP and JavaScript CAN be used to build and maintain large code bases, but I think that it&#39;s telling that the companies that take this work seriously rely on, and develop, additional tooling to make it manageable, like &lt;a href=&quot;http://hacklang.org/&quot;&gt;Hack&lt;/a&gt; and &lt;a href=&quot;http://flowtype.org/&quot;&gt;Flow&lt;/a&gt;).&lt;/em&gt;&lt;/p&gt;
 
@@ -5666,1491 +6052,6 @@ namespace BridgeReactTutorial.API
 &lt;p&gt;Of course, if you disagree in general, or on any particular points, or you have any tweaks to what I&#39;ve suggested then I would be very interested to hear. That&#39;s what the comments section is for!&lt;/p&gt;
 </description>
 			<pubDate>Wed, 30 Mar 2016 21:32:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>Writing React apps using Bridge.NET - The Dan Way (Part Two)</title>
-            <link>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two</link>
-			<guid>http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-part-two</guid>
-			<description>&lt;p&gt;To summarise where we got to in &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt;: we&#39;ve got an entry form where, after you enter Title and Content values, you may save a message. During the message-saving process, the form and save button are disabled. Once the saving has completed, the form will be cleared and it will be re-enabled. Validation logic in the &lt;strong&gt;MessageEditor&lt;/strong&gt; prevents the form from being saved while one or both of the required inputs are without value. After the save has succeeded, a read action will begin in the background - once the read operation has completed, a &lt;strong&gt;MessageHistory&lt;/strong&gt; component will display all of the saved messages. All interactions with the &lt;strong&gt;MessageApi&lt;/strong&gt; are handled by the top-level &lt;strong&gt;AppContainer&lt;/strong&gt; component. Similarly, all user interaction events are passed up to this top-level component, from where re-renders of the UI state are triggered.&lt;/p&gt;
-
-&lt;p&gt;I see this arrangement as a top-to-bottom tree in terms of rendering - the top-level component is in control of what to display in the component hierarchy beneath it, and all of the information required to display those child components is contained within the top-level component&#39;s state data.&lt;/p&gt;
-
-&lt;p&gt;In terms of event-handling, events may occur deep down within the tree and are then passed back up to the top-level component. As an event passes up from the html element that it originates in, up to the top level, it will gather more and more information - for example, when a user requests a change to the &quot;Title&quot; text input (such as by pressing a key while the input has focus), then an event is raised by the &lt;strong&gt;TextInput&lt;/strong&gt; component saying that a string value should be changed. This &lt;strong&gt;TextInput&lt;/strong&gt; is a child component of the &lt;strong&gt;MessageEditor&lt;/strong&gt;, which acknowledges this string-changed event and raises it own event; a &lt;strong&gt;MessageDetails&lt;/strong&gt;-changed event. The &quot;Content&quot; value of this new message will be unchanged, but the &quot;Title&quot; value will have a new value - the new value that the &lt;strong&gt;TextInput&lt;/strong&gt; should take. This event is received by the &lt;strong&gt;AppContainer&lt;/strong&gt; and it uses it to update its internal representation of the application, changing its &quot;state&quot; reference by calling &quot;SetState&quot; and so triggering a re-render.&lt;/p&gt;
-
-&lt;p&gt;The path may be traced downward when considering rendering and may be traced upward when considering events.&lt;/p&gt;
-
-&lt;p&gt;This one-way passing of data is very powerful in terms of modelling interactions that are easy to follow. As a reminder, a common way to deal with interactions like this in days gone by (ie. before React popularised &quot;one-way bindings&quot;) was for changes to elements to be reflected immediately in-place and for any interested parties to subscribe to events that those elements raise after they change. So, for the message entry form -&lt;/p&gt;
-
-&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://localhost:4252/Content/Images/Posts/ReactTutorial2.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;With the old method, the &quot;Title&quot; and the &quot;Content&quot; inputs would accept changes that the user makes immediately - and the fieldset legend and the save button components would need to listen out to some of these changes. The legend changes to match what is entered in the &quot;Title&quot; input (unless it&#39;s blank, in which case the legend shows &quot;Untitled&quot;). The save button needs to be enabled if both &quot;Title&quot; and &quot;Content&quot; have values and &lt;em&gt;disabled&lt;/em&gt; if one or both of them are without.&lt;/p&gt;
-
-&lt;p&gt;I mentally envisage this as star-shaped event handling - a change to one element may fan out to many others. In some cases, these changes would then cascade on to other elements, and then on again and again (hopefully not &quot;again and again and..&quot;, but it was difficult to keep a handle on these things with this sort of approach - because it was difficult to get a simple view as to what could affect what).&lt;/p&gt;
-
-&lt;p&gt;With one-way data binding, events go up to the top, are processed and then the re-render distributes this new information all the way down. When the &lt;strong&gt;MessageEditor&lt;/strong&gt; is rendered, it knows what the current &quot;Title&quot; value is and so it knows what to put in that &quot;Title&quot; &lt;strong&gt;TextInput&lt;/strong&gt; &lt;em&gt;and&lt;/em&gt; it knows what the fieldset legend should be &lt;em&gt;and&lt;/em&gt; it knows whether the save button should be enabled or not.&lt;/p&gt;
-
-&lt;p&gt;This arrangement can take you a long way, I think. But there are a couple of things that I take issue with -&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;I want to be able to easily unit test logic in my application and, while the React library goes a long way to taming the DOM, testing UI components will never be as easy as testing &quot;pure&quot; JavaScript (well, pure C# with Bridge, that will &lt;em&gt;become&lt;/em&gt; pure JavaScript) - consequently, I want to be able to extract as much logic out of the UI components as possible&lt;/li&gt;
-&lt;li&gt;If any more event sources are added to the application, then dealing with these events becomes awkward - another &quot;event source&quot; may, for example, be something in the persistence layer that polls for new data from other users (which might not be uncommon since we&#39;re creating web applications and these are commonly expected to be multi-user, so it&#39;s beneficial to be able to reflect changes made by other users)&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;We can refine this arrangement a little by introducing an intermediary for events to pass through and by pulling out the logic that exists within components (such as the validation within the &lt;strong&gt;MessageEditor&lt;/strong&gt; and the when-a-save-happens-then-.. logic in the &lt;strong&gt;AppContainer&lt;/strong&gt;).&lt;/p&gt;
-
-&lt;h3&gt;From up-and-down to round-and-round&lt;/h3&gt;
-
-&lt;p&gt;Rather than talk about how some applications could theoretically benefit from a change to the architecture, I want to do it with a demonstration.&lt;/p&gt;
-
-&lt;p&gt;I&#39;m going to change the &lt;strong&gt;MessageApi&lt;/strong&gt; so that, after a short delay, new messages start appearing in its internal list. The &quot;SaveMessage&quot; and &quot;GetMessages&quot; methods are unchanged, it&#39;s just that there&#39;s a background process going on as well. To keep things interesting, I&#39;m going to source these message from the &lt;a href=&quot;http://www.icndb.com/api/&quot;&gt;The Internet Chuck Norris Database API&lt;/a&gt; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Bridge;
-using Bridge.Html5;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.API
-{
-  public class MessageApi : IReadAndWriteMessages
-  {
-    private readonly List&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; _messages;
-    public MessageApi()
-    {
-      _messages = new List&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;();
-
-      // To further mimic a server-based API (where other people may be recording messages
-      // of their own), after a 10s delay a periodic task will be executed to retrieve a
-      // new message
-      Window.SetTimeout(
-        () =&amp;gt; Window.SetInterval(GetChuckNorrisFact, 5000),
-        10000
-      );
-    }
-
-    public Task SaveMessage(MessageDetails message)
-    {
-      if (message == null)
-        throw new ArgumentNullException(&quot;message&quot;);
-      if (string.IsNullOrWhiteSpace(message.Title))
-        throw new ArgumentException(&quot;A title value must be provided&quot;);
-      if (string.IsNullOrWhiteSpace(message.Content))
-        throw new ArgumentException(&quot;A content value must be provided&quot;);
-
-      var task = new Task&amp;lt;object&amp;gt;(null);
-      Window.SetTimeout(
-        () =&amp;gt;
-        {
-          _messages.Add(Tuple.Create(_messages.Count, message));
-          task.Complete();
-        },
-        1000 // Simulate a roundtrip to the server
-      );
-      return task;
-    }
-
-    public Task&amp;lt;IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;&amp;gt; GetMessages()
-    {
-      // ToArray is used to return a clone of the message set - otherwise, the caller would
-      // end up with a list that is updated when the internal reference within this class
-      // is updated (which sounds convenient but it&#39;s not the behaviour that would be
-      // exhibited if this was really persisting messages to a server somewhere)
-      var task = new Task&amp;lt;IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;&amp;gt;(null);
-      Window.SetTimeout(
-        () =&amp;gt; task.Complete(_messages.ToArray()),
-        1000 // Simulate a roundtrip to the server
-      );
-      return task;
-    }
-
-    private void GetChuckNorrisFact()
-    {
-      var request = new XMLHttpRequest();
-      request.ResponseType = XMLHttpRequestResponseType.Json;
-      request.OnReadyStateChange = () =&amp;gt;
-      {
-        if (request.ReadyState != AjaxReadyState.Done)
-          return;
-
-        if ((request.Status == 200) || (request.Status == 304))
-        {
-          try
-          {
-            var apiResponse = (ChuckNorrisFactApiResponse)request.Response;
-            if ((apiResponse.Type == &quot;success&quot;)
-            &amp;amp;&amp;amp; (apiResponse.Value != null)
-            &amp;amp;&amp;amp; !string.IsNullOrWhiteSpace(apiResponse.Value.Joke))
-            {
-              // The Chuck Norris Facts API (http://www.icndb.com/api/) returns strings
-              // html-encoded, so they need decoding before be wrapped up in a
-              // MessageDetails instance
-              SaveMessage(new MessageDetails
-              {
-                Title = &quot;Fact&quot;,
-                Content = HtmlDecode(apiResponse.Value.Joke)
-              });
-              return;
-            }
-          }
-          catch
-          {
-            // Ignore any error and drop through to the fallback message-generator below
-          }
-        }
-        SaveMessage(new MessageDetails
-        {
-          Title = &quot;Fact&quot;,
-          Content = &quot;API call failed when polling for server content :(&quot;
-        });
-      };
-      request.Open(&quot;GET&quot;, &quot;http://api.icndb.com/jokes/random&quot;);
-      request.Send();
-    }
-
-    private string HtmlDecode(string value)
-    {
-      if (value == null)
-        throw new ArgumentNullException(&quot;value&quot;);
-
-      var wrapper = Document.CreateElement(&quot;div&quot;);
-      wrapper.InnerHTML = value;
-      return wrapper.TextContent;
-    }
-
-    [IgnoreCast]
-    private class ChuckNorrisFactApiResponse
-    {
-      public extern string Type { [Template(&quot;type&quot;)] get; }
-      public extern FactDetails Value { [Template(&quot;value&quot;)] get; }
-
-      [IgnoreCast]
-      public class FactDetails
-      {
-        public extern int Id { [Template(&quot;id&quot;)] get; }
-        public extern string Joke { [Template(&quot;joke&quot;)]get; }
-      }
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;em&gt;The Chuck-Norris-fact-retrieval code could be made shortener by casting the &quot;apiResponse&quot; reference to &lt;strong&gt;dynamic&lt;/strong&gt;, but I thought that it would a nice opportunity to show how you can call a JSON-returning API with Bridge and then access the data through a known object model (which is why I created a &lt;strong&gt;ChuckNorrisFactApiResponse&lt;/strong&gt; class to use instead).&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;Without any other changes to the code we have so far, this works.. in a manner of speaking. Any time you save a message of your own, the read action that follows the save will pull back &lt;em&gt;all&lt;/em&gt; of the messages from the &lt;strong&gt;MessageApi&lt;/strong&gt;&#39;s in-memory set. So, when a read is explicitly initiated, all of the most recent data will come back.&lt;/p&gt;
-
-&lt;p&gt;But it would be nice if the new messages could appear in the &lt;strong&gt;MessageHistory&lt;/strong&gt; even without you, as the user, saving your own messages. They could appear in the history even as you are in the process of writing your own content.&lt;/p&gt;
-
-&lt;p&gt;One way to do this would be to have the &lt;strong&gt;MessageApi&lt;/strong&gt; raise an event whenever its message history data changes. Then, the &lt;strong&gt;AppContainer&lt;/strong&gt; would listen for events from its &lt;strong&gt;MessageApi&lt;/strong&gt; reference (which it has in its props, since props on a stateful component are used to provide references to the &quot;external environment&quot;) as well as listening to events from the components that it renders.&lt;/p&gt;
-
-&lt;p&gt;On the one hand, this would actually make the save logic cleaner - the OnSave handler that the &lt;strong&gt;AppContainer&lt;/strong&gt; passes to the &lt;strong&gt;MessageEditor&lt;/strong&gt; in its props would only have to disable the form during the save and clear / re-enable it after the save, it &lt;em&gt;wouldn&#39;t&lt;/em&gt; have to then request updated message data from the &lt;strong&gt;MessageApi&lt;/strong&gt;, since it would know that the &lt;strong&gt;MessageApi&lt;/strong&gt; would raise its own event when it had accepted the newly-saved message. &lt;/p&gt;
-
-&lt;p&gt;But, on the other hand, dealing with more event sources means that more logic is required in the &lt;strong&gt;AppContainer&lt;/strong&gt; (which I want to move away from) and we no longer have the simple rendering-goes-down-the-tree and events-come-up-the-tree, now we have rendering-goes-down-the-tree and events-come-up-the-tree &lt;em&gt;and&lt;/em&gt; events-come-from-some-other-places-too.&lt;/p&gt;
-
-&lt;p&gt;So I&#39;m going to look at an alternative..&lt;/p&gt;
-
-&lt;h4&gt;Extracting UI logic&lt;/h4&gt;
-
-&lt;p&gt;Instead of the &lt;strong&gt;AppContainer&lt;/strong&gt; potentially having to deal with multiple event sources and working out how events may or may not change its state, I&#39;m going to pull that handling of UI state into another class entirely; somewhere to &lt;em&gt;store&lt;/em&gt; this state, that will act as a single (and very simple) event source for &lt;strong&gt;AppContainer&lt;/strong&gt;. This store will have a single event that the &lt;strong&gt;AppContainer&lt;/strong&gt; will subscribe to; an argument-less &quot;OnChange&quot; event. When the &lt;strong&gt;AppContainer&lt;/strong&gt; receives an &quot;OnChange&quot; event from the store, it will access data that the store makes available in order to update its own state reference and thus trigger a re-render.&lt;/p&gt;
-
-&lt;p&gt;Since events will be handled by this store, whenever an event from the component tree is passed up to the &lt;strong&gt;AppContainer&lt;/strong&gt;, the &lt;strong&gt;AppContainer&lt;/strong&gt; needs to pass it along to the store (instead of trying to process the event itself). So the &lt;strong&gt;AppContainer&lt;/strong&gt; could act like an event source for this new store class. And, since the store class will be dealing with processing events (such as &quot;user has requested a new message be saved&quot;), it will also have to deal with the &lt;strong&gt;MessageApi&lt;/strong&gt; being an event source.&lt;/p&gt;
-
-&lt;p&gt;This is a good illustration of separation of concerns - the &lt;strong&gt;AppContainer&lt;/strong&gt; used to be responsible for rendering the component tree &lt;em&gt;and&lt;/em&gt; dealing with handling events (which is where the real complexity of an application lies). With this new plan, the &lt;strong&gt;AppContainer&lt;/strong&gt; will only deal with re-rendering and the event processing is dealt with by &quot;pure&quot; (ie. non-UI-related) C# code. However, we could &lt;em&gt;still&lt;/em&gt; make the &quot;multiple event source&quot; issue a little cleaner. The store in this example will only have two event sources (the &lt;strong&gt;AppContainer&lt;/strong&gt; - from user interactions - and the &lt;strong&gt;MessageApi&lt;/strong&gt; - from new Chuck Norris facts arriving), but a more complex application could result in many event sources being required.&lt;/p&gt;
-
-&lt;p&gt;And, sometimes, a particular store might not even want access to the full event source reference; if our store was &lt;em&gt;only&lt;/em&gt; going to be used for dealing with data for a form that edits an existing message (and doesn&#39;t want to show a message history anywhere), then it wouldn&#39;t need a full &lt;strong&gt;MessageApi&lt;/strong&gt; reference - it just needs to be able to read one message in particular to edit, be able to request a change to that message be saved and then know when that save request had been processed. For this store to say that it requires a full &lt;strong&gt;MessageApi&lt;/strong&gt; would be an exaggeration - it would be claiming that it had a greater dependency than it really does.&lt;/p&gt;
-
-&lt;p&gt;It makes sense to have one &quot;UI store&quot; per page of your application, so if we were to extend this example such that the main page allowed you to record new messages and see the message history and we added a way to edit a particular message on a different screen, then we might have two stores and two top-level components and a router to handle navigation from one to the other. I don&#39;t want to jump too far ahead here, I just mean to point out that different stores may rely upon different event sources and rely on different abilities of those event sources.&lt;/p&gt;
-
-&lt;h4&gt;The message bus&lt;/h4&gt;
-
-&lt;p&gt;So the next change that I&#39;m going to propose is to decouple event sources from the store by having all events broadcast as messages. These are sent to some sort of message bus, which then passes them on to any interested parties. This would mean that the &lt;strong&gt;AppContainer&lt;/strong&gt; would send a message to the bus whenever the user has interacted with the UI (whether this be an edit to a field or a request to save). When &quot;SaveMessage&quot; is called on the &lt;strong&gt;MessageApi&lt;/strong&gt; then it will no longer return a &lt;strong&gt;Task&lt;/strong&gt;, instead a message will be passed to the bus when the save has completed. When a new Chuck Norris fact is received by the &lt;strong&gt;MessageApi&lt;/strong&gt;, it will send a message to the bus to say that new message data is available.&lt;/p&gt;
-
-&lt;p&gt;This would mean that the store class will only have a single &quot;event source&quot;, which is this message bus. It will subscribe to this bus, and whenever a message is dispatched that the store is interested in then it will deal with it accordingly. If a store were to receive a message that it &lt;em&gt;wasn&#39;t&lt;/em&gt; interested in, then it would just ignore it.&lt;/p&gt;
-
-&lt;p&gt;Introducing a message bus like this is a common technique to decouple areas of a system and it is another approach that makes unit testing easier later on - since the store class(es) are where the complicated event-handling logic lives, this is the code that needs the most testing. With this proposed arrangement, to test a store&#39;s logic you need only to new one up, pass it a message bus reference used solely within the current unit test, push particular messages through the bus and then verify that the store raises its OnChange event after messages when you expect it to and that the data that the store makes public is what you expect at these times. This allows all of the complicated logic to be tested with zero UI components involved and reduces the times when mocks are required since so much of the communication with the store is done via messages. (In order to test the &quot;Save&quot; functionality in our example app, a mock &lt;strong&gt;IReadAndWriteMessages&lt;/strong&gt; &lt;em&gt;would&lt;/em&gt; be required by our &lt;strong&gt;MessageWriterStore&lt;/strong&gt;, however, so that it could call &quot;SaveMessage&quot; on something that doesn&#39;t actually persist data - and so that the unit test could confirm that &quot;SaveMessage&quot; was called with the expected data).&lt;/p&gt;
-
-&lt;p&gt;To summarise all of the above, we will move away slightly from the paths of communication being rendering-goes-down-the-tree and events-come-up-the-tree. Before, these paths were a continuous chain because events came up the tree and were processed and the re-render immediately went back down the tree again. Now we have rendering-goes-down-the-tree and events-come-up-the-tree but then nothing seems to happen immediately, instead the top-level component sends off a message and does nothing more.. until the store receives that message, processes it as an event (and applies any complicated logic) and then raises its OnChange event, which the top-level component receives and triggers a re-render.&lt;/p&gt;
-
-&lt;p&gt;I must admit, that sounds &lt;em&gt;more&lt;/em&gt; complicated! But don&#39;t lose sight of the fact that we will side-step the complexities that multiple event sources can introduce &lt;em&gt;and&lt;/em&gt; we will separate logic from UI, making the code more testable &lt;em&gt;and&lt;/em&gt; making each part of it easier to reason about and thus easier to maintain and extend in the future.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;(Note: This approach brings us much closer to treating everything as &quot;asynchronous by default&quot; - even UI changes now are implemented in a fire-and-forget manner; the top-level component sends out a message when the UI should be updated and then does nothing until it&#39;s informed by the store that it should update. While it initially feels strange to not expect to &quot;immediately&quot; update UI components in a synchronous manner, the advantage to async being the norm is that it&#39;s common for async code to be a bit scary in otherwise synchronous code - but here it&#39;s all the same, and not scary at all. It&#39;s also worth noting that we weren&#39;t truly updating in a synchronous manner before, since React&#39;s SetState method actually operates asynchronously - this allows React to batch updates if many occur in succession, potentially further reducing the number of times that the browser DOM actually needs to be interacted with; clever stuff!)&lt;/em&gt;&lt;/p&gt;
-
-&lt;h3&gt;The new architecture&lt;/h3&gt;
-
-&lt;p&gt;I must admit, at this point, that I can&#39;t take any credit for the above ideas. What I&#39;ve outlined is referred to as the &lt;a href=&quot;https://facebook.github.io/flux/docs/overview.html#content&quot;&gt;Flux Architecture&lt;/a&gt; (since different people have extracted their own variations on the concept, it might be safer to describe it as a Flux-like architecture, but let&#39;s not split hairs).&lt;/p&gt;
-
-&lt;p&gt;Below is the classic Flux diagram -&lt;/p&gt;
-
-&lt;p&gt;&lt;img alt=&quot;The proposed example app&quot; src=&quot;http://localhost:4252/Content/Images/Posts/FluxDiagramSimple.png&quot; class=&quot;AlwaysFullWidth&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;The message bus is referred to as the &quot;Dispatcher&quot;, messages are known as &quot;Actions&quot;. The &quot;View&quot; is the React component tree (the &lt;strong&gt;AppContainer&lt;/strong&gt; listens for the &quot;OnChange&quot; event from the Store and re-renders when it receives it). Note that actions come not just from the View but also from outside the cycle; in our case we have messages coming from the &lt;strong&gt;MessageApi&lt;/strong&gt; when new Chuck Norris facts arrive. In an application with routing, there would be actions from the router when the URL changes.&lt;/p&gt;
-
-&lt;p&gt;So... what&#39;s required to get from the current architecture that the example application has to a Flux-like one?&lt;/p&gt;
-
-&lt;p&gt;Let&#39;s start with the Dispatcher and the messages that flow through it. The first good news is that the Bridge React bindings include a Dispatcher implementation; the &lt;strong&gt;AppDispatcher&lt;/strong&gt;. This has three methods:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;void Register(Action&amp;lt;DispatcherMessage&amp;gt; callback);
-void HandleViewAction(IDispatcherAction action);
-void HandleServerAction(IDispatcherAction action);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The &lt;strong&gt;DispatcherMessage&lt;/strong&gt; is a class with two properties; a &quot;Source&quot; (either &quot;Server&quot; or &quot;View&quot;) and &quot;Action&quot;. In some scenarios it may be useful to know if an action has originated from the server (such as new data arriving via the API) or from the view. To be honest, I haven&#39;t found it to be very important very often, but you might theoretically bypass some complicated validation if you know that data has come from the server rather than the user - frankly, I think that this sort of information is better expressed through a rich object model (which I&#39;ll be talking about in part three) and so the most compelling reason for actions being identified as from-Server or from-User is that it&#39;s consistent with other Flux implementations out there. The &lt;strong&gt;IDispatcherAction&lt;/strong&gt; interface is empty and is only used as a marker, to identify classes as being intended for use as a Dispatcher action.&lt;/p&gt;
-
-&lt;p&gt;When writing in JavaScript, actions tend to be simple objects with a &quot;type&quot; or &quot;actionType&quot; property that identifies what sort of action it is. It will then have further properties, depending upon what action it needs to describe. I&#39;ve taken the below example from an article (that wasn&#39;t written by me); &lt;a href=&quot;http://spapas.github.io/2015/09/08/more-complex-react-flux-example/&quot;&gt;A (little more) complex react and flux example&lt;/a&gt; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;AppDispatcher.dispatch({
-  actionType: BookConstants.MESSAGE_ADD,
-  message: {
-    color: &#39;green&#39;,
-    text: msg
-  }
-});
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;However, we&#39;re writing in C# and we&#39;re going to take advantage of that! Our actions will be distinct types. When the store listens out messages, it won&#39;t compare an &quot;actionType&quot; string to work out what a particular action represents, instead we&#39;ll perform type comparisons and, when we find an action that we&#39;re interested in, we&#39;ll cast the current action to the matched type and then access its data in a type-safe manner.&lt;/p&gt;
-
-&lt;p&gt;Create a new folder in the project from &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Part One&lt;/a&gt; called &quot;Actions&quot;. The simplest action to begin with is the action that would be raised by the &lt;strong&gt;AppContainer&lt;/strong&gt; when the user has clicked the Save button -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class MessageSaveRequested : IDispatcherAction
-  {
-    public MessageDetails Message;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Previously, the &lt;strong&gt;AppContainer&lt;/strong&gt;&#39;s Render method contained logic about dealing with save requests -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;OnSave = async () =&amp;gt;
-{
-  // Set SaveInProgress to true while the save operation is requested
-  SetState(new State {
-    Message = state.Message,
-    IsSaveInProgress = true,
-    MessageHistory = state.MessageHistory
-  });
-  await props.MessageApi.SaveMessage(state.Message);
-
-  // After the save has completed, clear the message entry form and reset
-  // SaveInProgress to false
-  SetState(new State {
-    Message = new MessageDetails { Title = &quot;&quot;, Content = &quot;&quot; },
-    IsSaveInProgress = false,
-    MessageHistory = state.MessageHistory
-  });
-
-  // Then re-load the message history state and re-render when that data arrives
-  var allMessages = await props.MessageApi.GetMessages();
-  SetState(new State {
-    Message = state.Message,
-    IsSaveInProgress = state.IsSaveInProgress,
-    MessageHistory = allMessages
-  });
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;But, if all that it needs to do when a save-request bubbles up to it is send an appropriate action through the Dispatcher, then it becomes much simpler -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;OnSave = () =&amp;gt; props.Dispatcher.HandleViewAction(
-   new MessageSaveRequested { Message = state.Message }
-)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;I&#39;ve only shown the change to the &quot;OnSave&quot; property, rather than show the change within the context of the complete &lt;strong&gt;AppContainer&lt;/strong&gt; class because there are other things I want to rearrange at this point. Firstly, the &lt;strong&gt;MessageEditor&lt;/strong&gt; &quot;OnChange&quot; handler also needs to be altered - as I described above, when a user interaction is expected to require a re-render, this will &lt;em&gt;not&lt;/em&gt; result in SetState being called immediately. Instead, an action will be sent to the Dispatcher. We need to define this action, so create another class in the &quot;Actions&quot; folder -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class MessageEditStateChanged : IDispatcherAction
-  {
-    public MessageEditState NewState;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The other change is in the format of the data that is passed to the &lt;strong&gt;MessageEditor&lt;/strong&gt;. Before, separate &quot;Title&quot;, &quot;Content&quot; and &quot;Disabled&quot; values were passed to it and the component would do three things with that information -&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;It would populate the &quot;Title&quot; and &quot;Content&quot; text inputs with the provided values&lt;/li&gt;
-&lt;li&gt;If the &quot;Title&quot; string was populated then this value would be used to set the fieldset legend text, otherwise the legend would show &quot;Untitled&quot;&lt;/li&gt;
-&lt;li&gt;Validation messages would be displayed for &quot;Title&quot; and &quot;Content&quot; if one or both of the values was blank&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;These second and third things are precisely the sort of logic that should be extracted out into the store. Consequently, the &lt;strong&gt;MessageEditor&lt;/strong&gt; will be changed so that it no longer takes these individual values and, instead, takes a &lt;strong&gt;MessageEditState&lt;/strong&gt; that has a &quot;Caption&quot; string  (for the legend text), &quot;Title&quot; and &quot;Content&quot; strings and validation messages for these user-entered strings. The &quot;Disabled&quot; property will replaced with &quot;IsSaveInProgress&quot; - if this is true then none of the form elements (the text inputs or the save button) should be enabled. If a save is &lt;em&gt;not&lt;/em&gt; in progress, then the text inputs should be enabled but the save button should only be enabled if neither validation message has any content. That is arguably more logic that could be extracted, but I think that this approach will strike a good balance - keeping the component &quot;dumb&quot; without having to spell out every little thing to the nth degree. Add two new files to the &quot;ViewModels&quot; folder to define the following classes -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;namespace BridgeReactTutorial.ViewModels
-{
-  public class MessageEditState
-  {
-    public string Caption;
-    public TextEditState Title;
-    public TextEditState Content;
-    public bool IsSaveInProgress;
-  }
-}
-
-namespace BridgeReactTutorial.ViewModels
-{
-  public class TextEditState
-  {
-    public string Text;
-    public string ValidationError;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now the &lt;strong&gt;MessageEditor&lt;/strong&gt; may be rewritten to the following (note that after this change, the project isn&#39;t going to compile any more - there are a bunch of other alterations that will be required until everything builds again, all of which will be covered below):&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Components
-{
-  public class MessageEditor : StatelessComponent&amp;lt;MessageEditor.Props&amp;gt;
-  {
-    public MessageEditor(Props props) : base(props) { }
-
-    public override ReactElement Render()
-    {
-      var formIsInvalid =
-        !string.IsNullOrWhiteSpace(props.Message.Title.ValidationError) ||
-        !string.IsNullOrWhiteSpace(props.Message.Content.ValidationError);
-
-      return DOM.FieldSet(new FieldSetAttributes { ClassName = props.ClassName },
-        DOM.Legend(null, props.Message.Caption),
-        DOM.Span(new Attributes { ClassName = &quot;label&quot; }, &quot;Title&quot;),
-        new ValidatedTextInput(new ValidatedTextInput.Props
-        {
-          ClassName = &quot;title&quot;,
-          Disabled = props.Message.IsSaveInProgress,
-          Content = props.Message.Title.Text,
-          OnChange = newTitle =&amp;gt; props.OnChange(new MessageEditState
-          {
-            Title = new TextEditState { Text = newTitle },
-            Content = props.Message.Content
-          }),
-          ValidationMessage = props.Message.Title.ValidationError
-        }),
-        DOM.Span(new Attributes { ClassName = &quot;label&quot; }, &quot;Content&quot;),
-        new ValidatedTextInput(new ValidatedTextInput.Props
-        {
-          ClassName = &quot;content&quot;,
-          Disabled = props.Message.IsSaveInProgress,
-          Content = props.Message.Content.Text,
-          OnChange = newContent =&amp;gt; props.OnChange(new MessageEditState
-          {
-            Title = props.Message.Title,
-            Content = new TextEditState { Text = newContent },
-          }),
-          ValidationMessage = props.Message.Content.ValidationError
-        }),
-        DOM.Button(
-          new ButtonAttributes
-          {
-            Disabled = formIsInvalid || props.Message.IsSaveInProgress,
-            OnClick = e =&amp;gt; props.OnSave()
-          },
-          &quot;Save&quot;
-        )
-      );
-    }
-
-    public class Props
-    {
-      public string ClassName;
-      public MessageEditState Message;
-      public Action&amp;lt;MessageEditState&amp;gt; OnChange;
-      public Action OnSave;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now the &lt;strong&gt;AppContainer&lt;/strong&gt; becomes &lt;em&gt;much&lt;/em&gt; simpler -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using Bridge.React;
-using BridgeReactTutorial.Actions;
-using BridgeReactTutorial.ViewModels;
-using BridgeReactTutorial.Stores;
-
-namespace BridgeReactTutorial.Components
-{
-  public class AppContainer : Component&amp;lt;AppContainer.Props, AppContainer.State&amp;gt;
-  {
-    public AppContainer(AppContainer.Props props) : base(props) { }
-
-    protected override void ComponentDidMount()
-    {
-      props.Store.Change += StoreChanged;
-    }
-    protected override void ComponentWillUnmount()
-    {
-      props.Store.Change -= StoreChanged;
-    }
-    private void StoreChanged()
-    {
-      SetState(new State
-      {
-        Message = props.Store.Message,
-        MessageHistory = props.Store.MessageHistory
-      });
-    }
-
-    public override ReactElement Render()
-    {
-      if (state == null)
-        return null;
-
-      return DOM.Div(null,
-        new MessageEditor(new MessageEditor.Props
-        {
-          ClassName = &quot;message&quot;,
-          Message = state.Message,
-          OnChange = newState =&amp;gt; props.Dispatcher.HandleViewAction(
-            new MessageEditStateChanged { NewState = newState }
-          ),
-          OnSave = () =&amp;gt; props.Dispatcher.HandleViewAction(
-            new MessageSaveRequested
-            {
-              Message = new MessageDetails
-              {
-                Title = state.Message.Title.Text,
-                Content = state.Message.Content.Text
-              }
-            }
-          )
-        }),
-        new MessageHistory(new MessageHistory.Props
-        {
-          ClassName = &quot;history&quot;,
-          Messages = state.MessageHistory
-        })
-      );
-    }
-
-    public class Props
-    {
-      public AppDispatcher Dispatcher;
-      public MessageWriterStore Store;
-    }
-
-    public class State
-    {
-      public MessageEditState Message;
-      public IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; MessageHistory;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;It is now almost devoid of logic, it only exists to listen to changes from the store (which we&#39;ll define in a moment), to render components and to direct events that are passed up from these components to the Dispatcher. Note that it no longer has any dependency upon the &lt;strong&gt;MessageApi&lt;/strong&gt;.&lt;/p&gt;
-
-&lt;p&gt;A couple of things to note - the Dispatcher and Store are both passed to the component through its props, but when the Store raises a Change event the &lt;strong&gt;AppContainer&lt;/strong&gt; copies data references from the Store into its own state, meaning that &lt;em&gt;all&lt;/em&gt; of the information that the &lt;strong&gt;AppContainer&lt;/strong&gt; requires to render itself is contained within its state. This follows the &quot;Guidelines for Stateful Components&quot; that I wrote &lt;a href=&quot;http://localhost:4252/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;last time&lt;/a&gt; -&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;A stateful component&#39;s &quot;props&quot; data should &lt;em&gt;only&lt;/em&gt; consist of references to external dependencies&lt;/li&gt;
-&lt;li&gt;A stateful component&#39;s &quot;state&quot; data should include &lt;em&gt;everything&lt;/em&gt; required to render the component tree, though the props may be required to deal with child components&#39; events&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;The &lt;strong&gt;AppContainer&lt;/strong&gt; now uses some React component life cycle methods that it wasn&#39;t before - &quot;ComponentDidMount&quot; and &quot;ComponentWillUnmount&quot; - to ensure that the handler attached to the Store&#39;s Change event is correctly removed when no longer required. In our example application, the &lt;strong&gt;AppContainer&lt;/strong&gt; is never &quot;unmounted&quot; but in a more complicated application then the top-level components may be changed based upon how the user navigates through the application. (A component is &quot;mounted&quot; when it&#39;s being added to the component tree and &quot;unmounted&quot; when it&#39;s being removed - in an application with a router, the current top-level component may be changed based upon the current route, in which case there would be top-level components being mounted and unmounted as the route changes and it is important that any event handlers that they attached be detached when they&#39;re not needed).&lt;/p&gt;
-
-&lt;p&gt;One final thing to note before moving on to the Store implementation is that there is no longer a &quot;GetInitialState&quot; implementation in the &lt;strong&gt;AppContainer&lt;/strong&gt; and the &quot;Render&quot; method will return null if state doesn&#39;t yet have a value. &quot;GetInitialState&quot; was &lt;em&gt;another&lt;/em&gt; example of logic that is better placed outside of the component classes - now the &lt;strong&gt;AppContainer&lt;/strong&gt; is not responsible for having to know what its initial state should be, it just renders &lt;em&gt;nothing&lt;/em&gt; until the Store has raised a Change request that tells the &lt;strong&gt;AppContainer&lt;/strong&gt; what to display.&lt;/p&gt;
-
-&lt;p&gt;The child components are &quot;dumb&quot; as all they have to do is render according to the props data that they are provided with and now the top-level stateful component is similarly &quot;dumb&quot; as all it does is listen to the Store and pass the information down to dumb stateless components - and then listen for events from the child components, in order to pass the information on to the Dispatcher.&lt;/p&gt;
-
-&lt;p&gt;We&#39;re almost ready to talk about how to create the Store now, but first we need to adapt the &lt;strong&gt;MessageApi&lt;/strong&gt; to work with the Dispatcher, rather than with &lt;strong&gt;Task&lt;/strong&gt;s.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using Bridge;
-using Bridge.Html5;
-using Bridge.React;
-using BridgeReactTutorial.Actions;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.API
-{
-  public class MessageApi : IReadAndWriteMessages
-  {
-    private readonly AppDispatcher _dispatcher;
-    private readonly List&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; _messages;
-    public MessageApi(AppDispatcher dispatcher)
-    {
-      if (dispatcher == null)
-        throw new ArgumentException(&quot;dispatcher&quot;);
-
-      _dispatcher = dispatcher;
-      _messages = new List&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;();
-
-      // To further mimic a server-based API (where other people may be recording messages
-      // of their own), after a 10s delay a periodic task will be executed to retrieve a
-      // new message
-      Window.SetTimeout(
-        () =&amp;gt; Window.SetInterval(GetChuckNorrisFact, 5000),
-        10000
-      );
-    }
-
-    public RequestId SaveMessage(MessageDetails message)
-    {
-      return SaveMessage(message, optionalSaveCompletedCallback: null);
-    }
-
-    private RequestId SaveMessage(
-      MessageDetails message,
-      Action optionalSaveCompletedCallback)
-    {
-      if (message == null)
-        throw new ArgumentNullException(&quot;message&quot;);
-      if (string.IsNullOrWhiteSpace(message.Title))
-        throw new ArgumentException(&quot;A title value must be provided&quot;);
-      if (string.IsNullOrWhiteSpace(message.Content))
-        throw new ArgumentException(&quot;A content value must be provided&quot;);
-
-      var requestId = new RequestId();
-      Window.SetTimeout(
-        () =&amp;gt;
-        {
-          _messages.Add(Tuple.Create(_messages.Count, message));
-          _dispatcher.HandleServerAction(
-            new MessageSaveSucceeded { RequestId = requestId }
-          );
-          if (optionalSaveCompletedCallback != null)
-            optionalSaveCompletedCallback();
-        },
-        1000 // Simulate a roundtrip to the server
-      );
-      return requestId;
-    }
-
-    public RequestId GetMessages()
-    {
-      // ToArray is used to return a clone of the message set - otherwise, the caller would
-      // end up with a list that is updated when the internal reference within this class
-      // is updated (which sounds convenient but it&#39;s not the behaviour that would be
-      // exhibited if this was really persisting messages to a server somewhere)
-      var requestId = new RequestId();
-      Window.SetTimeout(
-        () =&amp;gt; _dispatcher.HandleServerAction(new MessageHistoryUpdated
-        {
-          RequestId = requestId,
-          Messages = _messages.ToArray()
-        }),
-        1000 // Simulate a roundtrip to the server
-      );
-      return requestId;
-    }
-
-    private void GetChuckNorrisFact()
-    {
-      var request = new XMLHttpRequest();
-      request.ResponseType = XMLHttpRequestResponseType.Json;
-      request.OnReadyStateChange = () =&amp;gt;
-      {
-        if (request.ReadyState != AjaxReadyState.Done)
-          return;
-
-        if ((request.Status == 200) || (request.Status == 304))
-        {
-          try
-          {
-            var apiResponse = (ChuckNorrisFactApiResponse)request.Response;
-            if ((apiResponse.Type == &quot;success&quot;)
-            &amp;amp;&amp;amp; (apiResponse.Value != null)
-            &amp;amp;&amp;amp; !string.IsNullOrWhiteSpace(apiResponse.Value.Joke))
-            {
-              // The Chuck Norris Facts API (http://www.icndb.com/api/) returns strings
-              // html-encoded, so they need decoding before be wrapped up in a
-              // MessageDetails instance
-              // - Note: After the save has been processed, GetMessages is called so
-              //   that a MessageHistoryUpdate action is dispatched
-              SaveMessage(
-                new MessageDetails
-                {
-                  Title = &quot;Fact&quot;,
-                  Content = HtmlDecode(apiResponse.Value.Joke)
-                },
-                () =&amp;gt; GetMessages()
-              );
-              return;
-            }
-          }
-          catch
-          {
-            // Ignore any error and drop through to the fallback message-generator below
-          }
-        }
-        SaveMessage(new MessageDetails
-        {
-          Title = &quot;Fact&quot;,
-          Content = &quot;API call failed when polling for server content :(&quot;
-        });
-      };
-      request.Open(&quot;GET&quot;, &quot;http://api.icndb.com/jokes/random&quot;);
-      request.Send();
-    }
-
-    private string HtmlDecode(string value)
-    {
-      if (value == null)
-        throw new ArgumentNullException(&quot;value&quot;);
-
-      var wrapper = Document.CreateElement(&quot;div&quot;);
-      wrapper.InnerHTML = value;
-      return wrapper.TextContent;
-    }
-
-    [IgnoreCast]
-    private class ChuckNorrisFactApiResponse
-    {
-      public extern string Type { [Template(&quot;type&quot;)] get; }
-      public extern FactDetails Value { [Template(&quot;value&quot;)] get; }
-
-      [IgnoreCast]
-      public class FactDetails
-      {
-        public extern int Id { [Template(&quot;id&quot;)] get; }
-        public extern string Joke { [Template(&quot;joke&quot;)]get; }
-      }
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This means that the &lt;strong&gt;IReadAndWriteMessages&lt;/strong&gt; interface no longer returns &lt;strong&gt;Task&lt;/strong&gt;s -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.API
-{
-  public interface IReadAndWriteMessages
-  {
-    RequestId SaveMessage(MessageDetails message);
-    RequestId GetMessages();
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Each of the two methods now return a &quot;&lt;strong&gt;RequestId&lt;/strong&gt;&quot;. This is a unique identifier that will be used to tie future actions back to specific calls to the &quot;GetMessages&quot; or &quot;SaveMessaage&quot; methods. When a user requests that a message be saved in our sample app, the &lt;strong&gt;AppContainer&lt;/strong&gt; sends a &lt;strong&gt;MessageSaveRequested&lt;/strong&gt; action through the Dispatcher. The store will receive this action from the Dispatcher and use the message data in it to call &quot;SaveMessage&quot;, which will give the Store a unique &lt;strong&gt;RequestId&lt;/strong&gt;. After the &lt;strong&gt;MessageApi&lt;/strong&gt; has completed the save, it will raise a &lt;strong&gt;MessageSaveSucceeded&lt;/strong&gt; action that has a &quot;RequestId&quot; value, the same &lt;strong&gt;RequestId&lt;/strong&gt; as &quot;SaveMessage&quot; returned. This is how the Store knows that the save which succeeded was, in fact, the save that it initiated. In the app here, there wouldn&#39;t be any doubt since there is only one place where a new message may be saved, but in a more complicated application it&#39;s feasible that there may be multiple components that could initiate a save and it would be important to be able to be able to trace any &quot;save succeeded&quot; notification back to where it came from.&lt;/p&gt;
-
-&lt;p&gt;The &lt;strong&gt;RequestId&lt;/strong&gt; has a nice feature in that two instances may be compared to determine which is most recent - this &lt;em&gt;could&lt;/em&gt; be applicable to an application like our example because, shortly, the message history will be updated after a user has created a new message &lt;em&gt;and&lt;/em&gt; it will be automatically updated when a new Chuck Norris fact appears. It&#39;s not too difficult to imagine that there could be a race condition that occurs when two &quot;new message history&quot; actions are received by the Store (one from the user-saves-message-and-then-fresh-history-is-automatically-retrieved-after-the-save-is-completed process and one from a new Chuck Norris fact arriving). In the real world, with unpredictable server and network times, it&#39;s possible for &quot;Server Call A&quot; to start before &quot;Server Call B&quot; but for &quot;Server Call A&quot; to finish &lt;em&gt;after&lt;/em&gt; &quot;Server Call B&quot; - in this case we &lt;em&gt;want&lt;/em&gt; the &quot;new message history&quot; from &quot;Server Call B&quot;, since it should be more recent, but the data from &quot;Server Call A&quot; arrives &lt;em&gt;after&lt;/em&gt; it and we need to know which result is freshest. If each action that relates to &quot;new data arrived from API&quot; has a &lt;strong&gt;RequestId&lt;/strong&gt; then we can compare the two values using the &quot;ComesAfter&quot; function, allow us to ignore the stale data.&lt;/p&gt;
-
-&lt;p&gt;The &lt;strong&gt;RequestId&lt;/strong&gt; implementation is fairly simple (add a new &quot;RequestId.cs&quot; file to the &quot;API&quot; folder and paste in the following) -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-
-namespace BridgeReactTutorial.API
-{
-  public class RequestId
-  {
-    private static DateTime _timeOfLastId = DateTime.MinValue;
-    private static int _offsetOfLastId = 0;
-
-    private readonly DateTime _requestTime;
-    private readonly int _requestOffset;
-    public RequestId()
-    {
-      _requestTime = DateTime.Now;
-      if (_timeOfLastId &amp;lt; _requestTime)
-      {
-        _offsetOfLastId = 0;
-        _timeOfLastId = _requestTime;
-      }
-      else
-        _offsetOfLastId++;
-      _requestOffset = _offsetOfLastId;
-    }
-
-    public bool ComesAfter(RequestId other)
-    {
-      if (other == null)
-        throw new ArgumentNullException(&quot;other&quot;);
-
-      if (_requestTime == other._requestTime)
-        return _requestOffset &amp;gt; other._requestOffset;
-      return (_requestTime &amp;gt; other._requestTime);
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In the new &lt;strong&gt;MessageApi&lt;/strong&gt; code above, two actions were referenced that haven&#39;t been defined yet, so add two more classes to the &quot;Actions&quot; folder for the following:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using Bridge.React;
-using BridgeReactTutorial.API;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class MessageHistoryUpdated : IDispatcherAction
-  {
-    public RequestId RequestId;
-    public IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; Messages;
-  }
-}
-
-using Bridge.React;
-using BridgeReactTutorial.API;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class MessageSaveSucceeded : IDispatcherAction
-  {
-    public RequestId RequestId;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;em&gt;(Note: A &lt;strong&gt;MessageHistoryUpdated&lt;/strong&gt; will be emitted after a &quot;GetMessages&quot; call is made but one will also be emitted every time that a new Chuck Norris fact arrives)&lt;/em&gt;.&lt;/p&gt;
-
-&lt;p&gt;While we&#39;re adding actions, we&#39;re going to need a &lt;strong&gt;StoreInitialised&lt;/strong&gt; action class (I&#39;ll talk about this more later on, for now just add the following class to the &quot;Actions&quot; folder):&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-using BridgeReactTutorial.API;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class StoreInitialised : IDispatcherAction
-  {
-    public object Store;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now, &lt;em&gt;finally&lt;/em&gt;, we can look at how to create a Store.&lt;/p&gt;
-
-&lt;p&gt;Create a new folder in the project root called &quot;Stores&quot; and add a new class file to it; &quot;MessageWriterStore.cs&quot; -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using Bridge.React;
-using BridgeReactTutorial.Actions;
-using BridgeReactTutorial.API;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Stores
-{
-  public class MessageWriterStore
-  {
-    private RequestId _saveActionRequestId, _lastDataUpdatedRequestId;
-    public MessageWriterStore(IReadAndWriteMessages messageApi, AppDispatcher dispatcher)
-    {
-      if (messageApi == null)
-        throw new ArgumentNullException(&quot;messageApi&quot;);
-      if (dispatcher == null)
-        throw new ArgumentNullException(&quot;dispatcher&quot;);
-
-      Message = GetInitialMessageEditState();
-      MessageHistory = new Tuple&amp;lt;int, MessageDetails&amp;gt;[0];
-
-      dispatcher.Register(message =&amp;gt;
-      {
-        if (message.Action is StoreInitialised)
-        {
-          var storeInitialised = (StoreInitialised)message.Action;
-          if (storeInitialised.Store == this)
-            OnChange();
-        }
-        else if (message.Action is MessageEditStateChanged)
-        {
-          var messageEditStateChanged = (MessageEditStateChanged)message.Action;
-          Message = messageEditStateChanged.NewState;
-          ValidateMessage(Message);
-          OnChange();
-        }
-        else if (message.Action is MessageSaveRequested)
-        {
-          var messageSaveRequested = (MessageSaveRequested)message.Action;
-          _saveActionRequestId = messageApi.SaveMessage(messageSaveRequested.Message);
-          Message.IsSaveInProgress = true;
-          OnChange();
-        }
-        else if (message.Action is MessageSaveSucceeded)
-        {
-          var messageSaveSucceeded = (MessageSaveSucceeded)message.Action;
-          if (messageSaveSucceeded.RequestId == _saveActionRequestId)
-          {
-            _saveActionRequestId = null;
-            Message = GetInitialMessageEditState();
-            OnChange();
-            _lastDataUpdatedRequestId = messageApi.GetMessages();
-          }
-        }
-        else if (message.Action is MessageHistoryUpdated)
-        {
-          var messageHistoryUpdated = (MessageHistoryUpdated)message.Action;
-          if ((_lastDataUpdatedRequestId == null)
-          || (_lastDataUpdatedRequestId == messageHistoryUpdated.RequestId)
-          || messageHistoryUpdated.RequestId.ComesAfter(_lastDataUpdatedRequestId))
-          {
-            _lastDataUpdatedRequestId = messageHistoryUpdated.RequestId;
-            MessageHistory = messageHistoryUpdated.Messages;
-            OnChange();
-          }
-        }
-      });
-    }
-
-    public event Action Change;
-    public MessageEditState Message;
-    public IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; MessageHistory;
-
-    private MessageEditState GetInitialMessageEditState()
-    {
-      // Note: By using the ValidateMessage here, we don&#39;t need to duplicate the &quot;Untitled&quot;
-      // string that should be used for the Caption value when the UI is first rendered
-      // or when the user has entered some Title content but then deleted it again.
-      // Similarly, we avoid having to repeat the validation messages that should be
-      // displayed when the form is empty, since they will be set by ValidateMessage.
-      var blankMessage = new MessageEditState
-      {
-        Caption = &quot;&quot;,
-        Title = new TextEditState { Text = &quot;&quot; },
-        Content = new TextEditState { Text = &quot;&quot; },
-        IsSaveInProgress = false
-      };
-      ValidateMessage(blankMessage);
-      return blankMessage;
-    }
-
-    private void ValidateMessage(MessageEditState message)
-    {
-      if (message == null)
-        throw new ArgumentNullException(&quot;message&quot;);
-
-      message.Caption = string.IsNullOrWhiteSpace(message.Title.Text)
-        ? &quot;Untitled&quot;
-        : message.Title.Text.Trim();
-      message.Title.ValidationError = string.IsNullOrWhiteSpace(message.Title.Text)
-        ? &quot;Must enter a title&quot;
-        : null;
-      message.Content.ValidationError = string.IsNullOrWhiteSpace(message.Content.Text)
-        ? &quot;Must enter message content&quot;
-        : null;
-    }
-
-    private void OnChange()
-    {
-      if (Change != null)
-        Change();
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;There&#39;s really nothing very complicated here at all. What I like is that all of the logic that was previously ensconced within component classes is now in a C# class which has zero UI-based dependencies. What I also like is how clear the logic is, it&#39;s very easy to read through how the various actions are matched and to see precisely what state changes will occur. In fact, the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; is just a simple state machine where each transition is based upon the action that it receives from the Dispatcher. It&#39;s reassuring that the Flux architecture is based upon these time-tested computer science devices; the message bus and &lt;a href=&quot;http://localhost:4252/c-sharp-state-machines&quot;&gt;state machine&lt;/a&gt; - while it might take a little while to internalise how to write applications based around this &quot;one-way binding&quot; / &quot;one-way message passing&quot; arrangement, once it clicks it feels very natural.&lt;/p&gt;
-
-&lt;p&gt;Having the core application logic in classes like this really helps ensure that code will have those two great properties that I will keep repeating through this series - that it&#39;s easy to reason about and that it&#39;s easy to test. It&#39;s easy to reason about as it&#39;s easy to see how user (and server) actions flow through the code, there are few surprises. It&#39;s easy to test because there are few dependencies - to test anything in the &lt;strong&gt;MessageWriterStore&lt;/strong&gt;, each unit test would need to provide an &lt;strong&gt;AppDispatcher&lt;/strong&gt; instance and a mock &lt;strong&gt;IReadAndWriteMessages&lt;/strong&gt; implementation, it would then push one or more messages through the Dispatcher and confirm that the public &lt;strong&gt;MessageWriterStore&lt;/strong&gt; state matches expectations at the end. For example, to test the &quot;Content&quot; text input validation, you would play back a &lt;strong&gt;MessageEditStateChanged&lt;/strong&gt; action with a blank &quot;Content&quot; string in the &lt;strong&gt;MessageEditState&lt;/strong&gt; and ensure that the expected validation message text was present in the &quot;Message&quot; reference of the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; afterwards.&lt;/p&gt;
-
-&lt;p&gt;There are a couple of minor things that I&#39;m not so keen about in the code above. Firstly, there&#39;s the laborious type-checking and casting that is required when matching the actions. Secondly, there&#39;s the duplication on calling &quot;OnChange&quot; whenever an action is matched. Thirdly, the logic around &lt;strong&gt;RequestId&lt;/strong&gt; comparison when a &lt;strong&gt;MessageHistoryUpdated&lt;/strong&gt; is matched is a bit clumsy.&lt;/p&gt;
-
-&lt;p&gt;For that third point, add a new file &quot;RequestIdExtensions.cs&quot; to the &quot;API&quot; folder with the following content -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-
-namespace BridgeReactTutorial.API
-{
-  public static class RequestIdExtensions
-  {
-    public static bool IsEqualToOrComesAfter(this RequestId source, RequestId other)
-    {
-      if (source == null)
-        throw new ArgumentNullException(&quot;source&quot;);
-
-      // If the &quot;other&quot; reference is no-RequestId then the &quot;source&quot; may be considered to
-      // come after it
-      if (other == null)
-        return true;
-
-      return (source == other) || source.ComesAfter(other);
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;And for the first two points, we can use some extension methods which are included in the Bridge / React bindings -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using Bridge.React;
-using BridgeReactTutorial.Actions;
-using BridgeReactTutorial.API;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Stores
-{
-  public class MessageWriterStore
-  {
-    private RequestId _saveActionRequestId, _lastDataUpdatedRequestId;
-    public MessageWriterStore(IReadAndWriteMessages messageApi, AppDispatcher dispatcher)
-    {
-      if (messageApi == null)
-        throw new ArgumentNullException(&quot;messageApi&quot;);
-      if (dispatcher == null)
-        throw new ArgumentNullException(&quot;dispatcher&quot;);
-
-      Message = GetInitialMessageEditState();
-      MessageHistory = new Tuple&amp;lt;int, MessageDetails&amp;gt;[0];
-
-      dispatcher.Register(message =&amp;gt;
-      {
-        message
-          .If&amp;lt;StoreInitialised&amp;gt;(
-            condition: action =&amp;gt; (action.Store == this),
-            work: action =&amp;gt; { }
-          )
-          .Else&amp;lt;MessageEditStateChanged&amp;gt;(action =&amp;gt;
-          {
-            Message = action.NewState;
-            ValidateMessage(Message);
-          })
-          .Else&amp;lt;MessageSaveRequested&amp;gt;(action =&amp;gt;
-          {
-            _saveActionRequestId = messageApi.SaveMessage(action.Message);
-            Message.IsSaveInProgress = true;
-          })
-          .Else&amp;lt;MessageSaveSucceeded&amp;gt;(
-            condition: action =&amp;gt; (action.RequestId == _saveActionRequestId),
-            work: action =&amp;gt;
-            {
-              _saveActionRequestId = null;
-              Message = GetInitialMessageEditState();
-              _lastDataUpdatedRequestId = messageApi.GetMessages();
-            }
-          )
-          .Else&amp;lt;MessageHistoryUpdated&amp;gt;(
-            condition: action =&amp;gt;
-              action.RequestId.IsEqualToOrComesAfter(_lastDataUpdatedRequestId),
-            work: action =&amp;gt;
-            {
-              _lastDataUpdatedRequestId = action.RequestId;
-              MessageHistory = action.Messages;
-            }
-          )
-          .IfAnyMatched(OnChange);
-      });
-    }
-
-    public event Action Change;
-    public MessageEditState Message;
-    public IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; MessageHistory;
-
-    private MessageEditState GetInitialMessageEditState()
-    {
-      // Note: By using the ValidateMessage here, we don&#39;t need to duplicate the &quot;Untitled&quot;
-      // string that should be used for the Caption value when the UI is first rendered
-      // or when the user has entered some Title content but then deleted it again.
-      // Similarly, we avoid having to repeat the validation messages that should be
-      // displayed when the form is empty, since they will be set by ValidateMessage.
-      var blankMessage = new MessageEditState
-      {
-        Caption = &quot;&quot;,
-        Title = new TextEditState { Text = &quot;&quot; },
-        Content = new TextEditState { Text = &quot;&quot; },
-        IsSaveInProgress = false
-      };
-      ValidateMessage(blankMessage);
-      return blankMessage;
-    }
-
-    private void ValidateMessage(MessageEditState message)
-    {
-      if (message == null)
-        throw new ArgumentNullException(&quot;message&quot;);
-
-      message.Caption = string.IsNullOrWhiteSpace(message.Title.Text)
-        ? &quot;Untitled&quot;
-        : message.Title.Text.Trim();
-      message.Title.ValidationError = string.IsNullOrWhiteSpace(message.Title.Text)
-        ? &quot;Must enter a title&quot;
-        : null;
-      message.Content.ValidationError = string.IsNullOrWhiteSpace(message.Content.Text)
-        ? &quot;Must enter message content&quot;
-        : null;
-    }
-
-    private void OnChange()
-    {
-      if (Change != null)
-        Change();
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Hopefully it&#39;s clear enough how they work. The &quot;If&quot; and the &quot;Else&quot; functions both have a generic type parameter for the kind of action to match and may be called with a single &quot;work&quot; argument (meaning &quot;do this if the action type is matched&quot;) or two arguments; &quot;condition&quot; and &quot;work&quot; (where &quot;condition&quot; looks at the action, typed to match the generic type parameter, and returns true or false depending upon whether the action should be considered or ignored). The &quot;condition&quot; argument is most clearly illustrated by the &lt;strong&gt;MessageHistoryUpdated&lt;/strong&gt;, it ensures that any stale &lt;strong&gt;MessageHistoryUpdated&lt;/strong&gt; action will be ignored. The &quot;work&quot; implementation for &lt;strong&gt;StoreInitialised&lt;/strong&gt; is empty because all that is required when a &lt;strong&gt;StoreInitialised&lt;/strong&gt; action is received (that targets the current store) is to call &quot;OnChange&quot; and the &quot;IfAnyMatched&quot; extension method calls &quot;OnChange&quot; if any of the actions are matched.&lt;/p&gt;
-
-&lt;p&gt;There&#39;s just one final thing to do now in order to make the application compile again, the entry point logic in App.cs needs updating -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System.Linq;
-using Bridge.Html5;
-using Bridge.React;
-using BridgeReactTutorial.Actions;
-using BridgeReactTutorial.API;
-using BridgeReactTutorial.Components;
-using BridgeReactTutorial.Stores;
-
-namespace BridgeReactTutorial
-{
-  public class App
-  {
-    [Ready]
-    public static void Go()
-    {
-      var container = Document.GetElementById(&quot;main&quot;);
-      container.ClassName = string.Join(
-        &quot; &quot;,
-        container.ClassName.Split().Where(c =&amp;gt; c != &quot;loading&quot;)
-      );
-
-      var dispatcher = new AppDispatcher();
-      var messageApi = new MessageApi(dispatcher);
-      var store = new MessageWriterStore(messageApi, dispatcher);
-      React.Render(
-        new AppContainer(new AppContainer.Props
-        {
-          Dispatcher = dispatcher,
-          Store = store
-        }),
-        container
-      );
-      dispatcher.HandleViewAction(new StoreInitialised { Store = store });
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Both the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; and the &lt;strong&gt;AppContainer&lt;/strong&gt; need a reference to a shared Dispatcher, &lt;strong&gt;MessageWriterStore&lt;/strong&gt; needs a Message API wrapper to talk to and the &lt;strong&gt;AppContainer&lt;/strong&gt; needs a reference to the Store. In a lot of the Flux articles that I read at first, the Dispatcher was a static reference that everything had access to - but I much prefer this arrangement, where the places that explicitly need it (ie. the Stores and the top-level components) have it passed in as a constructor argument or through props. This makes a class&#39; requirements much more explicit - if a class has implicit dependencies then it&#39;s more difficult to tell at a glance how it works. And &lt;em&gt;not&lt;/em&gt; having a static Dispatcher means that unit testing is simpler, since there is no implicit shared state between elements within an application.&lt;/p&gt;
-
-&lt;p&gt;The only part of this code that may not be very intuitive is the need to send a &lt;strong&gt;StoreInitialised&lt;/strong&gt; action to the Dispatcher immediately after setting up all of the references. This is required before the &lt;strong&gt;AppContainer&lt;/strong&gt; won&#39;t render anything until it processes its first &quot;Change&quot; event from the &lt;strong&gt;MessageWriterStore&lt;/strong&gt; (because, until that point, the &lt;strong&gt;AppContainer&lt;/strong&gt;&#39;s state reference will be null). When the Store receives the &lt;strong&gt;StoreInitialised&lt;/strong&gt; action, it will raise its &quot;Change&quot; event and the &lt;strong&gt;AppContainer&lt;/strong&gt; will perform its first &quot;real&quot; render. If this was an application with a routing element, with a Store per page / form, then it would seem natural for the router to raise a &lt;strong&gt;StoreInitialised&lt;/strong&gt; action for the Store that should be active for the current route (it is just a little odd-looking in a simple application like the example here unless you know why it is necessary).&lt;/p&gt;
-
-&lt;h3&gt;Lots of actions?&lt;/h3&gt;
-
-&lt;p&gt;With that, the change in architecture is complete. Hopefully it&#39;s easy to envisage how further functionality is enabled by adding further specialised components and communicating using different action types. Each action is handled in a very clear way in the Store(s) and so the overall complexity should (approximately) grow linearly with the &lt;a href=&quot;http://codebetter.com/markneedham/2010/03/18/essential-and-accidental-complexity/&quot;&gt;essential complexity&lt;/a&gt;, rather than exponentially (which is what tends to happens a lot with more haphazard architectures, or where you have the &quot;star-shaped event handling&quot; that I described earlier).&lt;/p&gt;
-
-&lt;p&gt;The only adjustment that I&#39;d like to make at this point is to the actions themselves - if there&#39;s a variation of the &lt;strong&gt;MessageEditStateChanged&lt;/strong&gt;, &lt;strong&gt;MessageSaveRequested&lt;/strong&gt; and &lt;strong&gt;MessageSaveSucceeded&lt;/strong&gt; actions required for every kind of form where a user creates / edits data and tries to save it, then there&#39;s going to be a lot of action classes that are basically the same.&lt;/p&gt;
-
-&lt;p&gt;This seems like a perfect case for C# generics - a single generic class may be used to represent many types of user edit action without sacrificing type safety. Rename the &quot;MessageEditStateChanged.cs&quot; action class to &quot;UserEditRequested.cs&quot; and replace the content, which is currently:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class MessageEditStateChanged : IDispatcherAction
-  {
-    public MessageEditState NewState;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;With this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class UserEditRequested&amp;lt;T&amp;gt; : IDispatcherAction
-  {
-    public T NewState;
-  }
-  public static class UserEditRequested
-  {
-    public static UserEditRequested&amp;lt;T&amp;gt; For&amp;lt;T&amp;gt;(T newState)
-    {
-      return new UserEditRequested&amp;lt;T&amp;gt; { NewState = newState };
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now, anywhere that there is a reference to &lt;strong&gt;MessageEditStateChanged&lt;/strong&gt;, you will need to change it to be a &lt;strong&gt;UserEditRequested&amp;lt;MessageEditState&amp;gt;&lt;/strong&gt;.&lt;/p&gt;
-
-&lt;p&gt;The non-generic &quot;For&quot; function is just for convenience, it allows you to create a new &lt;strong&gt;UserEditRequested&amp;lt;T&amp;gt;&lt;/strong&gt; instance without writing out the type of &quot;T&quot; - it will be inferred by the type of the &quot;newState&quot; reference passed for it. The &quot;OnChange&quot; lambda set on the &lt;strong&gt;MessageEditor&lt;/strong&gt; props was previously&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;OnChange = newState =&amp;gt; props.Dispatcher.HandleViewAction(
-  new MessageEditStateChanged { NewState = newState }
-)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;but should now become&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;OnChange = newState =&amp;gt; props.Dispatcher.HandleViewAction(
-  UserEditRequested.For(newState)
-)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;(Since &quot;newState&quot; is a &lt;strong&gt;MessageEditState&lt;/strong&gt; instance, the action that will be raised will be a &lt;strong&gt;UserEditRequested&amp;lt;MessageEditState&amp;gt;&lt;/strong&gt;).&lt;/p&gt;
-
-&lt;p&gt;Now, the action-matching code in the &lt;strong&gt;MessageWriteStore&lt;/strong&gt; needs to change from&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;.Else&amp;lt;MessageEditStateChanged&amp;gt;(action =&amp;gt;
-{
-  Message = action.NewState;
-  ValidateMessage(Message);
-})
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;to&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;.Else&amp;lt;UserEditRequested&amp;lt;MessageEditState&amp;gt;&amp;gt;(action =&amp;gt;
-{
-  Message = action.NewState;
-  ValidateMessage(Message);
-})
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Similar changes should be made, so that &quot;MessageSaveRequested.cs&quot; is replaced with&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class SaveRequested&amp;lt;T&amp;gt; : IDispatcherAction
-  {
-    public T Data;
-  }
-  public static class SaveRequested
-  {
-    public static SaveRequested&amp;lt;T&amp;gt; For&amp;lt;T&amp;gt;(T data)
-    {
-      return new SaveRequested&amp;lt;T&amp;gt; { Data = data };
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;And &quot;MessageSaveSucceeded.cs&quot; is replaced with&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-using BridgeReactTutorial.API;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class SaveSucceeded : IDispatcherAction
-  {
-    public RequestId RequestId;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;And, finally, &quot;MessageHistoryUpdated.cs&quot; replaced with&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using Bridge.React;
-using BridgeReactTutorial.API;
-
-namespace BridgeReactTutorial.Actions
-{
-  public class DataUpdated&amp;lt;T&amp;gt; : IDispatcherAction
-  {
-    public RequestId RequestId;
-    public T Data;
-  }
-  public static class DataUpdated
-  {
-    public static DataUpdated&amp;lt;T&amp;gt; For&amp;lt;T&amp;gt;(RequestId requestId, T data)
-    {
-      return new DataUpdated&amp;lt;T&amp;gt; { RequestId = requestId, Data = data };
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;em&gt;(Note that &lt;strong&gt;SaveSucceeded&lt;/strong&gt; is not a generic class because the only information that it contains is the &lt;strong&gt;RequestId&lt;/strong&gt; that corresponds to the save operation that it indicates has completed).&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;The action type-matching that occurs in the &lt;strong&gt;MessageWriteStore&lt;/strong&gt; now needs to be changed to:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;dispatcher.Register(message =&amp;gt;
-{
-  message
-    .If&amp;lt;StoreInitialised&amp;gt;(
-      condition: action =&amp;gt; (action.Store == this),
-      work: action =&amp;gt; { }
-    )
-    .Else&amp;lt;UserEditRequested&amp;lt;MessageEditState&amp;gt;&amp;gt;(action =&amp;gt;
-    {
-      Message = action.NewState;
-      ValidateMessage(Message);
-    })
-    .Else&amp;lt;SaveRequested&amp;lt;MessageDetails&amp;gt;&amp;gt;(action =&amp;gt;
-    {
-      _saveActionRequestId = messageApi.SaveMessage(action.Data);
-      Message.IsSaveInProgress = true;
-    })
-    .Else&amp;lt;SaveSucceeded&amp;gt;(
-      condition: action =&amp;gt; (action.RequestId == _saveActionRequestId),
-      work: action =&amp;gt;
-      {
-        _saveActionRequestId = null;
-        Message = GetInitialMessageEditState();
-        _lastDataUpdatedRequestId = messageApi.GetMessages();
-      }
-    )
-    .Else&amp;lt;DataUpdated&amp;lt;IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;&amp;gt;&amp;gt;(
-      condition: action =&amp;gt;
-        action.RequestId.IsEqualToOrComesAfter(_lastDataUpdatedRequestId),
-      work: action =&amp;gt;
-      {
-        _lastDataUpdatedRequestId = action.RequestId;
-        MessageHistory = action.Data;
-      }
-    )
-    .IfAnyMatched(OnChange);
-});
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The &lt;strong&gt;AppContainer&lt;/strong&gt; now becomes:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using Bridge.React;
-using BridgeReactTutorial.Actions;
-using BridgeReactTutorial.ViewModels;
-using BridgeReactTutorial.Stores;
-
-namespace BridgeReactTutorial.Components
-{
-  public class AppContainer : Component&amp;lt;AppContainer.Props, AppContainer.State&amp;gt;
-  {
-    public AppContainer(AppContainer.Props props) : base(props) { }
-
-    protected override void ComponentDidMount()
-    {
-      props.Store.Change += StoreChanged;
-    }
-    protected override void ComponentWillUnmount()
-    {
-      props.Store.Change -= StoreChanged;
-    }
-    private void StoreChanged()
-    {
-      SetState(new State
-      {
-        Message = props.Store.Message,
-        MessageHistory = props.Store.MessageHistory
-      });
-    }
-
-    public override ReactElement Render()
-    {
-      if (state == null)
-        return null;
-
-      return DOM.Div(null,
-        new MessageEditor(new MessageEditor.Props
-        {
-          ClassName = &quot;message&quot;,
-          Message = state.Message,
-          OnChange = newState =&amp;gt; props.Dispatcher.HandleViewAction(
-            UserEditRequested.For(newState)
-          ),
-          OnSave = () =&amp;gt; props.Dispatcher.HandleViewAction(
-            SaveRequested.For(new MessageDetails
-            {
-              Title = state.Message.Title.Text,
-              Content = state.Message.Content.Text
-            })
-          )
-        }),
-        new MessageHistory(new MessageHistory.Props
-        {
-          ClassName = &quot;history&quot;,
-          Messages = state.MessageHistory
-        })
-      );
-    }
-
-    public class Props
-    {
-      public AppDispatcher Dispatcher;
-      public MessageWriterStore Store;
-    }
-
-    public class State
-    {
-      public MessageEditState Message;
-      public IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; MessageHistory;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;And the &lt;strong&gt;MessageApi&lt;/strong&gt;:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using Bridge;
-using Bridge.Html5;
-using Bridge.React;
-using BridgeReactTutorial.Actions;
-using BridgeReactTutorial.ViewModels;
-
-namespace BridgeReactTutorial.API
-{
-  public class MessageApi : IReadAndWriteMessages
-  {
-    private readonly AppDispatcher _dispatcher;
-    private readonly List&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt; _messages;
-    public MessageApi(AppDispatcher dispatcher)
-    {
-      if (dispatcher == null)
-        throw new ArgumentException(&quot;dispatcher&quot;);
-
-      _dispatcher = dispatcher;
-      _messages = new List&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;();
-
-      // To further mimic a server-based API (where other people may be recording messages
-      // of their own), after a 10s delay a periodic task will be executed to retrieve a
-      // new message
-      Window.SetTimeout(
-        () =&amp;gt; Window.SetInterval(GetChuckNorrisFact, 5000),
-        10000
-      );
-    }
-
-    public RequestId SaveMessage(MessageDetails message)
-    {
-      return SaveMessage(message, optionalSaveCompletedCallback: null);
-    }
-
-    private RequestId SaveMessage(MessageDetails message, Action optionalSaveCompletedCallback)
-    {
-      if (message == null)
-        throw new ArgumentNullException(&quot;message&quot;);
-      if (string.IsNullOrWhiteSpace(message.Title))
-        throw new ArgumentException(&quot;A title value must be provided&quot;);
-      if (string.IsNullOrWhiteSpace(message.Content))
-        throw new ArgumentException(&quot;A content value must be provided&quot;);
-
-      var requestId = new RequestId();
-      Window.SetTimeout(
-        () =&amp;gt;
-        {
-          _messages.Add(Tuple.Create(_messages.Count, message));
-          _dispatcher.HandleServerAction(new SaveSucceeded { RequestId = requestId });
-          if (optionalSaveCompletedCallback != null)
-            optionalSaveCompletedCallback();
-        },
-        1000 // Simulate a roundtrip to the server
-      );
-      return requestId;
-    }
-
-    public RequestId GetMessages()
-    {
-      // ToArray is used to return a clone of the message set - otherwise, the caller would
-      // end up with a list that is updated when the internal reference within this class
-      // is updated (which sounds convenient but it&#39;s not the behaviour that would be
-      // exhibited if this was really persisting messages to a server somewhere).. and
-      // then AsEnumerable() is required since the store checks for an action of type
-      // DataUpdated&amp;lt;IEnumerable&amp;lt;Tuple&amp;lt;int, MessageDetails&amp;gt;&amp;gt;&amp;gt;&amp;gt;
-      var requestId = new RequestId();
-      Window.SetTimeout(
-        () =&amp;gt; _dispatcher.HandleServerAction(DataUpdated.For(requestId, _messages.ToArray().AsEnumerable())),
-        1000 // Simulate a roundtrip to the server
-      );
-      return requestId;
-    }
-
-    private void GetChuckNorrisFact()
-    {
-      var request = new XMLHttpRequest();
-      request.ResponseType = XMLHttpRequestResponseType.Json;
-      request.OnReadyStateChange = () =&amp;gt;
-      {
-        if (request.ReadyState != AjaxReadyState.Done)
-          return;
-
-        if ((request.Status == 200) || (request.Status == 304))
-        {
-          try
-          {
-            var apiResponse = (ChuckNorrisFactApiResponse)request.Response;
-            if ((apiResponse.Type == &quot;success&quot;)
-            &amp;amp;&amp;amp; (apiResponse.Value != null)
-            &amp;amp;&amp;amp; !string.IsNullOrWhiteSpace(apiResponse.Value.Joke))
-            {
-              // The Chuck Norris Facts API (http://www.icndb.com/api/) returns strings
-              // html-encoded, so they need decoding before be wrapped up in a
-              // MessageDetails instance
-              // - Note: After the save has been processed, GetMessages is called so
-              //   that a MessageHistoryUpdate action is dispatched
-              SaveMessage(
-                new MessageDetails
-                {
-                  Title = &quot;Fact&quot;,
-                  Content = HtmlDecode(apiResponse.Value.Joke)
-                },
-                () =&amp;gt; GetMessages()
-              );
-              return;
-            }
-          }
-          catch
-          {
-            // Ignore any error and drop through to the fallback message-generator below
-          }
-        }
-        SaveMessage(new MessageDetails
-        {
-          Title = &quot;Fact&quot;,
-          Content = &quot;API call failed when polling for server content :(&quot;
-        });
-      };
-      request.Open(&quot;GET&quot;, &quot;http://api.icndb.com/jokes/random&quot;);
-      request.Send();
-    }
-
-    private string HtmlDecode(string value)
-    {
-      if (value == null)
-        throw new ArgumentNullException(&quot;value&quot;);
-
-      var wrapper = Document.CreateElement(&quot;div&quot;);
-      wrapper.InnerHTML = value;
-      return wrapper.TextContent;
-    }
-
-    [IgnoreCast]
-    private class ChuckNorrisFactApiResponse
-    {
-      public extern string Type { [Template(&quot;type&quot;)] get; }
-      public extern FactDetails Value { [Template(&quot;value&quot;)] get; }
-
-      [IgnoreCast]
-      public class FactDetails
-      {
-        public extern int Id { [Template(&quot;id&quot;)] get; }
-        public extern string Joke { [Template(&quot;joke&quot;)]get; }
-      }
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;em&gt;(I contemplated leaving it as an exercise for the reader to change all of the action instantiation code to use the new generic classes, but with so much code in this post already I thought I might as well go whole-hog and include the final version of the everything!)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;No type-safety has been lost in this refactor but, hopefully, it&#39;s clear how action classes can scale with an application&#39;s complexity. Needing a lot of new actions every time that a new section is added to an application would be no fun and would just add to the code churn required, so being able to reuse actions like this is a boon.&lt;/p&gt;
-
-&lt;h3&gt;The third and final part&lt;/h3&gt;
-
-&lt;p&gt;We&#39;ve covered a lot of ground here, so I&#39;m going to draw things to a close. Flux is a big deal and I&#39;ve read plenty of articles that make it sound mind-bending and difficult to grasp. Hopefully this has explored &lt;em&gt;why&lt;/em&gt; it makes sense as much as how to think in terms of it (and write code in the style of it!).&lt;/p&gt;
-
-&lt;p&gt;Next time, now that React and Flux are dealt with, I want to look at how we can go &lt;em&gt;further&lt;/em&gt; in the quest to &lt;em&gt;make code easier to reason about and to test&lt;/em&gt; - there is a lot more that we can do with the C# type system to really express intent, requirements and limitations and I strongly believe that doing so will lead to higher quality code. As a side benefit, I&#39;ll also be showing how to make a simple tweak to components that will offer potentially huge performance benefits to highly-complex / deeply-nested UIs. I really think that using C# and Bridge can be more than just a possibility for writing React applications, it can be one of the &lt;em&gt;best&lt;/em&gt; ways to do so!&lt;/p&gt;
-</description>
-			<pubDate>Wed, 16 Mar 2016 22:50:00 GMT</pubDate>
 		</item>
 
 	</channel>
