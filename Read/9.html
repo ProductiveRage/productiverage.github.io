@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">27 August 2011</h3><h2><a id="Post9"></a><a href="/impersonating-the-asp-request-object">Impersonating the ASP Request Object</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">27 August 2011</h3><h2><a id="Post9"></a><a href="/impersonating-the-asp-request-object">Impersonating the ASP Request Object</a></h2>
 
 <p>I've got something coming up at work soon where we're hoping to migrate some internal web software from VBScript ASP to .Net, largely for performance reasons. The basic structure is that there's an ASP "Engine" running which instantiates and renders Controls that are VBScript WSC components. The initial task is going to be to try to replace the main Engine code and work with the existing Controls - this architecture give us the flexibility to migrate in this manner, rather than having to try to attack the entire codebase all at once. References are passed into the WSC Controls for various elements of the Engine but also for ASP objects such as Request and Response.</p>
 
@@ -238,25 +245,44 @@ public class RequestStringList
 <h3>Success!</h3>
 
 <p>After the various attempts I've made at looking into this over the years, I'm delighted that I've got a workable solution that integrates nicely with both VBScript <em>and</em> the managed side (though the latter was definitely a bonus more than an original requirement). The curent code can be found on GitHub at: <a href="https://github.com/ProductiveRage/ASPRequestImpersonator">https://github.com/ProductiveRage/ASPRequestImpersonator</a>.</p><p class="PostTime">Posted at 10:20</p><div class="PreviousAndNext"><div class="Next"><h3>Next:</h3><a class="Next" href="/mercurial-and-dropbox">Mercurial and Dropbox</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "9";
 							var disqus_title = "Impersonating the ASP Request Object";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

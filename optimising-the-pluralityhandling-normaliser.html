@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">9 June 2012</h3><h2><a id="Post27"></a><a href="/optimising-the-pluralityhandling-normaliser">Optimising the Plurality-Handling Normaliser</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">9 June 2012</h3><h2><a id="Post27"></a><a href="/optimising-the-pluralityhandling-normaliser">Optimising the Plurality-Handling Normaliser</a></h2>
 
 <p>In the last post I took a first stab at an <a href="/an-englishlanguage-pluralityhandling-string-normaliser">English-language Plurality-handling String Normaliser</a> to work with a Full Text Indexer research project I'm playing with. I've been using it in conjunction with a normaliser that strips out punctuation from words, replaces accented characters with latin versions (eg. "é" replaced with "e") and lower-cases the content. This originally used a few regular expressions along with some character replacement but I wasn't delighted with the performance, so that was re-written to do one pass through the character and do it all at once and is now running much better. Whether that ties back into my <a href="/css-minification-regular-expressions">I don't like regular expressions</a> ramble well or not I'm not sure :)</p>
 
@@ -679,25 +686,44 @@ public sealed class DefaultStringNormaliser : IStringNormaliser
 <p>I'm still a firm believer in writing the code to work and be easily understood and maintained first. But when a section of code is measurably a bottleneck, and that bottleneck is worth removing, then little adventures like this can be fun <em>and</em> beneficial! And, to be honest, I don't think the resulting code is <em>that</em> difficult to understand. There are probably a few more tweaks that could be made to really eke out some more performance but I'm perfectly happy with it for now :)</p>
 
 <p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="/the-full-text-indexer-post-roundup">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p><p class="PostTime">Posted at 00:04</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/an-englishlanguage-pluralityhandling-string-normaliser">An English-language Plurality-handling String Normaliser</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/a-pluralityhandling-normaliser-correction">A Plurality-Handling Normaliser Correction</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/LINQ" title="11 Posts">LINQ</a></li><li><a href="/Archive/Tag/Optimisation" title="8 Posts">Optimisation</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "27";
 							var disqus_title = "Optimising the Plurality-Handling Normaliser";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

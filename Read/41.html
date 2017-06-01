@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">27 December 2012</h3><h2><a id="Post41"></a><a href="/wcf-with-json-and-nullable-types">WCF with JSON (and nullable types)</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">27 December 2012</h3><h2><a id="Post41"></a><a href="/wcf-with-json-and-nullable-types">WCF with JSON (and nullable types)</a></h2>
 
 <p>I wanted to try putting together a WCF Service that would return JSON. With its configurable nature, I've heard before that it's not that big of a deal to do this.. and truth be told, it's not <em>that</em> awkward to do but it took me a while to find all the right hoops to jump through! (Another time, I might consider trying to put together a RESTful API using MVC and the JsonResult type unless there was some need to support multiple response types, such as XML <em>and</em> JSON).</p>
 
@@ -291,25 +298,44 @@ namespace WCFJSONExample
 <p>The QueryStringConverter's CanConvert, ConvertStringToValue and ConvertValueToString methods are overridden so that we can pick up on parameters that are of the type Nullable&lt;T&amp;gt&amp;; and deal with them appropriately - returning null if a null value is stored in the type and dealing with the wrapped value if not.</p>
 
 <p>This could easily be changed to perform different translation actions, if required (it could feasibly be integrated with a JSON serialiser to deal with complex data types, for example).</p><p class="PostTime">Posted at 22:46</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-full-text-indexer-post-roundup">The Full Text Indexer Post Round-up</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "41";
 							var disqus_title = "WCF with JSON (and nullable types)";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

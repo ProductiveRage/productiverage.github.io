@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">30 July 2013</h3><h2><a id="Post60"></a><a href="/javascript-compression-putting-my-json-search-indexes-on-a-diet">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">30 July 2013</h3><h2><a id="Post60"></a><a href="/javascript-compression-putting-my-json-search-indexes-on-a-diet">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></h2>
 
 <p>When I wrote a couple of weeks ago about writing a way to consume <a href="/the-full-text-indexer-post-roundup">Full Text Indexer</a> data entirely on the client (so that I could recreate my blog's search functionality at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a> - see <a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The Full Text Indexer goes client-side!</a>), I said that</p>
 
@@ -254,25 +261,44 @@ function LoadCompressedJsonData(strUrl, fncSuccess, fncFailure) {
 <p>When compressed, the detailed source location mappings data is reduced from a combined 4.7MB to 1.5MB. The plain text content was reduced from 664kb to 490kb (not as much of a saving as I'd expected, to be honest). The titles JSON shrank marginally from 2.58kb to 2.36kb. The summary data JSON wasn't compressed so that the first stage of the search could be performed as quickly as possible and <em>one</em> non-compressed file on the server was no problem (it's still gzip'd when passed to the client, though, so there's no bandwidth cost). In total, 5.3MB of data was condensed into requiring less than 2MB on the server. Which I am happily marking down as a win :)</p>
 
 <p>So here's to me hopefully fitting <em>many</em> more posts (along with all of the related javascript searching data) into the NeoCities hosting limitations! I'm sure that if I ever start pushing that 10MB point again, by then the 10MB limit will have been raised - 20MB is already on the way!</p><p class="PostTime">Posted at 23:22</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/autoreleasing-event-listeners">Auto-releasing Event Listeners</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/c-sharp-state-machines">C# State Machines</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/NeoCities" title="2 Posts">NeoCities</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "60";
 							var disqus_title = "JavaScript Compression (Putting my JSON Search Indexes on a diet)";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">17 September 2014</h3><h2><a id="Post74"></a><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired "with" updates for immutable classes in C#</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">17 September 2014</h3><h2><a id="Post74"></a><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired "with" updates for immutable classes in C#</a></h2>
 
 <p>I've been prototyping a data service for a product at work that communicates with immutable types and one of the feedback comments was a question as to whether the classes supported a flexible F#-esque "with" method that would allow multiple properties to be changed without the garbage collection churn of creating intermediate references for each individual property (since, of course, the property values aren't actually changed on an instance, a <em>new</em> instance is generated that reflects the requested changes).</p>
 
@@ -485,25 +492,44 @@ var p2 = p1.UpdateWith(first:"Jim",last:"Smith");
 <p><strong>Update (19th September 2014):</strong> There's been quite a lot of interest in this post and some good comments made here and at the discussion on <a href="http://www.reddit.com/r/programming/comments/2gqx9u/implementing_finspired_with_updates_for_immutable/">Reddit/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp</a>. I intend to write a follow-up post that talks about some of the observations and includes some performance stats. In summary, though, I may have to admit to considering a slight about-turn in the crazy magical approach and strike that up as a convenience for rattling out code quickly but probably something that won't make it into production code that I write. The idea of using an "UpdateWith" method with named, optional arguments (using the <strong>Optional</strong> struct) <em>will</em> make it into my "real world" code, though! It's also strikingly similar to some of the code in Roslyn, it was pointed out (I'll touch on this in the follow-up too). I still had a lot of fun with the "Turning it up to eleven" investigation and I think there's useful information in here and in the library code I wrote - even more so when I get round to documenting how I approach writing the LINQ expression-generating code. But maybe it didn't result in something that should always be everyone's immediate go-to method for writing this sort of code. Such is life! :)</p>
 
 <p><strong>Update (2nd October 2014):</strong> See <a href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to "Implementing F#-inspired 'with' updates in C#"</a>.</p><p class="PostTime">Posted at 23:12</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-c-sharp-css-parser-in-javascript">The C# CSS Parser in JavaScript</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/writing-react-components-in-typescript">Writing React components in TypeScript</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li><li><a href="/Archive/Tag/LINQ" title="11 Posts">LINQ</a></li><li><a href="/Archive/Tag/Reflection" title="14 Posts">Reflection</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "74";
 							var disqus_title = "Implementing F#-inspired \"with\" updates for immutable classes in C#";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

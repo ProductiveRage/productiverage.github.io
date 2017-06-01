@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">21 January 2012</h3><h2><a id="Post20"></a><a href="/onthefly-css-minification">On-the-fly CSS Minification</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">21 January 2012</h3><h2><a id="Post20"></a><a href="/onthefly-css-minification">On-the-fly CSS Minification</a></h2>
 
 <p>I've been experimenting with minifying javascript and stylesheet content on-the-fly with an ASP.Net MVC project where different pages may have different combinations of javascript and stylesheets - not just to try to minimise the quantity of data transmitted but because some of the stylesheets may conflict.</p>
 
@@ -371,25 +378,44 @@ html{background:url("/Content/Images/Background-Repeat.jpg") repeat-x #800C0E}bo
 <p>However, the solution in the above code is to handle the response compression in the CSSController. In the SetResponseCacheHeadersForSuccess method the "Accept-Encoding" request header is tested for gzip and deflate and will return content accordingly by setting the Response.Filter to be either a GZipStream or DeflateStream. This has solved the problem! And so I'm going to leave my root-cause investigation for another day :)</p>
 
 <p><strong>Note:</strong> You can find the source code to this in one of my repositories at Bitbucket: <a href="https://bitbucket.org/DanRoberts/cssminifier">The CSS Minifier</a>.</p><p class="PostTime">Posted at 16:56</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-lesseffort-extendable-linqcompilable-mappers">The Less-Effort Extendable LINQ-compilable Mappers</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/css-minification-regular-expressions">CSS Minification Regular Expressions</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/CSS" title="9 Posts">CSS</a></li><li><a href="/Archive/Tag/Optimisation" title="8 Posts">Optimisation</a></li><li><a href="/Archive/Tag/RegEx" title="2 Posts">RegEx</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "20";
 							var disqus_title = "On-the-fly CSS Minification";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">20 May 2013</h3><h2><a id="Post55"></a><a href="/caching-mechanisms">Caching Mechanisms</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">20 May 2013</h3><h2><a id="Post55"></a><a href="/caching-mechanisms">Caching Mechanisms</a></h2>
 
 <p>I've been tinkering with some data caching recently and thinking about various method of cache invalidation, particularly since I've made some changes recently at work to more intelligently detect expired cached data rather than just waiting for it to fall out of a cache after a particular (and usually arbitrary) period of time.</p>
 
@@ -648,25 +655,44 @@ return new LastModifiedBasedCachingConfigLoader(
 <p>When I started writing this post, I'd intended on covering more about different ways to expire cached data other than the time-based and last-modified-date-based approaches. Particularly since I've been looking in more depth into declaring cache dependencies when data is stored in cache (which has overlap with the <strong>CacheItemPolicy</strong> that can be used when adding items to the .Net <strong>ObjectCache</strong> through its use of the <strong>ChangeMonitor</strong> class) but I think there's far too much content there to cover here and so I'm hoping to address that in a separate post entirely.</p>
 
 <p>I also contemplated adding a variation of the above cache mechanism which would ensure that when the cache was empty that only a single thread would retrieve the data while other requests would wait until that thread had successfully done so - not only can it be useful if the resource is particularly expensive but it nicely illustrates how to incorporate timeout-handling with the lock mechanism. But the code in this post has already made it stretch over a lot of vertical space to get to this point so I might write a follow-up mini-post to get into that another day!</p><p class="PostTime">Posted at 22:42</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-full-text-indexer-search-term-highlighting-with-source-locations">The Full Text Indexer: Search Term Highlighting with Source Locations</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/more-caching-mechanisms">More Caching Mechanisms</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Caching" title="2 Posts">Caching</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "55";
 							var disqus_title = "Caching Mechanisms";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

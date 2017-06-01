@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">25 July 2013</h3><h2><a id="Post59"></a><a href="/autoreleasing-event-listeners">Auto-releasing Event Listeners</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">25 July 2013</h3><h2><a id="Post59"></a><a href="/autoreleasing-event-listeners">Auto-releasing Event Listeners</a></h2>
 
 <p>Last month, in <a href="/parsing-css">Parsing CSS</a>, I talked about a way to parse CSS and identify character-by-character what "type" it was (eg. "SelectorOrStyleProperty", "Value", "Whitespace", etc..). The interesting things, I think, are more what I intend to do with the work (trying to validate the rules from <a href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a>) and <em>how</em> the processing was performed. The input content is traversed through this interface:</p>
 
@@ -976,25 +983,44 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
 <p>I'm just nitpicking, though, it's an excellent article and well worth a read. I actually skim-read it when I was first trying to get my head around all this, it was only when I'd got closer to the solution I've outlined above that I ended up reading it again, properly. And then realised just how thorough and informative an article it is.</p>
 
 <p>And that really is all. I can't hack this post going on <em>any</em> longer! :D</p><p class="PostTime">Posted at 22:17</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The NeoCities Challenge! aka The Full Text Indexer goes client-side!</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/javascript-compression-putting-my-json-search-indexes-on-a-diet">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></div></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "59";
 							var disqus_title = "Auto-releasing Event Listeners";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">19 June 2013</h3><h2><a id="Post57"></a><a href="/parsing-css">Parsing CSS</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">19 June 2013</h3><h2><a id="Post57"></a><a href="/parsing-css">Parsing CSS</a></h2>
 
 <p>A few months ago I wrote about some <a href="/extending-the-css-minifier">extensions to the CSS Minifer</a> to support pseudo-Source-Mapping for compiled and minified content (among other things) and I've been meaning to write about the code I used to analyse the style sheet content.</p>
 
@@ -308,25 +315,44 @@ html
 <p>To ensure that content is wrapped in scope-restricting html tags, what must be done is that the output from the <strong>LessCssHierarchicalParser</strong> (a set of <strong>ICSSFragment</strong> implementations) must be considered and it be asserted that they are either <strong>Import</strong> instances or <strong>Selector</strong> instances whose <strong>Selectors</strong> property indicates that the selector in the source content was only "html". An implementation can be found in my <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/">NonCascadingCSSRulesEnforcer</a> project on Bitbucket, specifically the file <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/src/1c997d6a25d4cee7dcd64fc451eda4fa7c17ca80/NonCascadingCSSRulesEnforcer/Rules/HtmlTagScopingMustBeAppliedToNonResetsOrThemesSheets.cs">HtmlTagScopingMustBeAppliedToNonResetsOrThemesSheets.cs</a>.</p>
 
 <p>Unfortunately, since this level of analysis requires that the entire content be considered before the structure can be described, this is not as lightweight a process as the CSSProcessor's parsing. However, it is much more powerful in enabling you to drill down into the structure of a stylesheet. The <a href="https://bitbucket.org/DanRoberts/noncascadingcssrulesenforcer/">NonCascadingCSSRulesEnforcer</a> has code to enforce nearly all of the rules in my original <a href="/noncascading-css-a-revolution">Non-cascading CSS Post</a>, along with an <strong>ITextFileLoader</strong> implementation which allows the rules validation to be integrated with my <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> project which I've been using to rebuild a real site (not just my blog) with these rules. It's been going really well and I intend to put up a concluding post to this "Non-cascading CSS" mini-series with any final insights and any evidence I can present for and against trying to apply them to all builds I'm involved with in the future.</p><p class="PostTime">Posted at 21:50</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/more-caching-mechanisms">More Caching Mechanisms</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The NeoCities Challenge! aka The Full Text Indexer goes client-side!</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/CSS" title="9 Posts">CSS</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "57";
 							var disqus_title = "Parsing CSS";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">13 December 2011</h3><h2><a id="Post15"></a><a href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">13 December 2011</h3><h2><a id="Post15"></a><a href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a></h2>
 
 <p>Another area of this migration proof-of-concept work I'm doing at the day job involves investigating the best way to swap out a load of COM components for C# versions over time. The plan initially is to define interfaces for them and code against those interfaces, write wrapper classes around the components that implement these interfaces and one day rewrite them one-by-one.</p>
 
@@ -541,25 +548,44 @@ private class NullCache : ICache
 </code></pre>
 
 <p>then this test will pass! I'll leave the content here for posterity but it struck me while flipping through this old post that I had seen and addressed this problem since writing this.</p><p class="PostTime">Posted at 22:01</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/really">Really??</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="14 Posts">Reflection</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "15";
 							var disqus_title = "Dynamically applying interfaces to objects";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">

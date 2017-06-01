@@ -46,21 +46,28 @@
 				
 
 
-				<script type="text/javascript">
+		<script type="text/javascript">
 					var disqus_shortname = "productiverage";
 					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
 						if (fncConditional()) { fncAction(); return; }
 						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
 					}
-					executeWhen(
-						function () { $("div.Content p.Comments").show(); },
-						function () { return (typeof ($) !== "undefined") },
-						10
-					);
-				</script>
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
 
-				<div class="Content SinglePost">
-					<h3 class="PostDate">24 November 2015</h3><h2><a id="Post91"></a><a href="/handing-off-to-another-aspnet-mvc-controller-action-without-redirecting">Handing off to another ASP.net MVC Controller Action without redirecting</a></h2>
+	<div class="Content SinglePost">
+		<h3 class="PostDate">24 November 2015</h3><h2><a id="Post91"></a><a href="/handing-off-to-another-aspnet-mvc-controller-action-without-redirecting">Handing off to another ASP.net MVC Controller Action without redirecting</a></h2>
 
 <p>Just a quick one today, more as a reminder to myself in the future than anything. I've had reason before now to have an Action within the current Controller to give up and pass control off to another Action in <em>another</em> Controller. In this particular case, I had a "DefaultController" that handled 95% of page requests and returned an appropriate 404 page where required - if the current configuration included custom 404 content then it would show that, otherwise rendering some default markup.</p>
 
@@ -136,25 +143,44 @@ return defaultController.Return404();
 <p>But maybe, perhaps, possibly.. this will be of use to someone in the future in my boat who wanted to borrow one Controller's Action to finish off another Controller's Action part-way through.</p>
 
 <p>.. though the more I think about it, the more I think I <em>should</em> have just extracted that 404-handling logic into a shared location and called it from any Controller that required it!</p><p class="PostTime">Posted at 22:09</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/stronglytyped-react-with-bridgenet">Strongly-typed React (with Bridge.net)</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/react-and-flux-with-bridgenet-redux">React (and Flux) with Bridge.net - Redux</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/MVC" title="2 Posts">MVC</a></li></ul></div>
-						<div id="disqus_thread"></div>
+			<div id="disqus_thread"></div>
 						<script type="text/javascript">
 							var disqus_identifier = "91";
 							var disqus_title = "Handing off to another ASP.net MVC Controller Action without redirecting";
-							executeWhen(
-								function () {
-									$(document).ready(function () {
-										var dsq = document.createElement("script");
-										dsq.type = "text/javascript";
-										dsq.async = true;
-										dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-										(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-									})
-								},
-								function () { return (typeof ($) !== "undefined") },
-								10
-							);
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
 						</script>
-				</div>
+	</div>
 
 
 				<div class="Footer">
