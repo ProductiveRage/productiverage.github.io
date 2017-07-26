@@ -10,7 +10,7 @@
 		<description>Dan's techie ramblings</description>
 		<language>en-gb</language>
 
-		<lastBuildDate>Sun, 12 Feb 2017 18:39:00 GMT</lastBuildDate>
+		<lastBuildDate>Wed, 26 Jul 2017 20:31:00 GMT</lastBuildDate>
 		<docs>http://blogs.law.harvard.edu/tech/rss</docs>
 		
 		<image>
@@ -23,6 +23,640 @@
 
 		<xhtml:meta xmlns:xhtml="http://www.w3.org/1999/xhtml" name="robots" content="noindex" /> 
 
+		<item>
+			<title>Trying to set a readonly auto-property value externally (plus, a little BenchmarkDotNet)</title>
+            <link>http://www.productiverage.com/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet</link>
+			<guid>http://www.productiverage.com/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet</guid>
+			<description>&lt;p&gt;If you&#39;re thinking that you should try changing a readonly property.. well, in short, you almost certainly shouldn&#39;t try.&lt;/p&gt;
+
+&lt;p&gt;For example, the following class has a property that should &lt;em&gt;only&lt;/em&gt; be set in its constructor and then never mutated again -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class Example
+{
+  public Example(int id)
+  {
+    Id = id;
+  }
+  public int Id { get; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;em&gt;And it is a good thing&lt;/em&gt; that we are able to write code so easily that communicates precisely when a property may (and may not) change.&lt;/p&gt;
+
+&lt;p&gt;However..&lt;/p&gt;
+
+&lt;p&gt;You might have some very particular scenario in mind where you really &lt;em&gt;do&lt;/em&gt; want to try to write to a readonly auto-property&#39;s value for an instance that has already been created. It&#39;s possible that you are writing some interesting deserialisation code, I suppose. For something that I was looking at, I was curious to look into how feasible it is (or isn&#39;t) and I came up with the following three basic approaches.&lt;/p&gt;
+
+&lt;p&gt;I think that each approach demonstrates something a little off the beaten track of .NET - granted, there&#39;s absolutely nothing here that&#39;s never been done before.. but sometimes it&#39;s fun to be reminded of how flexible .NET &lt;em&gt;can&lt;/em&gt; be, if only to appreciate how hard it works to keep everything reliable and consistent.&lt;/p&gt;
+
+&lt;h3&gt;TL;DR&lt;/h3&gt;
+
+&lt;p&gt;I&#39;ll show three approaches, in decreasing order of ease of writing. They all depend upon a particular naming conventions in .NET&#39;s internals that is not documented and should not be considered reliable (ie. a future version of C# and/or the compiler could break it). Even if you ignore this potential time bomb, only the first of the three methods will actually work. Like I said at the start, this is something that you almost certainly shouldn&#39;t be attempting anyway!&lt;/p&gt;
+
+&lt;h3&gt;Approach 1: Reflection (with some guesswork)&lt;/h3&gt;
+
+&lt;p&gt;C# 6 introduced read-only auto-properties. Before thoses were available, you had two options to do something similar. You could use a private setter -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class Example
+{
+  public Example(int id)
+  {
+    Id = id;
+  }
+  public int Id { get; private set; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. or you could manually create a private readonly backing field for the property -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class Example
+{
+  private readonly int _id;
+  public Example(int id)
+  {
+    _id = id;
+  }
+  public int Id { get { return _id; } }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The first approach requires less code but the guarantees that it claims to make are less strict. When a field is readonly then it may &lt;em&gt;only&lt;/em&gt; be set within a constructor but when it has a private setter then it could feasibly change &lt;em&gt;at any point&lt;/em&gt; in the lifetime of the instance. In the class above, it&#39;s clear to see that it &lt;em&gt;is&lt;/em&gt; only set in the constructor but there are no compiler assurances that someone won&#39;t come along and add a method to the &lt;strong&gt;Example&lt;/strong&gt; class that mutates the private-setter &quot;Id&quot; property. If you have a readonly &quot;_id&quot; backing field then it would not be possible to write a method to mutate the value*.&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;(Without resorting to the sort of shenanigans that we are going to look at here)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;So the second class is more reliable and more accurately conveys the author&#39;s intentions for the code (that the &quot;Id&quot; property of an &lt;strong&gt;Example&lt;/strong&gt; instance will never change during its lifetime). The disadvantage is that there is more code to write.&lt;/p&gt;
+
+&lt;p&gt;The C# 6 syntax is the best of both worlds - as short (shorter, in fact, since there is &lt;em&gt;no&lt;/em&gt; setter defined) as the first version but with the stronger guarantees of the second version.&lt;/p&gt;
+
+&lt;p&gt;Interestingly, the compiler generates IL that is essentially identical to that which result from the C# 5 syntax where you manually define a property that backs onto a readonly field. The only real difference relates to the fact that it wants to be sure that it can inject a readonly backing field whose name won&#39;t clash with any other field that the human code writer may have added to the class. To do this, it uses characters in the generated field names that are not valid to appear in C#, such as &quot;&amp;lt;Id&amp;gt;k__BackingField&quot;. The triangle brackets may not be used in C# code but they may be used in the IL code that the compiler generates. And, just to make things extra clear, it adds a &lt;strong&gt;[CompilerGenerated]&lt;/strong&gt; attribute to the backing field.&lt;/p&gt;
+
+&lt;p&gt;This is sufficient information for us to try to identify the compiler-generated backing field using reflection. Going back to this version of the class:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class Example
+{
+  public Example(int id)
+  {
+    Id = id;
+  }
+  public int Id { get; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. we can identify the backing field for the &quot;Id&quot; property with the following code:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var type = typeof(Example);
+var property = type.GetProperty(&quot;Id&quot;);
+
+var backingField = type
+  .GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+  .FirstOrDefault(field =&amp;gt;
+    field.Attributes.HasFlag(FieldAttributes.Private) &amp;amp;&amp;amp;
+    field.Attributes.HasFlag(FieldAttributes.InitOnly) &amp;amp;&amp;amp;
+    field.CustomAttributes.Any(attr =&amp;gt; attr.AttributeType == typeof(CompilerGeneratedAttribute)) &amp;amp;&amp;amp;
+    (field.DeclaringType == property.DeclaringType) &amp;amp;&amp;amp;
+    field.FieldType.IsAssignableFrom(property.PropertyType) &amp;amp;&amp;amp;
+    field.Name.StartsWith(&quot;&amp;lt;&quot; + property.Name + &quot;&amp;gt;&quot;)
+  );    
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;With this backingField reference, we can start doing devious things. Like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// Create an instance with a readonly auto-property
+var x = new Example(123);
+Console.WriteLine(x.Id); // Prints &quot;123&quot;
+
+// Now change the value of that readonly auto-property!
+backingField.SetValue(x, 456);
+Console.WriteLine(x.Id); // Prints &quot;456&quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;We took an instance of a class that has a readonly property (meaning that it should never change after the instance has been constructed) and we &lt;em&gt;changed&lt;/em&gt; that property. Evil.&lt;/p&gt;
+
+&lt;p&gt;One more time, though: this relies upon the current convention that the compiler-generated backing fields follow a particular naming convention. If that changes one day then this code will fail.&lt;/p&gt;
+
+&lt;p&gt;Enough with the boring warnings, though - let&#39;s get to the real nub of the matter; reflection is slooooooooow, isn&#39;t it? Surely we should never resort to such a clunky technology??&lt;/p&gt;
+
+&lt;h3&gt;Approach 2: Using LINQ Expressions to generate fast code to set the field&lt;/h3&gt;
+
+&lt;p&gt;If &lt;strong&gt;Example&lt;/strong&gt; had a regular private field that we wanted to set - eg.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class Example
+{
+  private int _somethingElse;
+  public Example(int id, int somethingElse)
+  {
+    Id = id;
+    _somethingElse = somethingElse;
+  }
+
+  public int Id { get; }
+
+  public int GetSomethingElse()
+  {
+    return _somethingElse;
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Then we could use reflection to get a reference to that field once and build a delegate using LINQ Expressions that would allow us to update that field value using something like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var field = typeof(Example).GetField(&quot;_somethingElse&quot;, BindingFlags.Instance | BindingFlags.NonPublic);
+
+var sourceParameter = Expression.Parameter(typeof(Example), &quot;source&quot;);
+var valueParameter = Expression.Parameter(field.FieldType, &quot;value&quot;);
+var fieldSetter =
+  Expression.Lambda&amp;lt;Action&amp;lt;Example, int&amp;gt;&amp;gt;(
+    Expression.Assign(
+      Expression.MakeMemberAccess(sourceParameter, field),
+      valueParameter
+    ),
+    sourceParameter,
+    valueParameter
+  )
+  .Compile();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;We could then cache that &quot;fieldSetter&quot; delegate and call it any time that we wanted to update the private &quot;_somethingElse&quot; field on an &lt;strong&gt;Example&lt;/strong&gt; instance. There would be a one-off cost to the reflection that identifies the field and a one-off cost to generating that delegate initially but any subsequent call should be comparably quick to hand-written field-updating code (obviously it&#39;s not possible to hand-write code to update a private field from outside the class.. but you get the point).&lt;/p&gt;
+
+&lt;p&gt;There&#39;s one big problem with this approach, though; it doesn&#39;t work for readonly fields. The &quot;Expression.Assign&quot; call will throw an &lt;strong&gt;ArgumentException&lt;/strong&gt; if the specified member is readonly:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Expression must be writeable&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;SAD FACE.&lt;/p&gt;
+
+&lt;p&gt;This is quite unfortunate. It had been a little while since I&#39;d played around with LINQ Expressions and I was feeling quite proud of myself getting the code to work.. only to fall at the last hurdle.&lt;/p&gt;
+
+&lt;p&gt;Never mind.&lt;/p&gt;
+
+&lt;p&gt;One bright side is that I also tried out this code in a .NET Core application and it worked to the same extent as the &quot;full fat&quot; .NET Framework - ie. I was able to generate a delegate using LINQ Expressions that would set a non-readonly private field on an instance. Considering that reflection capabilities were limited in the early days of .NET Standard, I found it a nice surprise that support seems so mature now.&lt;/p&gt;
+
+&lt;h3&gt;Approach 3: Emitting IL&lt;/h3&gt;
+
+&lt;p&gt;Time to bring out the big guns!&lt;/p&gt;
+
+&lt;p&gt;If the friendlier way of writing code that dynamically compiles other .NET code (ie. LINQ Expressions) wouldn&#39;t cut it, surely the old fashioned (and frankly intimidating) route of writing code to directly emit IL would do the job?&lt;/p&gt;
+
+&lt;p&gt;It&#39;s been a long time since I&#39;ve written any IL-generating code, so let&#39;s take it slow. If we&#39;re starting with the case that worked with LINQ Expressions then we want to create a method that will take an &lt;strong&gt;Example&lt;/strong&gt; instance and an &lt;strong&gt;int&lt;/strong&gt; value in order to set the &quot;_somethingElse&quot; field on the &lt;strong&gt;Example&lt;/strong&gt; instance to that new number.&lt;/p&gt;
+
+&lt;p&gt;The first thing to do is to create some scaffolding. The following code is almost enough to create a new method of type &lt;strong&gt;Action&amp;lt;Example, int&amp;gt;&lt;/strong&gt; -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// Set restrictedSkipVisibility to true to avoid any pesky &quot;visibility&quot; checks being made (in other
+// words, let the IL in the generated method access any private types or members that it tries to)
+var method = new DynamicMethod(
+  name: &quot;SetSomethingElseField&quot;,
+  returnType: null,
+  parameterTypes: new[] { typeof(Example), typeof(int) },
+  restrictedSkipVisibility: true
+);
+
+var gen = method.GetILGenerator();
+
+// TODO: Emit require IL op codes here..
+
+var fieldSetter = (Action&amp;lt;Example, int&amp;gt;)method.CreateDelegate(typeof(Action&amp;lt;Example, int&amp;gt;));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The only problem is that &quot;TODO&quot; section.. the bit where we have to know what IL to generate.&lt;/p&gt;
+
+&lt;p&gt;There are basically two ways you can go about working out what to write here. You can learn enough about IL (and remember it again years after you learn some!) that you can just start hammering away at the keyboard.. or you can write some C# that basically does what you want, compile that using Visual Studio and then use a disassembler to see what IL is produced. I&#39;m going for plan b. Handily, if you use Visual Studio then you probably already have a disassembler installed! It&#39;s called ildasm.exe and I found it on my computer in &quot;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.6.1 Tools&quot; after reading this: &quot;&lt;a href=&quot;https://blogs.msdn.microsoft.com/lucian/2008/11/14/where-are-the-sdk-tools-where-is-ildasm/&quot;&gt;Where are the SDK tools? Where is ildasm?&lt;/a&gt;&quot;.&lt;/p&gt;
+
+&lt;p&gt;To make things as simple as possible, I created a new class in a C# project -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class SomethingWithPublicField
+{
+  public int Id;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;and then created a static method that I would want to look at the disassembly of:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;static void MethodToCopy(SomethingWithPublicField source, int value)
+{
+  source.Id = value;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;I compiled the console app, opened the exe in ildasm and located the method. Double-clicking it revealed this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;.method private hidebysig static void  MethodToCopy(class Test.Program/SomethingWithPublicField source,
+                                                    int32 &#39;value&#39;) cil managed
+{
+  // Code size         9 (0x9)
+  .maxstack  8
+  IL_0000:  nop
+  IL_0001:  ldarg.0
+  IL_0002:  ldarg.1
+  IL_0003:  stfld      int32 Test.Program/SomethingWithPublicField::Id
+  IL_0008:  ret
+} // end of method Program::MethodToCopyTyped
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Ok. That actually couldn&#39;t be much simpler. The &quot;ldarg.0&quot; code means &quot;load argument 0 onto the stack&quot;, &quot;ldarg.1&quot; means &quot;load argument 1 onto the stack&quot; and &quot;stfld&quot; means take the instance of the first object on the stack and set the specified field to be the second object on the stack. &quot;ret&quot; just means exit method (returning any value, if there is one - which there isn&#39;t in this case).&lt;/p&gt;
+
+&lt;p&gt;This means that the &quot;TODO&quot; comment in my scaffolding code may be replaced with real content, resulting in the following:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var field = typeof(Example).GetField(&quot;_somethingElse&quot;, BindingFlags.Instance | BindingFlags.NonPublic);
+
+var method = new DynamicMethod(
+  name: &quot;SetSomethingElseField&quot;,
+  returnType: null,
+  parameterTypes: new[] { typeof(Example), typeof(int) },
+  restrictedSkipVisibility: true
+);
+var gen = method.GetILGenerator();
+gen.Emit(OpCodes.Ldarg_0);
+gen.Emit(OpCodes.Ldarg_1);
+gen.Emit(OpCodes.Stfld, field);
+gen.Emit(OpCodes.Ret);
+
+var fieldSetter = (Action&amp;lt;Example, int&amp;gt;)method.CreateDelegate(typeof(Action&amp;lt;Example, int&amp;gt;));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;That&#39;s it! We now have a delegate that is a compiled method for writing a new &lt;strong&gt;int&lt;/strong&gt; into the private field &quot;_somethingElse&quot; for any given instance of &lt;strong&gt;Example&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;p&gt;Unfortunately, things go wrong at exactly the same point as they did with LINQ Expressions. The above code works fine for setting a regular private field but if we tried to set a &lt;em&gt;readonly&lt;/em&gt; field using the same approach then we&#39;d be rewarded with an error:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;&lt;strong&gt;System.Security.VerificationException&lt;/strong&gt;: &#39;Operation could destabilize the runtime.&#39;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Another disappointment!*&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;(Though hopefully not a surprise if you&#39;re reading this article since I said right at the top that only the first of these three approaches would work!)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;But, again, to try to find a silver lining, I also tried the non-readonly-private-field-setting-via-emitted-IL code in a .NET Core application and I was pleasantly surprised to find that it worked. It required the packages &quot;System.Reflection.Emit.ILGeneration&quot; and &quot;System.Reflection.Emit.Lightweight&quot; to be added through NuGet but nothing more difficult than that.&lt;/p&gt;
+
+&lt;p&gt;Although I decided last month that &lt;a href=&quot;http://www.productiverage.com/revisiting-net-core-tooling-visual-studio-2017&quot;&gt;I&#39;m still not convinced that .NET Core is ready for me to use in work&lt;/a&gt;, I &lt;em&gt;am&lt;/em&gt; impressed by how much &lt;em&gt;does&lt;/em&gt; work with it.&lt;/p&gt;
+
+&lt;h3&gt;Performance comparison&lt;/h3&gt;
+
+&lt;p&gt;So we&#39;ve ascertained that there is only one way* to set a readonly field on an existing instance and, regrettably, it&#39;s also the slowest. I guess that a pertinent question to ask, though, is just &lt;em&gt;how much&lt;/em&gt; slower is the slowest?&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;(As further evidence that there isn&#39;t another way around this, I&#39;ve found an issue from EntityFramework&#39;s GitHub repo: &quot;&lt;a href=&quot;https://github.com/aspnet/EntityFramework/issues/6202&quot;&gt;Support readonly fields&lt;/a&gt;&quot; which says that it&#39;s possible to set a readonly property with reflection but that the issue-raiser encountered the same two failures that I&#39;ve demonstrated above when he tried alternatives and no-one has proposed any other ways to tackle it)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;Obviously we can&#39;t compare the readonly-field-setting performance of the three approaches above because only one of them is actually capable of doing that. But we &lt;em&gt;can&lt;/em&gt; compare the performance of something similar; setting a private (but not readonly) field, since &lt;em&gt;all three&lt;/em&gt; are able to achieve that.&lt;/p&gt;
+
+&lt;p&gt;Ordinarily at this point, I would write some test methods and run them in a loop and time the loop and divide by the number of runs and then maybe repeat a few times for good measure and come up with a conclusion. Today, though, I thought that I might try something a bit different because I recently heard again about something called &quot;&lt;a href=&quot;https://github.com/dotnet/BenchmarkDotNet&quot;&gt;BenchmarkDotNet&lt;/a&gt;&quot;. It claims that:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Benchmarking is really hard (especially microbenchmarking), you can easily make a mistake during performance measurements. BenchmarkDotNet will protect you from the common pitfalls (even for experienced developers) because it does all the dirty work for you: it generates an isolated project per each benchmark method, does several launches of this project, run multiple iterations of the method (include warm-up), and so on. Usually, you even shouldn&#39;t care about a number of iterations because BenchmarkDotNet chooses it automatically to achieve the requested level of precision.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;This sounds ideal for my purposes!&lt;/p&gt;
+
+&lt;p&gt;What I&#39;m most interesting in is how reflection compares to compiled LINQ expressions and to emitted IL when it comes to setting a private field. If this is of any importance whatsoever then presumably the code will be run over and over again and so it should be the execution time of the compiled property-setting code that is of interest - the time taken to actually compile the LINQ expressions / emitted IL can probably be ignored as it should disappear into insignificance when the delegates are called enough times. But, for a sense of thoroughness (and because BenchmarkDotNet makes it so easy), I&#39;ll &lt;em&gt;also&lt;/em&gt; measure the time that it takes to do the delegate compilation as well.&lt;/p&gt;
+
+&lt;p&gt;To do this, I created a .NET Core Console application in VS2017, added the BenchmarkDotNet NuGet package and changed the .csproj file by hand to build for both .NET Core and .NET Framework 4.6.1 by changing&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;TargetFramework&amp;gt;netcoreapp1.1&amp;lt;/TargetFramework&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;to&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;TargetFrameworks&amp;gt;netcoreapp1.1;net461&amp;lt;/TargetFrameworks&amp;gt;
+&amp;lt;PlatformTarget&amp;gt;AnyCPU&amp;lt;/PlatformTarget&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;(as described in the &lt;a href=&quot;https://github.com/dotnet/BenchmarkDotNet/blob/master/docs/guide/FAQ.md&quot;&gt;BenchmarkDotNet FAQ&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;Then I put the following together. There are six benchmarks in total; three to measure the creation of the different types of property-setting delegates and three to then measure the execution time of those delegates -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class Program
+{
+    static void Main(string[] args)
+    {
+        BenchmarkRunner.Run&amp;lt;TimedSetter&amp;gt;();
+        Console.ReadLine();
+    }
+}
+
+[CoreJob, ClrJob]
+public class TimedSetter
+{
+    private SomethingWithPrivateField _target;
+    private FieldInfo _field;
+    private Action&amp;lt;SomethingWithPrivateField, int&amp;gt;
+        _reflectionSetter,
+        _linqExpressionSetter,
+        _emittedILSetter;
+
+    [GlobalSetup]
+    public void GlobalSetup()
+    {
+        _target = new SomethingWithPrivateField();
+
+        _field = typeof(SomethingWithPrivateField)
+            .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
+            .FirstOrDefault(f =&amp;gt; f.Name == &quot;_id&quot;);
+
+        _reflectionSetter = ConstructReflectionSetter();
+        _linqExpressionSetter = ConstructLinqExpressionSetter();
+        _emittedILSetter = ConstructEmittedILSetter();
+    }
+
+    [Benchmark]
+    public Action&amp;lt;SomethingWithPrivateField, int&amp;gt; ConstructReflectionSetter()
+    {
+        return (source, value) =&amp;gt; _field.SetValue(source, value);
+    }
+
+    [Benchmark]
+    public Action&amp;lt;SomethingWithPrivateField, int&amp;gt; ConstructLinqExpressionSetter()
+    {
+        var sourceParameter = Expression.Parameter(typeof(SomethingWithPrivateField), &quot;source&quot;);
+        var valueParameter = Expression.Parameter(_field.FieldType, &quot;value&quot;);
+        var fail = Expression.Assign(
+            Expression.MakeMemberAccess(sourceParameter, _field),
+            valueParameter
+        );
+        return Expression.Lambda&amp;lt;Action&amp;lt;SomethingWithPrivateField, int&amp;gt;&amp;gt;(
+                Expression.Assign(
+                    Expression.MakeMemberAccess(sourceParameter, _field),
+                    valueParameter
+                ),
+                sourceParameter,
+                valueParameter
+            )
+            .Compile();
+    }
+
+    [Benchmark]
+    public Action&amp;lt;SomethingWithPrivateField, int&amp;gt; ConstructEmittedILSetter()
+    {
+        var method = new DynamicMethod(
+            name: &quot;SetField&quot;,
+            returnType: null,
+            parameterTypes: new[] { typeof(SomethingWithPrivateField), typeof(int) },
+            restrictedSkipVisibility: true
+        );
+        var gen = method.GetILGenerator();
+        gen.Emit(OpCodes.Ldarg_0);
+        gen.Emit(OpCodes.Ldarg_1);
+        gen.Emit(OpCodes.Stfld, _field);
+        gen.Emit(OpCodes.Ret);
+        return (Action&amp;lt;SomethingWithPrivateField, int&amp;gt;)method.CreateDelegate(
+          typeof(Action&amp;lt;SomethingWithPrivateField, int&amp;gt;)
+        );
+    }
+
+    [Benchmark]
+    public void SetUsingReflection()
+    {
+        _reflectionSetter(_target, 1);
+    }
+
+    [Benchmark]
+    public void SetUsingLinqExpressions()
+    {
+        _linqExpressionSetter(_target, 1);
+    }
+
+    [Benchmark]
+    public void SetUsingEmittedIL()
+    {
+        _emittedILSetter(_target, 1);
+    }
+}
+
+public class SomethingWithPrivateField
+{
+    private int _id;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The &quot;GlobalSetup&quot; method will be run once and will construct the delegates for delegate-executing benchmark methods (&quot;SetUsingReflection&quot;, &quot;SetUsingLinqExpressions&quot; and &quot;SetUsingEmittedIL&quot;). The time that it takes to execute the [GlobalSetup] method does not contribute to any of the benchmark method times - the benchmark methods will record &lt;em&gt;only&lt;/em&gt; their own execution time.&lt;/p&gt;
+
+&lt;p&gt;However, having delegate-creation benchmark methods (&quot;ConstructReflectionSetter&quot;, &quot;ConstructLinqExpressionSetter&quot; and &quot;ConstructEmittedILSetter&quot;) means that I&#39;ll have an idea how large the initial cost to construct each delegate is (or isn&#39;t), separate to the cost of executing each type of delegate.&lt;/p&gt;
+
+&lt;p&gt;BenchmarkDotNet has capabilities beyond what I&#39;ve taken advantage of. For example, it can also build for Mono (though I don&#39;t have Mono installed on my computer, so I didn&#39;t try this) and it can test 32-bit vs 64-bit builds.&lt;/p&gt;
+
+&lt;p&gt;Aside from testing .NET Core 1.1 and .NET Framework 4.6.1, I&#39;ve kept things fairly simple.&lt;/p&gt;
+
+&lt;p&gt;After it has run, it emits the following summary about my computer:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;BenchmarkDotNet=v0.10.8, OS=Windows 8.1 (6.3.9600)&lt;/p&gt;
+  
+  &lt;p&gt;Processor=AMD FX(tm)-8350 Eight-Core Processor, ProcessorCount=8&lt;/p&gt;
+  
+  &lt;p&gt;Frequency=14318180 Hz, Resolution=69.8413 ns, Timer=HPET&lt;/p&gt;
+  
+  &lt;p&gt;dotnet cli version=1.0.4&lt;/p&gt;
+  
+  &lt;p&gt;[Host] : .NET Core 4.6.25211.01, 64bit RyuJIT [AttachedDebugger]&lt;/p&gt;
+  
+  &lt;p&gt;Clr    : Clr 4.0.30319.42000, 64bit RyuJIT-v4.6.1087.0&lt;/p&gt;
+  
+  &lt;p&gt;Core   : .NET Core 4.6.25211.01, 64bit RyuJIT&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;And produces the following table:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;                        Method |  Job | Runtime |           Mean |         Error |        StdDev |
+------------------------------ |----- |-------- |----------------|---------------|---------------|
+     ConstructReflectionSetter |  Clr |     Clr |       9.980 ns |     0.2930 ns |     0.4895 ns |
+ ConstructLinqExpressionSetter |  Clr |     Clr | 149,552.853 ns | 1,752.4151 ns | 1,639.2100 ns |
+      ConstructEmittedILSetter |  Clr |     Clr | 126,454.797 ns | 1,143.9593 ns | 1,014.0900 ns |
+            SetUsingReflection |  Clr |     Clr |     158.784 ns |     3.1892 ns |     3.6727 ns |
+       SetUsingLinqExpressions |  Clr |     Clr |       1.139 ns |     0.0542 ns |     0.0742 ns |
+             SetUsingEmittedIL |  Clr |     Clr |       1.832 ns |     0.0689 ns |     0.1132 ns |
+                               |      |         |                |               |               |
+     ConstructReflectionSetter | Core |    Core |       9.465 ns |     0.1083 ns |     0.0904 ns |
+ ConstructLinqExpressionSetter | Core |    Core |  66,430.408 ns | 1,303.5243 ns | 2,104.9488 ns |
+      ConstructEmittedILSetter | Core |    Core |  38,483.764 ns |   605.3819 ns |   536.6553 ns |
+            SetUsingReflection | Core |    Core |   2,626.527 ns |    24.1110 ns |    22.5534 ns |
+       SetUsingLinqExpressions | Core |    Core |       1.063 ns |     0.0516 ns |     0.0688 ns |
+             SetUsingEmittedIL | Core |    Core |       1.718 ns |     0.0599 ns |     0.0560 ns |
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The easiest thing to interpret is the &quot;Mean&quot; - BenchmarkDotNet did a few &quot;pilot runs&quot; to try to see how long the benchmark methods would take and then tries to decide what is an appropriate number of runs to do for real in order to get reliable results.&lt;/p&gt;
+
+&lt;p&gt;The short version is that when delegates are compiled using LINQ Expressions and emitted-IL that they both execute &lt;em&gt;a lot&lt;/em&gt; faster than reflection; over 85x faster for .NET Framework 4.6.1 and 1,500x faster for .NET Core 1.1!&lt;/p&gt;
+
+&lt;p&gt;The huge difference between reflection and the other two approaches, though, may slightly overshadow the fact that the LINQ Expression delegates are actually about 1.6x faster than the emitted-IL delegates. I hadn&#39;t expected this at all, I would have thought that they would be almost identical - in fact, I&#39;m still surprised and don&#39;t currently have any explanation for it.&lt;/p&gt;
+
+&lt;p&gt;The mean value doesn&#39;t usually tell the whole story, though. When looking at the mean, it&#39;s also useful to look at the Standard Deviation (&quot;StdDev&quot; in the table above). The mean might be within a small spread of values or a very large spread of values. A small spread is better because it suggests that the single mean value that we&#39;re looking at is representative of behaviour in the real world and that values aren&#39;t likely to vary too wildly - a large standard deviation means that there was much more variation in the recorded values and so the times could be all over the place in the real world. (Along similar lines, the &quot;Error&quot; value is described as being &quot;Half of 99.9% confidence interval&quot; - again, the gist is that smaller values suggest that the mean is a more useful indicator of what we would see in the real world for any given request).&lt;/p&gt;
+
+&lt;p&gt;What I&#39;ve ignored until this point are the &quot;ConstructReflectionSetter&quot; / &quot;ConstructLinqExpressionSetter&quot; / &quot;ConstructEmittedILSetter&quot; methods. If we first look at the generation of the LINQ Expression delegate on .NET 4.6.1, we can see that the mean time to generate that delegate was around 150ms - compared to approx 10ms for the reflection delegate. Each time the LINQ Expressions delegate is used to set the field instead of the reflection delegate we save around 0.16ms. That means that we need to call the delegate around 950 times in order to pay of the cost of constructing it!&lt;/p&gt;
+
+&lt;p&gt;As I suggested earlier, it would only make sense to investigate these sort of optimisations if you expect to execute the code over and over and over again (otherwise, why not just keep it simple and stick to using plain old reflection).. but it&#39;s still useful to have the information about just how much &quot;upfront cost&quot; there is to things like this, compared to how much you hope to save in the long run.&lt;/p&gt;
+
+&lt;p&gt;It&#39;s also interesting to see the discrepancies between .NET Framework 4.6.1 and .NET Core 1.1 - the times to compile LINQ Expressions and emitted-IL delegates are noticeably shorter and the time to set the private field by reflection noticeably longer. In fact, these differences mean that you only need to set the field 25 times before you start to offset the cost of creating the LINQ Expressions delegate (when you compare it to updating the field using reflection) and only 14 times to offset the cost of creating the emitted-IL delegate!&lt;/p&gt;
+
+&lt;h3&gt;BenchmarkDotNet is fun&lt;/h3&gt;
+
+&lt;p&gt;I&#39;m really happy with how easy BenchmarkDotNet makes it to measure these sorts of very short operations. Whenever I&#39;ve tried to do something similar in the past, I&#39;ve felt niggling doubts that maybe I&#39;m not running it enough times or maybe there are some factors that I should try to average out. Even when I get a result, I&#39;ve sometimes just looked at the single average (ie. the mean) time taken, which is a bit sloppy since the spread of results can be of vital importance as well. That BenchmarkDotNet presents the final data in such a useful way and with so few decisions on my part is fantastic.&lt;/p&gt;
+
+&lt;h3&gt;.NET Core upsets me again&lt;/h3&gt;
+
+&lt;p&gt;On the other hand, unfortunately .NET Core has been hard work for me again when it came to BenchmarkDotNet. I made it sound very easy earlier to get everything up and running because I didn&#39;t want dilute my enthusiasm for the benchmarking. However, I did have a myriad of problems before everything started working properly.&lt;/p&gt;
+
+&lt;p&gt;When I was hand-editing the .csproj file to target multiple frameworks (I still don&#39;t know why this isn&#39;t possible within VS when editing project properties), Visual Studio would only seem to intermittently acknowledge that I&#39;d changed it and offer to reload. This wasn&#39;t super-critical but it also didn&#39;t fill me with confidence.&lt;/p&gt;
+
+&lt;p&gt;When it &lt;em&gt;was&lt;/em&gt; ready to build and target both .NET Framework 4.6.1 and .NET Core 1.1, I got a cryptic warning:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Detected package downgrade: Microsoft.NETCore.App from 1.1.2 to 1.1.1 &lt;/p&gt;
+  
+  &lt;p&gt;CoreExeTest (&gt;= 1.0.0) -&gt; BenchmarkDotNet (&gt;= 0.10.8) -&gt; Microsoft.NETCore.App (&gt;= 1.1.2) 
+   CoreExeTest (&gt;= 1.0.0) -&gt; Microsoft.NETCore.App (&gt;= 1.1.1)               &lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Everything seemed to build alright but I didn&#39;t know if this was something to worry about or not (I like my projects to be zero-warning). It suggested to me that I was targeting .NET Core 1.1 and BenchmarkDotNet was expecting .NET Core 1.1.2 - sounds simple enough, surely I can upgrade? I first tried changing the .csproj to target &quot;netcoreapp1.1.2&quot; but that didn&#39;t work. In fact, it &quot;didnt work&quot; in a very unhelpful way; when I ran the project it would open in a window and immediately close, with no way to break and catch the exception in the debugger. I used &quot;dotnet run&quot;* on the command line to try to see more information and was then able to see the error message:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;The specified framework &#39;Microsoft.NETCore.App&#39;, version &#39;1.1.2&#39; was not found.&lt;/p&gt;
+  
+  &lt;ul&gt;
+  &lt;li&gt;&lt;p&gt;Check application dependencies and target a framework version installed at:&lt;/p&gt;
+  
+  &lt;p&gt;C:\Program Files\dotnet\shared\Microsoft.NETCore.App&lt;/p&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;p&gt;The following versions are installed:&lt;/p&gt;
+  
+  &lt;p&gt;1.0.1&lt;/p&gt;
+  
+  &lt;p&gt;1.0.4&lt;/p&gt;
+  
+  &lt;p&gt;1.1.1&lt;/p&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;p&gt;Alternatively, install the framework version &#39;1.1.2&#39;.&lt;/p&gt;&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;* &lt;em&gt;(Before being able to use &quot;dotnet run&quot; I had to manually edit the .csproj file to only target .NET Core - if you target multiple frameworks and try to use &quot;dotnet run&quot; then you get an error &quot;Unable to run your project. Please ensure you have a runnable project type and ensure &#39;dotnet run&#39; supports this project&quot;)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;I changed the .csproj file back from &quot;netcoreapp1.1.2&quot; to &quot;netcoreapp1.1&quot; and went to the NuGet UI to see if I could upgrade the &quot;Microsoft.NETCore.App&quot; package.. but the version dropdown wouldn&#39;t let me change it (stating that the other versions that it was aware of were &quot;Blocked by project&quot;).&lt;/p&gt;
+
+&lt;p&gt;I tried searching online for a way to download and install 1.1.2 but got nowhere.&lt;/p&gt;
+
+&lt;p&gt;Finally, I saw that VS 2017 had an update pending entitled &quot;Visual Studio 15.2 (26430.16)&quot;. The &quot;15.2&quot; caught me out for a minute because I initially presumed it was an update for VS &lt;em&gt;2015&lt;/em&gt;. The update includes .NET Core 1.1.2 (see &lt;a href=&quot;https://github.com/dotnet/core/issues/622&quot;&gt;this dotnet GitHub issue&lt;/a&gt;) and, when I loaded my solution again, the warning above had gone. Looking at the installed packages for my project, I saw that &quot;Microsoft.NETCore.App&quot; was now on version 1.1.2 and that all other versions were &quot;Blocked by project&quot;. This does not feel friendly and makes me worry about sharing code with others - if they don&#39;t have the latest version of Visual Studio then the code may cause them warnings like the above that don&#39;t happen on my PC. Yuck.&lt;/p&gt;
+
+&lt;p&gt;After all this, I got the project compiling (without warnings) and running, only for it to intermittently fail as soon as it started:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Access to the path &#39;BDN.Generated.dll&#39; is defined&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;This relates to an output folder created by BenchmarkDotNet. Sometimes this folder would be locked and it would not be possible to overwrite the files on the next run. Windows wouldn&#39;t let me delete the folder directly but I could trick it by renaming the folder and &lt;em&gt;then&lt;/em&gt; deleting it. I didn&#39;t encounter this problem if I created an old-style .NET Framework project and used BenchmarkDotNet there - this would prevent me from running tests against multiple frameworks but it might have also prevented me from teetering over the brink of insanity.&lt;/p&gt;
+
+&lt;p&gt;This is not how I would expect mature tooling to behave. For now, I continue to consider .NET Core as the Top Gear boys (when they still &lt;em&gt;were&lt;/em&gt; the Top Gear boys) described old Alfa Romeos; &quot;you want to believe that it can be something wonderful but you couldn&#39;t, in all good conscience, recommend it to a friend&quot;.&lt;/p&gt;
+
+&lt;h3&gt;Summary&lt;/h3&gt;
+
+&lt;p&gt;I suspect that, to some, this may seem like one of my more pointless blog posts. I tried to do something that .NET really doesn&#39;t want you to do (and that whoever wrote the code containing the readonly auto-properties really doesn&#39;t expect you to do) and then tried to optimise that naughty behaviour - then spent a lot more time explaining how it wasn&#39;t posible to do so!&lt;/p&gt;
+
+&lt;p&gt;However, along the way I discovered BenchmarkDotNet and I&#39;m counting that as a win - I&#39;ll be keeping that in my arsenal for future endeavours. And I also enjoyed revisiting what is and isn&#39;t possible with reflection and reminding myself of the ways that .NET allows you to write code that could make &lt;em&gt;my&lt;/em&gt; code appear to work in surprising ways.&lt;/p&gt;
+
+&lt;p&gt;Finally, it was interesting to see how the .NET Framework compared to .NET Core in terms of performance for these benchmarks &lt;em&gt;and&lt;/em&gt; to see take another look at the question of how mature .NET Core and its tooling is (or isn&#39;t). And when you learn a few things, can it ever really count as a waste of time?&lt;/p&gt;</description>
+			<pubDate>Wed, 26 Jul 2017 20:31:00 GMT</pubDate>
+		</item>
+		<item>
+			<title>Revisiting .NET Core tooling (Visual Studio 2017)</title>
+            <link>http://www.productiverage.com/revisiting-net-core-tooling-visual-studio-2017</link>
+			<guid>http://www.productiverage.com/revisiting-net-core-tooling-visual-studio-2017</guid>
+			<description>&lt;p&gt;In November last year, I migrated a fairly small but non-trivial project to .NET Core to see what I thought about the process and whether I was happy to make .NET Core projects my default. At that point I wasn&#39;t happy to, there were too many rough edges.&lt;/p&gt;
+
+&lt;p&gt;Since then, things have changed. The project.json format has been replaced with a .csproj format that is supported by the now-available Visual Studio 2017 and various other aspects of .NET Core development have had a chance to mature. So I thought that it was worth revisiting.&lt;/p&gt;
+
+&lt;h3&gt;TL;DR&lt;/h3&gt;
+
+&lt;p&gt;Things have come on a long way since the end of last year. But you don&#39;t get the level of consistency and stability with Visual Studio when you use it to develop .NET Core applications that you do when you use it to develop .NET Framework applications. To avoid frustration (and because I don&#39;t currently have use cases that would benefit from multi-platform support), I&#39;m still not going to jump to .NET Core for my day-to-day professional development tasks. I will probably dabble with it for personal projects.&lt;/p&gt;
+
+&lt;h3&gt;The Good&lt;/h3&gt;
+
+&lt;p&gt;First off, I&#39;m a huge fan of the new .csproj format. The &quot;legacy&quot; .csproj is huge and borderline-incomprehensible. Just what do the &quot;ProjectTypeGuids&quot; values mean and what are the acceptable choices? An incorrect one will mean that VS won&#39;t load the project and it won&#39;t readily give you information as to why. The new format is streamlined and beautiful. They took the best parts of project.json and made it into a format that would play better with MSBuild (and avoiding frightening developers who see &quot;project.json&quot; and get worried they&#39;re working on a frontend project that may have a terrifying Babel configuration hidden somewhere). I like that files in the folder structure are included by default, it makes sense (the legacy format required that every file explicitly be &quot;opted in&quot; to the project).&lt;/p&gt;
+
+&lt;p&gt;Next big win: Last time I tried .NET Core, one of the things that I wanted to examine was how it easy it would be to migrate a solution with multiple projects. Could I change one project from being .NET Framework to .NET Core and then reference that project from the .NET Framework projects? It was possible but only with an ugly hack (where you had to edit the legacy .NET Framework .csproj files and manually create the references). That wasn&#39;t the end of it, though, since this hack confused VS and using &quot;Go To Definition&quot; on a reference that lead into a .NET Core dependency would take you to a &quot;from metadata&quot; view instead of the file in the Core project. Worse, the .NET Framework project wouldn&#39;t know that it had to be rebuilt if the Core project that it referenced was rebuilt. All very clumsy. The good news is that VS2017 makes this all work perfectly!&lt;/p&gt;
+
+&lt;p&gt;Shared projects may also now be referenced from .NET Core projects. This didn&#39;t work in VS2015. There were workarounds but, again, they were a bit ugly (see the Stack Overflow question &lt;a href=&quot;https://stackoverflow.com/questions/38523457/how-do-i-reference-a-visual-studio-shared-project-in-a-net-core-class-library&quot;&gt;How do I reference a Visual Studio Shared Project in a .NET Core Class Library&lt;/a&gt;). With 2017, everything works as you would expect.&lt;/p&gt;
+
+&lt;p&gt;The final positive isn&#39;t something that&#39;s changed since last year but I think that it&#39;s worth shouting out again - the command line experience with .NET Core is really good. Building projects, running tests and creating NuGet packages are all really simple. In many of my older projects, I&#39;ve had some sort of custom NuGet-package-creating scripts but any .NET Core projects going forward won&#39;t need them. (One thing that I particularly like is that if you have a unit test project that builds for multiple frameworks - eg. .NET Core 1.1 and .NET Framework 4.5.2 - then the tests will all be run against both frameworks when &quot;dotnet test&quot; is executed).&lt;/p&gt;
+
+&lt;h3&gt;The Bad&lt;/h3&gt;
+
+&lt;p&gt;Let&#39;s look at the not-so-good stuff. Firstly, I still find some of the terminology around .NET Core confusing. And, reading around, I&#39;m not the only one. When I create a new project, I can choose a &quot;.NET Core Class Library&quot; and I can also choose a &quot;.NET Standard Class Library&quot;. Now, as I understand it, the basic explanation is that .NET Standard is a baseline &quot;standard&quot; that may have multiple implementations - all of them have to provide the full API that .NET Standard specifies. And .NET Core is one of the implementations of .NET Standard, so that means that a .NET Core class library has access to everything that .NET Standard dictates must be available.. plus (potentially) a bit more. Now, what that &quot;bit more&quot; might entail isn&#39;t 100% clear to me. I guess that the short answer is the you would need to create a &quot;.NET Core Class Library&quot; if you want to reference something that uses APIs that only .NET Core (and not .NET Standard) surface.&lt;/p&gt;
+
+&lt;p&gt;Another way to look at it is that it&#39;s best to start with a &quot;.NET Standard Class Library&quot; (rather than a &quot;.NET Core Class Library&quot;) unless you have a really compelling reason not to because more people / platforms / frameworks will be able to use the library that you use; .NET Standard assemblies may be referenced by .NET Core project and .NET Framework projects (and, if I have this right, Mono or Xamarin projects as well).&lt;/p&gt;
+
+&lt;p&gt;I&#39;ve &lt;a href=&quot;http://quoteinvestigator.com/2013/03/06/artists-steal/&quot;&gt;stolen&lt;/a&gt; the following from an MSDN post by &lt;a href=&quot;https://social.msdn.microsoft.com/profile/Immo+Landwerth+[MSFT]&quot;&gt;Immo Landwerth&lt;/a&gt; that relates to this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Unnecessary Optional instantiation&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/NETStandard.png&quot; class=&quot;NoBorder FullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;However, this still leaves another problem. If you want access to more APIs then you might have to change from .NET Standard to .NET Core. &lt;em&gt;Or&lt;/em&gt; you might have be able to stick with .NET Standard but use a later version. If you create a .NET Standard Class Library then you can tell it what version of .NET Standard that you want to support by going to the project properties and changing the Target Framework. In general, if you&#39;re building a library for use by other people then you probably want to build it against the lowest version of .NET Standard possible. Maybe it&#39;s better to say the &quot;most accessible&quot; version of .NET Standard. If your library might be referenced by a project that targets .NET Standard 1.6 then it won&#39;t work if your library requires .NET Standard 2.0 (you&#39;ll force the consumer to require the later version or they&#39;ll decide not to use your library).&lt;/p&gt;
+
+&lt;p&gt;Currently, .NET Core 1.1 and .NET Framework 4.6 implement .NET Standard 1.6 and so it&#39;s probably not the end of the world to take 1.6 as an acceptable minimum for .NET Standard libraries. But .NET Standard 2.0 &lt;a href=&quot;https://blogs.msdn.microsoft.com/dotnet/2017/05/10/announcing-net-core-2-0-preview-1/&quot;&gt;is in beta&lt;/a&gt; and I&#39;m not really sure what that will run on (will .NET Framework 4.6 be able to reference .NET Standard 2.0 or will we need 4.7?).. my point is that this is still quite confusing. That&#39;s not the fault of the tooling but it&#39;s still something you&#39;ll have to butt up against if you start going down the .NET Core / .NET Standard path.&lt;/p&gt;
+
+&lt;p&gt;My final whinge about .NET Standard versions is that it&#39;s often hard to know &lt;em&gt;when&lt;/em&gt; to change version. While doing research for this post, I re-created one of my projects &lt;em&gt;again&lt;/em&gt; and tried to start with the minimum framework version each time. I had some reflection code that uses BindingFlags.GetField and it was refusing to compile. Because I was using .NET Standard 1.3. If I changed to .NET Standard 1.6 then it compiled fine. The problem is that it&#39;s hard to know what to do, it feels like a lot of guess work - do I need to change the .NET Standard version or do I need to switch to a .NET Core Class Library?&lt;/p&gt;
+
+&lt;p&gt;Let me try and get more tightly focused on the tooling again. Earlier, I said that one of the plusses is that it&#39;s so easy to create NuGet packages with &quot;dotnet pack&quot;. One of the &lt;em&gt;problems&lt;/em&gt; (maybe &quot;mixed blessing&quot; would be more accurate) with this is that the packages are built entirely from metadata in the .csproj file. So you need to add any extra NuGet-specific information there. This actually works great - for example, here is one of my project files:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;Project Sdk=&quot;Microsoft.NET.Sdk&quot;&amp;gt;
+
+  &amp;lt;PropertyGroup&amp;gt;
+    &amp;lt;TargetFrameworks&amp;gt;netstandard1.6;net45&amp;lt;/TargetFrameworks&amp;gt;
+
+    &amp;lt;PackageId&amp;gt;FullTextIndexer.Serialisation.Json&amp;lt;/PackageId&amp;gt;
+    &amp;lt;PackageVersion&amp;gt;1.1.0&amp;lt;/PackageVersion&amp;gt;
+    &amp;lt;Authors&amp;gt;ProductiveRage&amp;lt;/Authors&amp;gt;
+    &amp;lt;Copyright&amp;gt;Copyright 2017 Productive Rage&amp;lt;/Copyright&amp;gt;
+    &amp;lt;PackageTags&amp;gt;C# full text index search&amp;lt;/PackageTags&amp;gt;
+    &amp;lt;PackageIconUrl&amp;gt;https://secure.gravatar.com/avatar/6a1f781d4d5e2d50dcff04f8f049767a?s=200&amp;lt;/PackageIconUrl&amp;gt;
+    &amp;lt;PackageProjectUrl&amp;gt;https://bitbucket.org/DanRoberts/full-text-indexer&amp;lt;/PackageProjectUrl&amp;gt;
+  &amp;lt;/PropertyGroup&amp;gt;
+
+  &amp;lt;ItemGroup&amp;gt;
+    &amp;lt;PackageReference Include=&quot;Newtonsoft.Json&quot; Version=&quot;10.0.2&quot; /&amp;gt;
+  &amp;lt;/ItemGroup&amp;gt;
+
+  &amp;lt;ItemGroup&amp;gt;
+    &amp;lt;ProjectReference Include=&quot;..\FullTextIndexer.Common\FullTextIndexer.Common.csproj&quot; /&amp;gt;
+    &amp;lt;ProjectReference Include=&quot;..\FullTextIndexer.Core\FullTextIndexer.Core.csproj&quot; /&amp;gt;
+  &amp;lt;/ItemGroup&amp;gt;
+
+  &amp;lt;ItemGroup Condition=&quot;&#39;$(TargetFramework)&#39; == &#39;netstandard1.6&#39;&quot;&amp;gt;
+    &amp;lt;PackageReference Include=&quot;System.Reflection.TypeExtensions&quot;&amp;gt;
+      &amp;lt;Version&amp;gt;4.3.0&amp;lt;/Version&amp;gt;
+    &amp;lt;/PackageReference&amp;gt;
+  &amp;lt;/ItemGroup&amp;gt;
+
+&amp;lt;/Project&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;I&#39;ve got everything I need; package id, author, copyright, icon, tags, .. My issue isn&#39;t how this works, it&#39;s that this doesn&#39;t seem to well documented. Searching on Google presents articles such as &lt;a href=&quot;https://docs.microsoft.com/en-us/nuget/guides/create-net-standard-packages-vs2017&quot;&gt;Create .NET standard packages with Visual Studio 2017&lt;/a&gt; which is very helpful but &lt;em&gt;doesn&#39;t&lt;/em&gt; link anywhere to a definitive list of what properties are and aren&#39;t supported. I came up with the above by hoping that it would work, calling &quot;dotnet pack&quot; and then examining the resulting .nupkg file in NuGet Package Explorer.&lt;/p&gt;
+
+&lt;p&gt;My next beef is with unit testing. Earlier, I said that &quot;dotnet test&quot; is great because it executes the test against every framework that your project targets. And that &lt;em&gt;is&lt;/em&gt; great. But getting your unit test project to that point can be hard work. I like xUnit and they have a great article about &lt;a href=&quot;http://xunit.github.io/docs/getting-started-dotnet-core&quot;&gt;Getting started with xUnit.net (.NET Core / ASP.NET Core)&lt;/a&gt; but I dislike that there&#39;s copy-pasting into the .csproj file required to make it work, I wish that the GUI tooling was mature enough to be up to the job for people who wish to take that avenue. But it isn&#39;t. There is no way to do this without manually hacking about your .csproj file. I like that the command line interface is so solid but I&#39;m not sure that it&#39;s ok to &lt;em&gt;require&lt;/em&gt; that the CLI / manual-file-editing be used - .NET is such a well-established and well-used technology that not everyone wants to have to rely upon the CLI. I suspect that 90% of .NET users want Visual Studio to be able to everything for them because it has historically been able to - and I don&#39;t think that anyone should judge those people and tell them they&#39;re wrong and should embrace the CLI.&lt;/p&gt;
+
+&lt;p&gt;To make things worse, in order to use xunit with .NET Core (or .NET Standard) you need to use pre-release versions of the libraries. Why? They&#39;ve been pre-release for a long time now, I find it hard to believe that they&#39;re not sufficiently stable / well-tested to make it to a &quot;real&quot; NuGet package release. Microsoft is suggesting that .NET Core is ready for mainstream use but other common dependencies aren&#39;t (this doesn&#39;t go for all major NuGet packages - AutoMapper, Json.NET and Dapper, for example, all work with .NET Standard without requiring pre-release versions).&lt;/p&gt;
+
+&lt;p&gt;Oh, one more thing about unit tests (with xunit, at least) - after you follow the instructions and get the tests recognised in the VS Test Explorer, they only get run for one framework. I&#39;m not sure which, if you specify multiple. Which is disappointing. Since the CLI is so good and runs tests for all supported frameworks, I wish that the Test Explorer integration would as well.&lt;/p&gt;
+
+&lt;p&gt;Last bugbear: When I create a .NET Framework Web Project and run it and see the result in the browser, so long as I have disabled &quot;Enable Edit and Continue&quot; in the Project Properties / Web pane then I can make changes, rebuild and then refresh in the browser without &quot;running&quot; (ie. attaching the debugger). This often shortens the edit-build-retry cycle (sometimes only slightly but sometimes by a few valuable seconds) but it&#39;s something I can&#39;t reproduce with .NET Core Web Projects; once the project is stopped, I can&#39;t refresh the page in the browser until I tell VS to run again. Why can&#39;t it leave the site running in IIS Express??&lt;/p&gt;
+
+&lt;h3&gt;The Ugly&lt;/h3&gt;
+
+&lt;p&gt;I&#39;ve been trying to find succinct examples of this problem while writing this article and I&#39;ve failed.. While looking into VS2017 tooling changes, I migrated my &quot;&lt;a href=&quot;https://bitbucket.org/DanRoberts/full-text-indexer&quot;&gt;Full Text Indexer&lt;/a&gt;&quot; code across. It&#39;s not a massive project by any means but it spans multiple projects within the same solution and builds NuGet packages for consumption by both .NET Standard and .NET Framework. Last year, I got it working with the VS2015 tooling and the project.json format. This year, I changed it to use the new .csproj format and got it building nicely in VS2017. One of the most annoying things that I found during this migration was that I would make change to projects (sometimes having to edit the project files directly) and the changes would refuse to apply themselves without me restarting VS (probably closing and re-opening the solution would have done it too). This was very frustrating. More frustrating at this very minute, frankly, is that I&#39;m unable to start a clean project and come up with an example of having to restart VS to get a change applied. But the feeling that I was left with was that the Visual Studio tooling was flakey. If I built everything using the CLI then it was fine - another case where I felt that if you don&#39;t mind manual editing and the command line then you&#39;ll be fine; but that&#39;s not, in my mind, a .NET release that is ready for &quot;prime time&quot;.&lt;/p&gt;
+
+&lt;p&gt;Another flakey issue I had is that I have a &quot;FullTextIndexer&quot; project that doesn&#39;t have any code of its own, it only exists to generate a single NuGet package that pulls in the other five projects / packages in one umbrella add-this-and-you-get-everything package. When I first created the project and used &quot;dotnet pack&quot; then the resulting package only listed the five dependencies for .NET Standard and &lt;em&gt;not&lt;/em&gt; for .NET Framework. I couldn&#39;t work out what was causing the problem.. then it went away! I couldn&#39;t put my finger on anything that had changed but it started emitting correct packages (with correct dependencies) at some point. I had another problem building my unit test project because one of the referenced projects needed the &quot;System.Text.RegularExpressions&quot; package when built as .NET Standard and it complained that it couldn&#39;t load version 4.1.1.0. One of the projects reference 4.3.1.0 but I could never find where the 4.1.1.0 requirement came in and I couldn&#39;t find any information about assembly binding like I&#39;m used to in MVC projects (where the web.config will say &quot;for versions x through y, just load y&quot;). This problem, also, just disappeared and I couldn&#39;t work out what had happened to make it go away.&lt;/p&gt;
+
+&lt;p&gt;In my multi-framework-targeting example solution, I have some conditional compilation statements. I use the Full Text Indexer to power the search on this blog and I serialise a search index using the BinaryFormatter. In order to do this, the search index classes have to have the [Serializable] attribute. But this attribute is not available in .NET Standard.. So the .NET Standard builds of the Full Text Indexer don&#39;t have [Serializable] attributes, while the .NET Framework builds &lt;em&gt;do&lt;/em&gt; have it. That way I can produce nice, clean, new .NET Standard libraries without breaking backwards compatibility for .NET Framework consumers (like my Blog). To do this end, I have code like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;#if NET45
+  [Serializable]
+#endif
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;I have two problems with this. Firstly, the conditional compile strings are a little bit &quot;magic&quot; and are not statically analysed. If, for example, you change &quot;#if NET45&quot; to &quot;#if net45&quot; then the code would not be included in .NET Framwork 4.5 builds. You wouldn&#39;t get any warning or indication of this, it would happen silently. Similarly, if your project builds for &quot;netstandard1.6&quot; and &quot;net45&quot; and you include a conditional &quot;#if NET452&quot; then that condition will never be met because you should have used &quot;NET45&quot; and not &quot;NET452&quot;. Considering the fact that I use languages like C# that are statically typed so that the compiler can identify silly mistakes like this that I might make, this is frustrating when I get it wrong. The second issue I have is that the conditional statement highlighting is misleading when the debugger steps through code. If I have a project that has target frameworks &quot;netstandard1.6;net45&quot; and I reference this from a .NET Framework Console Application and I step through into the library code, any &quot;#if NET45&quot; code will appear &quot;disabled&quot; in the IDE when, really, that code is in play. That&#39;s misleading and makes me sad.&lt;/p&gt;
+
+&lt;h3&gt;To summarise..?&lt;/h3&gt;
+
+&lt;p&gt;I&#39;m really impressed with how much better the experience has been in writing .NET Core / .NET Standard projects (or projects that build for .NET Core / Standard &lt;em&gt;and&lt;/em&gt; &quot;full fat&quot; Framework). However.. I&#39;m just still not that confident that the technology is mature yet. I&#39;ve encountered too many things that work ok only 95% of the time - and this makes me think that if I tried to encourage everyone at work to adopt .NET Core / Standard today then I&#39;d regret it. There would just be too many occurrences where someone would hit a &quot;weird issue that may or may not go away.. and if it does then we&#39;re not sure why&quot; problems.&lt;/p&gt;
+
+&lt;p&gt;I think that the future is bright for .NET Core.. but it seems like the last two years have permanently had us feeling that &quot;in just six months or so, .NET Core will be ready to rock&#39;n&#39;roll&quot;. And things like &quot;&lt;a href=&quot;https://www.theregister.co.uk/2017/05/09/dot_net_compatibility/&quot;&gt;ASP.NET Core 2.0 won&#39;t be supported on .NET Framework&lt;/a&gt;&quot; mix-ups don&#39;t help (TL;DR: It was said that &quot;ASP.NET Core&quot; wouldn&#39;t work on the &quot;full fat&quot; .NET Framework and that that was by design - but then it turned out that this was a miscommunication and that it would only be a temporary sitation and ASP.NET Core &lt;em&gt;would&lt;/em&gt; work within .NET Framework as well).&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;To sumarise the summary:&lt;/strong&gt; I hope to move to .NET Core in the foreseeable future. But, professionally, I&#39;m not going to today (personal projects maybe, but not at work).&lt;/p&gt;</description>
+			<pubDate>Mon, 19 Jun 2017 19:55:00 GMT</pubDate>
+		</item>
 		<item>
 			<title>Face or no face (finding faces in photos using C# and Accord.NET)</title>
             <link>http://www.productiverage.com/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet</link>
@@ -3420,214 +4054,6 @@ namespace ExampleAnalyser
 
 &lt;p&gt;* &lt;em&gt;(Since I&#39;m feeling so brave and self-assured, I&#39;m going to say that I think that React *will* still be important five years from now - maybe I&#39;ll look back in 2021 and see how this statement has fared!)&lt;/em&gt;&lt;/p&gt;</description>
 			<pubDate>Tue, 31 May 2016 21:34:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>A static type system is a wonderful message to the present and future</title>
-            <link>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</link>
-			<guid>http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future</guid>
-			<description>&lt;p&gt;Last week, I read the article &quot;&lt;a href=&quot;http://solnic.eu/2016/05/22/my-time-with-rails-is-up.html&quot;&gt;My time with Rails is up&lt;/a&gt;&quot; (by &lt;a href=&quot;https://twitter.com/_solnic_&quot;&gt;Piotr Solnica&lt;/a&gt;) which resulted in me reading some of &lt;a href=&quot;https://medium.com/@dhh&quot;&gt;DHH&lt;/a&gt;&#39;s latest posts and re-reading some of his  older ones.&lt;/p&gt;
-
-&lt;p&gt;Some people write articles that I enjoy reading because they have similar ideas and feelings about development that I do, that they manage to express in a new or particularly articulate way that helps me clarify it in my own head or that helps me think about whether I really do still agree with the principle. Some people write articles that come from a completely different point of view and experience to me and these also can have a lot of benefit, in that they make me reconsider where I stand on things or inspire me to try something different to see how it feels. DHH is, almost without fail, interesting to read and I like his passion and conviction.. but he&#39;s definitely not in that first category of author. There was one thing in particular, though, that really stuck out for me in his post &quot;&lt;a href=&quot;https://m.signalvnoise.com/provide-sharp-knives-cc0a22bf7934#.yv2771vf7&quot;&gt;Provide sharp knives&lt;/a&gt;&quot; -&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Ruby includes a lot of sharp knives in its drawer of features.. The most famous is monkey patching: The power to change existing classes and methods. .. it offered a different and radical perspective on the role of the programmer: That they could be trusted with sharp knives. .. That’s an incredibly aspirational idea, and one that runs counter to a lot of programmer’s intuition about other programmers.&lt;/p&gt;
-  
-  &lt;p&gt;Because it’s always about other programmers when the value of sharp knives is contested. &lt;strong&gt;I’ve yet to hear a single programmer put up their hand and say &quot;I can’t trust myself with this power, please take it away from me!&quot;. It’s always &quot;I think other programmers would abuse this&quot;&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;The highlighted section of the quote is what I disagree with most - because I absolutely &lt;em&gt;do&lt;/em&gt; want to be able to write code in a way that limits how I (as well as others) may use it.&lt;/p&gt;
-
-&lt;h3&gt;And I strongly disagree with it because..&lt;/h3&gt;
-
-&lt;p&gt;The harsh reality is that all code is created according to a particular set of limitations and compromises that are present at the time of writing. The more complex the task that the code must perform, the more likely that there will be important assumptions that are &quot;baked into&quot; the code and that it would be beneficial for someone using the code to be aware of. A good type system can be an excellent way to communicate some of these assumptions. And, unlike documentation, convention or code review, a good type system can allow these assumptions to be &lt;em&gt;enforced&lt;/em&gt; by the computer - rather than a principle that &lt;em&gt;should be treated as unbreakable&lt;/em&gt; being allowed to be ignored. Computers are excellent at verifying simple sets of rules, which allow them to help identify common mistakes (or miscomprehensions).&lt;/p&gt;
-
-&lt;p&gt;At the very simplest level, specifying types for a method&#39;s arguments makes it much less likely that I&#39;ll refactor my code by swapping two of the arguments and then miss one of the call sites and not find out that something now fails until runtime (the example sounds contrived but, unfortunately, it &lt;em&gt;is&lt;/em&gt; something that I&#39;ve done from time to time). Another simple example is that having descriptive classes reminds me precisely what the minimum requirements are for a method without having to poke around &lt;em&gt;inside&lt;/em&gt; the method - if there is an argument named &quot;employeeSummaries&quot; in a language without type annotations, I can presume that it&#39;s some sort of collection type.. but should each value in the collection include just the key and name of each employee or should it be key, name and some other information that the method requires such as, say, a list of reporting employees that the employee is responsible for managing? With a type system, if the argument is &lt;strong&gt;IEnumerable&amp;lt;EmployeeSummary&amp;gt;&lt;/strong&gt; then I can see what information I have to provide by looking at the &lt;strong&gt;EmployeeSummary&lt;/strong&gt; class.&lt;/p&gt;
-
-&lt;p&gt;A more complex example might involve data that is shared across multiple threads, whether for parallel processing or just for caching. The simplest way to write this sort of code reliably is to prevent mutation of the data from occurring on multiple threads and one way to achieve that is for the data to be represented by immutable data types. If the multi-threaded code requires that the data passed in be immutable then it&#39;s hugely beneficial for the type system to be able to specify that immutable types be used, so that the internal code may be written in the simplest way - based on the requirement that the data not be mutable.&lt;/p&gt;
-
-&lt;p&gt;I want to reinforce here that this is not just about me trying to stop other people from messing up when they use my code, &lt;em&gt;this is just as much about me&lt;/em&gt;. Being able to represent these sorts of key decisions in the type system means that I can actually be a little bit less obsessive with how much I worry about them, easing the mental burden. This, in turn, leaves me more mental space to concentrate on solving the real problem at hand. I won&#39;t be able to forget to pass data in an immutable form to methods that require it in an immutable form, because the compiler won&#39;t let me do so.&lt;/p&gt;
-
-&lt;h3&gt;Isn&#39;t this what automated tests are for?&lt;/h3&gt;
-
-&lt;p&gt;An obvious rebuttal is that these sorts of errors (particular the mixing-up-the-method-arguments example) can (and should) be caught by unit tests.&lt;/p&gt;
-
-&lt;p&gt;In my opinion: no.&lt;/p&gt;
-
-&lt;p&gt;I believe that unit tests &lt;em&gt;are&lt;/em&gt; required to test logic in an application and it &lt;em&gt;is&lt;/em&gt; possible to write unit tests that show how methods work when given the correct data and that show how they will fail when given invalid data but it&#39;s difficult (and arduous) to prove, using automated tests, that the same guarantees that a type system could enforce are not being broken anywhere in your code. The only-allow-immutable-data-types-to-be-passed-into-this-thread-safe-method example is a good one here since multi-threaded code will often appear to work fine when only executed within a single thread, meaning that errors will only surface when multiple threads are working with it simultaneously. Writing unit tests to try to detect race conditions is not fun. You could have 100% code coverage and not always pick up on all of the horrible things that can happen when multiple threads deal with mutable data. If the data passed around within those code paths is &lt;em&gt;immutable&lt;/em&gt;, though (which may be enforced through the types passed around), then these potential races are prevented.&lt;/p&gt;
-
-&lt;p&gt;Good use of static typing means that an entire class of unit tests are not required.&lt;/p&gt;
-
-&lt;p&gt;The fact that static typing is not enough to confirm that your code is correct, and that unit tests should be written as well, does not mean that &lt;em&gt;only&lt;/em&gt; units tests should be used.&lt;/p&gt;
-
-&lt;p&gt;I&#39;ve kept this post deliberately short because I would love for it to have some impact and experience has taught me that it&#39;s much more difficult for that to be the case with a long format post. I&#39;ve expanded on this further at &quot;&lt;a href=&quot;http://www.productiverage.com/a-static-type-system-is-a-wonderful-message-to-the-present-and-future-supplementary&quot;&gt;A static type system is a wonderful message to the present and future - Supplementary&lt;/a&gt;&quot;. There&#39;s more about the benefits, more about the limitations, more examples of me saying &quot;I don&#39;t want the power to do try to do something that this code has been explicitly written not to have to deal with&quot; and &lt;em&gt;no more&lt;/em&gt; mentions of multi-threading because static typing&#39;s benefits are not restricted to especially complicated problem domains, applications may benefit regardless of their complexity.&lt;/p&gt;</description>
-			<pubDate>Tue, 31 May 2016 21:33:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</title>
-            <link>http://www.productiverage.com/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</link>
-			<guid>http://www.productiverage.com/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier</guid>
-			<description>&lt;p&gt;This is going to be a short post about a Roslyn (or &quot;The .NET Compiler Platform&quot;, if you&#39;re from Microsoft) analyser and code fix that I&#39;ve added to a library. I&#39;m not going to try to take you through the steps required to create an analyser nor how the Roslyn object model describes the code that you&#39;ve written in the IDE* but I want to talk about the analyser itself because it&#39;s going to be very useful if you&#39;re one of the few people using my &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt; library. Also, I feel like the inclusion of analysers with libraries is something that&#39;s going to become increasingly common (and I want to be able to have something to refer back to if I get the chance to say &quot;told you!&quot; in the future).&lt;/p&gt;
-
-&lt;p&gt;* &lt;em&gt;(This is largely because I&#39;m still struggling with it a bit myself; my current process is to start with &lt;a href=&quot;https://msdn.microsoft.com/en-gb/magazine/dn879356.aspx&quot;&gt;Use Roslyn to Write a Live Code Analyzer for Your API&lt;/a&gt; and the &quot;Analyzer with Code Fix (NuGet + VSIX)&quot; Visual Studio template. I then tinker around a bit and try running what I&#39;ve got so far, so that I can use the &quot;Syntax Visualizer&quot; in the Visual Studio instance that is being debugged. Then I tend to do a lot of Google searches when I feel like I&#39;m getting close to something useful.. how do I tell if a &lt;strong&gt;FieldDeclarationSyntax&lt;/strong&gt; is for a readonly field or not? Oh, good, someone else has already written some code doing something like what  I want to do - I look at the &quot;Modifiers&quot; property on the &lt;strong&gt;FieldDeclarationSyntax&lt;/strong&gt; instance).&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;As new .net libraries get written, some of them will have guidelines and rules that can&#39;t easily be described through the type system. In the past, the only option for such rules would be to try to ensure that the documentation (whether this be the project README and / or more in-depth online docs and / or the xml summary comment documentation for the types, methods, properties and fields that intellisense can bring to your attention in the IDE). The support that Visual Studio 2015 introduced for customs analysers* allows these rules to be communicated in a different manner.&lt;/p&gt;
-
-&lt;p&gt;* &lt;em&gt;(I&#39;m being English and stubborn, hence my use of &quot;analysers&quot; rather than &quot;analyzers&quot;)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;In short, they allow these library-specific guidelines and rules to be higlighted in the Visual Studio Error List, just like any error or warning raised by Visual Studio itself (even refusing to allow the project to be built, if an error-level message is recorded).&lt;/p&gt;
-
-&lt;p&gt;An excellent example that I&#39;ve seen recently was encountered when I was writing some of my own analyser code. To do this, you can start with the &quot;Analyzer with Code Fix (NuGet + VSIX)&quot; template, which pulls in a range of NuGet packages and includes some template code of its own. You then need to write a class that is derived from &lt;strong&gt;DiagnosticAnalyzer&lt;/strong&gt;. Your class will declare one of more &lt;strong&gt;DiagnosticDescriptor&lt;/strong&gt; instances - each will be a particular rule that is checked. You then override an &quot;Initialize&quot; method, which allows your code to register for syntax changes and to raise any rules that have been broken. You must also override a &quot;SupportedDiagnostics&quot; property and return the set of &lt;strong&gt;DiagnosticDescriptor&lt;/strong&gt; instances (ie. rules) that your analyser will cover. If the code that the &quot;Initialize&quot; method hooks up tries to raise a rule that &quot;SupportedDiagnostics&quot; did not declare, the rule will be ignored by the analysis engine. This would be a kind of (silent) runtime failure and it&#39;s something that is documented - but it&#39;s still a very easy mistake to make; you might create a new &lt;strong&gt;DiagnosticDescriptor&lt;/strong&gt; instance and raise it from your &quot;Initialize&quot; method but forget to add it to the &quot;SupportedDiagnostics&quot; set.. whoops. In the past, you may not realise until runtime that you&#39;d made a mistake and, as a silent failure, you might end up getting very frustrated and be stuck wondering what had gone wrong. But, mercifully (and I say this as I made this very mistake), there is an analyser in the &quot;Microsoft.CodeAnalysis.CSharp&quot; NuGet package that brings this error immediately to your attention with the message:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;RS1005 ReportDiagnostic invoked with an unsupported DiagnosticDescriptor&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;The entry in the Error List links straight to the code that called &quot;context.ReportDiagnostic&quot; with the unexpected rule. This is fantastic - instead of suffering a runtime failure, you are informed at compile time precisely what the problem is. Compile time is &lt;em&gt;always&lt;/em&gt; better than run time (for many reasons - it&#39;s more immediate, so you don&#39;t have to &lt;em&gt;wait&lt;/em&gt; until runtime, and it&#39;s more thorough; a runtime failure may only happen if a particular code path is followed, but static analysis such as this is like having &lt;em&gt;every possible&lt;/em&gt; code path tested).&lt;/p&gt;
-
-&lt;h3&gt;The analysers already in ProductiveRage.Immutable&lt;/h3&gt;
-
-&lt;p&gt;The ProductiveRage uber-fans (who, surely exist.. yes? ..no? :D) may be thinking &quot;doesn&#39;t the ProductiveRage.Immutable library already have some analysers built into it?&quot;&lt;/p&gt;
-
-&lt;p&gt;And they would be correct, for some time now it has included a few analysers that try to prevent some simple mistakes. As a quick reminder, the premise of the library is that it will make creating immutable types in &lt;a href=&quot;http://www.bridge.net&quot;&gt;Bridge.NET&lt;/a&gt; easier.&lt;/p&gt;
-
-&lt;p&gt;Instead of writing something like this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public sealed class EmployeeDetails
-{
-  public EmployeeDetails(PersonId id, NameDetails name)
-  {
-    if (id == null)
-      throw new ArgumentNullException(&quot;id&quot;);
-    if (name == null)
-      throw new ArgumentNullException(&quot;name&quot;);
-
-    Id = id;
-    Name = name;
-  }
-
-  /// &amp;lt;summary&amp;gt;
-  /// This will never be null
-  /// &amp;lt;/summary&amp;gt;
-  public PersonId Id { get; private set; }
-
-  /// &amp;lt;summary&amp;gt;
-  /// This will never be null
-  /// &amp;lt;/summary&amp;gt;
-  public NameDetails Name { get; private set; }
-
-  public EmployeeDetails WithId(PersonId id)
-  {
-    return Id.Equals(id) ? this : return new EmployeeDetails(id, Name);
-  }
-  public EmployeeDetails WithName(NameDetails name)
-  {
-    return Name.Equals(name) ? this : return new EmployeeDetails(Id, name);
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;.. you can express it just as:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public sealed class EmployeeDetails : IAmImmutable
-{
-  public EmployeeDetails(PersonId id, NameDetails name)
-  {
-    this.CtorSet(_ =&amp;gt; _.Id, id);
-    this.CtorSet(_ =&amp;gt; _.Name, name);
-  }
-  public PersonId Id { get; private set; }
-  public NameDetails Name { get; private set; }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The if-null-then-throw validation is encapsulated in the CtorSet call (since the library takes the view that no value should ever be null - it introduces an &lt;strong&gt;Optional&lt;/strong&gt; struct so that you can identify properties that may be without a value). And it saves you from having to write &quot;With&quot; methods for the updates as &lt;strong&gt;IAmImmutable&lt;/strong&gt; implementations may use the &quot;With&quot; extension method whenever you want to create a new instance with an altered property - eg.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;var updatedEmployee = employee.With(_ =&amp;gt; _.Name, newName);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The library can only work if certain conditions are met. For example, every property must have a getter and a setter - otherwise, the &quot;CtorSet&quot; extension method won&#39;t know how to actually set the value &quot;under the hood&quot; when populating the initial instance (nor would the &quot;With&quot; method know how to set the value on the new instance that it would create).&lt;/p&gt;
-
-&lt;p&gt;If you forgot this and wrote the following (note that the &quot;Name&quot; property now has no setter) -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public sealed class EmployeeDetails : IAmImmutable
-{
-  public EmployeeDetails(PersonId id, NameDetails name)
-  {
-    this.CtorSet(_ =&amp;gt; _.Id, id);
-    this.CtorSet(_ =&amp;gt; _.Name, name);
-  }
-  public PersonId Id { get; private set; }
-  public NameDetails Name { get; }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;.. then you would see the following errors reported by Visual Studio (presuming you are using 2015 or later) -&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserError1.png&quot; alt=&quot;Example analyser errors raised by the ProductiveRage.Immutable library&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;.. which is one of the &quot;common IAmImmutable mistakes&quot; analysers identifying the problem for you.&lt;/p&gt;
-
-&lt;h3&gt;Getting Visual Studio to write code for you, using code fixes&lt;/h3&gt;
-
-&lt;p&gt;I&#39;ve been writing more code with this library and I&#39;m still, largely, happy with it. Making the move to assuming never-allow-null (which is baked into the &quot;CtorSet&quot; and &quot;With&quot; calls) means that the classes that I&#39;m writing are a lot shorter and that type signatures are more descriptive. (I wrote about all this in my post at the end of last year &quot;&lt;a href=&quot;http://www.productiverage.com/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications&quot;&gt;Friction-less immutable objects in Bridge (C# / JavaScript) applications&lt;/a&gt;&quot; if you&#39;re curious for more details).&lt;/p&gt;
-
-&lt;p&gt;However.. I &lt;em&gt;still&lt;/em&gt; don&#39;t really like typing out as much code for each class as I have to. Each class has to repeat the property names four times - once in the constructor, twice in the &quot;CtorSet&quot; call and a fourth time in the public property. Similarly, the type name has to be repeated twice - once in the constructor and once in the property.&lt;/p&gt;
-
-&lt;p&gt;This is better than the obvious alternative, which is to not bother with immutable types. I will gladly take the extra lines of code (and the effort required to write them) to get the additional confidence that a &quot;stronger&quot; type system offers - I wrote about this recently in my &quot;&lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles&quot;&gt;Writing React with Bridge.NET - The Dan Way&lt;/a&gt;&quot; posts; I think that it&#39;s really worthwhile to bake assumptions into the type system where possible. For example, the Props types of React components are assumed, by the React library, to be immutable - so having them defined as immutable types represents this requirement in the type system. If the Props types are &lt;em&gt;mutable&lt;/em&gt; then it would be possible to write code that tries to change that data and then bad things could happen (you&#39;re doing something that library expects not to happen). If the Props types are &lt;em&gt;immutable&lt;/em&gt; then it&#39;s not even possible to write this particular kind of bad-things-might-happen code, which is a positive thing.&lt;/p&gt;
-
-&lt;p&gt;But &lt;em&gt;still&lt;/em&gt; I get a niggling feeling that things could be better. And now they are! With Roslyn, you can not only identify particular patterns but you can also offer automatic fixes for them. So, if you were to start writing the &lt;strong&gt;EmployeeDetails&lt;/strong&gt; class from scratch and got this far:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public sealed class EmployeeDetails : IAmImmutable
-{
-  public EmployeeDetails(PersonId id, NameDetails name)
-  {
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;.. then an analyser could identify that you were writing an &lt;strong&gt;IAmImmutable&lt;/strong&gt; implementation and that you have an empty constructor - it could then offer to fix that for you by filling in the rest of the class.&lt;/p&gt;
-
-&lt;p&gt;The latest version of the ProductiveRage.Immutable library (1.7.0) does just that. The empty constructor will not only be identified with a warning but a light bulb will also appear alongside the code. Clicking this (or pressing [Ctrl]-[.] while within the empty constructor, for fellow keyboard junkies) will present an option to &quot;Populate class from constructor&quot; -&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix1.png&quot; alt=&quot;Screenshot showing the analyser identifying an empty constructor on an IAmImmutable implementation&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;Selecting the &quot;Populate class from constructor&quot; option -&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/ProductiveRageImmutableAnalyserCodeFix2.png&quot; alt=&quot;Screenshot showing the code fix that may auto-populate the incomplete IAmImmutable implementation&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;.. will take the constructor arguments and generate the &quot;CtorSet&quot; calls and the public properties automatically. Now you can have all of the safety of the immutable type with no more typing effort than the mutable version!&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;// This is what you have to type of the immutable version,
-// then the code fix will expand it for you
-public sealed class EmployeeDetails : IAmImmutable
-{
-  public EmployeeDetails(PersonId id, NameDetails name)
-  {
-  }
-}
-
-// This is what you would have typed if you were feeling
-// lazy and creating mutable types because you couldn&#39;t
-// be bothered with the typing overhead of immutability
-public sealed class EmployeeDetails
-{
-  public PersonId Id;
-  public NameDetails name;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3&gt;To summarise&lt;/h3&gt;
-
-&lt;p&gt;If you&#39;re already using the library, then all you need to do to start taking advantage of this code fix is update your NuGet reference* (presuming that you&#39;re using VS 2015 - analysers weren&#39;t supported in previous versions of Visual Studio).&lt;/p&gt;
-
-&lt;p&gt;* &lt;em&gt;(Sometimes you have to restart Visual Studio after updating, you will know that this is the case if you get a warning in the Error List about Visual Studio not being able to load the Productive.Immutable analyser)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;If you&#39;re writing your own library that has any guidelines or common gotchas that you have to describe in documentation somewhere (that the users of your library may well not read unless they have a problem - at which point they may even abandon the library, if they&#39;re only having an investigative play around with it) then I highly recommend that you consider using analysers to surface some of these assumptions and best practices. While I&#39;m aware that I&#39;ve not offered much concrete advice on &lt;em&gt;how&lt;/em&gt; to write these analysers, the reason is that I&#39;m still very much a beginner at it - but that puts me in a good position to be able to say that it really is fairly easy if you read a few articles about it (such as &lt;a href=&quot;https://msdn.microsoft.com/en-gb/magazine/dn879356.aspx&quot;&gt;Use Roslyn to Write a Live Code Analyzer for Your API&lt;/a&gt;) and then just get stuck in. With some judicious Google&#39;ing, you&#39;ll be making progress in no time!&lt;/p&gt;
-
-&lt;p&gt;I guess that only time will tell whether library-specific analysers become as prevelant as I imagine. It&#39;s very possible that I&#39;m biased because I&#39;m such a believer in static analysis. Let&#39;s wait and see*!&lt;/p&gt;
-
-&lt;p&gt;* &lt;em&gt;Unless YOU are a library writer that this might apply to - in which case, make it happen rather than just sitting back to see what MIGHT happen! :)&lt;/em&gt;&lt;/p&gt;</description>
-			<pubDate>Wed, 04 May 2016 22:33:00 GMT</pubDate>
 		</item>
 
 	</channel>
