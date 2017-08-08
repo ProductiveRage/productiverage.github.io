@@ -548,7 +548,166 @@ public class SomethingWithPrivateField
 
 &lt;p&gt;However, along the way I discovered BenchmarkDotNet and I&#39;m counting that as a win - I&#39;ll be keeping that in my arsenal for future endeavours. And I also enjoyed revisiting what is and isn&#39;t possible with reflection and reminding myself of the ways that .NET allows you to write code that could make &lt;em&gt;my&lt;/em&gt; code appear to work in surprising ways.&lt;/p&gt;
 
-&lt;p&gt;Finally, it was interesting to see how the .NET Framework compared to .NET Core in terms of performance for these benchmarks &lt;em&gt;and&lt;/em&gt; to see take another look at the question of how mature .NET Core and its tooling is (or isn&#39;t). And when you learn a few things, can it ever really count as a waste of time?&lt;/p&gt;</description>
+&lt;p&gt;Finally, it was interesting to see how the .NET Framework compared to .NET Core in terms of performance for these benchmarks &lt;em&gt;and&lt;/em&gt; to see take another look at the question of how mature .NET Core and its tooling is (or isn&#39;t). And when you learn a few things, can it ever really count as a waste of time?&lt;/p&gt;
+
+&lt;h3&gt;Minor follow-up (8th August 2017)&lt;/h3&gt;
+
+&lt;p&gt;A comment on this post by &quot;ai_enabled&quot; asked about the use of the reflection method &quot;SetValueDirect&quot; instead of &quot;SetValue&quot;. I must admit that I was unaware of this method but it was an interesting question posed about its performance in comparison to &quot;SetValue&quot; &lt;em&gt;and&lt;/em&gt; there was a very important point made about the code that I&#39;d presented so far when it comes to structs; in particular, because structs are copied when they&#39;re passed around, the property-update mechanisms that I&#39;ve shown wouldn&#39;t have worked. I&#39;ll try to demonstrate this with some code:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static void Main()
+{
+    var field = typeof(SomeStructWithPrivateField)
+      .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
+      .FirstOrDefault(f =&amp;gt; f.Name == &quot;_id&quot;);
+
+    // FAIL! &quot;target&quot; will still have an &quot;_id&quot; value of zero :(
+    var target = new SomeStructWithPrivateField();
+    field.SetValue(target, 123);
+}
+
+public struct SomeStructWithPrivateField
+{
+    private int _id;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Because the &quot;SetValue&quot; method&#39;s first parameter is of type &lt;strong&gt;object&lt;/strong&gt;, the &quot;target&quot; struct will get boxed - any time that a non-reference type is passed as an argument where a reference type is expected, it effectively gets &quot;wrapped up&quot; into an &lt;strong&gt;object&lt;/strong&gt;. I won&#39;t go into all of the details of boxing / unboxing here (if you&#39;re interested, though, then &quot;&lt;a href=&quot;https://docs.microsoft.com/en-us/dotnet/csharp/programming-guide/types/boxing-and-unboxing&quot;&gt;Boxing and Unboxing (C# Programming Guide)&lt;/a&gt;&quot; is a good starting point) but one important thing to note is that structs are copied as part of the boxing process. This means &quot;SetValue&quot; will be working on a copy of &quot;target&quot; and so the &quot;_id&quot; property of the &quot;target&quot; value will not be changed by the &quot;SetValue&quot; call!&lt;/p&gt;
+
+&lt;p&gt;The way around this is to use &quot;SetValueDirect&quot;, which takes a special &lt;strong&gt;TypedReference&lt;/strong&gt; argument. The way in which this is done is via the little-known &quot;__makeref&quot; keyword (I wasn&#39;t aware of it before looking into &quot;SetValueDirect&quot;) -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static void Main()
+{
+    var field = typeof(SomeStructWithPrivateField)
+      .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
+      .FirstOrDefault(f =&amp;gt; f.Name == &quot;_id&quot;);
+
+    // SUCCESS! &quot;target&quot; will have its &quot;_id&quot; value updated!
+    var target = new SomeStructWithPrivateField();
+    field.SetValueDirect(__makeref(target), 123);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;If we wanted to wrap this up into a delegate then we need to ensure that the target parameter is marked as being &quot;ref&quot;, otherwise we&#39;ll end up creating another place that the struct gets copied and the update lost. That means that we can no longer use something like:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Action&amp;lt;SomeStructWithPrivateField, int&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In fact, we can&#39;t use the generic &lt;strong&gt;Action&lt;/strong&gt; class at all because it doesn&#39;t allow for &quot;ref&quot; parameters to be specified. Instead, we&#39;ll need to define a new delegate -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public delegate void Updater(ref SomeStructWithPrivateField target, int value);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Instances of this may be created like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var field = typeof(SomeStructWithPrivateField)
+  .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
+  .FirstOrDefault(f =&amp;gt; f.Name == &quot;_id&quot;);
+
+Updater updater = (ref SomeStructWithPrivateField target, int value)
+  =&amp;gt; field.SetValueDirect(__makeref(target), id);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;If we want to do the same with the LINQ Expressions or generated IL approaches then we need only make some minor code tweaks to what we saw earlier. The first argument of the generated delegates must be changed to be a &quot;ref&quot; type and we need to generate a delegate of type &lt;strong&gt;Updater&lt;/strong&gt; instead of &lt;strong&gt;Action&amp;lt;SomeStructWithPrivateField, int&amp;gt;&lt;/strong&gt; -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// Construct an &quot;Updater&quot; delegate using LINQ Expressions
+var sourceParameter = Expression.Parameter(
+  typeof(SomeStructWithPrivateField).MakeByRefType(),
+  &quot;source&quot;
+);
+var valueParameter = Expression.Parameter(field.FieldType, &quot;value&quot;);
+var fail = Expression.Assign(
+  Expression.MakeMemberAccess(sourceParameter, field),
+  valueParameter
+);
+var linqExpressionUpdater = Expression.Lambda&amp;lt;Updater&amp;gt;(
+    Expression.Assign(
+      Expression.MakeMemberAccess(sourceParameter, field),
+      valueParameter
+    ),
+    sourceParameter,
+    valueParameter
+  )
+  .Compile();
+
+// Construct an &quot;Updater&quot; delegate by generating IL
+var method = new DynamicMethod(
+  name: &quot;SetField&quot;,
+  returnType: null,
+  parameterTypes: new[] { typeof(SomeStructWithPrivateField).MakeByRefType(), typeof(int) },
+  restrictedSkipVisibility: true
+);
+var gen = method.GetILGenerator();
+gen.Emit(OpCodes.Ldarg_0);
+gen.Emit(OpCodes.Ldind_Ref);
+gen.Emit(OpCodes.Ldarg_1);
+gen.Emit(OpCodes.Stfld, field);
+gen.Emit(OpCodes.Ret);
+var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;em&gt;(Note: There is an additional &quot;Ldind_Ref&quot; instruction required for the IL to &quot;unwrap&quot; the ref argument but it&#39;s otherwise the same)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;I used BenchmarkDotNet again to compare the performance of the two reflection methods (&quot;SetValue&quot; and &quot;SetValueDirect&quot;) against LINQ Expressions and emitted IL when setting a private field on an instance and found that having to call &quot;__makeRef&quot; and &quot;SetValueDirect&quot; was much slower on .NET 4.6.1 than just calling &quot;SetValue&quot; (about 17x slower) but actually marginally &lt;em&gt;faster&lt;/em&gt; on .NET Core.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;                                 Method | Runtime |           Mean |         Error |        StdDev |
+--------------------------------------- |-------- |----------------|---------------|---------------|
+              ConstructReflectionSetter |     Clr |      11.285 ns |     0.3082 ns |     0.8281 ns |
+ ConstructReflectionWithSetDirectSetter |     Clr |      10.597 ns |     0.2845 ns |     0.4345 ns |
+          ConstructLinqExpressionSetter |     Clr | 196,194.530 ns | 2,075.5246 ns | 1,839.8983 ns |
+               ConstructEmittedILSetter |     Clr | 170,913.441 ns | 2,289.5219 ns | 2,141.6200 ns |
+                     SetUsingReflection |     Clr |     142.976 ns |     2.8706 ns |     3.3058 ns |
+         SetUsingReflectionAndSetDirect |     Clr |   2,444.816 ns |    40.9226 ns |    38.2790 ns |
+                SetUsingLinqExpressions |     Clr |       2.370 ns |     0.0795 ns |     0.0744 ns |
+                      SetUsingEmittedIL |     Clr |       2.616 ns |     0.0849 ns |     0.0834 ns |
+              ConstructReflectionSetter |    Core |      10.595 ns |     0.2196 ns |     0.1946 ns |
+ ConstructReflectionWithSetDirectSetter |    Core |      10.540 ns |     0.2838 ns |     0.3378 ns |
+          ConstructLinqExpressionSetter |    Core | 117,697.478 ns |   758.9277 ns |   672.7696 ns |
+               ConstructEmittedILSetter |    Core |  82,080.062 ns |   310.8230 ns |   275.5365 ns |
+                     SetUsingReflection |    Core |   2,782.834 ns |    17.5705 ns |    16.4355 ns |
+         SetUsingReflectionAndSetDirect |    Core |   2,541.563 ns |    21.8272 ns |    20.4172 ns |
+                SetUsingLinqExpressions |    Core |       2.421 ns |     0.0227 ns |     0.0212 ns |
+                      SetUsingEmittedIL |    Core |       2.655 ns |     0.0090 ns |     0.0080 ns |
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It&#39;s worth noting that the LINQ Expressions and emitted-IL approaches are slightly slower when working with a &quot;ref&quot; parameter than they were in the original version of the code. I suppose that this makes sense because there is an extra instruction explicitly required in the emitted-IL code and the LINQ-Expression-constructed delegate will have to deal with the added indirection under the hood (though this happens &quot;by magic&quot; and the way that LINQ Expressions code doesn&#39;t need to be changed to account for it).&lt;/p&gt;
+
+&lt;p&gt;I guess that it&#39;s possible that &quot;SetValueDirect&quot; could be faster if you already have a &lt;strong&gt;TypedReference&lt;/strong&gt; (which is what &quot;__makeRef&quot; gives you) and you want to set multiple properties on it.. but that wasn&#39;t the use case that I had in mind when I looked into all of this and so I haven&#39;t tried to measured that.&lt;/p&gt;
+
+&lt;p&gt;All in all, this was another fun diversion. It&#39;s curious that the performance between using &quot;SetValue&quot; and &quot;__makeRef&quot; / &quot;SetValueDirect&quot; is so pronounced in the &quot;classic&quot; .NET Framework but much less so in Core. On the other hand, if the target reference is a struct then the performance discrepancies are moot since trying to use &quot;SetValue&quot; won&#39;t work!&lt;/p&gt;
+
+&lt;h4&gt;Some more notes about .NET Core&lt;/h4&gt;
+
+&lt;p&gt;If you want to try to reproduce this for yourself in .NET Core then (accurate as of 8th August 2017) you need to install Visual Studio 2017 15.3 Preview 2 so that you can build .NET Core 2.0 projects and you&#39;ll then need to install the NuGet package &quot;System.Runtime.CompilerServices.Unsafe&quot;*. Without both of these, you won&#39;t be able to use &quot;__makeRef&quot;, you&#39;ll get a slightly cryptic error:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Predefined type &#39;System.TypedReference&#39; is not defined or imported&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;* &lt;em&gt;(I found this out via Ben Bowen&#39;s post &quot;&lt;a href=&quot;http://benbowen.blog/post/fun_with_makeref/&quot;&gt;Fun With __makeref&lt;/a&gt;&quot;)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;Once you have these bleeding edge bits, though, you can build a project with BenchmarkDotNet tests configured to run in both .NET Framework and .NET Core with a .csproj like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;Project Sdk=&quot;Microsoft.NET.Sdk&quot;&amp;gt;
+
+  &amp;lt;PropertyGroup&amp;gt;
+    &amp;lt;OutputType&amp;gt;Exe&amp;lt;/OutputType&amp;gt;
+    &amp;lt;TargetFrameworks&amp;gt;netcoreapp2.0;net461&amp;lt;/TargetFrameworks&amp;gt;
+    &amp;lt;PlatformTarget&amp;gt;AnyCPU&amp;lt;/PlatformTarget&amp;gt;
+  &amp;lt;/PropertyGroup&amp;gt;
+
+  &amp;lt;ItemGroup&amp;gt;
+    &amp;lt;PackageReference Include=&quot;BenchmarkDotNet&quot; Version=&quot;0.10.8&quot; /&amp;gt;
+  &amp;lt;/ItemGroup&amp;gt;
+
+&amp;lt;/Project&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;and you can run the tests in &lt;em&gt;both&lt;/em&gt; frameworks using this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;dotnet run --framework netcoreapp2.0 --configuration release
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Don&#39;t be fooled by the fact that you have to specify a single framework - through BenchmarkDotNet magic, the tests &lt;em&gt;will&lt;/em&gt; be run for both frameworks (so long as you annotate the benchmark class with &quot;[CoreJob, ClrJob]&quot;) and the results will be displayed in one convenient combined table at the end.&lt;/p&gt;</description>
 			<pubDate>Wed, 26 Jul 2017 20:31:00 GMT</pubDate>
 		</item>
 		<item>
