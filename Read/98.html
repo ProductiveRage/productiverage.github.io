@@ -298,24 +298,22 @@ namespace BridgeReactTutorial.Components
   /// &lt;summary&gt;
   /// This is optional and so may be null (if non-null, then it will never be blank)
   /// &lt;/summary&gt;
-  public string ClassName { get; private set; }
+  public string ClassName { get; }
 
-  public bool Disabled { get; private set; }
+  public bool Disabled { get; }
 
   /// &lt;summary&gt;
   /// An input may not always have a value and so this may be blank (but it should never
   /// be null)
   /// &lt;/summary&gt;
-  public string Content { get; private set; }
+  public string Content { get; }
 
   /// &lt;summary&gt;
   /// This is mandatory and will never be null
   /// &lt;/summary&gt;
-  public Action&lt;string&gt; OnChange { get; private set; }
+  public Action&lt;string&gt; OnChange { get; }
 }
 </code></pre>
-
-<p><em>(Note: Since Bridge does not yet support C# 6 syntax, the new readonly auto-property syntax can't be used, hence the use of "get; private set;").</em></p>
 
 <p>Two nice benefits arise from this. Firstly, the comments may be tighted up - so "OnChange" is no longer described as</p>
 
@@ -353,11 +351,7 @@ namespace BridgeReactTutorial.Components
 
 <p>to:</p>
 
-<pre><code>public Props(
-  string content,
-  bool disabled,
-  Action&lt;string&gt; onChange,
-  string className = "")
+<pre><code>public Props(string content, bool disabled, Action&lt;string&gt; onChange, string className = "")
 {
   if (content == null)
     throw new ArgumentNullException("content");
@@ -434,20 +428,20 @@ namespace BridgeReactTutorial.Components
   /// &lt;summary&gt;
   /// This is optional and so may be null (if non-null, then it will never be blank)
   /// &lt;/summary&gt;
-  public string ClassName { get; private set; }
+  public string ClassName { get; }
 
-  public bool Disabled { get; private set; }
+  public bool Disabled { get; }
 
   /// &lt;summary&gt;
   /// An input may not always have a value and so this may be blank (but it should never
   /// be null)
   /// &lt;/summary&gt;
-  public string Content { get; private set; }
+  public string Content { get; }
 
   /// &lt;summary&gt;
   /// This is mandatory and will never be null
   /// &lt;/summary&gt;
-  public Action&lt;string&gt; OnChange { get; private set; }
+  public Action&lt;string&gt; OnChange { get; }
 }
 </code></pre>
 
@@ -467,21 +461,17 @@ namespace BridgeReactTutorial.Components
 
 <pre><code>public class Props : IAmImmutable
 {
-  public Props(
-    string content,
-    bool disabled,
-    Action&lt;string&gt; onChange,
-    string className = "")
+  public Props(string content, bool disabled, Action&lt;string&gt; onChange, string className = "")
   {
     this.CtorSet(_ =&gt; _.Content, content);
     this.CtorSet(_ =&gt; _.Disabled, disabled);
     this.CtorSet(_ =&gt; _.OnChange, onChange);
     this.CtorSet(_ =&gt; _.ClassName, className);
   }
-  public string ClassName { get; private set; }
-  public bool Disabled { get; private set; }
-  public string Content { get; private set; }
-  public Action&lt;string&gt; OnChange { get; private set; }
+  public string ClassName { get; }
+  public bool Disabled { get; }
+  public string Content { get; }
+  public Action&lt;string&gt; OnChange { get; }
 }
 </code></pre>
 
@@ -504,10 +494,10 @@ namespace BridgeReactTutorial.Components
     this.CtorSet(_ =&gt; _.OnChange, onChange);
     this.CtorSet(_ =&gt; _.ClassName, className);
   }
-  public Optional&lt;string&gt; ClassName { get; private set; }
-  public bool Disabled { get; private set; }
-  public string Content { get; private set; }
-  public Action&lt;string&gt; OnChange { get; private set; }
+  public Optional&lt;string&gt; ClassName { get; }
+  public bool Disabled { get; }
+  public string Content { get; }
+  public Action&lt;string&gt; OnChange { get; }
 }
 </code></pre>
 
@@ -574,29 +564,34 @@ new TextInput.Props(
 
 <p>One way to try to address this would be with <em>another</em> type -</p>
 
-<pre><code>public class NonBlankTrimmedString
+<pre><code>using System;
+
+namespace BridgeReactTutorial.API
 {
-  public NonBlankTrimmedString(string value)
+  public class NonBlankTrimmedString
   {
-    if (string.IsNullOrWhiteSpace(value))
-      throw new ArgumentException("Null, blank or whitespace-only value specified");
-    Value = value.Trim();
-  }
+    public NonBlankTrimmedString(string value)
+    {
+      if (string.IsNullOrWhiteSpace(value))
+        throw new ArgumentException("Null, blank or whitespace-only value specified");
+      Value = value.Trim();
+    }
 
-  /// &lt;summary&gt;
-  /// This will never be null, blank or have any leading or trailing whitespace
-  /// &lt;/summary&gt;
-  public string Value { get; private set; }
+    /// &lt;summary&gt;
+    /// This will never be null, blank or have any leading or trailing whitespace
+    /// &lt;/summary&gt;
+    public string Value { get; }
 
-  /// &lt;summary&gt;
-  /// It's convenient to be able to pass a NonBlankTrimmedString instance as any argument
-  /// that requires a string
-  /// &lt;/summary&gt;
-  public static implicit operator string(NonBlankTrimmedString value)
-  {
-    if (value == null)
-      throw new ArgumentNullException("value");
-    return value.Value;
+    /// &lt;summary&gt;
+    /// It's convenient to be able to pass a NonBlankTrimmedString instance as any argument
+    /// that requires a string
+    /// &lt;/summary&gt;
+    public static implicit operator string(NonBlankTrimmedString value)
+    {
+      if (value == null)
+        throw new ArgumentNullException("value");
+      return value.Value;
+    }
   }
 }
 </code></pre>
@@ -618,10 +613,10 @@ new TextInput.Props(
     this.CtorSet(_ =&gt; _.OnChange, onChange);
     this.CtorSet(_ =&gt; _.ClassName, className);
   }
-  public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; private set; }
-  public bool Disabled { get; private set; }
-  public string Content { get; private set; }
-  public Action&lt;string&gt; OnChange { get; private set; }
+  public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+  public bool Disabled { get; }
+  public string Content { get; }
+  public Action&lt;string&gt; OnChange { get; }
 }
 </code></pre>
 
@@ -721,10 +716,10 @@ namespace BridgeReactTutorial.Components
         this.CtorSet(_ =&gt; _.OnChange, onChange);
         this.CtorSet(_ =&gt; _.ClassName, className);
       }
-      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; private set; }
-      public bool Disabled { get; private set; }
-      public string Content { get; private set; }
-      public Action&lt;string&gt; OnChange { get; private set; }
+      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+      public bool Disabled { get; }
+      public string Content { get; }
+      public Action&lt;string&gt; OnChange { get; }
     }
   }
 }
@@ -801,8 +796,8 @@ namespace BridgeReactTutorial.ViewModels
       this.CtorSet(_ =&gt; _.Title, title);
       this.CtorSet(_ =&gt; _.Content, content);
     }
-    public NonBlankTrimmedString Title { get; private set; }
-    public NonBlankTrimmedString Content { get; private set; }
+    public NonBlankTrimmedString Title { get; }
+    public NonBlankTrimmedString Content { get; }
   }
 }
 </code></pre>
@@ -967,10 +962,10 @@ namespace BridgeReactTutorial.Components
         this.CtorSet(_ =&gt; _.OnChange, onChange);
         this.CtorSet(_ =&gt; _.OnSave, onSave);
       }
-      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; private set; }
-      public MessageEditState Message { get; private set; }
-      public Action&lt;MessageEditState&gt; OnChange { get; private set; }
-      public Action OnSave { get; private set; }
+      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+      public MessageEditState Message { get; }
+      public Action&lt;MessageEditState&gt; OnChange { get; }
+      public Action OnSave { get; }
     }
   }
 }
@@ -982,10 +977,10 @@ namespace BridgeReactTutorial.Components
 {
   ClassName = "message",
   Message = state.Message,
-  OnChange = newState =&gt; props.Dispatcher.HandleViewAction(
+  OnChange = newState =&gt; props.Dispatcher.Dispatch(
     UserEditRequested.For(newState)
   ),
-  OnSave = () =&gt; props.Dispatcher.HandleViewAction(
+  OnSave = () =&gt; props.Dispatcher.Dispatch(
     SaveRequested.For(
       new MessageDetails(
         new NonBlankTrimmedString(state.Message.Title.Text),
@@ -1001,10 +996,10 @@ namespace BridgeReactTutorial.Components
 <pre><code>new MessageEditor(
   className: new NonBlankTrimmedString("message"),
   message:  state.Message,
-  onChange: newState =&gt; props.Dispatcher.HandleViewAction(
+  onChange: newState =&gt; props.Dispatcher.Dispatch(
     UserEditRequested.For(newState)
   ),
-  onSave: () =&gt; props.Dispatcher.HandleViewAction(
+  onSave: () =&gt; props.Dispatcher.Dispatch(
     SaveRequested.For(
       new MessageDetails(
         new NonBlankTrimmedString(state.Message.Title.Text),
@@ -1049,10 +1044,10 @@ namespace BridgeReactTutorial.ViewModels
       this.CtorSet(_ =&gt; _.Content, content);
       this.CtorSet(_ =&gt; _.IsSaveInProgress, isSaveInProgress);
     }
-    public NonBlankTrimmedString Caption { get; private set; }
-    public TextEditState Title { get; private set; }
-    public TextEditState Content { get; private set; }
-    public bool IsSaveInProgress { get; private set; }
+    public NonBlankTrimmedString Caption { get; }
+    public TextEditState Title { get; }
+    public TextEditState Content { get; }
+    public bool IsSaveInProgress { get; }
   }
 }
 </code></pre>
@@ -1085,8 +1080,8 @@ namespace BridgeReactTutorial.ViewModels
       this.CtorSet(_ =&gt; _.Text, text);
       this.CtorSet(_ =&gt; _.ValidationError, validationError);
     }
-    public string Text { get; private set; }
-    public Optional&lt;NonBlankTrimmedString&gt; ValidationError { get; private set; }
+    public string Text { get; }
+    public Optional&lt;NonBlankTrimmedString&gt; ValidationError { get; }
   }
 }
 </code></pre>
@@ -1146,11 +1141,11 @@ namespace BridgeReactTutorial.Components
         this.CtorSet(_ =&gt; _.OnChange, onChange);
         this.CtorSet(_ =&gt; _.ValidationMessage, validationMessage);
       }
-      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; private set; }
-      public bool Disabled { get; private set; }
-      public string Content { get; private set; }
-      public Action&lt;string&gt; OnChange { get; private set; }
-      public Optional&lt;NonBlankTrimmedString&gt; ValidationMessage { get; private set; }
+      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+      public bool Disabled { get; }
+      public string Content { get; }
+      public Action&lt;string&gt; OnChange { get; }
+      public Optional&lt;NonBlankTrimmedString&gt; ValidationMessage { get; }
     }
   }
 }
@@ -1210,7 +1205,7 @@ namespace BridgeReactTutorial.API
     /// that requires a ReactElement-or-string, such as for the children array of the React
     /// DOM component factories
     /// &lt;/summary&gt;
-    public static implicit operator Any&lt;ReactElement, string&gt;(NonBlankTrimmedString value)
+    public static implicit operator Union&lt;ReactElement, string&gt;(NonBlankTrimmedString value)
     {
         if (value == null)
             throw new ArgumentNullException("value");
@@ -1343,10 +1338,10 @@ namespace BridgeReactTutorial.Components
         this.CtorSet(_ =&gt; _.OnChange, onChange);
         this.CtorSet(_ =&gt; _.OnSave, onSave);
       }
-      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; private set; }
-      public MessageEditState Message { get; private set; }
-      public Action&lt;MessageEditState&gt; OnChange { get; private set; }
-      public Action OnSave { get; private set; }
+      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+      public MessageEditState Message { get; }
+      public Action&lt;MessageEditState&gt; OnChange { get; }
+      public Action OnSave { get; }
     }
   }
 }
@@ -1387,13 +1382,13 @@ namespace BridgeReactTutorial.Components
       ));
 
       // When child components are specified (as they are through the second argument of
-      // DOM.Div), the argument is of type Any&lt;ReactElement, string&gt;[] (meaning that each
+      // DOM.Div), the argument is of type Union&lt;ReactElement, string&gt;[] (meaning that each
       // element may be another component or it may be a simple text value)
       // - The React bindings have an extension method that transforms an IEnumerable set
-      //   of components (such as "messageElements") into an Any&lt;ReactElement, string&gt;[]
+      //   of components (such as "messageElements") into an Union&lt;ReactElement, string&gt;[]
       return DOM.FieldSet(new FieldSetAttributes { ClassName = className },
         DOM.Legend(null, "Message History"),
-        DOM.Div(null, messageElements.ToChildComponentArray())
+        DOM.Div(null, messageElements)
       );
     }
 
@@ -1410,9 +1405,7 @@ namespace BridgeReactTutorial.Components
 
 <p>By this point, we've seen several examples of how to prevent "props" being null (ie. require that the props constructor arguments be passed as the component's constructor arguments) and we've seen how to better represent <strong>Props</strong> to allow "ClassName" to be optional but for "Messages" to not be ("ClassName" should be an <strong>Optional&lt;NonBlankTrimmedString&gt;</strong>). But there are two further tricks we can use for the <strong>MessageHistory.Props</strong>.</p>
 
-<p>Firstly, <strong>IEnumerable</strong> is too loose for my liking - technically, there are no guarantees that an <strong>IEnumerable</strong> will report the same information if enumerated multiple times and there are definitely no guarantees that it won't contain any null references. I want consistency and I want a life free from null. The <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a> library contains another handy class for this sort of thing; <strong>Set&lt;T&gt;</strong>. This is essentially an ordered list of items of type "T" that is immutable and that will never contain any null values. If you want a set of items that may or may not have values of type "T" then you need the list type to be <strong>Set&lt;Optional&lt;T&gt;&gt;</strong>.</p>
-
-<p><em>(I will confess that this may not be the most-well-named of all classes, since some mathematical circles like a "Set" to be a group of unique items that are likely not ordered.. but I wanted a convenient short name and <strong>List&lt;T&gt;</strong> already has a well-understood definition - <strong>NonNullImmutableList&lt;T&gt;</strong> was in the running, but I ideally wanted something shorter).</em></p>
+<p>Firstly, <strong>IEnumerable</strong> is too loose for my liking - technically, there are no guarantees that an <strong>IEnumerable</strong> will report the same information if enumerated multiple times and there are definitely no guarantees that it won't contain any null references. I want consistency and I want a life free from null. The <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a> library contains another handy class for this sort of thing; <strong>NonNullList&lt;T&gt;</strong>. This is essentially an ordered list of items of type "T" that is immutable and that will never contain any null values. If you want a set of items that may or may not have values of type "T" then you need the list type to be <strong>NonNullList&lt;Optional&lt;T&gt;&gt;</strong>.</p>
 
 <p>The second tweak that I want to make is to replace the <strong>Tuple&lt;int, MessageDetails&gt;</strong> - in part, again, because there is no guarantee that the second item in the pair will not be null but also because I don't like the "Item1" and "Item2" property names. I think it's just one more thing to mentally translate ("Oh yes, Item1 means Key and Item2 means Message"). So I'm going to extend the type system again.</p>
 
@@ -1433,8 +1426,8 @@ namespace BridgeReactTutorial.API
       this.CtorSet(_ =&gt; _.Key, key);
       this.CtorSet(_ =&gt; _.Value, value);
     }
-    public TKey Key { get; private set; }
-    public TValue Value { get; private set; }
+    public TKey Key { get; }
+    public TValue Value { get; }
   }
 
   public static class Saved
@@ -1475,7 +1468,7 @@ namespace BridgeReactTutorial.API
 }
 </code></pre>
 
-<p>This is the final step in the move away from <strong>IEnumerable&lt;Tuple&lt;int, MessageDetails&gt;&gt;</strong>, we will now represent this data with the type <strong>Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;</strong>. This set will never contain any null "Saved" instances and a "Saved" instance will never contain a null message. This set of messages will never vary, which is another way that React's "consider props to be immutable" guidelines is described and enforced in the type system.</p>
+<p>This is the final step in the move away from <strong>IEnumerable&lt;Tuple&lt;int, MessageDetails&gt;&gt;</strong>, we will now represent this data with the type <strong>NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;</strong>. This list will never contain any null "Saved" instances and a "Saved" instance will never contain a null message. This list of messages will never vary, which is another way that React's "consider props to be immutable" guidelines is described and enforced in the type system.</p>
 
 <p>Not only do I believe that having strongly-typed IDs makes the code clearer in cases like this but it can also avoid silly mistakes that have a nasty tendency to crop up from time to time - if you're writing code and having a bad day, then it's easy to accidentally pass the wrong ID around. For example, if I have a function:</p>
 
@@ -1489,7 +1482,7 @@ namespace BridgeReactTutorial.API
 
 <p>If the IDs were strongly-typed, meaning that the method signature would be..</p>
 
-<pre><code>void RecordMessageAsHavingBeenReadBy3(MessageId messageId, UserId userId)
+<pre><code>void RecordMessageAsHavingBeenReadBy(MessageId messageId, UserId userId)
 </code></pre>
 
 <p>.. then that mishap would result in a compile error, rather than runtime confusion that may not get noticed immediately.</p>
@@ -1509,7 +1502,7 @@ namespace BridgeReactTutorial.Components
   public class MessageHistory : StatelessComponent&lt;MessageHistory.Props&gt;
   {
     public MessageHistory(
-      Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messages,
+      NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messages,
       Optional&lt;NonBlankTrimmedString&gt; className = new Optional&lt;NonBlankTrimmedString&gt;())
       : base(new Props(className, messages)) { }
 
@@ -1529,14 +1522,14 @@ namespace BridgeReactTutorial.Components
         ));
 
       // When child components are specified (as they are through the second argument of
-      // DOM.Div), the argument is of type Any&lt;ReactElement, string&gt;[] (meaning that each
+      // DOM.Div), the argument is of type Union&lt;ReactElement, string&gt;[] (meaning that each
       // element may be another component or it may be a simple text value)
       // - The React bindings have an extension method that transforms an IEnumerable set
-      //   of components (such as "messageElements") into an Any&lt;ReactElement, string&gt;[]
+      //   of components (such as "messageElements") into an Union&lt;ReactElement, string&gt;[]
       return DOM.FieldSet(
         new FieldSetAttributes { ClassName = className.ToStringIfDefined() },
         DOM.Legend(null, "Message History"),
-        DOM.Div(null, messageElements.ToChildComponentArray())
+        DOM.Div(null, messageElements)
       );
     }
 
@@ -1544,13 +1537,13 @@ namespace BridgeReactTutorial.Components
     {
       public Props(
         Optional&lt;NonBlankTrimmedString&gt; className,
-        Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messages)
+        NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messages)
       {
         this.CtorSet(_ =&gt; _.ClassName, className);
         this.CtorSet(_ =&gt; _.Messages, messages);
       }
-      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; private set; }
-      public Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; Messages { get; private set; }
+      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+      public NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; Messages { get; }
     }
   }
 }
@@ -1616,10 +1609,10 @@ namespace BridgeReactTutorial.Components
         new MessageEditor(
           className: new NonBlankTrimmedString("message"),
           message:  state.Message,
-          onChange: newState =&gt; props.Dispatcher.HandleViewAction(
+          onChange: newState =&gt; props.Dispatcher.Dispatch(
             UserEditRequested.For(newState)
           ),
-          onSave: () =&gt; props.Dispatcher.HandleViewAction(
+          onSave: () =&gt; props.Dispatcher.Dispatch(
             SaveRequested.For(
               new MessageDetails(
                 new NonBlankTrimmedString(state.Message.Title.Text),
@@ -1698,10 +1691,10 @@ namespace BridgeReactTutorial.Components
         new MessageEditor(
           className: new NonBlankTrimmedString("message"),
           message:  state.Value.Message,
-          onChange: newState =&gt; props.Dispatcher.HandleViewAction(
+          onChange: newState =&gt; props.Dispatcher.Dispatch(
             UserEditRequested.For(newState)
           ),
-          onSave: () =&gt; props.Dispatcher.HandleViewAction(
+          onSave: () =&gt; props.Dispatcher.Dispatch(
             SaveRequested.For(
               new MessageDetails(
                 new NonBlankTrimmedString(state.Value.Message.Title.Text),
@@ -1724,21 +1717,21 @@ namespace BridgeReactTutorial.Components
         this.CtorSet(_ =&gt; _.Dispatcher, dispatcher);
         this.CtorSet(_ =&gt; _.Store, store);
       }
-      public AppDispatcher Dispatcher { get; private set; }
-      public MessageWriterStore Store { get; private set; }
+      public AppDispatcher Dispatcher { get; }
+      public MessageWriterStore Store { get; }
     }
 
     public class State : IAmImmutable
     {
       public State(
         MessageEditState message,
-        Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messageHistory)
+        NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messageHistory)
       {
         this.CtorSet(_ =&gt; _.Message, message);
         this.CtorSet(_ =&gt; _.MessageHistory, messageHistory);
       }
-      public MessageEditState Message { get; private set; }
-      public Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; MessageHistory { get; private set; }
+      public MessageEditState Message { get; }
+      public NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; MessageHistory { get; }
     }
   }
 }
@@ -1770,43 +1763,41 @@ namespace BridgeReactTutorial.Stores
       Message = GetInitialMessageEditState();
       MessageHistory = new Tuple&lt;int, MessageDetails&gt;[0];
 
-      dispatcher.Register(message =&gt;
-      {
-        message
-          .If&lt;StoreInitialised&gt;(
-            condition: action =&gt; (action.Store == this),
-            work: action =&gt; { }
-          )
-          .Else&lt;MessageEditStateChanged&gt;(action =&gt;
+      dispatcher.Receive(a =&gt; a
+        .If&lt;StoreInitialised&gt;(
+          condition: action =&gt; (action.Store == this),
+          work: action =&gt; { }
+        )
+        .Else&lt;MessageEditStateChanged&gt;(action =&gt;
+        {
+          Message = action.NewState;
+          ValidateMessage(Message);
+        })
+        .Else&lt;MessageSaveRequested&gt;(action =&gt;
+        {
+          _saveActionRequestId = messageApi.SaveMessage(action.Message);
+          Message.IsSaveInProgress = true;
+        })
+        .Else&lt;MessageSaveSucceeded&gt;(
+          condition: action =&gt; (action.RequestId == _saveActionRequestId),
+          work: action =&gt;
           {
-            Message = action.NewState;
-            ValidateMessage(Message);
-          })
-          .Else&lt;MessageSaveRequested&gt;(action =&gt;
+            _saveActionRequestId = null;
+            Message = GetInitialMessageEditState();
+            _lastDataUpdatedRequestId = messageApi.GetMessages();
+          }
+        )
+        .Else&lt;MessageHistoryUpdated&gt;(
+          condition: action =&gt;
+            action.RequestId.IsEqualToOrComesAfter(_lastDataUpdatedRequestId),
+          work: action =&gt;
           {
-            _saveActionRequestId = messageApi.SaveMessage(action.Message);
-            Message.IsSaveInProgress = true;
-          })
-          .Else&lt;MessageSaveSucceeded&gt;(
-            condition: action =&gt; (action.RequestId == _saveActionRequestId),
-            work: action =&gt;
-            {
-              _saveActionRequestId = null;
-              Message = GetInitialMessageEditState();
-              _lastDataUpdatedRequestId = messageApi.GetMessages();
-            }
-          )
-          .Else&lt;MessageHistoryUpdated&gt;(
-            condition: action =&gt;
-              action.RequestId.IsEqualToOrComesAfter(_lastDataUpdatedRequestId),
-            work: action =&gt;
-            {
-              _lastDataUpdatedRequestId = action.RequestId;
-              MessageHistory = action.Messages;
-            }
-          )
-          .IfAnyMatched(OnChange);
-      });
+            _lastDataUpdatedRequestId = action.RequestId;
+            MessageHistory = action.Messages;
+          }
+        )
+        .IfAnyMatched(OnChange);
+      );
     }
 
     public event Action Change;
@@ -2146,48 +2137,46 @@ namespace BridgeReactTutorial.Stores
         throw new ArgumentNullException("dispatcher");
 
       Message = GetInitialMessageEditState();
-      MessageHistory = Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;.Empty;
+      MessageHistory = NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;.Empty;
 
-      dispatcher.Register(message =&gt;
-      {
-        message
-          .If&lt;StoreInitialised&gt;(
-            condition: action =&gt; (action.Store == this),
-            work: action =&gt; { }
-          )
-          .Else&lt;UserEditRequested&lt;MessageEditState&gt;&gt;(action =&gt;
-            Message = ValidateMessage(action.NewState)
-          )
-          .Else&lt;SaveRequested&lt;MessageDetails&gt;&gt;(action =&gt;
+      dispatcher.Receive(a =&gt; a
+        .If&lt;StoreInitialised&gt;(
+          condition: action =&gt; (action.Store == this),
+          work: action =&gt; { }
+        )
+        .Else&lt;UserEditRequested&lt;MessageEditState&gt;&gt;(action =&gt;
+          Message = ValidateMessage(action.NewState)
+        )
+        .Else&lt;SaveRequested&lt;MessageDetails&gt;&gt;(action =&gt;
+        {
+          _saveActionRequestId = messageApi.SaveMessage(action.Data);
+          Message = Message.With(_ =&gt; _.IsSaveInProgress, true);
+        })
+        .Else&lt;SaveSucceeded&gt;(
+          condition: action =&gt; (action.RequestId == _saveActionRequestId),
+          work: action =&gt;
           {
-            _saveActionRequestId = messageApi.SaveMessage(action.Data);
-            Message = Message.With(_ =&gt; _.IsSaveInProgress, true);
-          })
-          .Else&lt;SaveSucceeded&gt;(
-            condition: action =&gt; (action.RequestId == _saveActionRequestId),
-            work: action =&gt;
-            {
-              _saveActionRequestId = null;
-              Message = GetInitialMessageEditState();
-              _lastDataUpdatedRequestId = messageApi.GetMessages();
-            }
-          )
-          .Else&lt;DataUpdated&lt;Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;&gt;&gt;(
-            condition:
-              action =&gt; action.RequestId.IsEqualToOrComesAfter(_lastDataUpdatedRequestId),
-            work: action =&gt;
-            {
-              _lastDataUpdatedRequestId = action.RequestId;
-              MessageHistory = action.Data;
-            }
-          )
-          .IfAnyMatched(() =&gt; { if (Change != null) Change(); });
-      });
+            _saveActionRequestId = null;
+            Message = GetInitialMessageEditState();
+            _lastDataUpdatedRequestId = messageApi.GetMessages();
+          }
+        )
+        .Else&lt;DataUpdated&lt;NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;&gt;&gt;(
+          condition:
+            action =&gt; action.RequestId.IsEqualToOrComesAfter(_lastDataUpdatedRequestId),
+          work: action =&gt;
+          {
+            _lastDataUpdatedRequestId = action.RequestId;
+            MessageHistory = action.Data;
+          }
+        )
+        .IfAnyMatched(() =&gt; { if (Change != null) Change(); })
+      );
     }
 
     public event Action Change;
     public MessageEditState Message { get; private set; }
-    public Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; MessageHistory { get; private set; }
+    public NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; MessageHistory { get; private set; }
 
     private readonly static NonBlankTrimmedString _defaultCaption
       = new NonBlankTrimmedString("Untitled");
@@ -2290,7 +2279,7 @@ namespace BridgeReactTutorial.API
 
 <p>There's been a lot of theory covered so far. To really put it into practice, though, we need to fix the rest of the compile errors in the example application.</p>
 
-<p>Changing the <strong>MessageEditor</strong>, <strong>MessageHistory</strong>, <strong>AppContainer</strong> and <strong>MessageWriteStore</strong> to use the new immutable types (the now-immutable <strong>MessageDetails</strong> and the <strong>Set</strong> type from <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a>) require further changes to the <strong>MessageApi</strong> and the <strong>App</strong> file that initialises the application.</p>
+<p>Changing the <strong>MessageEditor</strong>, <strong>MessageHistory</strong>, <strong>AppContainer</strong> and <strong>MessageWriteStore</strong> to use the new immutable types (the now-immutable <strong>MessageDetails</strong> and the <strong>NonNullList</strong> type from <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a>) require further changes to the <strong>MessageApi</strong> and the <strong>App</strong> file that initialises the application.</p>
 
 <p>And, while we're making everything immutable, let's change the action classes. Currently, we have actions such as:</p>
 
@@ -2329,8 +2318,8 @@ namespace BridgeReactTutorial.Actions
       this.CtorSet(_ =&gt; _.RequestId, requestId);
       this.CtorSet(_ =&gt; _.Data, data);
     }
-    public RequestId RequestId { get; private set; }
-    public T Data { get; private set; }
+    public RequestId RequestId { get; }
+    public T Data { get; }
   }
   public static class DataUpdated
   {
@@ -2355,7 +2344,7 @@ namespace BridgeReactTutorial.Actions
     {
       this.CtorSet(_ =&gt; _.Data, data);
     }
-    public T Data { get; private set; }
+    public T Data { get; }
   }
   public static class SaveRequested
   {
@@ -2378,7 +2367,7 @@ namespace BridgeReactTutorial.Actions
     {
       this.CtorSet(_ =&gt; _.RequestId, requestId);
     }
-    public RequestId RequestId { get; private set; }
+    public RequestId RequestId { get; }
   }
 }
 
@@ -2393,7 +2382,7 @@ namespace BridgeReactTutorial.Actions
     {
       this.CtorSet(_ =&gt; _.Store, store);
     }
-    public object Store { get; private set; }
+    public object Store { get; }
   }
 }
 
@@ -2409,7 +2398,7 @@ namespace BridgeReactTutorial.Actions
     {
       this.CtorSet(_ =&gt; _.NewState, newState);
     }
-    public T NewState { get; private set; }
+    public T NewState { get; }
   }
   public static class UserEditRequested
   {
@@ -2455,7 +2444,7 @@ namespace BridgeReactTutorial
         }),
         container
       );
-      dispatcher.HandleViewAction(new StoreInitialised { Store = store });
+      dispatcher.Dispatch(new StoreInitialised { Store = store });
     }
   }
 }
@@ -2491,7 +2480,7 @@ namespace BridgeReactTutorial
         new AppContainer(dispatcher, store),
         container
       );
-      dispatcher.HandleViewAction(new StoreInitialised(store));
+      dispatcher.Dispatch(new StoreInitialised(store));
     }
   }
 }
@@ -2512,14 +2501,14 @@ namespace BridgeReactTutorial.API
   public class MessageApi : IReadAndWriteMessages
   {
     private readonly AppDispatcher _dispatcher;
-    private Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; _messages;
+    private NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; _messages;
     public MessageApi(AppDispatcher dispatcher)
     {
       if (dispatcher == null)
         throw new ArgumentException("dispatcher");
 
       _dispatcher = dispatcher;
-      _messages = Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;.Empty;
+      _messages = NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;.Empty;
 
       // To further mimic a server-based API (where other people may be recording messages
       // of their own), after a 10s delay a periodic task will be executed to retrieve a
@@ -2550,7 +2539,7 @@ namespace BridgeReactTutorial.API
             (MessageId)(int)_messages.Count,
             message
           ));
-          _dispatcher.HandleServerAction(new SaveSucceeded(requestId));
+          _dispatcher.Dispatch(new SaveSucceeded(requestId));
           if (optionalSaveCompletedCallback != null)
             optionalSaveCompletedCallback();
         },
@@ -2563,7 +2552,7 @@ namespace BridgeReactTutorial.API
     {
       var requestId = new RequestId();
       Window.SetTimeout(
-        () =&gt; _dispatcher.HandleServerAction(DataUpdated.For(requestId, _messages)),
+        () =&gt; _dispatcher.Dispatch(DataUpdated.For(requestId, _messages)),
         1000 // Simulate a roundtrip to the server
       );
       return requestId;
@@ -2651,7 +2640,7 @@ namespace BridgeReactTutorial.API
 // exhibited if this was really persisting messages to a server somewhere)
 </code></pre>
 
-<p>Since the message set is described by an immutable structure, there is no way that a particular reference's data could change. There is no way that a component could have a reference to this data type and then find that the data in that reference had changed by the time that an event bubbled up to that component from one of its child components. Similarly, when the <strong>MessageApi</strong> passes its message history data out, there is no action that may be performed by any code that receives the message history reference that could "pollute" the data that the <strong>MessageApi</strong> stores internally.</p>
+<p>Since the message list is described by an immutable structure, there is no way that a particular reference's data could change. There is no way that a component could have a reference to this data type and then find that the data in that reference had changed by the time that an event bubbled up to that component from one of its child components. Similarly, when the <strong>MessageApi</strong> passes its message history data out, there is no action that may be performed by any code that receives the message history reference that could "pollute" the data that the <strong>MessageApi</strong> stores internally.</p>
 
 <p>Previously, when the <strong>MessageApi</strong> wanted to share its message history data, we had two options - we could hope that the mutable list of mutable <strong>MessageDetails</strong> would never be manipulated when it was passed out from the <strong>MessageApi</strong> or we could try to make it impossible for other code to pollute the <strong>MessageApi</strong>'s copy of the data, which is what the "ToArray" call went some way towards (note that this wouldn't have saved us from code that received the mutable message history and then changed one of the fields on any of the individual mutable <strong>MessageDetails</strong> instances - this <em>would</em> have polluted to <strong>MessageApi</strong>'s internal data).</p>
 
@@ -2693,7 +2682,7 @@ namespace BridgeReactTutorial.API
 
 <p>Another option would be to try to have components make use of React's "<a href="https://facebook.github.io/react/docs/component-specs.html#updating-shouldcomponentupdate">shouldComponentUpdate</a>" method. This is a method that may optionally be implemented on components, that is called before a component's "Render" method is called, so long as that component has been rendered at least once before. It will be given two "props" values - one is the props data from the last render and the second is the new props data that has been specified for the re-render. If this method returns true then the component is re-rendered (to the Virtual DOM) as normal. If it returns false then the component's "Render" method is <em>not</em> called. This would mean that none of its child components would be re-rendered either, since those re-renders are only triggered by code in their parent's component's "Render" method. If it was possible for the <strong>MessageHistory</strong> to look at its last props and its next props and see that they describe the same data, then the entire re-render work could be avoided. The problem comes in working that out, though - for the cases where the old and new messages data <em>was</em> the same and when we had an <strong>IEnumerable</strong> set of mutable <strong>MessageDetails</strong> instances, we would have had to have enumerated through every value in the set and compared the "Title" and "Content" values on each message. If they all matched then the old and new data would have been proven to have been the same and the re-render would not be required. But was all that comparison work really much cheaper than just letting the Virtual DOM do its magic?</p>
 
-<p>One of the good thing about immutable structures is that data can safely be shared and reused. Now that the <strong>MessageHistory</strong> component takes an immutable <strong>Set</strong> of immutable <strong>MessageDetails</strong> instances, if the data hasn't changed then the same <strong>Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;</strong> reference will be passed to the <strong>MessageHistory.Props</strong> instance - but if the data <em>has</em> changed then, by necessity, a new <strong>Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;</strong> reference will be provided. This would make a "shouldComponentUpdate" implementation very simple - just look at each property on the old and new props references and use reference equality comparisons to see if anything's changed.</p>
+<p>One of the good thing about immutable structures is that data can safely be shared and reused. Now that the <strong>MessageHistory</strong> component takes an immutable <strong>NonNullList</strong> of immutable <strong>MessageDetails</strong> instances, if the data hasn't changed then the same <strong>NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;</strong> reference will be passed to the <strong>MessageHistory.Props</strong> instance - but if the data <em>has</em> changed then, by necessity, a new <strong>NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt;</strong> reference will be provided. This would make a "shouldComponentUpdate" implementation very simple - just look at each property on the old and new props references and use reference equality comparisons to see if anything's changed.</p>
 
 <p>The bad news is that the <strong>StatelessComponent</strong> base class in the Bridge / React bindings doesn't support "shouldComponentUpdate". So you can't try to take advantage of it to reduce the work that the Virtual DOM does - only the <strong>Component</strong> (which is the full stateful component) base class supports it. The good news is that you don't need to implement it manually. If you're creating stateless components whose props classes have properties that are all primitive values (such as bool, int, string, etc..) and / or immutable types and / or functions* and if the components genuinely render <em>entirely</em> according to the props data (no accessing DateTime.Now, for example) then you can derive from the <strong>PureComponent</strong> base class instead. This automatically implements "shouldComponentUpdate" behind the scenes.</p>
 
@@ -2708,8 +2697,8 @@ namespace BridgeReactTutorial.API
 
 <p>Now, change the base class of the <strong>MessageHistory</strong> from <strong>StatelessComponent&lt;MessageHistory.Props&gt;</strong> to <strong>PureComponent&lt;MessageHistory.Props&gt;</strong>. It will look like this:</p>
 
-<pre><code>using System.Linq;
-using Bridge.Html5;
+<pre><code>using System;
+using System.Linq;
 using Bridge.React;
 using BridgeReactTutorial.API;
 using BridgeReactTutorial.ViewModels;
@@ -2720,13 +2709,13 @@ namespace BridgeReactTutorial.Components
   public class MessageHistory : StatelessComponent&lt;MessageHistory.Props&gt;
   {
     public MessageHistory(
-      Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messages,
+      NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messages,
       Optional&lt;NonBlankTrimmedString&gt; className = new Optional&lt;NonBlankTrimmedString&gt;())
       : base(new Props(className, messages)) { }
 
     public override ReactElement Render()
     {
-      Bridge.Html5.Console.WriteLine("MessageHistory.Render");
+      Console.WriteLine("MessageHistory.Render");
 
       var className = props.ClassName;
       if (!props.Messages.Any())
@@ -2743,14 +2732,14 @@ namespace BridgeReactTutorial.Components
         ));
 
       // When child components are specified (as they are through the second argument of
-      // DOM.Div), the argument is of type Any&lt;ReactElement, string&gt;[] (meaning that each
+      // DOM.Div), the argument is of type Union&lt;ReactElement, string&gt;[] (meaning that each
       // element may be another component or it may be a simple text value)
       // - The React  bindings have an extension method that transforms an IEnumerable set
-      //   of components (such as "messageElements") into an Any&lt;ReactElement, string&gt;[]
+      //   of components (such as "messageElements") into an Union&lt;ReactElement, string&gt;[]
       return DOM.FieldSet(
         new FieldSetAttributes { ClassName = className.ToStringIfDefined() },
         DOM.Legend(null, "Message History"),
-        DOM.Div(null, messageElements.ToChildComponentArray())
+        DOM.Div(null, messageElements)
       );
     }
 
@@ -2758,13 +2747,13 @@ namespace BridgeReactTutorial.Components
     {
       public Props(
         Optional&lt;NonBlankTrimmedString&gt; className,
-        Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messages)
+        NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; messages)
       {
         this.CtorSet(_ =&gt; _.ClassName, className);
         this.CtorSet(_ =&gt; _.Messages, messages);
       }
-      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; private set; }
-      public Set&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; Messages { get; private set; }
+      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+      public NonNullList&lt;Saved&lt;MessageId, MessageDetails&gt;&gt; Messages { get; }
     }
   }
 }
@@ -2867,10 +2856,10 @@ namespace BridgeReactTutorial.Components
         this.CtorSet(_ =&gt; _.OnChange, onChange);
         this.CtorSet(_ =&gt; _.OnSave, onSave);
       }
-      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; private set; }
-      public MessageEditState Message { get; private set; }
-      public Action&lt;MessageEditState&gt; OnChange { get; private set; }
-      public Action OnSave { get; private set; }
+      public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+      public MessageEditState Message { get; }
+      public Action&lt;MessageEditState&gt; OnChange { get; }
+      public Action OnSave { get; }
     }
   }
 }
@@ -2993,7 +2982,7 @@ namespace BridgeReactTutorial.API
     /// &lt;summary&gt;
     /// This will never be null, blank or have any leading or trailing whitespace
     /// &lt;/summary&gt;
-    public string Value { get; private set; }
+    public string Value { get; }
 
     /// &lt;summary&gt;
     /// It's convenient to be able to pass a NonBlankTrimmedString instance as any argument
@@ -3011,7 +3000,7 @@ namespace BridgeReactTutorial.API
     /// that requires a ReactElement-or-string, such as for the children array of the React
     /// DOM component factories
     /// &lt;/summary&gt;
-    public static implicit operator Any&lt;ReactElement, string&gt;(NonBlankTrimmedString value)
+    public static implicit operator Union&lt;ReactElement, string&gt;(NonBlankTrimmedString value)
     {
       if (value == null)
         throw new ArgumentNullException("value");
@@ -3128,7 +3117,7 @@ namespace BridgeReactTutorial.API
 
 
 				<div class="Footer">
-					Productive Rage 2017
+					Productive Rage 2018
 				</div>
 			</div>
 
@@ -3146,9 +3135,9 @@ namespace BridgeReactTutorial.API
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet">Trying to set a readonly auto-property value externally (plus, a little BenchmarkDotNet)</a></li><li><a href="/revisiting-net-core-tooling-visual-studio-2017">Revisiting .NET Core tooling (Visual Studio 2017)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/migrating-my-full-text-indexer-to-net-core-supporting-multitarget-nuget-packages">Migrating my Full Text Indexer to .NET Core (supporting multi-target NuGet packages)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton">Learning F# via some Machine Learning: The Single Layer Percepton</a></li><li><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet">Trying to set a readonly auto-property value externally (plus, a little BenchmarkDotNet)</a></li><li><a href="/revisiting-net-core-tooling-visual-studio-2017">Revisiting .NET Core tooling (Visual Studio 2017)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/migrating-my-full-text-indexer-to-net-core-supporting-multitarget-nuget-packages">Migrating my Full Text Indexer to .NET Core (supporting multi-target NuGet packages)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

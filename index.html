@@ -3,7 +3,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<meta charset="utf-8" />
-	<title>Productive Rage - July 2017</title>
+	<title>Productive Rage - March 2018</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#393939" />
 	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
@@ -67,691 +67,716 @@
 		</script>
 
 	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">26 July 2017</h3><h2><a id="Post110"></a><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet">Trying to set a readonly auto-property value externally (plus, a little BenchmarkDotNet)</a></h2>
-
-<p>If you're thinking that you should try changing a readonly property.. well, in short, you almost certainly shouldn't try.</p>
-
-<p>For example, the following class has a property that should <em>only</em> be set in its constructor and then never mutated again -</p>
-
-<pre><code>public sealed class Example
-{
-  public Example(int id)
-  {
-    Id = id;
-  }
-  public int Id { get; }
-}
-</code></pre>
-
-<p><em>And it is a good thing</em> that we are able to write code so easily that communicates precisely when a property may (and may not) change.</p>
-
-<p>However..</p>
-
-<p>You might have some very particular scenario in mind where you really <em>do</em> want to try to write to a readonly auto-property's value for an instance that has already been created. It's possible that you are writing some interesting deserialisation code, I suppose. For something that I was looking at, I was curious to look into how feasible it is (or isn't) and I came up with the following three basic approaches.</p>
-
-<p>I think that each approach demonstrates something a little off the beaten track of .NET - granted, there's absolutely nothing here that's never been done before.. but sometimes it's fun to be reminded of how flexible .NET <em>can</em> be, if only to appreciate how hard it works to keep everything reliable and consistent.</p>
+		<h3 class="PostDate">27 March 2018</h3><h2><a id="Post111"></a><a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton">Learning F# via some Machine Learning: The Single Layer Percepton</a></h2>
 
 <h3>TL;DR</h3>
 
-<p>I'll show three approaches, in decreasing order of ease of writing. They all depend upon a particular naming conventions in .NET's internals that is not documented and should not be considered reliable (ie. a future version of C# and/or the compiler could break it). Even if you ignore this potential time bomb, only the first of the three methods will actually work. Like I said at the start, this is something that you almost certainly shouldn't be attempting anyway!</p>
+<p>I know C# well and I want to learn F#. I want to wrap my head about some of the underlying algorithms that enable the machine learning that seems so prevalent in the world today (voice recognition, computer vision, sales prediction, semantic analysis, translation). I'm going to try to do both together and prove to myself that I have a good understanding of them both by writing about it.</p>
 
-<h3>Approach 1: Reflection (with some guesswork)</h3>
+<h3>The lure of F#</h3>
 
-<p>C# 6 introduced read-only auto-properties. Before thoses were available, you had two options to do something similar. You could use a private setter -</p>
+<p>For a few years now, I've been wanting to have a proper crack at learning F#. There's a lot about it that sounds very appealing - immutability-by-default and better representation / handling of null values while still being able to use Visual Studio and use the .NET framework library (as well as other .NET assemblies). I've tried a couple of times in the past but without any concrete project to work on, I find that I struggle to motivate myself without a target to work towards that is more tangible than "feel like I've learned a bit of a new language".</p>
 
-<pre><code>public sealed class Example
+<p>To address this, I've decided to combine learning-some-F# with learning-some-machine-learning-basics so that I have a more solid goal. As I go, I thought that I'd write a few posts about the process for two reasons; firstly, being able to explain something clearly is a good indicator that you understand it yourself and, secondly, there is a chance (admittedly slim!) that this might be useful to someone else in a similar position to me, who is familiar with C# and wants to get to grips with F# - I wouldn't even consider myself intermediately competent yet and so I'm still encountering the pain points of being an F# beginner and seeing how I deal with them might be helpful to others.</p>
+
+<p>Last year, I wrote <a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a>, which classified image regions using a linear support vector machine. This was technically a machine learning solution but it's only one particular algorithm and there are limitations to the sorts of problem that it can tackle. I want to work up to implementing a Back-Propagation Neural Network that will categorise hand written digits (0-9) but I'm going to start a little simpler.</p>
+
+<p>While trying to decide how I was going to get started, I read (or scan-read, in many cases, if I'm being honest) what felt like hundreds of articles about neural networks. One of the issues with trying to learn something like this through the research of others is that the people writing about it already have a level of knowledge far above my own on the matter and it feels like there is a lot of knowledge that it assumed that the reader will have. Another issue is that there is often maths involved that can seem sufficiently complicated that it is off-putting. In my posts, I'm going to try to keep things as simple as possible (which may well mean brushing some "whys" under the carpet - leaving it as an exercise to the reader to find out more from other people, once the basics are understood). One series of posts that I <em>did</em> find very approachable, though, was on a site "<a href="http://www.robosoup.com/">Robosoup</a>" - which is for a consultancy based in London that specialise in machine learning. The first post in the series is "<a href="http://www.robosoup.com/2008/09/the-single-layer-perceptron-c.html">The Single Layer Perceptron C#</a>" and I'm actually going to start with some of the code there and the example data. I'm going to try to explain things my own way but much of the content here will owe a debt to that Robosoup article (I got in touch with John Wakefield at Robosoup and he said that he was happy for me share his code - rest assured that I'm not just stealing it without asking for permission first!).</p>
+
+<h3>The Single Layer Perceptron</h3>
+
+<p>The concept of an "artificial neural network" is, essentially, that there is a system of neurons that are connected together and that have a series of inputs that send signals into the system and which eventually get (somehow) transformed into a series of outputs. Each output represents a particular result. If, for example, the neural network was intended to categorise images then the inputs will all be derived from the image data in some way and there may be an output for "dog" and an output for "cat" and these output will end up with a stronger or weaker signal depending upon the input data. The connections between the neurons will have different "weights" and so different input values will somehow result in different outputs. These different weights will have to calculated as part of the network's "training". This sort of description is often accompanied by complicated-looking diagrams such as this:</p>
+
+<p><img src="/Content/Images/Posts/NeuralNetwork.jpg" alt="Neural Network" /></p>
+
+<p><em>(Taken from <a href="https://www.flickr.com/photos/worldworldworld/7880912598/in/photostream/">Cesar Harada's Flickr</a> under <a href="https://creativecommons.org/licenses/by-nc-sa/2.0/">license conditions</a>)</em></p>
+
+<p>This raises a lot of questions and feels like far too complicated a place to start! (Though, in later posts, I <em>will</em> be talking about multi-layered multi-output neural networks similar to what is shown above).</p>
+
+<p>The "Single Layer Perceptron" is simpler - it only has one input "layer" and one output "layer", where a layer is a list of "neurons". A neuron is something that takes an input value (a value from -1 to 1), multiplies it by a "weight" (also a value from -1 to 1) and then passes that value onto every node that it is connected to in the layer ahead of it. Pretty much the simplest possible network imaginable that would fit this description would be just two neurons in the input layer and a single neuron in the output layer. Like this:</p>
+
+<p><img src="/Content/Images/Posts/SingleLayerPercepton.png" alt="Simple Single Layer Percepton" /></p>
+
+<p>Now this might almost seem <em>too</em> simple! Can this really do anything useful? Well, actually, it's entirely possible to configure a network like this to act as a classifier for any data that is "linearly separable" in as many dimensions as there are inputs. This is already sounding like mumbo jumbo, so I'll go over those terms..</p>
+
+<p>A "classifier" will look at its inputs and give a yes/no answer (for example, an "is this a cat?" classifier might look at a photograph and report whether there appears to be a cat in it or not).</p>
+
+<p>"Linearly separable" is simplest to understand in 2D - if the data is plotted on a graph then it's "linearly separable" if it's possible to draw a straight line across the graph that puts all of the values for "yes" lie on one side and all inputs for "no" lie on the other side. When I wrote about linear support vector machines, I talked about a fictional decision history for a  manager, where they would give the go-ahead (or not) to a new feature based upon how much of it could be billed to Clients and what strategic value it had to the company.</p>
+
+<p><img src="/Content/Images/Posts/ManagerDecisionHistory-Predictions.jpg" alt="Manager Decision History" /></p>
+
+<p>This data <em>is</em> linearly separable because it's possible to draw a line on the graph where all of the data above gets a "yes" response and all of the data below gets a "no".</p>
+
+<p>Some data sets will <em>not</em> fit this model and so are <em>not</em> linearly separable. That won't make it impossible to classify using a neural network but it <em>will</em> make it impossible for a perceptron to classify (without some form of processing of the data before classification - which is out of the scope of what I want to cover today).</p>
+
+<p>2D data like this would involve a perceptron with two inputs. 3D data that is linearly separable would have all of its data points seperable by a plane in the 3D space - all points on one side would be "yes" and all points on the other would be "no"; this data would involve a perceptron with three inputs.</p>
+
+<p>While it's not as easy to envisage this in more dimensions, the same principle holds. For this sort of multi-dimensional data, the additional dimensions tend to be additional measurable factors that are thought to have affected the outcome (for example, maybe the manager in the example above is predictably less likely to give the go-ahead to features on Monday and Tuesday because they're always snowed under with emails for those first two days of the week <em>and</em> they're less likely to sign off on things when they're hungry; that would mean that there would be four dimensions to consider, which would be "amount of cost that can be put onto Clients", "strategic value of the work", "day of the week" and "time since last ate" - these four dimensions would require a perceptron with four inputs to model the data).</p>
+
+<h3>Training a perceptron</h3>
+
+<p>I said above that it's possible to <em>configure</em> a network to act as a classifier for linearly separable data. All that is required to configure the network is to assign the weight0 and weight1 values (at least, that is the case for 2D data - since each input has its own weight value then 2D data requires two inputs but if the input is three dimensional then there will be three weight values that must be set and if there were four dimensions then there would be four weight values, etc..). When it is correctly configured, it will be possible to apply any values to the input neurons and to get a single output value. If this output value is higher than a particular threshold then the output will be considered a positive response and otherwise it will be considered a negative response.</p>
+
+<p><img src="/Content/Images/Posts/SingleLayerPercepton-ManagerDecision.png" alt="Simple Single Layer Percepton for predicting Manager Decisions" /></p>
+
+<p>Returning to the Manager Decision data, one of the inputs will be for the "amount of cost that can be put onto Clients" while the other will be the "strategic value of the work". For the data and the code that I'm going to look at further down, all inputs and outputs are in the 0-1 range (this is convenient enough for "amount of cost that can be put onto Clients" but it may be more difficult in the real world to fit all features into a 0-1 range for "strategic value of the work" - but since that data is just a fictional example, we don't need to worry about that too much).</p>
+
+<p>The question, then, is <em>how</em> should we determine the weights for each neuron? This is where the "machine learning" part comes into it. What we're going to do is "train" a network by using historical data.</p>
+
+<p>At its essence, the way that a trained network like this is produced is by -</p>
+
+<ol>
+<li>Setting all of the weights to be random values between 0 and 1</li>
+<li>Passing all of the historical data (aka "training data") through it and, for each "pattern" (which is the name given to a series of inputs)
+
+<ul>
+<li>Calculating the "local error" (the error for that particular pattern)</li>
+<li>Adjusting the weights based upon this local error</li>
+</ul></li>
+<li>Taking the "total error" or "global error" (the sum of all of the local errors from the training data) and either finding that it is less than a predetermined threshold (in which case the network training is considered complete - hurrah!) or going back to step 2</li>
+</ol>
+
+<p>There are a lot of things to consider there - what <em>precisely</em> are the "local errors", how are the weights adjusted each iteration and what threshold should we stop at? Let's work through each of those in order..</p>
+
+<p>The local error for a particular pattern is how far away the output of the network is from the expected result. Since all of the input data has a yes/no expected output, we'll translate "yes" into 1 and "no" into 0. For each pattern, we take its inputs and set the input neurons with those values. Then we calculate the output for the network (by multiplying the first input by the first weight and the second input by the second weight and then adding those two values together). Then we compare this output value to the expected 1 or 0 - so, if we get 0.3 as the output value for the first pattern and we expected 1 then that's an error of 0.7 (since 0.3 is 0.7 away from the expected value of 1). If we get 0.6 for the output value for the second pattern and we expected 0 then that's an error of 0.6 (since 0.6 is 0.6 away from the expected value of 0).</p>
+
+<p>In order to adjust the weights after each pattern has been run through the network, a fairly simple equation is used - each new weight is calculated using:</p>
+
+<pre><code>weight[i] = weight[i] + (learningRate * localError * patternInput[i])
+</code></pre>
+
+<p>For this network, there are only two inputs and so there will only be two values for "i".</p>
+
+<p>The "learning rate" is a value between 0 and 1 that determines how quickly the weights change as the network is trained. Clearly, a value of 0 would mean that the weights <em>don't</em> change each iteration, which would be useless. The larger the value of the learning rate, the more that the weights will be adjusted each iteration - however, larger is not always better because the adjustments may swing too far each time and, instead of slowing homing in on a well-trained network, the weights may alternate back and forth and never significantly improve. In the example code that I'm going to look at, I'm using a learning rate of 0.1* but this is a value that you may wish to try playing with when experimenting with training - there seem to be many guidelines when it comes to machine learning and many sensible approaches to classes or problem but there aren't always hard and fast rules for all of the variables and there are often things to tweak here and there that may affect how quickly you get a result (or if you get one at all).</p>
+
+<p>* <em>(To be honest, I've "decided" to use a learning rate of 0.1 because much of the initial C# code below comes from the <a href="http://www.robosoup.com/2008/09/the-single-layer-perceptron-c.html">Robosoup article</a> that I mentioned earlier and a 0.1 learning rate is used there!)</em></p>
+
+<p>The acceptable "global error" is another "tunable parameter" in that a higher acceptable threshold should mean that training will complete more quickly but also that the resulting network will be less accurate. On the other hand, it may be impossible to train a network (particularly so simple a network as a single perceptron) to match all of the training data perfectly and so a reasonable threshold must be accepted. In the example code below, a network that perfectly matches the training data <em>is</em> possible and won't take long to train and so we'll aim for a zero global error.</p>
+
+<p>I'm not going to go into any more detail about how you may set these tunable parameters (learning rate and global error threshold) because there's a <em>lot</em> of material to cover and I want to try to stick to practical concepts and code (<em>and</em> because I'm still not very confident that I've got a great system for deciding them!).</p>
+
+<h3>Input bias</h3>
+
+<p><img src="/Content/Images/Posts/SingleLayerPercepton-ManagerDecision-With-Bias.png" alt="Simple Single Layer Percepton for predicting Manager Decisions (with bias node)" /></p>
+
+<p>Using the training method described above, you will always get a line that cuts through the data at the point (0, 0). This would not work for the "Manager Decision History" graph because there is no way that a line starting at the bottom left of the graph could correctly cut through the data with all of the red points on one side and all of the green points on the other (on that graph all values are 0-1 and so the bottom left is the 0, 0 point).</p>
+
+<p>A way to address this is to introduce an additional "bias" value. This is effectively like adding an additional neuron whose input value is always one and that has its own weight, just like every other input. Every time that a pattern is passed through the system while it is being trained, when the weights are adjusted, the bias should also be adjusted using the following formula:</p>
+
+<pre><code>bias = bias + (learningRate * localError)
+</code></pre>
+
+<p><em>(The formula is basically the same as the weight-adjusting formula except that the "patternInput[i]" value is removed because the bias neuron's input value is always 1)</em></p>
+
+<p>This bias value means that the line that separates the yes/no values no longer has to go through (0, 0) but it has no other effect on training process, other than there being more slightly more work to do (although, without it, we wouldn't be able to get an answer for many sets of data - so it's not really <em>more</em> work at all!).</p>
+
+<p>I've just said that it would not be possible to train a simple network of this form for <em>some</em> data sets without a bias.. which begs the question "for what data sets <em>should</em> a bias node be introduced?" - I think that it makes sense to <em>always</em> include one since, presumably, you don't know what solution the neural net should produce and so you don't know whether or not it would strictly be necessary to have a bias. So it's better to err on the safe side. If the data does <em>not</em> require a bias then the trained network should end up with a small (ie. close to zero) bias value and it will have little impact.</p>
+
+<p><em>(This "input bias" is very different to moral biases that can creep into machine learning predictions due to biases, that are often unintentionally included, in the training data - see "<a href="https://www.technologyreview.com/s/608986/forget-killer-robotsbias-is-the-real-ai-danger/">Forget Killer Robots—Bias Is the Real AI Danger</a>")</em></p>
+
+<h3>From C# to F#..</h3>
+
+<p>The format that I intend to follow for these posts is roughly as follows:</p>
+
+<ol>
+<li>Talk about the theory (we've already done that today!)</li>
+<li>Look at some fairly standard C# code</li>
+<li>Look at making the C# code more functional by removing variable mutations (including loops)</li>
+<li>Rewrite the "functional C#" in F#</li>
+</ol>
+
+<p>As an F# beginner, this is the approach that I've been using for trying to learn it - until I've internalised it further, it still feels like a big ask to take regular C# and rewrite it into idiomatic F# and so the "functional C#" stage helps me a lot. The syntax of F# is not that big of a deal but <em>thinking</em> in (functional) F# is still something that I'm working towards.</p>
+
+<p><em>(It's worth noting that, for me, getting my head around F# and functional programming is the priority. Much of the C# that we'll be looking will be doing in-place mutations - which, arguably, is a good model for doing the processing that we'll be looking at when it's done on a single thread - and since we'll be moving to using immutable structures then there is a good chance that the performance will be worse in the final F# code. If that turns out to be the case, though, then I'm not going to worry about it. I think that performance concerns are for when you have a better grasp of the technology that you're working with and I'm not there yet with F# - so I don't mind if I end up with worse-performing code in the context of this post so long as I've learned a lot from writing it!)</em></p>
+
+<pre><code>// Code slightly modified from that at
+// http://www.robosoup.com/2008/09/the-single-layer-perceptron-c.html
+public static class Perceptron
 {
-  public Example(int id)
+  public static void Go(Random r)
   {
-    Id = id;
+    // Load sample input patterns and expected outputs
+    var trainingData = new[]
+    {
+      Pattern(0.08, 0.94, true), Pattern(0.13, 0.95, true), Pattern(0.28, 0.66, true),
+      Pattern(0.3, 0.59, true), Pattern(0.31, 0.51, true), Pattern(0.34, 0.67, true),
+      Pattern(0.34, 0.63, true), Pattern(0.36, 0.55, true), Pattern(0.38, 0.67, true),
+      Pattern(0.4, 0.59, true), Pattern(0.4, 0.68, true), Pattern(0.41, 0.5, true),
+      Pattern(0.42, 0.53, true),  Pattern(0.43, 0.65, true), Pattern(0.44, 0.56, true),
+      Pattern(0.47, 0.61, true), Pattern(0.47, 0.5, true), Pattern(0.48, 0.66, true),
+      Pattern(0.52, 0.53, true), Pattern(0.53, 0.58, true), Pattern(0.55, 0.6, true),
+      Pattern(0.56, 0.44, true), Pattern(0.58, 0.63, true), Pattern(0.62, 0.57, true),
+      Pattern(0.68, 0.42, true), Pattern(0.69, 0.21, true), Pattern(0.7, 0.31, true),
+      Pattern(0.73, 0.48, true), Pattern(0.74, 0.47, true), Pattern(0.74, 0.42, true),
+      Pattern(0.76, 0.34, true), Pattern(0.78, 0.5, true), Pattern(0.78, 0.26, true),
+      Pattern(0.81, 0.48, true), Pattern(0.83, 0.32, true), Pattern(0.83, 0.28, true),
+      Pattern(0.85, 0.07, true), Pattern(0.85, 0.45, true), Pattern(0.88, 0.4, true),
+      Pattern(0.89, 0.92, true), Pattern(0.9, 0.33, true), Pattern(0.91, 0.05, true),
+      Pattern(0.92, 0.44, true), Pattern(0.95, 0.94, true), Pattern(0.96, 0.08, true),
+
+      Pattern(0.02, 0.76, false), Pattern(0.06, 0.22, false), Pattern(0.07, 0.16, false),
+      Pattern(0.09, 0.43, false), Pattern(0.1, 0.08, false), Pattern(0.14, 0.07, false),
+      Pattern(0.15, 0.23, false), Pattern(0.17, 0.18, false), Pattern(0.17, 0.11, false),
+      Pattern(0.21, 0.28, false), Pattern(0.22, 0.17, false), Pattern(0.25, 0.09, false),
+      Pattern(0.28, 0.28, false), Pattern(0.28, 0.27, false), Pattern(0.29, 0.22, false),
+      Pattern(0.29, 0.29, false), Pattern(0.3, 0.29, false), Pattern(0.31, 0.14, false),
+      Pattern(0.33, 0.19, false), Pattern(0.33, 0.06, false), Pattern(0.39, 0.15, false),
+      Pattern(0.52, 0.1, false), Pattern(0.65, 0.07, false), Pattern(0.71, 0.1, false),
+      Pattern(0.74, 0.05, false)
+    };
+
+    // Randomise weights
+    var weights = new[] { r.NextDouble(), r.NextDouble() };
+    var bias = 0d;
+
+    // Set learning rate
+    var learningRate = 0.1;
+    var iteration = 0;
+    double globalError;
+    do
+    {
+      globalError = 0;
+      for (var p = 0; p &lt; trainingData.Length; p++)
+      {
+        // Calculate output
+        var inputs = trainingData[p].Item1;
+        var output = Output(weights, bias, inputs[0], inputs[1]) ? 1 : -1;
+
+        // Calculate error
+        var expected = trainingData[p].Item2;
+        var localError = (expected ? 1 : -1) - output;
+        if (localError != 0)
+        {
+          // Update weights
+          for (var i = 0; i &lt; 2; i++)
+          {
+            weights[i] += learningRate * localError * inputs[i];
+          }
+          bias += learningRate * localError;
+        }
+
+        // Convert error to absolute value
+        globalError += Math.Abs(localError);
+      }
+      Console.WriteLine("Iteration {0}\tError {1}", iteration, globalError);
+      iteration++;
+    } while (globalError != 0);
+
+    Console.WriteLine();
+    Console.WriteLine(
+      $"Final weights: {weights[0]}, {weights[1]}, Bias: {bias} =&gt; Error: {globalError}"
+    );
+
+    // Display network generalisation (note: the "Manager Decision" data has input values that
+    // are all in the range 0-1 in both dimensions and so we will only look at values in this
+    // range in this preview here)
+    Console.WriteLine();
+    Console.WriteLine("X,\tY,\tOutput");
+    for (double x = 0; x &lt;= 1; x += .25)
+    {
+      for (double y = 0; y &lt;= 1; y += .25)
+      {
+        var output = Output(weights, bias, x, y);
+        Console.WriteLine("{0},\t{1},\t{2}", x, y, output ? "Yes" : "No");
+      }
+    }
+    Console.WriteLine();
   }
-  public int Id { get; private set; }
+
+  private static bool Output(double[] weights, double bias, double x, double y)
+  {
+    var sum = (x * weights[0]) + (y * weights[1]) + bias;
+    return (sum &gt;= 0);
+  }
+
+  /// &lt;summary&gt;Helper for initialising training data&lt;/summary&gt;
+  private static Tuple&lt;double[], bool&gt; Pattern(double x, double y, bool output)
+  {
+    return Tuple.Create(new[] { x, y }, output);
+  }
 }
 </code></pre>
 
-<p>.. or you could manually create a private readonly backing field for the property -</p>
+<p>This code is fairly straightforward and it goes through the steps that I described before:</p>
 
-<pre><code>public sealed class Example
+<ol>
+<li>Set weights to be random values and the bias to be zero</li>
+<li>Take each training data entry's input and calculate the output using the current weights (and bias), adjusting the weights (and bias) if the calculated output did not match the expected output</li>
+<li>Compare the total error against a threshold (of zero) and go back to step 2 if it's too high</li>
+</ol>
+
+<p>The way that I'm going to change this code from "regular" (I would call it "object oriented" C# but the code shown here is probably closer to being "procedural") to "functional*" C# is by looking for things that would seem out of place in functional code and replacing them.</p>
+
+<p>* <em>("functional" is often interpreted as meaning that you avoid side effects and avoid mutation - we can argue about that definition another day if you like but it's a good enough place to start for now!)</em></p>
+
+<p>Immediately, the following things jump out at me:</p>
+
+<ol>
+<li>Variables whose values are explicitly changed during processing (eg. "iteration" and "globalError")</li>
+<li>Variables whose values change as part of looping constructs (eg. "i", "x" and "y")</li>
+<li>The do..while loop will not be useful if values are not to be mutated with it and so that will need to be replaced with something else</li>
+</ol>
+
+<p>I suppose the question, then, is <em>how</em> can we possibly write code like this <em>without</em> changing / mutating / updating values?</p>
+
+<p>The first thing to recognise is that LINQ made a more functional style of processing much more mainstream within C# and seem less alien. Before LINQ, if you had an array of values and you wanted an array containing the squares of these values (contrived example, I know, but bear with me) then you may well have achieved this in a fairly procedural manner - eg.</p>
+
+<pre><code>var values = new[] { 1, 2, 3 };
+var squaredValues = new int[values.Length];
+for (var i = 0; i &lt; values.Length; i++)
+  squaredValues[i] = values[i] * values[i];
+</code></pre>
+
+<p>Each time the loop is executed, the value of "i" changes and the "squareValues" array is updated.</p>
+
+<p>Until the for loop has been fully executed, the "squaredValues" array is only partially initialised.</p>
+
+<p>Within the loop, it's technically possible to change the value of "i" and move it backwards or forwards (such as by throwing in a bonus "i++" to keep future code maintainers on their toes) and this can be the cause of potential coding errors in loops more complicated than the one shown here.</p>
+
+<p>Since all we want to do is transform every single value in one array and create a new array from the results, it would be nice if we could be more descriptive in what we are trying to do and to remove some "book keeping" (such as tracking the "i" value using the for loop). This is what would happen if LINQ was used to perform the same work -</p>
+
+<pre><code>var values = new[] { 1, 2, 3 };
+var squaredValues = values
+  .Select(value =&gt; value * value)
+  .ToArray();
+</code></pre>
+
+<p>Note that there is no mutation occurring here. Each time that the lambda that is passed to the "Select" method is called, a new "value" reference is created (unlike "i", which was a single variable shared across each iteration of the loop).</p>
+
+<p>This is one technique that will be useful to remove mutation from code.</p>
+
+<p>Another is the "Aggregate" method for enumerating a list of items and reducing it to a single reference. To try to illustrate; if I had a collection of words and I wanted to get the <em>total number of words</em> and the <em>total number of letters</em> then I might write procedural code like this:</p>
+
+<pre><code>static void ShowLetterAndWordCount(IEnumerable&lt;string&gt; words)
 {
-  private readonly int _id;
-  public Example(int id)
+  var numberOfLetters = 0;
+  var numberOfWords = 0;
+  foreach (var word in words)
   {
-    _id = id;
+    numberOfLetters += word.Length;
+    numberOfWords++;
   }
-  public int Id { get { return _id; } }
+  Console.WriteLine("Total number of letters: " + numberOfLetters);
+  Console.WriteLine("Total number of words: " + numberOfWords);
 }
 </code></pre>
 
-<p>The first approach requires less code but the guarantees that it claims to make are less strict. When a field is readonly then it may <em>only</em> be set within a constructor but when it has a private setter then it could feasibly change <em>at any point</em> in the lifetime of the instance. In the class above, it's clear to see that it <em>is</em> only set in the constructor but there are no compiler assurances that someone won't come along and add a method to the <strong>Example</strong> class that mutates the private-setter "Id" property. If you have a readonly "_id" backing field then it would not be possible to write a method to mutate the value*.</p>
+<p>.. or I could achieve the same thing without any mutating variables by using the following code:</p>
 
-<p>* <em>(Without resorting to the sort of shenanigans that we are going to look at here)</em></p>
-
-<p>So the second class is more reliable and more accurately conveys the author's intentions for the code (that the "Id" property of an <strong>Example</strong> instance will never change during its lifetime). The disadvantage is that there is more code to write.</p>
-
-<p>The C# 6 syntax is the best of both worlds - as short (shorter, in fact, since there is <em>no</em> setter defined) as the first version but with the stronger guarantees of the second version.</p>
-
-<p>Interestingly, the compiler generates IL that is essentially identical to that which result from the C# 5 syntax where you manually define a property that backs onto a readonly field. The only real difference relates to the fact that it wants to be sure that it can inject a readonly backing field whose name won't clash with any other field that the human code writer may have added to the class. To do this, it uses characters in the generated field names that are not valid to appear in C#, such as "&lt;Id&gt;k__BackingField". The triangle brackets may not be used in C# code but they may be used in the IL code that the compiler generates. And, just to make things extra clear, it adds a <strong>[CompilerGenerated]</strong> attribute to the backing field.</p>
-
-<p>This is sufficient information for us to try to identify the compiler-generated backing field using reflection. Going back to this version of the class:</p>
-
-<pre><code>public sealed class Example
+<pre><code>static void ShowLetterAndWordCount(IEnumerable&lt;string&gt; words)
 {
-  public Example(int id)
-  {
-    Id = id;
-  }
-  public int Id { get; }
+  var summary = words.Aggregate(
+    seed: new { NumberOfLetters = 0, NumberOfWords = 0 },
+    func: (valueSoFar, nextWord) =&gt; new
+    {
+      NumberOfLetters = valueSoFar.NumberOfLetters + nextWord.Length,
+      NumberOfWords = valueSoFar.NumberOfWords + 1
+    }
+  );
+  Console.WriteLine("Total number of letters: " + summary.NumberOfLetters);
+  Console.WriteLine("Total number of words: " + summary.NumberOfWords);
 }
 </code></pre>
 
-<p>.. we can identify the backing field for the "Id" property with the following code:</p>
+<p>What "Aggregate" does is it takes a "seed" value and the first value of the list of items and combines them using the "func" lambda. It then takes this result and combines it with the <em>second</em> value of the list, also using the "func" lambda. It will then take <em>this</em> result and combines it with the <em>third</em> value of the list, etc.. until one final combined value is returned. In the code above, I've used an anonymous type for the seed (and so the final "summary" reference will also be an instance of that anonymous type and so have "NumberOfLetters" and "NumberOfWords" properties) but the seed can be a class or a primitive or any type that you need.</p>
 
-<pre><code>var type = typeof(Example);
-var property = type.GetProperty("Id");
+<p>All of the "book keeping" required by the Aggregate method is handled by the method itself - there is no loop variable to worry about and there are no variables outside of the loop (such as "numberOfLetters" and "numberOfWords") that must be tracked. You need only to tell it what the initial "seed" value should be and how it should combine the "value so far" with a single item from the input list.</p>
 
-var backingField = type
-  .GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
-  .FirstOrDefault(field =&gt;
-    field.Attributes.HasFlag(FieldAttributes.Private) &amp;&amp;
-    field.Attributes.HasFlag(FieldAttributes.InitOnly) &amp;&amp;
-    field.CustomAttributes.Any(attr =&gt; attr.AttributeType == typeof(CompilerGeneratedAttribute)) &amp;&amp;
-    (field.DeclaringType == property.DeclaringType) &amp;&amp;
-    field.FieldType.IsAssignableFrom(property.PropertyType) &amp;&amp;
-    field.Name.StartsWith("&lt;" + property.Name + "&gt;")
-  );    
+<p>This is the advantage that it has over the procedural version (which may initially appear "less complicated") - you only need to consider what actually happens within a single operation and you don't have to look after any variables that must be maintained across the entire loop (which was the case with "numberOfLetters" and "numberOfWords" in the first version).</p>
+
+<p>At its core, this means that the scope of variables is reduced and when they don't change (ie. they are immutable) there are less moving parts for you to mentally consider when trying to reason about any particular line of code.</p>
+
+<p>I'm finding that the F# version of Aggregate (called "fold") is a very powerful and useful technique and so having a good grasp on how it works is very useful. Just to make it <em>extra</em> clear (apologies if this is belabouring the point but Aggregate doesn't, in my experience, tend to be commonly used in C# and so it may not be familiar to some), here's another example:</p>
+
+<pre><code>var values = new[] { 1, 2, 3, 4, 5 };
+var sumOfValues = words.Aggregate(
+  seed: 0,
+  func: (valueSoFar, value) =&gt; valueSoFar + value
+);
 </code></pre>
 
-<p>With this backingField reference, we can start doing devious things. Like this:</p>
+<p>This will return 15 because it will just add all of the values together. It begins with a seed value of 0 and adds it to the first value (which is 1) to get 1. It then adds this "value so far" to the second value (which is 2) to get 3. It adds this to the third value (which is 3) to get 6 and adds this to the fourth value (which is 4) to get 10 and adds this to the fifth value (which is 5) to get 15.</p>
 
-<pre><code>// Create an instance with a readonly auto-property
-var x = new Example(123);
-Console.WriteLine(x.Id); // Prints "123"
+<p>Not a particularly useful piece of code - and one that could have been written more clearly as:</p>
 
-// Now change the value of that readonly auto-property!
-backingField.SetValue(x, 456);
-Console.WriteLine(x.Id); // Prints "456"
+<pre><code>var values = new[] { 1, 2, 3, 4, 5 };
+var sumOfValues = words.Sum();
 </code></pre>
 
-<p>We took an instance of a class that has a readonly property (meaning that it should never change after the instance has been constructed) and we <em>changed</em> that property. Evil.</p>
+<p>.. but hopefully it reinforces how the Aggregate method operates on data. And hopefully it makes it clear how powerful Aggregate can be because so many other operations may be built on top of it, such as Min or Max -</p>
 
-<p>One more time, though: this relies upon the current convention that the compiler-generated backing fields follow a particular naming convention. If that changes one day then this code will fail.</p>
-
-<p>Enough with the boring warnings, though - let's get to the real nub of the matter; reflection is slooooooooow, isn't it? Surely we should never resort to such a clunky technology??</p>
-
-<h3>Approach 2: Using LINQ Expressions to generate fast code to set the field</h3>
-
-<p>If <strong>Example</strong> had a regular private field that we wanted to set - eg.</p>
-
-<pre><code>public sealed class Example
+<pre><code>static int? Min(IEnumerable&lt;int&gt; values)
 {
-  private int _somethingElse;
-  public Example(int id, int somethingElse)
-  {
-    Id = id;
-    _somethingElse = somethingElse;
-  }
+  return values.Aggregate(
+    seed: (int?)null,
+    func: (valueSoFar, nextValue) =&gt; (valueSoFar.HasValue &amp;&amp; valueSoFar &lt; nextValue)
+      ? valueSoFar
+      : nextValue
+  );
+}
 
-  public int Id { get; }
-
-  public int GetSomethingElse()
-  {
-    return _somethingElse;
-  }
+static int? Max(IEnumerable&lt;int&gt; values)
+{
+  return values.Aggregate(
+    seed: (int?)null,
+    func: (valueSoFar, nextValue) =&gt; (valueSoFar.HasValue &amp;&amp; valueSoFar &gt; nextValue)
+      ? valueSoFar
+      : nextValue
+  );
 }
 </code></pre>
 
-<p>Then we could use reflection to get a reference to that field once and build a delegate using LINQ Expressions that would allow us to update that field value using something like this:</p>
+<h3>To functional code.. one step at a time</h3>
 
-<pre><code>var field = typeof(Example).GetField("_somethingElse", BindingFlags.Instance | BindingFlags.NonPublic);
+<p>Back to the Single Layer Percepton code.. The way that I'm approaching this is to take one logical section of code and replace the procedural style of code with functional constructs.</p>
 
-var sourceParameter = Expression.Parameter(typeof(Example), "source");
-var valueParameter = Expression.Parameter(field.FieldType, "value");
-var fieldSetter =
-  Expression.Lambda&lt;Action&lt;Example, int&gt;&gt;(
-    Expression.Assign(
-      Expression.MakeMemberAccess(sourceParameter, field),
-      valueParameter
-    ),
-    sourceParameter,
-    valueParameter
+<p>The first that I'll tackle is the do..while loop and the mutation of the outer "iteration", "weights", "bias" and "globalError" variables.</p>
+
+<p>This will be straightforward if we use the Aggregate method where the "value so far" contains a "Weights" array, a "Bias" value and a "GlobalError" value that will be re-calculated each iteration.</p>
+
+<p>The input list passed to Aggregate will be an incrementing list of integers representing the current iteration number. The "func" lambda will take the previous Weights / Bias / GlobalError state and calculate the <em>next</em> Weight / Bias / GlobalError state. If the "previousState" already has a low enough GlobalError then the "func" lambda won't have to do any more calculating and can just return the previousState reference immediately (meaning that we don't have to do any more work and we can just let Aggregate finish as many iterations as it is configured to do so until the Aggregate call completes - if that sounds a bit unclear then hopefully it will make more sense after you see the code and I talk more about it below).</p>
+
+<pre><code>const double learningRate = 0.1;
+const int maxNumberOfIterationsToPerform = 100; // See notes below code
+
+var finalResult = Enumerable.Range(0, maxNumberOfIterationsToPerform)
+  .Aggregate(
+    seed: new
+    {
+      Weights = new[] { r.NextDouble(), r.NextDouble() },
+      Bias = 0d,
+      GlobalError = double.MaxValue
+    },
+    func: (previousState, iteration) =&gt;
+    {
+      // The network is already trained - no more calculations required
+      if (previousState.GlobalError == 0)
+        return previousState;
+
+      var weights = previousState.Weights;
+      var bias = previousState.Bias;
+      var globalError = 0d;
+      for (var p = 0; p &lt; trainingData.Length; p++)
+      {
+        // Calculate output
+        var inputs = trainingData[p].Item1;
+        var output = Output(weights, bias, inputs[0], inputs[1]) ? 1 : -1;
+
+        // Calculate error
+        var expected = trainingData[p].Item2;
+        var localError = (expected ? 1 : -1) - output;
+        if (localError != 0)
+        {
+          // Update weights (taking a copy of the weights array rather than altering its values)
+          weights = weights.ToArray();
+          for (var i = 0; i &lt; 2; i++)
+          {
+            weights[i] += learningRate * localError * inputs[i];
+          }
+          bias += learningRate * localError;
+        }
+
+        // Convert error to absolute value
+        globalError += Math.Abs(localError);
+      }
+      Console.WriteLine("Iteration {0}\tError {1}", iteration, globalError);
+      return new { Weights = weights, Bias = bias, GlobalError = globalError };
+    }
+  );
+</code></pre>
+
+<p>(You may notice that I also changing "learningRate" from being a variable to be a const - since this will never change, it makes sense).</p>
+
+<p>I've had to make a compromise in how I've written this code - I've had to specify a "maxNumberOfIterationsToPerform" value because the Aggregate method has no way to say "stop processing now, we have an answer that we're happy with". This is why there is the check at the top of the "func" lambda that says "if previousState's GlobalError is low enough then do no more calculation" - the Aggregate method will keep running through <em>every single value</em> in the input list. But how do we know that 100 iterations will be enough to get a zero Global Error? We don't!</p>
+
+<p>What would be really helpful would be if we could have a variation of Aggregate that returns an <strong>IEnumerable</strong> of all of the intermediate calculation states (all of the "previousState" values) so that we could stop enumerating as soon as one of them has a GlobalError of zero - that way we wouldn't have to limit ourselves to a low maxNumberOfIterationsToPerform value. Something that would let us write code like this:</p>
+
+<pre><code>const double learningRate = 0.1;
+
+var finalResult = Enumerable.Range(0, int.MaxValue)
+  .AggregateAndReturnIntermediateStates(
+    seed: new
+    {
+      // Same as in earlier code sample..
+    },
+    func: (previousState, iteration) =&gt;
+    {
+      // Same as in earlier code sample but without the need to check GlobalError..
+    }
   )
-  .Compile();
+  .First(state =&gt; state.GlobalError == 0);
 </code></pre>
 
-<p>We could then cache that "fieldSetter" delegate and call it any time that we wanted to update the private "_somethingElse" field on an <strong>Example</strong> instance. There would be a one-off cost to the reflection that identifies the field and a one-off cost to generating that delegate initially but any subsequent call should be comparably quick to hand-written field-updating code (obviously it's not possible to hand-write code to update a private field from outside the class.. but you get the point).</p>
+<p>I searched through the LINQ and the F# library documentation and I couldn't find anything in LINQ that I could use to do this but I <em>did</em> find something in F# called "scan". To implement it as a LINQ-esque C# extension method, though, is simple. If we start by considering what an implementation of Aggregate would look like:</p>
 
-<p>There's one big problem with this approach, though; it doesn't work for readonly fields. The "Expression.Assign" call will throw an <strong>ArgumentException</strong> if the specified member is readonly:</p>
-
-<blockquote>
-  <p>Expression must be writeable</p>
-</blockquote>
-
-<p>SAD FACE.</p>
-
-<p>This is quite unfortunate. It had been a little while since I'd played around with LINQ Expressions and I was feeling quite proud of myself getting the code to work.. only to fall at the last hurdle.</p>
-
-<p>Never mind.</p>
-
-<p>One bright side is that I also tried out this code in a .NET Core application and it worked to the same extent as the "full fat" .NET Framework - ie. I was able to generate a delegate using LINQ Expressions that would set a non-readonly private field on an instance. Considering that reflection capabilities were limited in the early days of .NET Standard, I found it a nice surprise that support seems so mature now.</p>
-
-<h3>Approach 3: Emitting IL</h3>
-
-<p>Time to bring out the big guns!</p>
-
-<p>If the friendlier way of writing code that dynamically compiles other .NET code (ie. LINQ Expressions) wouldn't cut it, surely the old fashioned (and frankly intimidating) route of writing code to directly emit IL would do the job?</p>
-
-<p>It's been a long time since I've written any IL-generating code, so let's take it slow. If we're starting with the case that worked with LINQ Expressions then we want to create a method that will take an <strong>Example</strong> instance and an <strong>int</strong> value in order to set the "_somethingElse" field on the <strong>Example</strong> instance to that new number.</p>
-
-<p>The first thing to do is to create some scaffolding. The following code is almost enough to create a new method of type <strong>Action&lt;Example, int&gt;</strong> -</p>
-
-<pre><code>// Set restrictedSkipVisibility to true to avoid any pesky "visibility" checks being made (in other
-// words, let the IL in the generated method access any private types or members that it tries to)
-var method = new DynamicMethod(
-  name: "SetSomethingElseField",
-  returnType: null,
-  parameterTypes: new[] { typeof(Example), typeof(int) },
-  restrictedSkipVisibility: true
-);
-
-var gen = method.GetILGenerator();
-
-// TODO: Emit require IL op codes here..
-
-var fieldSetter = (Action&lt;Example, int&gt;)method.CreateDelegate(typeof(Action&lt;Example, int&gt;));
-</code></pre>
-
-<p>The only problem is that "TODO" section.. the bit where we have to know what IL to generate.</p>
-
-<p>There are basically two ways you can go about working out what to write here. You can learn enough about IL (and remember it again years after you learn some!) that you can just start hammering away at the keyboard.. or you can write some C# that basically does what you want, compile that using Visual Studio and then use a disassembler to see what IL is produced. I'm going for plan b. Handily, if you use Visual Studio then you probably already have a disassembler installed! It's called ildasm.exe and I found it on my computer in "C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.6.1 Tools" after reading this: "<a href="https://blogs.msdn.microsoft.com/lucian/2008/11/14/where-are-the-sdk-tools-where-is-ildasm/">Where are the SDK tools? Where is ildasm?</a>".</p>
-
-<p>To make things as simple as possible, I created a new class in a C# project -</p>
-
-<pre><code>class SomethingWithPublicField
+<pre><code>public static TAccumulate Aggregate&lt;TSource, TAccumulate&gt;(
+  this IEnumerable&lt;TSource&gt; source,
+  TAccumulate seed,
+  Func&lt;TAccumulate, TSource, TAccumulate&gt; func)
 {
-  public int Id;
+  var valueSoFar = seed;
+  foreach (var value in source)
+    valueSoFar = func(valueSoFar, value);
+  return valueSoFar;
 }
 </code></pre>
 
-<p>and then created a static method that I would want to look at the disassembly of:</p>
+<p>.. we need only to change the return type from <strong>TAccumulate</strong> to <strong>IEnumerable&lt;TAccumulate&gt;</strong> and to throw in some "yield return" magic to produce "Scan":</p>
 
-<pre><code>static void MethodToCopy(SomethingWithPublicField source, int value)
+<pre><code>public static IEnumerable&lt;TAccumulate&gt; Scan&lt;TSource, TAccumulate&gt;(
+  this IEnumerable&lt;TSource&gt; source,
+  TAccumulate seed,
+  Func&lt;TAccumulate, TSource, TAccumulate&gt; func)
 {
-  source.Id = value;
+  yield return seed;
+
+  var valueSoFar = seed;
+  foreach (var value in source)
+  {
+    valueSoFar = func(valueSoFar, value);
+    yield return valueSoFar;
+  }
 }
 </code></pre>
 
-<p>I compiled the console app, opened the exe in ildasm and located the method. Double-clicking it revealed this:</p>
+<p>This means that I can now write:</p>
 
-<pre><code>.method private hidebysig static void  MethodToCopy(class Test.Program/SomethingWithPublicField source,
-                                                    int32 'value') cil managed
-{
-  // Code size         9 (0x9)
-  .maxstack  8
-  IL_0000:  nop
-  IL_0001:  ldarg.0
-  IL_0002:  ldarg.1
-  IL_0003:  stfld      int32 Test.Program/SomethingWithPublicField::Id
-  IL_0008:  ret
-} // end of method Program::MethodToCopyTyped
-</code></pre>
+<pre><code>const double learningRate = 0.1;
 
-<p>Ok. That actually couldn't be much simpler. The "ldarg.0" code means "load argument 0 onto the stack", "ldarg.1" means "load argument 1 onto the stack" and "stfld" means take the instance of the first object on the stack and set the specified field to be the second object on the stack. "ret" just means exit method (returning any value, if there is one - which there isn't in this case).</p>
-
-<p>This means that the "TODO" comment in my scaffolding code may be replaced with real content, resulting in the following:</p>
-
-<pre><code>var field = typeof(Example).GetField("_somethingElse", BindingFlags.Instance | BindingFlags.NonPublic);
-
-var method = new DynamicMethod(
-  name: "SetSomethingElseField",
-  returnType: null,
-  parameterTypes: new[] { typeof(Example), typeof(int) },
-  restrictedSkipVisibility: true
-);
-var gen = method.GetILGenerator();
-gen.Emit(OpCodes.Ldarg_0);
-gen.Emit(OpCodes.Ldarg_1);
-gen.Emit(OpCodes.Stfld, field);
-gen.Emit(OpCodes.Ret);
-
-var fieldSetter = (Action&lt;Example, int&gt;)method.CreateDelegate(typeof(Action&lt;Example, int&gt;));
-</code></pre>
-
-<p>That's it! We now have a delegate that is a compiled method for writing a new <strong>int</strong> into the private field "_somethingElse" for any given instance of <strong>Example</strong>.</p>
-
-<p>Unfortunately, things go wrong at exactly the same point as they did with LINQ Expressions. The above code works fine for setting a regular private field but if we tried to set a <em>readonly</em> field using the same approach then we'd be rewarded with an error:</p>
-
-<blockquote>
-  <p><strong>System.Security.VerificationException</strong>: 'Operation could destabilize the runtime.'</p>
-</blockquote>
-
-<p>Another disappointment!*</p>
-
-<p>* <em>(Though hopefully not a surprise if you're reading this article since I said right at the top that only the first of these three approaches would work!)</em></p>
-
-<p>But, again, to try to find a silver lining, I also tried the non-readonly-private-field-setting-via-emitted-IL code in a .NET Core application and I was pleasantly surprised to find that it worked. It required the packages "System.Reflection.Emit.ILGeneration" and "System.Reflection.Emit.Lightweight" to be added through NuGet but nothing more difficult than that.</p>
-
-<p>Although I decided last month that <a href="/revisiting-net-core-tooling-visual-studio-2017">I'm still not convinced that .NET Core is ready for me to use in work</a>, I <em>am</em> impressed by how much <em>does</em> work with it.</p>
-
-<h3>Performance comparison</h3>
-
-<p>So we've ascertained that there is only one way* to set a readonly field on an existing instance and, regrettably, it's also the slowest. I guess that a pertinent question to ask, though, is just <em>how much</em> slower is the slowest?</p>
-
-<p>* <em>(As further evidence that there isn't another way around this, I've found an issue from EntityFramework's GitHub repo: "<a href="https://github.com/aspnet/EntityFramework/issues/6202">Support readonly fields</a>" which says that it's possible to set a readonly property with reflection but that the issue-raiser encountered the same two failures that I've demonstrated above when he tried alternatives and no-one has proposed any other ways to tackle it)</em></p>
-
-<p>Obviously we can't compare the readonly-field-setting performance of the three approaches above because only one of them is actually capable of doing that. But we <em>can</em> compare the performance of something similar; setting a private (but not readonly) field, since <em>all three</em> are able to achieve that.</p>
-
-<p>Ordinarily at this point, I would write some test methods and run them in a loop and time the loop and divide by the number of runs and then maybe repeat a few times for good measure and come up with a conclusion. Today, though, I thought that I might try something a bit different because I recently heard again about something called "<a href="https://github.com/dotnet/BenchmarkDotNet">BenchmarkDotNet</a>". It claims that:</p>
-
-<blockquote>
-  <p>Benchmarking is really hard (especially microbenchmarking), you can easily make a mistake during performance measurements. BenchmarkDotNet will protect you from the common pitfalls (even for experienced developers) because it does all the dirty work for you: it generates an isolated project per each benchmark method, does several launches of this project, run multiple iterations of the method (include warm-up), and so on. Usually, you even shouldn't care about a number of iterations because BenchmarkDotNet chooses it automatically to achieve the requested level of precision.</p>
-</blockquote>
-
-<p>This sounds ideal for my purposes!</p>
-
-<p>What I'm most interesting in is how reflection compares to compiled LINQ expressions and to emitted IL when it comes to setting a private field. If this is of any importance whatsoever then presumably the code will be run over and over again and so it should be the execution time of the compiled property-setting code that is of interest - the time taken to actually compile the LINQ expressions / emitted IL can probably be ignored as it should disappear into insignificance when the delegates are called enough times. But, for a sense of thoroughness (and because BenchmarkDotNet makes it so easy), I'll <em>also</em> measure the time that it takes to do the delegate compilation as well.</p>
-
-<p>To do this, I created a .NET Core Console application in VS2017, added the BenchmarkDotNet NuGet package and changed the .csproj file by hand to build for both .NET Core and .NET Framework 4.6.1 by changing</p>
-
-<pre><code>&lt;TargetFramework&gt;netcoreapp1.1&lt;/TargetFramework&gt;
-</code></pre>
-
-<p>to</p>
-
-<pre><code>&lt;TargetFrameworks&gt;netcoreapp1.1;net461&lt;/TargetFrameworks&gt;
-&lt;PlatformTarget&gt;AnyCPU&lt;/PlatformTarget&gt;
-</code></pre>
-
-<p>(as described in the <a href="https://github.com/dotnet/BenchmarkDotNet/blob/master/docs/guide/FAQ.md">BenchmarkDotNet FAQ</a>).</p>
-
-<p>Then I put the following together. There are six benchmarks in total; three to measure the creation of the different types of property-setting delegates and three to then measure the execution time of those delegates -</p>
-
-<pre><code>class Program
-{
-    static void Main(string[] args)
+var finalResult = Enumerable.Range(0, int.MaxValue)
+  .Scan(
+    seed: new
     {
-        BenchmarkRunner.Run&lt;TimedSetter&gt;();
-        Console.ReadLine();
-    }
-}
-
-[CoreJob, ClrJob]
-public class TimedSetter
-{
-    private SomethingWithPrivateField _target;
-    private FieldInfo _field;
-    private Action&lt;SomethingWithPrivateField, int&gt;
-        _reflectionSetter,
-        _linqExpressionSetter,
-        _emittedILSetter;
-
-    [GlobalSetup]
-    public void GlobalSetup()
+      // Same as in earlier code sample..
+    },
+    func: (previousState, iteration) =&gt;
     {
-        _target = new SomethingWithPrivateField();
-
-        _field = typeof(SomethingWithPrivateField)
-            .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
-            .FirstOrDefault(f =&gt; f.Name == "_id");
-
-        _reflectionSetter = ConstructReflectionSetter();
-        _linqExpressionSetter = ConstructLinqExpressionSetter();
-        _emittedILSetter = ConstructEmittedILSetter();
+      // Same as in earlier code sample (but still without the need to check GlobalError)..
     }
-
-    [Benchmark]
-    public Action&lt;SomethingWithPrivateField, int&gt; ConstructReflectionSetter()
-    {
-        return (source, value) =&gt; _field.SetValue(source, value);
-    }
-
-    [Benchmark]
-    public Action&lt;SomethingWithPrivateField, int&gt; ConstructLinqExpressionSetter()
-    {
-        var sourceParameter = Expression.Parameter(typeof(SomethingWithPrivateField), "source");
-        var valueParameter = Expression.Parameter(_field.FieldType, "value");
-        var fail = Expression.Assign(
-            Expression.MakeMemberAccess(sourceParameter, _field),
-            valueParameter
-        );
-        return Expression.Lambda&lt;Action&lt;SomethingWithPrivateField, int&gt;&gt;(
-                Expression.Assign(
-                    Expression.MakeMemberAccess(sourceParameter, _field),
-                    valueParameter
-                ),
-                sourceParameter,
-                valueParameter
-            )
-            .Compile();
-    }
-
-    [Benchmark]
-    public Action&lt;SomethingWithPrivateField, int&gt; ConstructEmittedILSetter()
-    {
-        var method = new DynamicMethod(
-            name: "SetField",
-            returnType: null,
-            parameterTypes: new[] { typeof(SomethingWithPrivateField), typeof(int) },
-            restrictedSkipVisibility: true
-        );
-        var gen = method.GetILGenerator();
-        gen.Emit(OpCodes.Ldarg_0);
-        gen.Emit(OpCodes.Ldarg_1);
-        gen.Emit(OpCodes.Stfld, _field);
-        gen.Emit(OpCodes.Ret);
-        return (Action&lt;SomethingWithPrivateField, int&gt;)method.CreateDelegate(
-          typeof(Action&lt;SomethingWithPrivateField, int&gt;)
-        );
-    }
-
-    [Benchmark]
-    public void SetUsingReflection()
-    {
-        _reflectionSetter(_target, 1);
-    }
-
-    [Benchmark]
-    public void SetUsingLinqExpressions()
-    {
-        _linqExpressionSetter(_target, 1);
-    }
-
-    [Benchmark]
-    public void SetUsingEmittedIL()
-    {
-        _emittedILSetter(_target, 1);
-    }
-}
-
-public class SomethingWithPrivateField
-{
-    private int _id;
-}
-</code></pre>
-
-<p>The "GlobalSetup" method will be run once and will construct the delegates for delegate-executing benchmark methods ("SetUsingReflection", "SetUsingLinqExpressions" and "SetUsingEmittedIL"). The time that it takes to execute the [GlobalSetup] method does not contribute to any of the benchmark method times - the benchmark methods will record <em>only</em> their own execution time.</p>
-
-<p>However, having delegate-creation benchmark methods ("ConstructReflectionSetter", "ConstructLinqExpressionSetter" and "ConstructEmittedILSetter") means that I'll have an idea how large the initial cost to construct each delegate is (or isn't), separate to the cost of executing each type of delegate.</p>
-
-<p>BenchmarkDotNet has capabilities beyond what I've taken advantage of. For example, it can also build for Mono (though I don't have Mono installed on my computer, so I didn't try this) and it can test 32-bit vs 64-bit builds.</p>
-
-<p>Aside from testing .NET Core 1.1 and .NET Framework 4.6.1, I've kept things fairly simple.</p>
-
-<p>After it has run, it emits the following summary about my computer:</p>
-
-<blockquote>
-  <p>BenchmarkDotNet=v0.10.8, OS=Windows 8.1 (6.3.9600)</p>
-  
-  <p>Processor=AMD FX(tm)-8350 Eight-Core Processor, ProcessorCount=8</p>
-  
-  <p>Frequency=14318180 Hz, Resolution=69.8413 ns, Timer=HPET</p>
-  
-  <p>dotnet cli version=1.0.4</p>
-  
-  <p>[Host] : .NET Core 4.6.25211.01, 64bit RyuJIT [AttachedDebugger]</p>
-  
-  <p>Clr    : Clr 4.0.30319.42000, 64bit RyuJIT-v4.6.1087.0</p>
-  
-  <p>Core   : .NET Core 4.6.25211.01, 64bit RyuJIT</p>
-</blockquote>
-
-<p>And produces the following table:</p>
-
-<pre><code>                        Method |  Job | Runtime |           Mean |         Error |        StdDev |
------------------------------- |----- |-------- |----------------|---------------|---------------|
-     ConstructReflectionSetter |  Clr |     Clr |       9.980 ns |     0.2930 ns |     0.4895 ns |
- ConstructLinqExpressionSetter |  Clr |     Clr | 149,552.853 ns | 1,752.4151 ns | 1,639.2100 ns |
-      ConstructEmittedILSetter |  Clr |     Clr | 126,454.797 ns | 1,143.9593 ns | 1,014.0900 ns |
-            SetUsingReflection |  Clr |     Clr |     158.784 ns |     3.1892 ns |     3.6727 ns |
-       SetUsingLinqExpressions |  Clr |     Clr |       1.139 ns |     0.0542 ns |     0.0742 ns |
-             SetUsingEmittedIL |  Clr |     Clr |       1.832 ns |     0.0689 ns |     0.1132 ns |
-                               |      |         |                |               |               |
-     ConstructReflectionSetter | Core |    Core |       9.465 ns |     0.1083 ns |     0.0904 ns |
- ConstructLinqExpressionSetter | Core |    Core |  66,430.408 ns | 1,303.5243 ns | 2,104.9488 ns |
-      ConstructEmittedILSetter | Core |    Core |  38,483.764 ns |   605.3819 ns |   536.6553 ns |
-            SetUsingReflection | Core |    Core |   2,626.527 ns |    24.1110 ns |    22.5534 ns |
-       SetUsingLinqExpressions | Core |    Core |       1.063 ns |     0.0516 ns |     0.0688 ns |
-             SetUsingEmittedIL | Core |    Core |       1.718 ns |     0.0599 ns |     0.0560 ns |
-</code></pre>
-
-<p>The easiest thing to interpret is the "Mean" - BenchmarkDotNet did a few "pilot runs" to try to see how long the benchmark methods would take and then tries to decide what is an appropriate number of runs to do for real in order to get reliable results.</p>
-
-<p>The short version is that when delegates are compiled using LINQ Expressions and emitted-IL that they both execute <em>a lot</em> faster than reflection; over 85x faster for .NET Framework 4.6.1 and 1,500x faster for .NET Core 1.1!</p>
-
-<p>The huge difference between reflection and the other two approaches, though, may slightly overshadow the fact that the LINQ Expression delegates are actually about 1.6x faster than the emitted-IL delegates. I hadn't expected this at all, I would have thought that they would be almost identical - in fact, I'm still surprised and don't currently have any explanation for it.</p>
-
-<p>The mean value doesn't usually tell the whole story, though. When looking at the mean, it's also useful to look at the Standard Deviation ("StdDev" in the table above). The mean might be within a small spread of values or a very large spread of values. A small spread is better because it suggests that the single mean value that we're looking at is representative of behaviour in the real world and that values aren't likely to vary too wildly - a large standard deviation means that there was much more variation in the recorded values and so the times could be all over the place in the real world. (Along similar lines, the "Error" value is described as being "Half of 99.9% confidence interval" - again, the gist is that smaller values suggest that the mean is a more useful indicator of what we would see in the real world for any given request).</p>
-
-<p>What I've ignored until this point are the "ConstructReflectionSetter" / "ConstructLinqExpressionSetter" / "ConstructEmittedILSetter" methods. If we first look at the generation of the LINQ Expression delegate on .NET 4.6.1, we can see that the mean time to generate that delegate was around 150ms - compared to approx 10ms for the reflection delegate. Each time the LINQ Expressions delegate is used to set the field instead of the reflection delegate we save around 0.16ms. That means that we need to call the delegate around 950 times in order to pay of the cost of constructing it!</p>
-
-<p>As I suggested earlier, it would only make sense to investigate these sort of optimisations if you expect to execute the code over and over and over again (otherwise, why not just keep it simple and stick to using plain old reflection).. but it's still useful to have the information about just how much "upfront cost" there is to things like this, compared to how much you hope to save in the long run.</p>
-
-<p>It's also interesting to see the discrepancies between .NET Framework 4.6.1 and .NET Core 1.1 - the times to compile LINQ Expressions and emitted-IL delegates are noticeably shorter and the time to set the private field by reflection noticeably longer. In fact, these differences mean that you only need to set the field 25 times before you start to offset the cost of creating the LINQ Expressions delegate (when you compare it to updating the field using reflection) and only 14 times to offset the cost of creating the emitted-IL delegate!</p>
-
-<h3>BenchmarkDotNet is fun</h3>
-
-<p>I'm really happy with how easy BenchmarkDotNet makes it to measure these sorts of very short operations. Whenever I've tried to do something similar in the past, I've felt niggling doubts that maybe I'm not running it enough times or maybe there are some factors that I should try to average out. Even when I get a result, I've sometimes just looked at the single average (ie. the mean) time taken, which is a bit sloppy since the spread of results can be of vital importance as well. That BenchmarkDotNet presents the final data in such a useful way and with so few decisions on my part is fantastic.</p>
-
-<h3>.NET Core upsets me again</h3>
-
-<p>On the other hand, unfortunately .NET Core has been hard work for me again when it came to BenchmarkDotNet. I made it sound very easy earlier to get everything up and running because I didn't want dilute my enthusiasm for the benchmarking. However, I did have a myriad of problems before everything started working properly.</p>
-
-<p>When I was hand-editing the .csproj file to target multiple frameworks (I still don't know why this isn't possible within VS when editing project properties), Visual Studio would only seem to intermittently acknowledge that I'd changed it and offer to reload. This wasn't super-critical but it also didn't fill me with confidence.</p>
-
-<p>When it <em>was</em> ready to build and target both .NET Framework 4.6.1 and .NET Core 1.1, I got a cryptic warning:</p>
-
-<blockquote>
-  <p>Detected package downgrade: Microsoft.NETCore.App from 1.1.2 to 1.1.1 </p>
-  
-  <p>CoreExeTest (>= 1.0.0) -> BenchmarkDotNet (>= 0.10.8) -> Microsoft.NETCore.App (>= 1.1.2) 
-   CoreExeTest (>= 1.0.0) -> Microsoft.NETCore.App (>= 1.1.1)               </p>
-</blockquote>
-
-<p>Everything seemed to build alright but I didn't know if this was something to worry about or not (I like my projects to be zero-warning). It suggested to me that I was targeting .NET Core 1.1 and BenchmarkDotNet was expecting .NET Core 1.1.2 - sounds simple enough, surely I can upgrade? I first tried changing the .csproj to target "netcoreapp1.1.2" but that didn't work. In fact, it "didnt work" in a very unhelpful way; when I ran the project it would open in a window and immediately close, with no way to break and catch the exception in the debugger. I used "dotnet run"* on the command line to try to see more information and was then able to see the error message:</p>
-
-<blockquote>
-  <p>The specified framework 'Microsoft.NETCore.App', version '1.1.2' was not found.</p>
-  
-  <ul>
-  <li><p>Check application dependencies and target a framework version installed at:</p>
-  
-  <p>C:\Program Files\dotnet\shared\Microsoft.NETCore.App</p></li>
-  <li><p>The following versions are installed:</p>
-  
-  <p>1.0.1</p>
-  
-  <p>1.0.4</p>
-  
-  <p>1.1.1</p></li>
-  <li><p>Alternatively, install the framework version '1.1.2'.</p></li>
-  </ul>
-</blockquote>
-
-<p>* <em>(Before being able to use "dotnet run" I had to manually edit the .csproj file to only target .NET Core - if you target multiple frameworks and try to use "dotnet run" then you get an error "Unable to run your project. Please ensure you have a runnable project type and ensure 'dotnet run' supports this project")</em></p>
-
-<p>I changed the .csproj file back from "netcoreapp1.1.2" to "netcoreapp1.1" and went to the NuGet UI to see if I could upgrade the "Microsoft.NETCore.App" package.. but the version dropdown wouldn't let me change it (stating that the other versions that it was aware of were "Blocked by project").</p>
-
-<p>I tried searching online for a way to download and install 1.1.2 but got nowhere.</p>
-
-<p>Finally, I saw that VS 2017 had an update pending entitled "Visual Studio 15.2 (26430.16)". The "15.2" caught me out for a minute because I initially presumed it was an update for VS <em>2015</em>. The update includes .NET Core 1.1.2 (see <a href="https://github.com/dotnet/core/issues/622">this dotnet GitHub issue</a>) and, when I loaded my solution again, the warning above had gone. Looking at the installed packages for my project, I saw that "Microsoft.NETCore.App" was now on version 1.1.2 and that all other versions were "Blocked by project". This does not feel friendly and makes me worry about sharing code with others - if they don't have the latest version of Visual Studio then the code may cause them warnings like the above that don't happen on my PC. Yuck.</p>
-
-<p>After all this, I got the project compiling (without warnings) and running, only for it to intermittently fail as soon as it started:</p>
-
-<blockquote>
-  <p>Access to the path 'BDN.Generated.dll' is defined</p>
-</blockquote>
-
-<p>This relates to an output folder created by BenchmarkDotNet. Sometimes this folder would be locked and it would not be possible to overwrite the files on the next run. Windows wouldn't let me delete the folder directly but I could trick it by renaming the folder and <em>then</em> deleting it. I didn't encounter this problem if I created an old-style .NET Framework project and used BenchmarkDotNet there - this would prevent me from running tests against multiple frameworks but it might have also prevented me from teetering over the brink of insanity.</p>
-
-<p>This is not how I would expect mature tooling to behave. For now, I continue to consider .NET Core as the Top Gear boys (when they still <em>were</em> the Top Gear boys) described old Alfa Romeos; "you want to believe that it can be something wonderful but you couldn't, in all good conscience, recommend it to a friend".</p>
-
-<h3>Summary</h3>
-
-<p>I suspect that, to some, this may seem like one of my more pointless blog posts. I tried to do something that .NET really doesn't want you to do (and that whoever wrote the code containing the readonly auto-properties really doesn't expect you to do) and then tried to optimise that naughty behaviour - then spent a lot more time explaining how it wasn't posible to do so!</p>
-
-<p>However, along the way I discovered BenchmarkDotNet and I'm counting that as a win - I'll be keeping that in my arsenal for future endeavours. And I also enjoyed revisiting what is and isn't possible with reflection and reminding myself of the ways that .NET allows you to write code that could make <em>my</em> code appear to work in surprising ways.</p>
-
-<p>Finally, it was interesting to see how the .NET Framework compared to .NET Core in terms of performance for these benchmarks <em>and</em> to see take another look at the question of how mature .NET Core and its tooling is (or isn't). And when you learn a few things, can it ever really count as a waste of time?</p>
-
-<h3>Minor follow-up (8th August 2017)</h3>
-
-<p>A comment on this post by "ai_enabled" asked about the use of the reflection method "SetValueDirect" instead of "SetValue". I must admit that I was unaware of this method but it was an interesting question posed about its performance in comparison to "SetValue" <em>and</em> there was a very important point made about the code that I'd presented so far when it comes to structs; in particular, because structs are copied when they're passed around, the property-update mechanisms that I've shown wouldn't have worked. I'll try to demonstrate this with some code:</p>
-
-<pre><code>public static void Main()
-{
-    var field = typeof(SomeStructWithPrivateField)
-      .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
-      .FirstOrDefault(f =&gt; f.Name == "_id");
-
-    // FAIL! "target" will still have an "_id" value of zero :(
-    var target = new SomeStructWithPrivateField();
-    field.SetValue(target, 123);
-}
-
-public struct SomeStructWithPrivateField
-{
-    private int _id;
-}
-</code></pre>
-
-<p>Because the "SetValue" method's first parameter is of type <strong>object</strong>, the "target" struct will get boxed - any time that a non-reference type is passed as an argument where a reference type is expected, it effectively gets "wrapped up" into an <strong>object</strong>. I won't go into all of the details of boxing / unboxing here (if you're interested, though, then "<a href="https://docs.microsoft.com/en-us/dotnet/csharp/programming-guide/types/boxing-and-unboxing">Boxing and Unboxing (C# Programming Guide)</a>" is a good starting point) but one important thing to note is that structs are copied as part of the boxing process. This means "SetValue" will be working on a copy of "target" and so the "_id" property of the "target" value will not be changed by the "SetValue" call!</p>
-
-<p>The way around this is to use "SetValueDirect", which takes a special <strong>TypedReference</strong> argument. The way in which this is done is via the little-known "__makeref" keyword (I wasn't aware of it before looking into "SetValueDirect") -</p>
-
-<pre><code>public static void Main()
-{
-    var field = typeof(SomeStructWithPrivateField)
-      .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
-      .FirstOrDefault(f =&gt; f.Name == "_id");
-
-    // SUCCESS! "target" will have its "_id" value updated!
-    var target = new SomeStructWithPrivateField();
-    field.SetValueDirect(__makeref(target), 123);
-}
-</code></pre>
-
-<p>If we wanted to wrap this up into a delegate then we need to ensure that the target parameter is marked as being "ref", otherwise we'll end up creating another place that the struct gets copied and the update lost. That means that we can no longer use something like:</p>
-
-<pre><code>Action&lt;SomeStructWithPrivateField, int&gt;
-</code></pre>
-
-<p>In fact, we can't use the generic <strong>Action</strong> class at all because it doesn't allow for "ref" parameters to be specified. Instead, we'll need to define a new delegate -</p>
-
-<pre><code>public delegate void Updater(ref SomeStructWithPrivateField target, int value);
-</code></pre>
-
-<p>Instances of this may be created like this:</p>
-
-<pre><code>var field = typeof(SomeStructWithPrivateField)
-  .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
-  .FirstOrDefault(f =&gt; f.Name == "_id");
-
-Updater updater = (ref SomeStructWithPrivateField target, int value)
-  =&gt; field.SetValueDirect(__makeref(target), id);
-</code></pre>
-
-<p>If we want to do the same with the LINQ Expressions or generated IL approaches then we need only make some minor code tweaks to what we saw earlier. The first argument of the generated delegates must be changed to be a "ref" type and we need to generate a delegate of type <strong>Updater</strong> instead of <strong>Action&lt;SomeStructWithPrivateField, int&gt;</strong> -</p>
-
-<pre><code>// Construct an "Updater" delegate using LINQ Expressions
-var sourceParameter = Expression.Parameter(
-  typeof(SomeStructWithPrivateField).MakeByRefType(),
-  "source"
-);
-var valueParameter = Expression.Parameter(field.FieldType, "value");
-var fail = Expression.Assign(
-  Expression.MakeMemberAccess(sourceParameter, field),
-  valueParameter
-);
-var linqExpressionUpdater = Expression.Lambda&lt;Updater&gt;(
-    Expression.Assign(
-      Expression.MakeMemberAccess(sourceParameter, field),
-      valueParameter
-    ),
-    sourceParameter,
-    valueParameter
   )
-  .Compile();
+  .First(state =&gt; state.GlobalError == 0);    
+</code></pre>
 
-// Construct an "Updater" delegate by generating IL
-var method = new DynamicMethod(
-  name: "SetField",
-  returnType: null,
-  parameterTypes: new[] { typeof(SomeStructWithPrivateField).MakeByRefType(), typeof(int) },
-  restrictedSkipVisibility: true
+<p>Hurrah! That's a good step forward! </p>
+
+<p>Now I need to tackle the inner section:</p>
+
+<pre><code>var weights = previousState.Weights;
+var bias = previousState.Bias;
+var globalError = 0d;
+for (var p = 0; p &lt; trainingData.Length; p++)
+{
+  // Calculate output
+  var inputs = trainingData[p].Item1;
+  var output = Output(weights, bias, inputs[0], inputs[1]) ? 1 : -1;
+
+  // Calculate error
+  var expected = trainingData[p].Item2;
+  var localError = (expected ? 1 : -1) - output;
+  if (localError != 0)
+  {
+    // Update weights (taking a copy of the weights array rather than altering its values)
+    weights = weights.ToArray();
+    for (var i = 0; i &lt; 2; i++)
+    {
+      weights[i] += learningRate * localError * inputs[i];
+    }
+    bias += learningRate * localError;
+  }
+
+  // Convert error to absolute value
+  globalError += Math.Abs(localError);
+}
+
+Console.WriteLine("Iteration {0}\tError {1}", iteration, globalError);
+return new { Weights = weights, Bias = bias, GlobalError = globalError };
+</code></pre>
+
+<p>I'm going to start from the inside and work outward this time. The first thing that I want to get rid of is the loop that is used to update weights. What this loop is effectively doing is walking through two arrays ("weights" and "inputs") and performing an operation on a single pair of items from each (each loop iteration, we do something with one weight value and one input value).</p>
+
+<p>This is just what the "<a href="https://msdn.microsoft.com/en-us/library/dd267698(v=vs.110).aspx">Zip</a>" LINQ function does and so we can use that here. We'll replace:</p>
+
+<pre><code>// Update weights (taking a copy of the weights array rather than altering its values)
+weights = weights.ToArray();
+for (var i = 0; i &lt; 2; i++)
+{
+  weights[i] += learningRate * localError * inputs[i];
+}
+</code></pre>
+
+<p>.. with this:</p>
+
+<pre><code>weights
+  .Zip(inputs, (weight, input) =&gt; weight + (learningRate * localError * input))
+  .ToArray();
+</code></pre>
+
+<p>To maker the "inner section" simpler, I'm going to hide that logic into a function:</p>
+
+<pre><code>private static double[] UpdateWeights(double[] weights, double learningRate, double localError, double[] inputs)
+{
+  if (localError == 0)
+    return weights;
+
+  return weights
+    .Zip(inputs, (weight, input) =&gt; weight + (learningRate * localError * input))
+    .ToArray();
+}
+</code></pre>
+
+<p>I've also pulled the "is localError zero" check into the method. It feels a little unnecessary when there are only two weights and two inputs but this new version of the weight-updating code may be called with any number of inputs and so it may make sense to avoid looping through them all when the localError is zero (because we won't be making any changes to the weights in that case).</p>
+
+<p>The next thing to do is to get rid of the other for-loop and the values that it mutates on each iteration. This part:</p>
+
+<pre><code>var weights = previousState.Weights;
+var bias = previousState.Bias;
+var globalError = 0d;
+for (var p = 0; p &lt; trainingData.Length; p++)
+{
+  // Apply current pattern and alter weights, bias and globalError accordingly..
+}
+</code></pre>
+
+<p>If we group the "weights / bias / globalError" values into a single value then we can replace this with an Aggregate call, like we saw earlier:</p>
+
+<pre><code>var resultForIteration = trainingData.Aggregate(
+  seed: new { Weights = previousState.Weights, Bias = previousState.Bias, GlobalError = 0d },
+  func: (stateSoFar, pattern) =&gt;
+  {
+    // Apply current pattern and calculate new weights, bias and globalError values..
+
+    // .. and return new object wrapping these values
+    return new { Weights = newWeights, Bias = newBias, GlobalError = newGlobalError },
+  }
 );
-var gen = method.GetILGenerator();
-gen.Emit(OpCodes.Ldarg_0);
-gen.Emit(OpCodes.Ldind_Ref);
-gen.Emit(OpCodes.Ldarg_1);
-gen.Emit(OpCodes.Stfld, field);
-gen.Emit(OpCodes.Ret);
-var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
 </code></pre>
 
-<p><em>(Note: There is an additional "Ldind_Ref" instruction required for the IL to "unwrap" the ref argument but it's otherwise the same)</em></p>
+<p>Before I pull it all together, I want to make a small change to the "Output" function - the current version only works if there are precisely two inputs and two weights but the "UpdateWeights" function from a moment ago works with any number of inputs and so I think that "Output" should too. So we'll replace this:</p>
 
-<p>I used BenchmarkDotNet again to compare the performance of the two reflection methods ("SetValue" and "SetValueDirect") against LINQ Expressions and emitted IL when setting a private field on an instance and found that having to call "__makeRef" and "SetValueDirect" was much slower on .NET 4.6.1 than just calling "SetValue" (about 17x slower) but actually marginally <em>faster</em> on .NET Core.</p>
-
-<pre><code>                                 Method | Runtime |           Mean |         Error |        StdDev |
---------------------------------------- |-------- |----------------|---------------|---------------|
-              ConstructReflectionSetter |     Clr |      11.285 ns |     0.3082 ns |     0.8281 ns |
- ConstructReflectionWithSetDirectSetter |     Clr |      10.597 ns |     0.2845 ns |     0.4345 ns |
-          ConstructLinqExpressionSetter |     Clr | 196,194.530 ns | 2,075.5246 ns | 1,839.8983 ns |
-               ConstructEmittedILSetter |     Clr | 170,913.441 ns | 2,289.5219 ns | 2,141.6200 ns |
-                     SetUsingReflection |     Clr |     142.976 ns |     2.8706 ns |     3.3058 ns |
-         SetUsingReflectionAndSetDirect |     Clr |   2,444.816 ns |    40.9226 ns |    38.2790 ns |
-                SetUsingLinqExpressions |     Clr |       2.370 ns |     0.0795 ns |     0.0744 ns |
-                      SetUsingEmittedIL |     Clr |       2.616 ns |     0.0849 ns |     0.0834 ns |
-              ConstructReflectionSetter |    Core |      10.595 ns |     0.2196 ns |     0.1946 ns |
- ConstructReflectionWithSetDirectSetter |    Core |      10.540 ns |     0.2838 ns |     0.3378 ns |
-          ConstructLinqExpressionSetter |    Core | 117,697.478 ns |   758.9277 ns |   672.7696 ns |
-               ConstructEmittedILSetter |    Core |  82,080.062 ns |   310.8230 ns |   275.5365 ns |
-                     SetUsingReflection |    Core |   2,782.834 ns |    17.5705 ns |    16.4355 ns |
-         SetUsingReflectionAndSetDirect |    Core |   2,541.563 ns |    21.8272 ns |    20.4172 ns |
-                SetUsingLinqExpressions |    Core |       2.421 ns |     0.0227 ns |     0.0212 ns |
-                      SetUsingEmittedIL |    Core |       2.655 ns |     0.0090 ns |     0.0080 ns |
+<pre><code>private static bool Output(double[] weights, double bias, double x, double y)
+{
+  var sum = (x * weights[0]) + (y * weights[1]) + bias;
+  return (sum &gt;= 0);
+}
 </code></pre>
 
-<p>It's worth noting that the LINQ Expressions and emitted-IL approaches are slightly slower when working with a "ref" parameter than they were in the original version of the code. I suppose that this makes sense because there is an extra instruction explicitly required in the emitted-IL code and the LINQ-Expression-constructed delegate will have to deal with the added indirection under the hood (though this happens "by magic" and the way that LINQ Expressions code doesn't need to be changed to account for it).</p>
+<p>.. with this:</p>
 
-<p>I guess that it's possible that "SetValueDirect" could be faster if you already have a <strong>TypedReference</strong> (which is what "__makeRef" gives you) and you want to set multiple properties on it.. but that wasn't the use case that I had in mind when I looked into all of this and so I haven't tried to measured that.</p>
-
-<p>All in all, this was another fun diversion. It's curious that the performance between using "SetValue" and "__makeRef" / "SetValueDirect" is so pronounced in the "classic" .NET Framework but much less so in Core. On the other hand, if the target reference is a struct then the performance discrepancies are moot since trying to use "SetValue" won't work!</p>
-
-<h4>Some more notes about .NET Core</h4>
-
-<p>If you want to try to reproduce this for yourself in .NET Core then (accurate as of 8th August 2017) you need to install Visual Studio 2017 15.3 Preview 2 so that you can build .NET Core 2.0 projects and you'll then need to install the NuGet package "System.Runtime.CompilerServices.Unsafe"*. Without both of these, you won't be able to use "__makeRef", you'll get a slightly cryptic error:</p>
-
-<blockquote>
-  <p>Predefined type 'System.TypedReference' is not defined or imported</p>
-</blockquote>
-
-<p>* <em>(I found this out via Ben Bowen's post "<a href="http://benbowen.blog/post/fun_with_makeref/">Fun With __makeref</a>")</em></p>
-
-<p>Once you have these bleeding edge bits, though, you can build a project with BenchmarkDotNet tests configured to run in both .NET Framework and .NET Core with a .csproj like this:</p>
-
-<pre><code>&lt;Project Sdk="Microsoft.NET.Sdk"&gt;
-
-  &lt;PropertyGroup&gt;
-    &lt;OutputType&gt;Exe&lt;/OutputType&gt;
-    &lt;TargetFrameworks&gt;netcoreapp2.0;net461&lt;/TargetFrameworks&gt;
-    &lt;PlatformTarget&gt;AnyCPU&lt;/PlatformTarget&gt;
-  &lt;/PropertyGroup&gt;
-
-  &lt;ItemGroup&gt;
-    &lt;PackageReference Include="BenchmarkDotNet" Version="0.10.8" /&gt;
-  &lt;/ItemGroup&gt;
-
-&lt;/Project&gt;
+<pre><code>private static bool Output(double[] weights, double bias, double[] inputs)
+{
+  var sum = inputs.Zip(weights, (input, weight) =&gt; input * weight).Sum() + bias;
+  return (sum &gt;= 0);
+}
 </code></pre>
 
-<p>and you can run the tests in <em>both</em> frameworks using this:</p>
+<p><em>(Note that using "Zip" again means that we don't have to resort to any for loops)</em></p>
 
-<pre><code>dotnet run --framework netcoreapp2.0 --configuration release
+<p>Combining all of this, the network-training code becomes the following:</p>
+
+<pre><code>const double learningRate = 0.1;
+
+var finalResult = Enumerable.Range(0, int.MaxValue)
+  .Scan(
+    seed: new
+    {
+      Weights = new[] { r.NextDouble(), r.NextDouble() },
+      Bias = 0d,
+      GlobalError = double.MaxValue
+    },
+    func: (previousState, iteration) =&gt;
+    {
+      var resultForIteration = trainingData.Aggregate(
+        seed: new { Weights = previousState.Weights, Bias = previousState.Bias, GlobalError = 0d },
+        func: (stateSoFar, pattern) =&gt;
+        {
+          var output = Output(stateSoFar.Weights, stateSoFar.Bias, pattern.Item1) ? 1 : -1;
+          var localError = (pattern.Item2 ? 1 : -1) - output;
+          return new
+          {
+            Weights = UpdateWeights(stateSoFar.Weights, learningRate, localError, pattern.Item1),
+            Bias = stateSoFar.Bias + (learningRate * localError),
+            GlobalError = stateSoFar.GlobalError + Math.Abs(localError)
+          };
+        }
+      );
+      Console.WriteLine("Iteration {0}\tError {1}", iteration, resultForIteration.GlobalError);
+      return resultForIteration;
+    }
+  )
+  .First(state =&gt; state.GlobalError &lt;= 0);
 </code></pre>
 
-<p>Don't be fooled by the fact that you have to specify a single framework - through BenchmarkDotNet magic, the tests <em>will</em> be run for both frameworks (so long as you annotate the benchmark class with "[CoreJob, ClrJob]") and the results will be displayed in one convenient combined table at the end.</p><p class="PostTime">Posted at 20:31</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/LINQ" title="12 Posts">LINQ</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+<p>The final piece of the puzzle is to change the "Display network generalisation" code to remove the for loops from there too -</p>
+
+<pre><code>for (double x = 0; x &lt;= 1; x += .25)
+{
+  for (double y = 0; y &lt;= 1; y += .25)
+  {
+    var output = Output(weights, bias, new[] { x, y });
+    Console.WriteLine("{0},\t{1},\t{2}", x, y, output ? "Yes" : "No");
+  }
+}
+</code></pre>
+
+<p>The natural thing would seem to be to replace those loops with Enumerable.Range calls.. however, "Range" only works <strong>int</strong> values and we need to use <strong>double</strong> in order to increment by 0.25 each time. We could write a new "Range" extension method that would take <strong>double</strong> values or we could just workaround the limitation. If we want the values 0, 0.25, 0.5, 0.75, 1 then that's five distinct values. The number of items may be calculated by taking the end value, subtracting the start value, dividing by the increment and then adding one (to ensure that we get the start value <em>and</em> the end value).</p>
+
+<p>In this case, that would be ((1 - 0) / 0.25) + 1 = 4 + 1 = 5.</p>
+
+<p>We can do that in code like this:</p>
+
+<pre><code>const double startAt = 0;
+const double endAt = 1;
+const double increment = 0.25;
+var range = Enumerable.Range(0, (int)((endAt - startAt) / increment) + 1)
+  .Select(value =&gt; value * increment);
+</code></pre>
+
+<p>We then want to "cross join" range with itself so that we loop through every (x, y) combination. We can do that with creative use of "SelectMany" -</p>
+
+<pre><code>var xyPairs = range.SelectMany(value =&gt; range, (x, y) =&gt; new[] { x, y });
+</code></pre>
+
+<p>And now that nested for-loop may be replaced by this:</p>
+
+<pre><code>const double startAt = 0;
+const double endAt = 1;
+const double increment = 0.25;
+var range = Enumerable.Range(0, (int)((endAt - startAt) / increment) + 1)
+  .Select(value =&gt; value * increment);
+var xyPairs = range.SelectMany(value =&gt; range, (x, y) =&gt; new[] { x, y });
+Console.WriteLine(string.Join(
+  Environment.NewLine,
+  xyPairs.Select(inputs =&gt; $"{string.Join("\t", inputs)}\t{(Output(finalResult.Weights, finalResult.Bias, inputs) ? "Yes" : "No")}")
+));
+</code></pre>
+
+<p>That's the final piece of the convert-to-functional-code puzzle. Now we just need to translate it into F#!</p>
+
+<h3>Sidebar: "Function" vs "Method"</h3>
+
+<p>I find that in languages that are thought to be object oriented, the words "function" and "method" are commonly used interchangeably. Since beginning to become interested in so-called "functional programming", I've tried to find out whether there is a definitive or accepted difference between the two (after all, it's called <em>functional</em> programming rather than <em>methodical</em> programming, so surely <em>someone</em> thought that there was a difference!).</p>
+
+<p>A few times, I've heard that the difference is that a "function" should not have any side effects and so should always return the same value given the same inputs. On the other hand, a "method" <em>may</em> cause side effects or rely upon ambient references - if the code writes to disk or reads <strong>DateTime.Now</strong> then it's not "pure" (where "pure" means that it relies only upon its arguments and does not produce any side effects - it <em>only</em> produces a return value and does not manipulate anything else) and so should be described as being part of a <em>method</em> rather than part of a <em>function</em>. Most recently I've seen it described in <a href="https://softwareengineering.stackexchange.com/a/222378/204464">this Software Engineering Stack Exchange answer</a>.</p>
+
+<p>I try to use the word "function" only when it is known to be a pure function and a "method" otherwise (when it either <em>definitely</em> causes / relies upon side effects or if it's not clear). I still get it wrong from time to time (for example, I've been referring to LINQ "methods" in this post and we can probably presume that they are pure functions in most cases) but I'm still in the process of trying to internalise this terminology while I'm trying to internalise writing a more "functional" style of code for writing F#.</p>
+
+<h3>Writing F# code</h3>
+
+<p>If you've read this far then you may be detecting an unexpectedly abrupt end to the post judging by your browser's scrollbar!</p>
+
+<p>Originally, I had intended to include all of the above content <em>and</em> go into how precisely to translate the functional C# code into F# but it quickly became clear that the post would be insanely large (I've written my fair share of monster posts in the past and I think that the time has come to put an end to them - this one's already pretty hefty).</p>
+
+<p>Cliffhanger!</p>
+
+<p>Sorry.</p>
+
+<p>My next post will jump straight into F#. I will assume zero prior knowledge of the language itself but I also want to proceed at a decent rate. Hopefully this will mean that you won't get bored if you already have a little exposure to F# (or maybe it will be the worst of both worlds and be too slow for F# novices but too fast for those who've never seen it before). Let's wait and see*!</p>
+
+<p>* <em>(Should you be desperately excited and dying for part two, rest assured that it's already written and just needs a thorough proof-read - so it should be published early next week at the latest)</em></p>
+
+<p>I'm not sure how many posts there will be in the series in total but the Single Layer Perceptron is just the first model that I want to cover before moving onto the Back Propagation Neural Network model and then onto the Multi-Output variation (which will be necessary in order to classify hand written digits from 0-9 as opposed to being a simple yes/no classifier). Although I said that performance is not my primary concern for this playing-with-F# process, there are a couple of interesting things that I'd like to talk about on that front. So there should be a lot to come over the next few months!</p><p class="PostTime">Posted at 22:18</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li></ul></div>
 			<p class="Comments">
-				<a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#disqus_thread" data-disqus-identifier="110">Comments</a>
+				<a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton#disqus_thread" data-disqus-identifier="111">Comments</a>
 			</p>
 	</div>
 
@@ -766,7 +791,7 @@ var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
 	</script>
 
 				<div class="Footer">
-					Productive Rage 2017
+					Productive Rage 2018
 				</div>
 			</div>
 
@@ -784,9 +809,9 @@ var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet">Trying to set a readonly auto-property value externally (plus, a little BenchmarkDotNet)</a></li><li><a href="/revisiting-net-core-tooling-visual-studio-2017">Revisiting .NET Core tooling (Visual Studio 2017)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/migrating-my-full-text-indexer-to-net-core-supporting-multitarget-nuget-packages">Migrating my Full Text Indexer to .NET Core (supporting multi-target NuGet packages)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton">Learning F# via some Machine Learning: The Single Layer Percepton</a></li><li><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet">Trying to set a readonly auto-property value externally (plus, a little BenchmarkDotNet)</a></li><li><a href="/revisiting-net-core-tooling-visual-studio-2017">Revisiting .NET Core tooling (Visual Studio 2017)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/migrating-my-full-text-indexer-to-net-core-supporting-multitarget-nuget-packages">Migrating my Full Text Indexer to .NET Core (supporting multi-target NuGet packages)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>
