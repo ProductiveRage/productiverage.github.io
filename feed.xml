@@ -10,7 +10,7 @@
 		<description>Dan's techie ramblings</description>
 		<language>en-gb</language>
 
-		<lastBuildDate>Wed, 04 Apr 2018 23:24:00 GMT</lastBuildDate>
+		<lastBuildDate>Sun, 30 Sep 2018 20:09:00 GMT</lastBuildDate>
 		<docs>http://blogs.law.harvard.edu/tech/rss</docs>
 		
 		<image>
@@ -23,6 +23,459 @@
 
 		<xhtml:meta xmlns:xhtml="http://www.w3.org/1999/xhtml" name="robots" content="noindex" /> 
 
+		<item>
+			<title>I didn&#39;t understand why people struggled with (.NET&#39;s) async</title>
+            <link>http://www.productiverage.com/i-didnt-understand-why-people-struggled-with-nets-async</link>
+			<guid>http://www.productiverage.com/i-didnt-understand-why-people-struggled-with-nets-async</guid>
+			<description>&lt;p&gt;Long story short (I know that some readers love a TL;DR), I have almost always worked with async/await in C# projects where it&#39;s been async from top-to-bottom and so I&#39;ve rarely tried to start integrating async code into a large project that is primiarily &lt;em&gt;non&lt;/em&gt;-async. Due to this, I have never encountered any async problems.. so I&#39;ve occasionally wondered &quot;why would people be worried about getting deadlocks?&quot;&lt;/p&gt;
+
+&lt;p&gt;Recently, this changed and I wanted to start integrating components that use async methods into a big project that doesn&#39;t. And it didn&#39;t take long until I got a hanging application!&lt;/p&gt;
+
+&lt;p&gt;Before I get to my story (and my solution), let me quickly recap what all the fuss is about.&lt;/p&gt;
+
+&lt;h3&gt;What is &quot;async&quot; and why is it good?&lt;/h3&gt;
+
+&lt;p&gt;To put things into context, I&#39;m talking about a web application - code that hosts a website and spend 99% of its day &quot;read only&quot; and just rendering pages for people.&lt;/p&gt;
+
+&lt;p&gt;These do not tend to be computationally-intensive applications and if a page is slow to render then it&#39;s probably because the code is waiting for something.. like a database call to complete or an external cache request or the loading of a file.&lt;/p&gt;
+
+&lt;p&gt;Within IIS, when an ASP.NET application is hosted and is responding to requests, the simple model for synchronous code is that each request is allocated a thread to work on and it will keep hold of that thread for the duration of the request. A thread is an operating system construct and it occupies some resources - in other words, they&#39;re not free and, given the the choice, we would like to need less of them rather than more of them. The threads in .NET are an abstraction over OS threads but to avoid getting too far off course, we&#39;ll think of them as being equivalent because they&#39;re close enough for the purposes of this post.&lt;/p&gt;
+
+&lt;p&gt;This model is very easy to understand but it&#39;s also easy to see how it could be quite wasteful. If the majority of our web server requests spend much of their time waiting for something external (database, other network I/O, local file system, etc..) then do we really need to tie up a thread for that time? Couldn&#39;t we free it up for another request (that &lt;em&gt;isn&#39;t&lt;/em&gt; waiting for something external) to use and then try to get it back when whatever we&#39;re waiting on has finished doing its thing?&lt;/p&gt;
+
+&lt;p&gt;This is essentially what async / await is trying to solve. It introduces a simple way for us to write code that can say &quot;I&#39;m doing something that will perform an asynchronous action now - I&#39;m expecting to wait for a little bit and so you (the .NET hosting environment) can have my thread back for a little while&quot;.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;(Before async / await, it was possible to do this but it was much more convoluted and you had to deal with code that might follow a tangled web of callbacks and you would have to manually pass around any references that you would want to access in those callbacks - it was possible to do but made for code that was harder to read and write and, thusly, was more likely to contain mistakes)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;When the .NET environment deals with &quot;await&quot;, the thread that the await call happened on will be free&#39;d back up. Then, when the async work is completed, a thread will be given back to that request so that it can carry on doing its thing. You might be wondering &quot;how does .NET &lt;em&gt;know&lt;/em&gt; when the work has completed? Surely that requires another thread to monitor whether the external resource has responded and, if so, aren&#39;t we right back where we started because we&#39;re blocking threads?&quot; This is what I thought when I was first learning about async / await (and so I happen to think that it&#39;s an entirely reasonable question!) but it&#39;s not the case. The operating system and its drivers expose ways to say (and I&#39;m grossly simplifying again because it&#39;s only the gist that we need here, not the full nitty gritty) &quot;start sending this network data and notify me when data starts coming back in response&quot; (and similar mechanisms for other types of I/O). When that notification occurs, the .NET environment can provide a thread to the request that was awaiting and let it carry on.&lt;/p&gt;
+
+&lt;p&gt;To try to illustrate this, imagine that the below image represents a web request. The blue parts are when computational work is being done on the thread and the white parts are when it&#39;s waiting on an external resource (like a database) -&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Illustration of a web request with delays for external data shown&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/Threads-SingleExample.png&quot; class=&quot;NoBorder FullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;At a glance, it&#39;s clear that there will be a lot of wasted time that a thread spends doing nothing (in a blocked state) if we&#39;re using the old model of &quot;one thread for the entirety of the request&quot;. What might be slightly less easy to envisage, though, is &lt;em&gt;just how many&lt;/em&gt; unnecessary threads that we might be occupying at any given time if all requests are like this.&lt;/p&gt;
+
+&lt;p&gt;To try to illustrate that, I&#39;ve stacked eight identical web requests representations on top of each other, staggered slightly in time -&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Illustration of a staggered concurrent web requests&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/Threads-Stacked.png&quot; class=&quot;NoBorder FullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;Again, the blue represents time when each request is actively doing work and the white represents time when it&#39;s waiting for something (grey before a request is time before that request arrived at the server and grey after a request is time after it completed).&lt;/p&gt;
+
+&lt;p&gt;With the classic &quot;one thread for the entirety of the request&quot;, we would be using up to eight threads for much of this time; initially only one thread would be active and then the second request would arrive and a second thread would get tied up and then a third thread would be used when the third request arrived and the threads wouldn&#39;t start getting free&#39;d until the first request completed.&lt;/p&gt;
+
+&lt;p&gt;On the other hand, if we could free up a request&#39;s thread every time that it was waiting for an external resource then we would &lt;em&gt;never&lt;/em&gt; require eight threads at any one time for these eight requests because there is no point in time when all eight of the requests are actively doing work at the exact same time.&lt;/p&gt;
+
+&lt;p&gt;Time for a graph!&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Threads required for async vs non-async concurrent web requests&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/Threads-Graph.png&quot; class=&quot;NoBorder FullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;The blue line shows the number of active requests. If we have one-thread-per-request then that blue line also shows how many threads would be required to handle those requests.&lt;/p&gt;
+
+&lt;p&gt;The green line shows how many requests are actually doing work at any one time. If we are able to use the async / await model and only have web requests occupy threads while they&#39;re actively doing work then this is how many threads would be required. It&#39;s always less than the number of active requests and it&#39;s less than &lt;em&gt;half&lt;/em&gt; for nearly all of the time in this example.&lt;/p&gt;
+
+&lt;p&gt;The async / await model means that we need to use less threads and that&#39;s less resources and that&#39;s a good thing!&lt;/p&gt;
+
+&lt;h3&gt;A lightning overview of thread distribution&lt;/h3&gt;
+
+&lt;p&gt;There was a lot of talk above of how &quot;each request is allocated a thread to work&quot; and &quot;a thread will be given back to that request&quot; and it&#39;s worth quickly reviewing how threads are created.&lt;/p&gt;
+
+&lt;p&gt;A thread in C# &lt;em&gt;can&lt;/em&gt; be created using:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var thread = new Thread(nameOfMethodThatHasWorkToDoOnTheNewThread);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;However, threads are a relatively expensive resource to new up and then discard over and over again and so .NET offers a way to &quot;pool&quot; threads. What this boils down to is that the &lt;strong&gt;ThreadPool&lt;/strong&gt; framework class will maintain a list of threads and reuse them when someone needs one. This is used internally in many places within the .NET framework and it may be used like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;ThreadPool.QueueUserWorkItem(nameOfMethodThatHasWorkToDoOnTheNewThread);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The &lt;strong&gt;ThreadPool&lt;/strong&gt; will keep track of how many threads would need to exist at any given time to service all &quot;QueueUserWorkItem&quot; requests and it will track this over time so it can try to keep its pool at the optimium size for the application - too many means a waste of resources but too few means that it will take longer before the work requested via &quot;QueueUserWorkItem&quot; calls can be executed (if there is no thread free when a &quot;QueueUserWorkItem&quot; is made then that work will still happen but it will be queued up until the &lt;strong&gt;ThreadPool&lt;/strong&gt; has a thread become free).&lt;/p&gt;
+
+&lt;p&gt;It would make for a fairly simple mental model if async / await always used the &lt;strong&gt;ThreadPool&lt;/strong&gt; - if, when a request made an &quot;await&quot; call then it gave its current thread back to the &lt;strong&gt;ThreadPool&lt;/strong&gt; and then, when the async work was completed, the request could continue on a thread provided by the &lt;strong&gt;ThreadPool&lt;/strong&gt;. This would be straight forward and easy to understand and sometimes it &lt;em&gt;is&lt;/em&gt; the case - Console Applications and Windows Services will work like this with async / await, for example. We can picture it a bit like this:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;A Windows Service receives a request and is given Thread &quot;A&quot; from the &lt;strong&gt;ThreadPool&lt;/strong&gt; to start working on&lt;/li&gt;
+&lt;li&gt;At some point, the request needs to perform an asynchronous action and so there is an &quot;await&quot; in the code - when this happens, Thread &quot;A&quot; is released back to the &lt;strong&gt;ThreadPool&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;When that async task has completed, the request can carry on - however, Thread &quot;A&quot; was given to a &lt;em&gt;different&lt;/em&gt; request while this request was waiting for the async work and so the &lt;strong&gt;ThreadPool&lt;/strong&gt; gives it Thread &quot;B&quot;&lt;/li&gt;
+&lt;li&gt;The request does some more synchronous work on Thread &quot;B&quot; and finishes, so Thread &quot;B&quot; is released back to the &lt;strong&gt;ThreadPool&lt;/strong&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Easy peasy.&lt;/p&gt;
+
+&lt;h3&gt;Thread distribution troublemakers&lt;/h3&gt;
+
+&lt;p&gt;However.. some project types get a bit possessive about their threads - when a request starts on one thread then it wants to be able to continue to use that thread forever. I suspect that this is most commonly known about WinForms projects where it was common to see code that looked like the following (that I have borrowed from a &lt;a href=&quot;https://stackoverflow.com/a/661686/3813189&quot;&gt;Stack Overflow answer&lt;/a&gt;):&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private void OnWorkerProgressChanged(object sender, ProgressChangedArgs e)
+{
+    // Cross thread - so you don&#39;t get the cross-threading exception
+    if (this.InvokeRequired)
+    {
+        this.BeginInvoke((MethodInvoker)delegate
+        {
+            OnWorkerProgressChanged(sender, e);
+        });
+        return;
+    }
+
+    // Change control
+    this.label1.Text = e.Progress;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;With WinForms, you must never block the main thread because then your whole application window will go into a &quot;not responding&quot; state. So, if you wanted to start a process that is unlikely to complete instantly - such as a file upload - then you might have a component that performs the work on a different thread and that has events for &quot;progress changed&quot; (so that it can report {x}% complete) and &quot;upload completed&quot;. When these events are raised, we&#39;ll want to update the UI of the application but there is a problem: when these callbacks are executed, they will be run on the thread that the file upload is running on and not the main UI thread. The reason that this is a problem is that UI components may &lt;em&gt;only&lt;/em&gt; be updated by code that is running on the UI thread. The way around this is to check the &quot;InvokeRequired&quot; property on a UI component before trying to update any of the component&#39;s properties. If &quot;InvokeRequired&quot; returns false then it meant that the current thread is the UI thread and that no funny business was required. However, if it returns true then it means that the current thread is &lt;em&gt;not&lt;/em&gt; the UI thread and that a special method &quot;BeginInvoke&quot; would have to be called, which was a way to say &quot;please execute this code on the UI thread&quot;.&lt;/p&gt;
+
+&lt;p&gt;Eventually, people got used to this and would ensure that they used &quot;InvokeRequired&quot; and  &quot;BeginInvoke&quot; when updating UI elements if they were dealing with code that might do some &quot;background processing&quot;.&lt;/p&gt;
+
+&lt;p&gt;When async / await were introduced, though, one of the aims was to make it easy and neat and tidy to write async code - basically, to be able to write code that &lt;em&gt;looked&lt;/em&gt; synchronous while still getting the benefits of being &lt;em&gt;asynchronous&lt;/em&gt;. That meant trying to avoid code that looked like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private async void btnUpload_Click(object sender, EventArgs e)
+{
+    var filename = await UploadContent();
+
+    // Why do I need to do this?! I haven&#39;t (explicitly) fired
+    // up any new threads or anything! :S
+    if (this.InvokeRequired)
+    {
+        this.BeginInvoke((MethodInvoker)delegate
+        {
+            this.lblFilename.Text = filename;
+        });
+        return;
+    }
+    this.lblFilename.Text = filename;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Instead, it should just look like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private async void btnUpload_Click(object sender, EventArgs e)
+{
+    var filename = await UploadContent();
+    this.lblFilename.Text = filename;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The problem with this is that some magic will be required somewhere. If the &lt;strong&gt;ThreadPool&lt;/strong&gt; is responsible for providing a thread to execute on after async work has completed, things are going to go wrong if it provides one thread to start the request on and a different thread to continue on after the async work has completed. It was fine for the Windows Service example request above to start on Thread &quot;A&quot; and then change to working on Thread &quot;B&quot; because Windows Services don&#39;t have limitations on what threads can and can&#39;t do, whereas WinForms UI components &lt;em&gt;do&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;The &quot;magic&quot; involved is that .NET provides a way for threads to be assigned a special &quot;Synchronization Context&quot;. This is a mechanism that changes how async / await interacts with the &lt;strong&gt;ThreadPool&lt;/strong&gt; and makes it possible for WinForms applications to say &quot;When I await an asynchronous task and that task completes, I want to carry on my work on the same thread&quot;. This is why there is no need to check InvokeRequired / BeginInvoke when writing async event handlers for WinForms UI components.&lt;/p&gt;
+
+&lt;p&gt;One downside to this is that it puts constraints on how the &lt;strong&gt;ThreadPool&lt;/strong&gt; can and can&#39;t distribute threads and means that it&#39;s not as free to optimise usage solely for efficiency and throughput. It also means that either the request&#39;s thread must remain allocated to the request until the request completes (negating one of the benefits of await / async) &lt;em&gt;or&lt;/em&gt; the request may have to wait after an async call completes before the thread that it wants to continue on becomes free*.&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;(I&#39;m not actually sure which of these two options happens in real world use but it feels like the sort of thing that is an implementation detail of the framework and it would be best to not presume that it would be one or the other)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;There is another downside, though, which is that it&#39;s quite easy to get into bother if you try to call async code from a &lt;em&gt;non&lt;/em&gt;-async method - as I&#39;m about to show you!&lt;/p&gt;
+
+&lt;h3&gt;The classic deadlock (aka. &quot;why has my application hung?&quot;)&lt;/h3&gt;
+
+&lt;p&gt;This problem has been encountered so many times that a lot of async&#39;ers recognise it straight away and there are plenty of questions on Stack Overflow about it. There is also good advice that  is often repeated about how to prevent it. However, I think that it&#39;s particularly nasty because the code might not look hideously wrong at a glance but it will be able to cause your application to hang when it&#39;s run - not throw an exception (which at least makes it clear where something has gone wrong), but to just &lt;em&gt;hang&lt;/em&gt;.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class HomeController
+{
+    public ActionResult Index()
+    {
+        return View(
+            GetTitleAsync().Result
+        );
+    }
+
+    private async Task&amp;lt;string&amp;gt; GetTitleAsync()
+    {
+        // This Task.Delay call simulates an async call that might go off to the
+        // database or other external service
+        await Task.Delay(1000);
+        return &quot;Hello!&quot;;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;When I encountered this problem, I was much deeper down the stack but the concept was the same -&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;I was in code that was being called by an MVC action method and that method was not async&lt;/li&gt;
+&lt;li&gt;I needed to call an async method&lt;/li&gt;
+&lt;li&gt;I tried to access &quot;.Result&quot; on the task that I got back from the async method - this will block the current thread until the task completes&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;The key factor&lt;/strong&gt;: ASP.NET applications also have a special synchronization context, similar to the WinForms one in that it returns to the same thread after an async call completes&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;If you ran the code above then something like the following chain of events would occur:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Thread &quot;A&quot; would be given to the request to run on and &quot;Index&quot; would be called&lt;/li&gt;
+&lt;li&gt;Thread &quot;A&quot; would call &quot;GetTitleAsync&quot; and get a &lt;strong&gt;Task&amp;lt;string&amp;gt;&lt;/strong&gt; reference&lt;/li&gt;
+&lt;li&gt;Thread &quot;A&quot; would then request the &quot;.Result&quot; property of that task and would block until the task completed&lt;/li&gt;
+&lt;li&gt;The &quot;Task.Delay&quot; call would complete and .NET would try to continue the &quot;GetTitleAsync&quot; work&lt;/li&gt;
+&lt;li&gt;The ASP.NET synchronization context would require that work continue on Thread &quot;A&quot; and so the work would be placed on a queue for Thread &quot;A&quot; to deal with when it gets a chance (the &quot;work&quot; in this case is simply the line that returns the string &quot;Hello!&quot; but that code has to be executed somewhere)&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;And this is how we become stuck!&lt;/p&gt;
+
+&lt;p&gt;Thread &quot;A&quot; is waiting for the &quot;GetTitleAsync&quot; work to complete but the &quot;GetTitleAsync&quot; work can not complete until Thread &quot;A&quot; gets involved (which it can&#39;t because it&#39;s in a blocked state).&lt;/p&gt;
+
+&lt;p&gt;This is the problem and it seem oh-so-obvious if you know how async / await work and about the ASP.NET synchronization context and if you&#39;re paying close attention when you&#39;re writing this sort of code. But if you &lt;em&gt;don&#39;t&lt;/em&gt; then you get a horrible runtime problem.&lt;/p&gt;
+
+&lt;p&gt;So let&#39;s look at solutions.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Approach one: Don&#39;t mix async and non-async code&lt;/strong&gt;. This is good advice when starting new codes - begin with async and then it&#39;s async all the way down, no blocking of threads while accessing &quot;.Result&quot; and so no problem! However, with a big project it&#39;s not very helpful.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Approach two: Always use &quot;.ConfigureAwait(false)&quot;&lt;/strong&gt;. This is the oft-repeated good advice that I mentioned earlier. As a rule of thumb, many people recommend &lt;em&gt;always&lt;/em&gt; including &quot;.ConfigureAwait(false)&quot; when you use await, like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;await Task.Delay(1000).ConfigureAwait(false);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The &quot;false&quot; value is for the &quot;continueOnCapturedContext&quot; parameter and this parameter effectively overrides the synchronization context about what thread the work must continue on when the async work has completed.&lt;/p&gt;
+
+&lt;p&gt;If we changed our code to this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class HomeController
+{
+    public ActionResult Index()
+    {
+        return View(
+            GetTitleAsync().Result
+        );
+    }
+
+    private async Task&amp;lt;string&amp;gt; GetTitleAsync()
+    {
+        // This Task.Delay call simulates an async call that might go off to the
+        // database or other external service
+        await Task.Delay(1000).ConfigureAwait(false);
+        return &quot;Hello!&quot;;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. then the chain of events goes more like this:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Thread &quot;A&quot; would be given to the request to run on and &quot;Index&quot; would be called&lt;/li&gt;
+&lt;li&gt;Thread &quot;A&quot; would call &quot;GetTitleAsync&quot; and get a &lt;strong&gt;Task&amp;lt;string&amp;gt;&lt;/strong&gt; reference&lt;/li&gt;
+&lt;li&gt;Thread &quot;A&quot; would then request the &quot;.Result&quot; property of that task and would block until the task completed&lt;/li&gt;
+&lt;li&gt;The &quot;Task.Delay&quot; call would complete and .NET would try to continue the &quot;GetTitleAsync&quot; work&lt;/li&gt;
+&lt;li&gt;Because we used &quot;.ConfigureAwait(false)&quot;, we are not restricted in terms of where can continue the &quot;GetTitleAsync&quot; work and so that will be done on Thread &quot;B&quot;&lt;/li&gt;
+&lt;li&gt;The work for Thread &quot;B&quot; is simply to complete the &lt;strong&gt;Task&amp;lt;string&amp;gt;&lt;/strong&gt; by setting its result to &quot;Hello!&quot; (Thread &quot;B&quot; does this and then it is released back to the &lt;strong&gt;ThreadPool&lt;/strong&gt;)&lt;/li&gt;
+&lt;li&gt;Since the &lt;strong&gt;Task&amp;lt;string&amp;gt;&lt;/strong&gt; has completed, Thread &quot;A&quot; is no longer blocking on the &quot;.Result&quot; access and it can carry on with its work and return the &lt;strong&gt;ActionResult&lt;/strong&gt; from the method&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;The good news here is that this solves the problem - there is no longer a deadlock that can occur!&lt;/p&gt;
+
+&lt;p&gt;The bad news is that you must remember to add &quot;.ConfigureAwait(false)&quot; to your await calls. If you forget then there is a chance that your code will result in an application hang and you won&#39;t find out until runtime. I don&#39;t like this because one of the reasons that I enjoy C# as a strongly-typed language is that the compiler can catch so many mistakes and I &lt;em&gt;don&#39;t&lt;/em&gt; have to wait until runtime to find problems much of the time. One way to make life easier on this front is to help the compiler help you by installing an analyser, such as the &lt;a href=&quot;https://www.nuget.org/packages/ConfigureAwaitChecker.Analyzer/&quot;&gt;ConfigureAwaitChecker.Analyzer&lt;/a&gt;. Installing this should result in you getting warnings in Visual Studio if you don&#39;t include &quot;.ConfigureAwait(false)&quot; after any await.&lt;/p&gt;
+
+&lt;p&gt;Another possible (and subjective) downside to this approach is that it makes the code &quot;noisier&quot; - if &quot;.ConfigureAwait(false)&quot; should be used almost every time you use &quot;await&quot; then shouldn&#39;t it be the default behaviour and it be the case that you should have to include extra code if you &lt;em&gt;don&#39;t&lt;/em&gt; want that behaviour? You may not agree with me but it feels like an extra burden that I&#39;d rather live without.&lt;/p&gt;
+
+&lt;p&gt;Instead, we could consider..&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Approach three: Disabling the synchronization context before calling async code&lt;/strong&gt;. The .NET environment allows the host to specify its own synchronization context but it also allows &lt;em&gt;any&lt;/em&gt; code to specify a particular context. We could use this to our advantage by doing something like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class HomeController
+{
+    public ActionResult Index()
+    {
+        // Get a reference to whatever the current context is, so that we can set
+        // it back after the async work is done
+        var currentSyncContext = SynchronizationContext.Current;
+        string result;
+        try
+        {
+            // Set the context to null so that any restrictions are removed that
+            // relate to what threads async code can continue on
+            SynchronizationContext.SetSynchronizationContext(null);
+
+            // Block this thread until the async work is complete
+            result = GetTitleAsync().Result;
+        }
+        finally
+        {
+            // Set the context back to whatever it was before
+            SynchronizationContext.SetSynchronizationContext(currentSyncContext);
+        }
+
+        return View(result);
+    }
+
+    private async Task&amp;lt;string&amp;gt; GetTitleAsync()
+    {
+        // This Task.Delay call simulates an async call that might go off to the
+        // database or other external service
+        await Task.Delay(1000);
+        return &quot;Hello!&quot;;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This means that we don&#39;t have to use &quot;.ConfigureAwait(false)&quot; and we &lt;em&gt;still&lt;/em&gt; don&#39;t get any deadlocks. We can include code like this at the boundary where non-async code calls async code and then we won&#39;t have to worry about whether the async code includes any await calls that do not specify &quot;.ConfigureAwait(false)&quot;.&lt;/p&gt;
+
+&lt;p&gt;You wouldn&#39;t want to include this extra code &lt;em&gt;every&lt;/em&gt; time that you called async code from non-async code and so it would make sense to encapsulate the logic in a method. Something like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class HomeController : Controller
+{
+    public ActionResult Index()
+    {
+        return View(
+            AsyncCallHelpers.WaitForAsyncResult(GetTitleAsync())
+        );
+    }
+
+    private async static Task&amp;lt;string&amp;gt; GetTitleAsync()
+    {
+        // This Task.Delay call simulates an async call that might go off to the
+        // database or other external service
+        await Task.Delay(1000);
+        return &quot;Hello!&quot;;
+    }
+}
+
+public static class AsyncCallHelpers
+{
+    /// &amp;lt;summary&amp;gt;
+    /// Avoid the &#39;classic deadlock problem&#39; when blocking on async work from non-async
+    /// code by disabling any synchronization context while the async work takes place
+    /// &amp;lt;/summary&amp;gt;
+    public static T WaitForAsyncResult&amp;lt;T&amp;gt;(Task&amp;lt;T&amp;gt; work)
+    {
+        var currentSyncContext = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(null);
+            return work.Result;
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(currentSyncContext);
+        }
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;I think that this is quite an elegant solution and makes for clear code (it is hopefully fairly clear to a reader of the code that there is something interesting going on at the non-async / async boundary and there is a nice summary comment explaining why).&lt;/p&gt;
+
+&lt;p&gt;A variation on this theme is..&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Approach four: Use a custom INotifyCompletion implementation&lt;/strong&gt;. When &lt;strong&gt;Task&lt;/strong&gt;/&lt;strong&gt;Task&amp;lt;T&amp;gt;&lt;/strong&gt; was added to .NET along with async / await, the design included ways to override how awaiting a task should be handled and this gives us another way to remove the synchronization context for async work. We can take advantage of this facility by doing something like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class HomeController : Controller
+{
+    public ActionResult Index()
+    {
+        return View(
+            GetTitleAsync().Result
+        );
+    }
+
+    private async static Task&amp;lt;string&amp;gt; GetTitleAsync()
+    {
+        await new SynchronizationContextRemover();
+
+        // This Task.Delay call simulates an async call that might go off to the
+        // database or other external service
+        await Task.Delay(1000);
+        return &quot;Hello!&quot;;
+    }
+}
+
+/// &amp;lt;summary&amp;gt;
+/// This prevents any synchronization context from affecting what happens within
+/// an async method and so we don&#39;t need to worry if a non-async caller wants to
+/// block while waiting for the result of the async method
+/// &amp;lt;/summary&amp;gt;
+public struct SynchronizationContextRemover : INotifyCompletion
+{
+    public bool IsCompleted =&amp;gt; SynchronizationContext.Current == null;
+
+    public void OnCompleted(Action continuation)
+    {
+        var prevContext = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(null);
+            continuation();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(prevContext);
+        }
+    }
+
+    public SynchronizationContextRemover GetAwaiter() =&amp;gt; this;
+
+    public void GetResult() { }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;em&gt;(This code comes from the article &quot;&lt;a href=&quot;https://blogs.msdn.microsoft.com/benwilli/2017/02/09/an-alternative-to-configureawaitfalse-everywhere/&quot;&gt;An alternative to ConfigureAwait(false) everywhere&lt;/a&gt;&quot;)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;This has the same effect as the previous approach - it removes any synchronization context until the async work has completed - but there is an important difference in how it is implemented:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;When &lt;strong&gt;disabling the synchronization context before calling async code&lt;/strong&gt;, the extra code is included in the non-async code that is calling the async code&lt;/li&gt;
+&lt;li&gt;When we &lt;strong&gt;use a custom INotifyCompletion implementation&lt;/strong&gt;, the extra code is included in the async code and the non-async calling code does not need to be changed&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;I prefer these two approaches and choosing which of them to use comes down to what code I&#39;m writing and what code I&#39;m integrating with. For example:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;If I was writing the non-async code and I needed to call into a trusted and battle-tested async library then I might be tempted to do nothing at all because I would expect such a library to follow recommended practices such as using &quot;.ConfigureAwait(false)&quot; internally&lt;/li&gt;
+&lt;li&gt;If I was writing non-async code that had to call into async code that I was less confident about then I would call it using &quot;AsyncCallHelpers.WaitForAsyncResult&quot; to be sure that nothing was going to go awry
+
+&lt;ul&gt;
+&lt;li&gt;Note: This only applies to non-async code that will be hosted in an environment that uses a synchronization context that I need to be worried about (such as ASP.NET or WinForms but &lt;em&gt;not&lt;/em&gt; Console Applications or Windows Services)&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;If I was writing async code that might be called from different environments (where an awkward synchronization context might come into play), then I would use the &lt;strong&gt;SynchronizationContextRemover&lt;/strong&gt; approach at the public boundaries (so that I wouldn&#39;t need to specify &quot;.ConfigureAwait(false)&quot; everytime that I await something in my code)&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3&gt;Two more &quot;solutions&quot; to round out the post&lt;/h3&gt;
+
+&lt;p&gt;To quickly recap, the commonly-suggested recommendations for avoiding the &#39;classic deadlock problem&#39; are:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Don&#39;t mix async and non-async code&lt;/li&gt;
+&lt;li&gt;Always use &quot;.ConfigureAwait(false)&quot;&lt;/li&gt;
+&lt;li&gt;Disabling the synchronization context before calling async code&lt;/li&gt;
+&lt;li&gt;Use a custom INotifyCompletion implementation&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;.. but there are two others that I think are worthy of mention.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Approach five: Use ASP.NET Core&lt;/strong&gt; - the synchronization context that was used for previous versions of ASP.NET is not present in ASP.NET Core and so you don&#39;t have to worry if you&#39;re able to use it. If you already have a large application using non-Core ASP.NET that you are trying to introduce some async code into then whether or not this approach is feasible will likely depend upon your current code base and how much time you are willing to spend on migrating to ASP.NET Core.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Approach six: Use Task.Run&lt;/strong&gt; - this is a workaround that I have seen in some Stack Overflow answers. We could change our example code to look like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class HomeController
+{
+    public ActionResult Index()
+    {
+        var result = Task.Run(async () =&amp;gt; { return await GetTitleAsync(); }).Result;
+        return View(result);
+    }
+
+    private async Task&amp;lt;string&amp;gt; GetTitleAsync()
+    {
+        // This Task.Delay call simulates an async call that might go off to the
+        // database or other external service
+        await Task.Delay(1000);
+        return &quot;Hello!&quot;;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This works because &quot;Task.Run&quot; will result in work being performed on a &lt;strong&gt;ThreadPool&lt;/strong&gt; thread and so the thread that calls into GetTitleAsync will not be associated with an ASP.NET synchronization context and so the deadlock won&#39;t occur.&lt;/p&gt;
+
+&lt;p&gt;It feels more like a workaround, rather than a real solution, and I don&#39;t like the way that it&#39;s not as obvious from reading the code &lt;em&gt;why&lt;/em&gt; it works. It &lt;em&gt;could&lt;/em&gt; be wrapped in a method like &quot;AsyncCallHelpers.WaitForAsyncResult&quot; so that comments could be added to explain why it&#39;s being used but I feel like if you were going to do that then you would be better to use one of the more explicit approaches (such as the &quot;AsyncCallHelpers.WaitForAsyncResult&quot; method shown earlier). I have included it in this post only for completeness and because it is presented as a solution sometimes!&lt;/p&gt;
+
+&lt;h3&gt;Further reading&lt;/h3&gt;
+
+&lt;p&gt;To try to keep this post focused, I&#39;ve skipped over and simplified some of the details involved in how async and await work. I think that it&#39;s testament to the C# language designers that it can be such a complicated topic while the code &quot;just works&quot; most of the time, without you having to be aware of how it works all the way down.&lt;/p&gt;
+
+&lt;p&gt;If you would like to find more then I would recommend the following articles. I read and re-read all of them while writing this to try to make sure that I wasn&#39;t over-simplifying &lt;em&gt;too&lt;/em&gt; much (and to try ensure that I didn&#39;t say anything patently false!)..&lt;/p&gt;
+
+&lt;p&gt;Stephen Cleary&#39;s &quot;&lt;a href=&quot;https://blog.stephencleary.com/2013/11/there-is-no-thread.html&quot;&gt;There is no thread&lt;/a&gt;&quot;&lt;/p&gt;
+
+&lt;p&gt;Also Stephen Cleary&#39;s (this time published on msdn.microsoft.com) &quot;&lt;a href=&quot;https://msdn.microsoft.com/en-us/magazine/gg598924.aspx&quot;&gt;Parallel Computing - It&#39;s All About the SynchronizationContext&lt;/a&gt;&quot;&lt;/p&gt;
+
+&lt;p&gt;Dixin&#39;s &quot;&lt;a href=&quot;https://weblogs.asp.net/dixin/understanding-c-sharp-async-await-2-awaitable-awaiter-pattern&quot;&gt;Understanding C# async / await: The Awaitable-Awaiter Pattern&lt;/a&gt;&quot;&lt;/p&gt;</description>
+			<pubDate>Sun, 30 Sep 2018 20:09:00 GMT</pubDate>
+		</item>
 		<item>
 			<title>Writing F# to implement &#39;The Single Layer Perceptron&#39;</title>
             <link>http://www.productiverage.com/writing-f-sharp-to-implement-the-single-layer-perceptron</link>
@@ -4827,37 +5280,6 @@ resultsReadyIndicator.WaitOne();
 
 &lt;p&gt;While the &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;SqlProxyAndReplay&lt;/a&gt; service / library may not be as useful if you have to test a service or application that needs to persist changes made to the backing store, I imagine that it&#39;s common for a lot of large scale applications to want to cache and optimise read operations and so this may well be useful for other people. The &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;linked GitHub&lt;/a&gt; repo has more information in its README and there&#39;s a &quot;Tester&quot; console application to demonstrate it in action.&lt;/p&gt;</description>
 			<pubDate>Wed, 10 Aug 2016 21:01:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>Why is saving Performance Monitor (PerfMon) settings so difficult these days?!</title>
-            <link>http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</link>
-			<guid>http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days</guid>
-			<description>&lt;p&gt;I&#39;ve been measuring and optimising a busy service recently at work and PerfMon is an invaluable tool in doing things like this - the service records its own performance counters about requests/second, cache-hits-and-misses/second and many other useful metrics, while Windows and .net also report on many helpful statistics such as CPU time per process, memory usage, bytes-allocated/second and frequency of garbage collections.&lt;/p&gt;
-
-&lt;p&gt;Performance Monitor makes it really easy to add a set of counters and format their lines so that some are bold and thick (and, so, clear at a glance) while other may be made less obtrusive, so as not to confuse the graph too much.&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;http://www.productiverage.com/Content/Images/Posts/PerfMon.png&quot; alt=&quot;Performance Monitor&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;However, over the years the interface to this tool has had some changes made to it that I&#39;m not convinced are improvements. Back on Windows Server 2003, I&#39;m pretty sure that you could configure your view how you wanted it and then simply use File/Save to write an &quot;.mmc&quot; configuration file. Whenever you wanted, you could double-click that file and all of the counters would be there, configured just as you left them, quietly capturing data and displaying it how you want it. Unfortunately, that day has gone and it&#39;s not quite so easy.&lt;/p&gt;
-
-&lt;p&gt;Never mind, I move with the times.&lt;/p&gt;
-
-&lt;p&gt;There are a few options available to do the same sort of thing today. The first, and most obvious, is to right-click on the graph and choose &quot;Save Settings As&quot;. This saves a web page version of the current view that uses an ActiveX plugin (and so requires IE to display it and requires you to &quot;Allow blocked content&quot;). With this plugin you can do much of what you can in PerfMon - add or remove counters, highlight the currently-selected counter, change the formatting of the current counter, etc.. This option isn&#39;t terrible but it doesn&#39;t feel quite as solid as &lt;em&gt;real&lt;/em&gt; PerfMon.&lt;/p&gt;
-
-&lt;p&gt;The second option sounds like a pretty reasonable idea; you can copy the current configuration to the clipboard, save it and then paste it back into a fresh PerfMon instance in the future (the content saved to the clipboard is basically the same content as is written away when you use &quot;Save Settings As&quot; to create the web page version). My biggest problem with this is that it doesn&#39;t work! I&#39;ve tried on several machines now (Windows Server 2012 and Windows 8.1) and I can successfully copy the content (I can verify this by pasting it into notepad) but when I click on the paste icon in PerfMon nothing happens. No error, no nothing. Maybe I&#39;m doing something stupid here, but I don&#39;t know what.&lt;/p&gt;
-
-&lt;p&gt;There is a third option, I think, involving the &quot;Data Collector Sets&quot; section of the PerfMon tree view. However, I tried to remember what it was earlier today by playing around with the interface and I didn&#39;t get anywhere quickly.&lt;/p&gt;
-
-&lt;p&gt;I use a fourth option these days, which is to start PerfMon using &quot;perfmon /sys&quot; (this works from the command line or from [Win]-[R]). This starts PerfMon in a kind of streamlined interface (the treeview down the left hand side of the application is notable by its absence, for example). But the really good bit about this mode is that the File menu now has two options - &quot;Save Settings As&quot; and &quot;LoadSettings&quot;. These work with &quot;.PerfMonCfg&quot; files and essentially make simple what I used to do in the old days; configure everything just so, save to the desktop for another day, open from the desktop on that day in the future and find everything just how I want it.&lt;/p&gt;
-
-&lt;p&gt;Success!&lt;/p&gt;
-
-&lt;h3&gt;Another little tweak&lt;/h3&gt;
-
-&lt;p&gt;There is one thing that still annoys me, though. There doesn&#39;t seem to be any way to manually control the split between how much space is dedicated to the lower part of the display (that contains the names of the counters) and the upper half (the graph). If you add more than a couple of counters then the interface forces a vertical scroll bar onto the lower section - if you could manually make that section taller then the scroll bar would not be necessary.. but, alas, it appears that you can not.&lt;/p&gt;
-
-&lt;p&gt;There is one trick to make it &lt;em&gt;slightly&lt;/em&gt; better, though. If the window is too narrow to show all of the information in that lower area then the horizontal scrollbar always appears on top of the last counter. If you can make the PerfMon window wide enough that you don&#39;t need the horizontal scrollbar then you can get one more counter to fit into view before the vertical scrollbar forces its way into play. This seems to allow up to nine counters to be displayed in the lower area with no scrolling required - if you need ten or more, though, then it seems like vertical scrolling is unavoidable :(&lt;/p&gt;</description>
-			<pubDate>Thu, 14 Jul 2016 19:36:00 GMT</pubDate>
 		</item>
 
 	</channel>
