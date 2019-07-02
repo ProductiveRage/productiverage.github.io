@@ -10,7 +10,7 @@
 		<description>Dan's techie ramblings</description>
 		<language>en-gb</language>
 
-		<lastBuildDate>Sun, 30 Sep 2018 20:09:00 GMT</lastBuildDate>
+		<lastBuildDate>Tue, 02 Jul 2019 21:59:00 GMT</lastBuildDate>
 		<docs>http://blogs.law.harvard.edu/tech/rss</docs>
 		
 		<image>
@@ -23,6 +23,470 @@
 
 		<xhtml:meta xmlns:xhtml="http://www.w3.org/1999/xhtml" name="robots" content="noindex" /> 
 
+		<item>
+			<title>Type aliases in Bridge.NET (C#)</title>
+            <link>http://www.productiverage.com/type-aliases-in-bridgenet-c-sharp</link>
+			<guid>http://www.productiverage.com/type-aliases-in-bridgenet-c-sharp</guid>
+			<description>&lt;p&gt;Back in 2016, I wrote &lt;a href=&quot;http://www.productiverage.com/writing-react-apps-using-bridgenet-the-dan-way-part-three&quot;&gt;Writing React apps using Bridge.NET - The Dan Way (Part Three)&lt;/a&gt; and I talked about trying to tighten up the representation of values in the type system. One of my pet peeves that I talked about was how &quot;no value&quot; is represented in reference types and, in particular, with strings.&lt;/p&gt;
+
+&lt;p&gt;As a reminder, I was having a rant about how I hate the uncertainty of wondering &quot;should I expect to get null passed in here / returned from here&quot; and I decided to draw a hard line and say that &lt;strong&gt;no&lt;/strong&gt;, in &lt;em&gt;my&lt;/em&gt; code I would &lt;em&gt;never&lt;/em&gt; expect a reference type to have a null value - instead I would always use the &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; struct that I included in my NuGet package &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.Immutable&quot;&gt;ProductiveRage.Immutable&lt;/a&gt;. This allows me to make it clear when a method may return a null value (because its return type would be something like &lt;strong&gt;Optional&amp;lt;PersonDetails&amp;gt;&lt;/strong&gt;) and it would allow me to make it clear when a method will and won&#39;t accept null arguments (it &lt;em&gt;will&lt;/em&gt; if the parameter type is &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; and it &lt;em&gt;won&#39;t&lt;/em&gt; if it&#39;s &lt;em&gt;not&lt;/em&gt;).&lt;/p&gt;
+
+&lt;p&gt;Strings, however, have &lt;em&gt;another&lt;/em&gt; &quot;no value&quot; state - when they are blank. If I want to have a method argument whose type indicates &quot;this argument must be a string that is not null AND that is not blank&quot; then we can&#39;t communicate that. To address that, my blog post introduced &lt;em&gt;another&lt;/em&gt; type; the &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class NonBlankTrimmedString
+{
+    public NonBlankTrimmedString(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException(&quot;Null, blank or whitespace-only value specified&quot;);
+        Value = value.Trim();
+    }
+
+    /// &amp;lt;summary&amp;gt;
+    /// This will never be null, blank or have any leading or trailing whitespace
+    /// &amp;lt;/summary&amp;gt;
+    public string Value { get; }
+
+    /// &amp;lt;summary&amp;gt;
+    /// It&#39;s convenient to be able to pass a NonBlankTrimmedString instance as any argument
+    /// that requires a string
+    /// &amp;lt;/summary&amp;gt;
+    public static implicit operator string(NonBlankTrimmedString value)
+    {
+        if (value == null)
+            throw new ArgumentNullException(&quot;value&quot;);
+        return value.Value;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This would allow me to have a method that clearly indicates that it needs a string &lt;em&gt;with a real value&lt;/em&gt; - eg.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;void DoSomething(NonBlankTrimmedString value);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. and it could be combined with &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; to define a method whose type signature indicates that it will take a string with a real value OR it will accept a &quot;no value&quot; - eg.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;void DoSomething(Optional&amp;lt;NonBlankTrimmedString&amp;gt; value);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This method will &lt;em&gt;not&lt;/em&gt; accept a blank string because that&#39;s just another state that is not necessary; either you give me a real (non-blank) value or you don&#39;t. There is no half-way house of &quot;non-null but still with no value&quot;.&lt;/p&gt;
+
+&lt;p&gt;As another example, I might want to write a &lt;a href=&quot;https://github.com/ProductiveRage/Bridge.React&quot;&gt;Bridge.React&lt;/a&gt; component whose &lt;strong&gt;Props&lt;/strong&gt; type can optionally take an additional class name to render as part of the component - in which case, I might write the class a bit like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class Props
+{
+    public Props(
+        /* .. other property values, */
+        Optional&amp;lt;NonBlankTrimmedString&amp;gt; className = new Optional&amp;lt;NonBlankTrimmedString&amp;gt;())
+    {
+        // .. other properties set here
+        ClassName = className;
+    }
+
+    // .. other public properties exposed here
+
+    public Optional&amp;lt;NonBlankTrimmedString&amp;gt; ClassName { get; }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This is all fine and dandy and, pretty much, it just works. If I want to expand this richer type system so that it&#39;s used in API requests / responses as well then I can have &lt;strong&gt;Optional&amp;lt;T&amp;gt;&lt;/strong&gt; and &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; types defined in the .NET code that runs on the server as well as in my Bridge project. And if I want to avoid code duplication then I can define the types in a &lt;a href=&quot;https://dev.to/rionmonster/sharing-is-caring-using-shared-projects-in-aspnet-e17&quot;&gt;Shared Project&lt;/a&gt; that is referenced by both the Bridge project and the server API project.&lt;/p&gt;
+
+&lt;p&gt;One downside to this approach, though, is that JSON payloads from API calls are going to be larger if I wrap all of my strings in &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; instances. And there will be more work for &lt;a href=&quot;https://github.com/bridgedotnet/Bridge.Newtonsoft.Json&quot;&gt;Bridge&#39;s version of Newtonsoft Json.NET&lt;/a&gt; to do because it has to parse more data and it has to deserialise more instances of types; for every string, instead of just deserialising a value into a string, it needs to deserialise that string value &lt;em&gt;and then&lt;/em&gt; create an instance of a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; to wrap it. If you have any API calls that return 100s or 1000s of strings then this can become a non-negligible cost.&lt;/p&gt;
+
+&lt;p&gt;The full .NET version of Newtonsoft Json.NET has some flexibility with how types are serialised to/from JSON. For example, if I wanted to tell the serialiser that &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; instances should appear in the JSON as plain strings then I could do so using a &lt;strong&gt;JsonConverter&lt;/strong&gt; (there is sample code in the Newtonsoft website that demonstrates how to do it for the &lt;strong&gt;Version&lt;/strong&gt; type and the principle would be exactly the same for &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; - see &lt;a href=&quot;https://www.newtonsoft.com/json/help/html/CustomJsonConverterGeneric.htm&quot;&gt;Custom JsonConverter&amp;lt;T&amp;gt;&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;The Bridge version of the library has no support for custom JsonConverters, though, so we may appear to be a bit stuck.. if it weren&#39;t for the fact that Bridge has some low-level tricks that we can use to our advantage.&lt;/p&gt;
+
+&lt;p&gt;In order to allow C# code to be written that interacts with JavaScript libraries, Bridge has a few escape hatches for the type system that we can use in a careful manner. For example, I could rewrite the Bridge version of &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; to look like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class NonBlankTrimmedString
+{
+    protected NonBlankTrimmedString() { }
+
+    /// &amp;lt;summary&amp;gt;
+    /// This will never be null, blank or have any leading or trailing whitespace
+    /// &amp;lt;/summary&amp;gt;
+    public extern string Value { [Template(&quot;{this}&quot;)] get; }
+
+    /// &amp;lt;summary&amp;gt;
+    /// Create a NonBlankTrimmedString instance by explicitly casting a string
+    /// &amp;lt;/summary&amp;gt;
+    public static explicit operator NonBlankTrimmedString(string value)
+    {
+        if (value == null)
+            return null;
+        value = value.Trim();
+        if (value == &quot;&quot;)
+            throw new ArgumentException(&quot;Can not cast from a blank or whitespace-only string&quot;);
+        return Script.Write&amp;lt;NonBlankTrimmedString&amp;gt;(&quot;value&quot;);
+    }
+
+    /// &amp;lt;summary&amp;gt;
+    /// It&#39;s convenient to be able to pass a NonBlankTrimmedString instance as any argument
+    /// that requires a string
+    /// &amp;lt;/summary&amp;gt;
+    [Template(&quot;{value}&quot;)]
+    public extern static implicit operator string(NonBlankTrimmedString value);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This changes things up a bit. Now there is no public constructor and the only way to get a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; instance from a plain string is to explicitly cast to it - eg.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var x = (NonBlankTrimmedString)&quot;hi!&quot;;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;If the source string is blank or whitespace-only then attempting to cast it to a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; will result in an exception being thrown.&lt;/p&gt;
+
+&lt;p&gt;What&#39;s interesting about this class is that it exists only to provide type information to the C# compiler - there will never be an instance of &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; alive runtime in JavaScript. The reason for this is that the explicit cast performs some validation but then, at runtime, returns the string instance directly back; it &lt;em&gt;doesn&#39;t&lt;/em&gt; wrap it in an instance of a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; class. Similarly, when the &quot;Value&quot; property is requested in C# code, this is translated into JS as a direct reference to &quot;this&quot; (which we know is a plain string). This is sounding complicated as I write this, so let me try to make it clear with an example!&lt;/p&gt;
+
+&lt;p&gt;The following C# code:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// Start with a plain string
+var source = &quot;Hi!&quot;;
+
+// Create a NonBlankTrimmed by explicitly casting the string
+var x = (NonBlankTrimmedString)source;
+
+// Write the value of the NonBlankTrimmedString to the console
+Console.WriteLine(x.Value);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. is translated into this JS:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// Start with a plain string
+var source = &quot;Hi!&quot;;
+
+// Create a NonBlankTrimmed by explicitly casting the string
+var x = Demo.NonBlankTrimmedString.op_Explicit(source);
+
+// Write the value of the NonBlankTrimmedString to the console
+System.Console.WriteLine(x);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The reference &quot;x&quot; in the JS runtime is actually just a string (and so the C# &quot;x.Value&quot; is translated into simply &quot;x&quot;) and the explicit operator (the method call &quot;Demo.NonBlankTrimmedString.op_Explicit&quot;) performs some validation but then (if the validation passes) returns the string right back but claims (for the benefit of the C# compiler and type system) that it is now a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;p&gt;This has a couple of benefits - now, plain string values that appear in JSON can be deserialised into &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; instances by Bridge (while the Bridge version of Json.NET doesn&#39;t support type converters, it &lt;em&gt;does&lt;/em&gt; support deserialising types using implicit or explicit operators - so, here, it would see a string in the JSON and see that the target type was a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; and it would use &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;&#39;s explicit operator to instantiate the target type), so the JSON returned from the server can be cleaner. &lt;em&gt;And&lt;/em&gt; it means that the JS runtime doesn&#39;t have to actually create instances of &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; to wrap those strings up in, which makes the life of the garbage collector easier (again, may be important if you have API responses that need to return 1000s of &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;).&lt;/p&gt;
+
+&lt;p&gt;This is an interesting concept that I&#39;m referring to as a &quot;type alias&quot; - a type that exists only for the compiler and that doesn&#39;t affect the runtime. The phrase &quot;type alias&quot; exists in TypeScript and in F# (and in other languages, I&#39;m sure) but I think that it means something slightly different there.. which may mean that I&#39;ve chosen a confusing name for this C# / Bridge.NET concept! In TypeScript and F#, I don&#39;t believe that they allow the level of compiler validation that I&#39;m talking about - certainly in TypeScript, type aliases are more of a convenience that allow you say something like:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;type Vector = number[];
+type Vectors = Vector[];
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. so that you can then write a method signature that looks like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;function process(data: Vectors) {
+    // ..
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. instead of:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;function process(data: number[][]) {
+    // ..
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. but the two are identical. TypeScript &quot;type aliases&quot; make things more flexible, &lt;em&gt;not&lt;/em&gt; more constrained. To make that clearer, if you wrote:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;type CustomerID = number;
+
+function process(id: CustomerID) {
+    // ..
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. then you could still call:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;process(1); // Passing a plain number into a method whose signature specifies type CustomerID
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In other words, the TypeScript alias means &quot;anywhere that you see CustomerID, you can pass in a &#39;number&#39;&quot;. This is the opposite of what I want, I want to be able to have methods that specify that they want a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; and &lt;em&gt;not&lt;/em&gt; just any old string.&lt;/p&gt;
+
+&lt;p&gt;I go into this in a little more detail in the section &quot;Type aliases in other languages&quot; at the end of this blog post. My point here was that maybe &quot;type alias&quot; is not the best phrase to use and maybe I&#39;ll revisit this in the future.&lt;/p&gt;
+
+&lt;p&gt;For now, though, let&#39;s get back to the &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; definition that I&#39;ve proposed because it has some downsides, as well. As the type &lt;em&gt;only&lt;/em&gt; exists at compile time and &lt;em&gt;not&lt;/em&gt; at runtine, if I try to query the type of a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; instance at runtime then it will report that it is a &quot;System.String&quot; - this is to be expected, since part of the benefit of this approach is that no additional instances are required other than the plain string itself - but if you were wanted to do some crazy reflection for some reason then it might catch you off guard.&lt;/p&gt;
+
+&lt;p&gt;Another downside is that if I wanted to create specialised versions of &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; then I have to duplicate some code. For example, I might want to &lt;a href=&quot;https://andrewlock.net/using-strongly-typed-entity-ids-to-avoid-primitive-obsession-part-1/&quot;&gt;strongly type&lt;/a&gt; my entity IDs and define them as classes derived from &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;. With the version of &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; from my 2016 blog post, this would be as simple as this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// If NonBlankTrimmedString is a regular class then creating derived types is easy as this
+public class OrderID : NonBlankTrimmedString
+{
+    public OrderID(string value) : base(value) { }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. but with this &quot;type alias&quot; approach, it becomes more verbose -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// The explicit operator needs to be reimplemented for each derived type with the type alias
+// alias approach shown earlier :(
+public class ClassName : NonBlankTrimmedString
+{
+    protected ClassName() { }
+
+    public static explicit operator ClassName(string value)
+    {
+        if (value == null)
+            return null;
+        value = value.Trim();
+        if (value == &quot;&quot;)
+            throw new ArgumentException(&quot;Can not cast from a blank or whitespace-only string&quot;);
+        return Script.Write&amp;lt;ClassName&amp;gt;(&quot;value&quot;);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;However, we could make this a little simpler by changing the &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; type definition to this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class NonBlankTrimmedString
+{
+    protected NonBlankTrimmedString() { }
+
+    /// &amp;lt;summary&amp;gt;
+    /// This will never be null, blank or have any leading or trailing whitespace
+    /// &amp;lt;/summary&amp;gt;
+    public extern string Value { [Template(&quot;{this}&quot;)] get; }
+
+    /// &amp;lt;summary&amp;gt;
+    /// Create a NonBlankTrimmedString instance by explicitly casting a string
+    /// &amp;lt;/summary&amp;gt;
+    public static explicit operator NonBlankTrimmedString(string value)
+        =&amp;gt; Wrap&amp;lt;NonBlankTrimmedString&amp;gt;(value);
+
+    /// &amp;lt;summary&amp;gt;
+    /// It&#39;s convenient to be able to pass a NonBlankTrimmedString instance as any argument
+    /// that requires a string
+    /// &amp;lt;/summary&amp;gt;
+    [Template(&quot;{value}&quot;)]
+    public extern static implicit operator string(NonBlankTrimmedString value);
+
+    protected static T Wrap&amp;lt;T&amp;gt;(string value) where T : NonBlankTrimmedString
+    {
+        if (value == null)
+            return null;
+        value = value.Trim();
+        if (value == &quot;&quot;)
+            throw new ArgumentException(&quot;Can not cast from a blank or whitespace-only string&quot;);
+        return Script.Write&amp;lt;T&amp;gt;(&quot;value&quot;);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. and then derived types would look like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class OrderID : NonBlankTrimmedString
+{
+    protected OrderID() { }
+    public static explicit operator OrderID(string value) =&amp;gt; Wrap&amp;lt;OrderID&amp;gt;(value);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3&gt;(Sort-of-)immutability for &quot;free&quot; through type aliases&lt;/h3&gt;
+
+&lt;p&gt;Another use case where this sort of approach seemed interesting was when I was writing some client-side code that received data in the form of arrays and then did some clever calculations and drew some pretty graphs. The API response data was 10s of 1000s of arrays, where each array was 100 floating point numbers. The calculation logic took those arrays and passed them through a bunch of methods to come up with the results but I got myself in a bit of a muddle when there were one or two places that had to manipulate a subset of the data and I realised that I was confusing myself as to whether the data should be altered in place or whether local copies of those parts of the data should be taken and then changed. To make the code easier to follow, I wanted those methods to take local copies to make the changes, rather than mutating them in-place and risking messing up calculations performed on the data later in the pipeline.&lt;/p&gt;
+
+&lt;p&gt;What I really wanted was for those methods to have type signatures that would either take an immutable data type or a readonly data type. Immutable is the ideal because it means that not only can the receiving methods not change the data but &lt;em&gt;nothing&lt;/em&gt; can change the data. Having readonly types on the method signatures means that the methods can&#39;t change the data but it&#39;s still technically possible for the caller to change the data. To try to illustrate this, I&#39;ll use the &lt;strong&gt;ReadOnlyCollection&amp;lt;T&amp;gt;&lt;/strong&gt; type from .NET in an example:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static void Main()
+{
+    var items = new List&amp;lt;int&amp;gt; { 0, 1, 2, 3 };
+    var readOnlyItems = items.AsReadOnly();
+    DoSomething(
+        readOnlyItems,
+        halfwayPointCallback: () =&amp;gt; items.RemoveAt(0)
+    );
+}
+
+static void DoSomething(ReadOnlyCollection&amp;lt;int&amp;gt; readOnlyItems, Action halfwayPointCallback)
+{
+    Console.WriteLine(&quot;Number of readonlyItems: &quot; + readOnlyItems.Count);
+    halfwayPointCallback();
+    Console.WriteLine(&quot;Number of readonlyItems: &quot; + readOnlyItems.Count);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Here, the &quot;Main&quot; method declares a mutable list and then it create a readonly wrapper around it. The readonly wrapper is passed into the &quot;DoSomething&quot; method and this means &quot;DoSomething&quot; can &lt;em&gt;not&lt;/em&gt; directly alter that list. However, it&#39;s still possible for the &quot;Main&quot; method to change the underlying list while &quot;DoSomething&quot; is running.&lt;/p&gt;
+
+&lt;p&gt;In practice, this is not something that I find commonly happens. As such, while I would &lt;em&gt;prefer&lt;/em&gt; immutable structures at all times (because then &quot;Main&quot; &lt;em&gt;couldn&#39;t&lt;/em&gt; change the contents of the list while &quot;DoSomething&quot; is working on it), being able to wrap the data in a readonly structure is still a significant improvement.&lt;/p&gt;
+
+&lt;p&gt;So, some of the more obvious options available to me were:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Stick with using arrays and be careful not to write code that performs any alteration &quot;in place&quot; (&lt;strong&gt;I don&#39;t like this situation - C#&#39;s type system has great potential and I want it to help me and save me from myself where possible!&lt;/strong&gt;)&lt;/li&gt;
+&lt;li&gt;Pass the arrays into the methods as &lt;strong&gt;IEnumerable&amp;lt;float&amp;gt;&lt;/strong&gt; (&lt;strong&gt;this isn&#39;t a terrible idea in general - it quite clearly communicates that the provided data should be considered read only - but the calculations that I was doing wanted to get the length of the array and to read particular indexed values from the array in unpredictable orders and this isn&#39;t very efficient with enumerable types&lt;/strong&gt;)&lt;/li&gt;
+&lt;li&gt;Create an &quot;immutable list&quot; class that takes an array into the constructor, copies the data and then allows access to the copy only through tightly-controlled members; ie. Length and an indexed property (&lt;strong&gt;This is the most type-safe way but it felt expensive doing this for the 10s of 1000s of arrays that I had&lt;/strong&gt;)&lt;/li&gt;
+&lt;li&gt;Convert each array into a &lt;strong&gt;List&amp;lt;float&amp;gt;&lt;/strong&gt; and then call &quot;.AsReadOnly()&quot; on them (&lt;strong&gt;this is very little code but it also felt expensive with the amount of data that I had&lt;/strong&gt;)&lt;/li&gt;
+&lt;li&gt;Create a &quot;ReadOnlyArray&amp;lt;T&amp;gt;&quot; type that would be very similar in nature to the &lt;strong&gt;ReadOnlyCollection&amp;lt;T&amp;gt;&lt;/strong&gt; in that it would take an array into its constructor and then provide a read only interface for it, &lt;em&gt;without&lt;/em&gt; copying the array (&lt;strong&gt;This is a reasonable option and I might have gone this way were it not for liking the idea of option six&lt;/strong&gt;)&lt;/li&gt;
+&lt;li&gt;Create a &quot;ReadOnlyArray&amp;lt;T&amp;gt;&quot; type &lt;em&gt;alias&lt;/em&gt; that I could use to instruct the type system that the data should not be altered but without having to introduce &lt;em&gt;any&lt;/em&gt; new types or instances at runtime&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;I went with the last one because I was all excited about experimenting with &quot;Bridge.NET type aliases&quot; and I wanted to see how well they could work! (In reality, the fifth option was also a good one and some of the others would also be perfectly fine for smaller data sets.. to be honest, there is a chance that they wouldn&#39;t have made &lt;em&gt;too&lt;/em&gt; much difference even with the data that I was looking at but, again, sometimes you need to make opportunity to experiment! :)&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public sealed class ReadOnlyArray&amp;lt;T&amp;gt; : IEnumerable&amp;lt;T&amp;gt;
+{
+    [Template(&quot;{data}&quot;)]
+    public extern ReadOnlyArray(T[] data);
+
+    [External] // Required due to https://github.com/bridgedotnet/Bridge/issues/4015
+    public extern T this[int index] { [Template(&quot;{this}[{index}]&quot;)] get; }
+
+    public extern int Length { [Template(&quot;length&quot;)] get; }
+
+    [External]
+    public extern IEnumerator&amp;lt;T&amp;gt; GetEnumerator();
+
+    [External]
+    extern IEnumerator IEnumerable.GetEnumerator();
+
+    [Template(&quot;{value}&quot;)]
+    public extern static implicit operator ReadOnlyArray&amp;lt;T&amp;gt;(T[] value);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The structure of this class is similar in some ways to that of the &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;. Unlike that class, there is no validation that is required - I &lt;em&gt;only&lt;/em&gt; want to provide access to an array in a limited manner and so it&#39;s fine to expose a public constructor (as opposed to the &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;, where it&#39;s important to check that the value is neither null nor blank nor whitespace-only and the [Template] attribute on the constructor doesn&#39;t easily allow for any validation).&lt;/p&gt;
+
+&lt;p&gt;Even though the constructor may be used on this class, there is still an operator to change an array into a &lt;strong&gt;ReadOnlyArray&lt;/strong&gt; so that the deserialisation process is able to read an array of items into a &lt;strong&gt;ReadOnlyArray&lt;/strong&gt; instance. I&#39;ve chosen to use an implicit operator (rather than en explicit operator) here because there is no validation to perform - the &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; has an explicit operator because that&lt;em&gt;does&lt;/em&gt; perform some validation and so it&#39;s a casting action that could fail and so I want it to be explicit in code.&lt;/p&gt;
+
+&lt;p&gt;As with the &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;, this type will exist only at compile time and the compiled JavaScript will always be operating directly against the original array. As far as the JS code is aware, there &lt;em&gt;is no&lt;/em&gt; wrapper class involved at all. The following C# -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var values = new[] { 1, 2, 3 };
+Console.WriteLine(values.Length);
+
+var readOnlyValuesCtor = new ReadOnlyArray&amp;lt;int&amp;gt;(values);
+Console.WriteLine(readOnlyValuesCtor.Length);
+
+ReadOnlyArray&amp;lt;int&amp;gt; readOnlyValuesCast = values;
+Console.WriteLine(readOnlyValuesCast.Length);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. is translated into this JS:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var values = System.Array.init([1, 2, 3], System.Int32);
+System.Console.WriteLine(values.length);
+
+var readOnlyValuesCtor = values;
+System.Console.WriteLine(readOnlyValuesCtor.length);
+
+var readOnlyValuesCast = values;
+System.Console.WriteLine(readOnlyValuesCast.length);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Whether the &lt;strong&gt;ReadOnlyArray&amp;lt;int&amp;gt;&lt;/strong&gt; is created by calling its constructor or by an implicit cast in the C# code, the JS is unaware of any change required of the reference and continues to operate on the original array. This is the &quot;free&quot; part of this approach - there is no runtime cost in terms of type conversions or additional references.&lt;/p&gt;
+
+&lt;p&gt;The other members of the class need a little more explanation, though. The indexer &lt;em&gt;should&lt;/em&gt; be implemented just like the &quot;Length&quot; property, by having an extern property that has a getter with a [Template] attribute on it. However, there is a bug in the Bridge compiler that necessitate an additional [External] attribute be added to the property. Not the end of the world and I&#39;m sure that the Bridge Team will fix it in a future version of the compiler.&lt;/p&gt;
+
+&lt;p&gt;The &quot;GetEnumerator&quot; methods require a tiny bit more explanation. In order for the class to implement &lt;strong&gt;IEnumerable&amp;lt;T&amp;gt;&lt;/strong&gt;, these methods must be present. But we don&#39;t actually have to implement them ourselves. Whenever Bridge encouters a &quot;foreach&quot; in the source C# code, it translates it into JS that calls &quot;GetEnumerator&quot; and then steps through each value. For example, this C# code:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;foreach (var value in readOnlyValuesCtor)
+    Console.WriteLine(value);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. becomes this JS:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$t = Bridge.getEnumerator(readOnlyValuesCtor);
+try {
+    while ($t.moveNext()) {
+        var value = $t.Current;
+        System.Console.WriteLine(value);
+    }
+} finally {
+    if (Bridge.is($t, System.IDisposable)) {
+        $t.System$IDisposable$Dispose();
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Because Bridge needs to support enumerating over arrays, the function &quot;Bridge.getEnumerator&quot; knows what to do if it is given an array reference. And since a &lt;strong&gt;ReadOnlyArray&lt;/strong&gt; &lt;em&gt;is&lt;/em&gt; an array reference at runtime, we don&#39;t have to do anything special - we don&#39;t have to provide a GetEnumerator implementation.&lt;/p&gt;
+
+&lt;p&gt;And there we go! As I explained above, I originally encountered this problem when passing an array into a complicated calculation process but this type could &lt;em&gt;also&lt;/em&gt; be used for deserialising JSON into a richer type model, just like the &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; earlier - again, without any overhead in doing so (no instances of wrapper types will be present runtime and there will be no additional references for the garbage collector to track).&lt;/p&gt;
+
+&lt;h3&gt;&lt;em&gt;Only&lt;/em&gt; possible in Bridge.NET?&lt;/h3&gt;
+
+&lt;p&gt;I was wracking my brains about whether it would be possible to do something similar with C# running in a .NET environment and I couldn&#39;t think of anything. People sometimes think &lt;em&gt;&quot;structs!&quot;&lt;/em&gt; when trying to concoct ways to avoid adding references that the garbage collector needs to track but structs are only immune to this if they don&#39;t contain any object references within their fields and properties (and there are other edge cases besides this but they&#39;re not important right now).&lt;/p&gt;
+
+&lt;p&gt;At the end of the day, this &quot;type alias&quot; concept might be a bit of a niche technique and it &lt;em&gt;might&lt;/em&gt; even be a case of me playing around, more than it being something that you might use in production.. but I thought that it was interesting nonetheless. And it has made me wish, again, that C# had support for something like this - I&#39;ve written code before that defines all variety of strongly typed IDs (strings) and Keys (integers) to avoid passing the wrong type of value into the wrong place but it&#39;s always felt cumbersome (it&#39;s felt worth the effort but that didn&#39;t stop wishing me that it was &lt;em&gt;less&lt;/em&gt; effort).&lt;/p&gt;
+
+&lt;h3&gt;Type aliases in other languages&lt;/h3&gt;
+
+&lt;p&gt;I&#39;ve linked above to an article &lt;a href=&quot;https://andrewlock.net/using-strongly-typed-entity-ids-to-avoid-primitive-obsession-part-1/&quot;&gt;Using strongly-typed entity IDs to avoid primitive obsession&lt;/a&gt;, which is excellent and eloquently expresses some of my thoughts, but I thought that I&#39;d add a summary in here as well (which also gives me an opportunity to go into more detail about the options in TypeScript and F#).&lt;/p&gt;
+
+&lt;p&gt;I&#39;ll start with an anecdote to set the scene. In a company that I used to work at, we had systems that would retrieve and render different data for different language options. Sometimes data would vary only by language (&quot;English&quot;, &quot;French&quot;, etc..) but sometimes it would be more specific and vary by language &lt;em&gt;culture&lt;/em&gt; (eg. &quot;English - United Kingdom&quot;, &quot;English - United States&quot;, etc..). An older version of the system would pass around int values for the language or language culture keys. So there might be a method such as:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private string GetTranslatedName(int languageKey)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;A problem that occurred over and over again is that language keys and language culture keys would get mixed up in the code base - in other words, it was quite common for someone to accidentally pass a language key into a method where a language &lt;em&gt;culture&lt;/em&gt; key was expected (this situation was not helped by the fact that much of the developer testing was done in English and the language key and language culture key values in many of the databases were both 1 for English / English UK). Something that I was very keen to get into a new version of the system was to introduce &quot;strongly typed keys&quot; so that this sort of accident could no longer occur. The method&#39;s signature would be changed to something like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private string GetTranslatedName(LanguageKey languageKey)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. and we would not describe language or language culture keys as ints in the code base. They would always be either an instance of &lt;strong&gt;LanguageKey&lt;/strong&gt; or &lt;strong&gt;LanguageCultureKey&lt;/strong&gt; - this way, if you attempted to pass a key of the wrong type into a method then you would get a compile error.&lt;/p&gt;
+
+&lt;p&gt;The downside is that each key type had to be defined as its own struct, with the following (quite verbose) structure:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public struct LanguageKey : IEquatable&amp;lt;LanguageKey&amp;gt;
+{
+    public LanguageKey(int value) =&amp;gt; Value = value;
+
+    public int Value { get; }
+
+    public bool Equals(LanguageKey other) =&amp;gt; Value.Equals(other.Value);
+    public override bool Equals(object obj) =&amp;gt; (obj is LanguageKey key) &amp;amp;&amp;amp; (key.Value == Value);
+    public override int GetHashCode() =&amp;gt; Value;
+
+    public static bool operator ==(LanguageKey x, LanguageKey y) =&amp;gt; x.Value == y.Value;
+    public static bool operator !=(LanguageKey x, LanguageKey y) =&amp;gt; !(x == y);
+
+    public static explicit operator LanguageKey(int value) =&amp;gt; new LanguageKey(value);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Really, though, that is the &lt;em&gt;only&lt;/em&gt; downside. As the strongly typed keys are structs without any reference properties or fields, there is no additional work for the garbage collector and there is no memory overhead vs tracking a simple int. But it &lt;em&gt;does&lt;/em&gt; still feel a little arduous to have to have these definitions in the code base, particularly when the equivalent F# code looks like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;[&amp;lt;Struct&amp;gt;] type LanguageKey = LanguageKey of int
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It&#39;s worth noting that this is not actually referred to as a &quot;type alias&quot; in F#; this is a &quot;single case union type&quot;. There &lt;em&gt;is&lt;/em&gt; a concept called a &quot;type alias&quot; in F# that looks like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;type LanguageKey = int
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. but that code simply says &quot;allow me to use the word &#39;LanguageKey&#39; anywhere in place of int&quot; - eg. if I have the LanguageKey type alias specified as a method argument type in F# method, like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;let getTranslatedName (language: LanguageKey) =
+    // (Real work to retrieve translated name would go here but we&#39;ll
+    //  just return the string &quot;Whatever&quot; for the sake of this example)
+    &quot;Whatever&quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. then the compiler would allow me to pass an int into that method -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// A LanguageKey type alias lets me pass any old int into the method - rubbish!
+let name = getTranslatedName 123
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. and that&#39;s exactly what I wanted to avoid!&lt;/p&gt;
+
+&lt;p&gt;On the other hand, if the type &lt;strong&gt;LanguageKey&lt;/strong&gt; was a &quot;single case union type&quot; then the code above would not compile:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// error FS0001: This expression was expected to have type &#39;LanguageKey&#39; but here has type &#39;int&#39;
+let name = getTranslatedName 123
+
+// This DOES compile because the types match
+let key = LanguageKey 123
+let name = getTranslatedName 123
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. and that&#39;s exactly what I &lt;em&gt;did&lt;/em&gt; want!&lt;/p&gt;
+
+&lt;p&gt;(TypeScript&#39;s type aliases are like F#&#39;s type aliases - they are more of a convenience and do not add the sort of type checking that I want)&lt;/p&gt;
+
+&lt;p&gt;Things get a bit more awkward if we want to deal with reference types, such as strings, becase we could create a C# class similar to &lt;strong&gt;LanguageKey&lt;/strong&gt; (or we could create an F# single case union type) but that would introduce a new instance of a type that must be tracked by the garbage collector - every strongly typed ID involves &lt;em&gt;two&lt;/em&gt; references; the underlying string value and the strongly typed wrapper. Much of the time, that&#39;s no problem - I&#39;ve had the odd issue with the .NET GC in the past but, on the whole, it&#39;s an amazing and reliable tool.. but because I &lt;em&gt;have&lt;/em&gt; had these problems before, it makes me more aware of the trade-off when I introduce wrappers like this.&lt;/p&gt;
+
+&lt;p&gt;I&#39;m convinced that using strongly typed IDs is the right thing to do in 99% of cases because it improves code quality and can eradicate a class of real-world mistake. But the concept became even more interesting to me as it appeared possible to introduce a form of type alias into Bridge.NET code that enables those compile time checks but with zero runtime cost. Granted, the type erasure that occurs means that &lt;em&gt;runtime&lt;/em&gt; type checking is not possible (the Bridge code can not differentiate between a &lt;strong&gt;string&lt;/strong&gt; or a &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt; or a type that is &lt;em&gt;derived&lt;/em&gt; from &lt;strong&gt;NonBlankTrimmedString&lt;/strong&gt;) but the main driver for me was to improve compile time checking and so that wasn&#39;t a problem for me. Maybe it would be a problem in other scenarios, in which case these Bridge.NET &quot;type aliases&quot; might not be appropriate.&lt;/p&gt;</description>
+			<pubDate>Tue, 02 Jul 2019 21:59:00 GMT</pubDate>
+		</item>
 		<item>
 			<title>I didn&#39;t understand why people struggled with (.NET&#39;s) async</title>
             <link>http://www.productiverage.com/i-didnt-understand-why-people-struggled-with-nets-async</link>
@@ -2526,6 +2990,27 @@ public class SomethingWithPrivateField
 
 &lt;p&gt;I&#39;m really happy with how easy BenchmarkDotNet makes it to measure these sorts of very short operations. Whenever I&#39;ve tried to do something similar in the past, I&#39;ve felt niggling doubts that maybe I&#39;m not running it enough times or maybe there are some factors that I should try to average out. Even when I get a result, I&#39;ve sometimes just looked at the single average (ie. the mean) time taken, which is a bit sloppy since the spread of results can be of vital importance as well. That BenchmarkDotNet presents the final data in such a useful way and with so few decisions on my part is fantastic.&lt;/p&gt;
 
+&lt;h3&gt;Benchmarking across multiple frameworks&lt;/h3&gt;
+
+&lt;p&gt;I forget each time that I start a new project how the running-benchmarks-against-multiple-frameworks functionality works, so I&#39;ll add a note here for anyone else that gets confused (and, likely, for me in the future!) - the first thing to do is to manually edit the .csproj file of the benchmark project so that it includes the following:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;TargetFrameworks&amp;gt;netcoreapp2.0;net461&amp;lt;/TargetFrameworks&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It&#39;s not currently possible to specify multiple projects using the VS GUI, so your .csproj file will normally have a line like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;TargetFramework&amp;gt;netcoreapp2.0&amp;lt;/TargetFramework&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;(Not only is there only a single framework specified but the node is called &quot;TargetFramework&quot; - without an &quot;s&quot; - as opposed to &quot;TargetFrameworks&quot; &lt;em&gt;with&lt;/em&gt; an &quot;s&quot;)&lt;/p&gt;
+
+&lt;p&gt;After you&#39;ve done this, you need to run the benchmark project from the command line (if you try to run it from within VS, even in Release configuation, you will get a warning that the results may be inaccurate as a debugger is attached). You do that with a command like this (it may vary if you&#39;re using a different version of .NET Core) -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;dotnet run --framework netcoreapp2.0 --configuration release
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;You have to specify a framework to run the project as but (and this is the important part) that does &lt;em&gt;not&lt;/em&gt; mean that the benchmarks will only be run against the framework. What happens when you run this command is that multiple executables are built and then executed, which run the tests in each of the frameworks that you specified in the benchmark attributes and in the &quot;TargetFrameworks&quot; node in the .csproj file. The results of these multiple executables are aggregated to give you the final benchmark output.&lt;/p&gt;
+
 &lt;h3&gt;.NET Core upsets me again&lt;/h3&gt;
 
 &lt;p&gt;On the other hand, unfortunately .NET Core has been hard work for me again when it came to BenchmarkDotNet. I made it sound very easy earlier to get everything up and running because I didn&#39;t want dilute my enthusiasm for the benchmarking. However, I did have a myriad of problems before everything started working properly.&lt;/p&gt;
@@ -4731,555 +5216,6 @@ private static Optional&amp;lt;T&amp;gt; _missing = new Optional&amp;lt;T&amp;gt
 
 &lt;p&gt;Despite being out of date even before being published, I&#39;ll leave this post here for posterity. I had a lot of fun digging into performance tuning my Bridge / React app. And, in a roundabout way, I feel like I contributed to the optimisation (which I imagine will makes its way into the next release of Bridge) that everyone using Bridge can benefit from! I&#39;m going to call that a win.&lt;/p&gt;</description>
 			<pubDate>Tue, 06 Sep 2016 22:04:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>Retrieving Performance Counter from a remote PC using C#</title>
-            <link>http://www.productiverage.com/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</link>
-			<guid>http://www.productiverage.com/retrieving-performance-counter-from-a-remote-pc-using-c-sharp</guid>
-			<description>&lt;p&gt;&lt;a href=&quot;http://www.productiverage.com/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days&quot;&gt;PerfMon&lt;/a&gt; can be an invaluable tool for monitoring performance counters on the local or remote computer. It allows you to graph the information live and it allows you to write the data away to disk for future analysis.&lt;/p&gt;
-
-&lt;p&gt;However, for some performance investigation that I was doing, I wanted something slightly different to what PerfMon offers. I was testing a service under load, a service that was being hosted on a dedicated box for the performance investigation - and I was testing it by generating the load from another dedicated server. Since nothing else would be hitting the service host box, what I wanted to do for each test run was to restart the service on the host, hit it with the sample load and record the processor time, % time in GC, number of garbage collections at each generation and some other metrics until the work was fully processed - at that point, there would be no more information to gather for that particular run. The experiment could be repeated a few times and the results filed away, brought back out to compare to the same load being run after some performance tweaks had been made to the code.&lt;/p&gt;
-
-&lt;p&gt;It wouldn&#39;t be the end of the world if I had to do this manually - configure PerfMon to write the counter data to disk somewhere, restart the service before each run and then extract the data from the PerfMon logs that relate to the time period that just passed.. but it&#39;s tedious work that I don&#39;t want to bother with; I want to deploy a change then run-test-and-gather-data with a single button press. Better than that, I want to be able to perform multiple runs without any manual intervention - I want to deploy the new code then have the test harness restart the service, replay the test load, record the counter data in a file and then repeat as many times as desired.&lt;/p&gt;
-
-&lt;h3&gt;Restarting the service&lt;/h3&gt;
-
-&lt;p&gt;This part is easy, we can use a method such as this -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;private static void Restart(string server, string serviceName)
-{
-  if (string.IsNullOrWhiteSpace(server))
-    throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
-  if (string.IsNullOrWhiteSpace(serviceName))
-    throw new ArgumentException($&quot;Null/blank {nameof(serviceName)} specified&quot;);
-
-  // Add a reference to System.ServiceProcess to make ServiceController available
-  using (var serviceController = new ServiceController(serviceName, server))
-  {
-    serviceController.Stop();
-    serviceController.WaitForStatus(ServiceControllerStatus.Stopped);
-    serviceController.Start();
-    serviceController.WaitForStatus(ServiceControllerStatus.Running);
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3&gt;Querying a performance counter remotely&lt;/h3&gt;
-
-&lt;p&gt;This bit is a little trickier.. I started with code from an article &lt;a href=&quot;http://haishibai.blogspot.co.uk/2010/02/tiy-collect-remote-performance-counters.html&quot;&gt;TIY – Collect remote performance counters using C#&lt;/a&gt; which sounded &lt;em&gt;exactly&lt;/em&gt; like what I wanted. Unfortunately, I was getting an error with the lines&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;IntPtr userHandle = new IntPtr(0);
-LogonUser(
-  &quot;UserA&quot;,
-  &quot;DomainA&quot;,
-  &quot;PasswordA&quot;,
-  LOGON32_LOGON_INTERACTIVE,
-  LOGON32_PROVIDER_DEFAULT,
-  ref userHandle
-);
-WindowsIdentity identity = new WindowsIdentity(userHandle);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Token can not be zero&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;This essentially meant that LogonUser had failed and so the &quot;userHandle&quot; reference had not been set (and left as a zero pointer). The code should really have checked the LogonUser return value -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;var logonSuccess = LogonUser(
-  &quot;UserA&quot;,
-  &quot;DomainA&quot;,
-  &quot;PasswordA&quot;,
-  LOGON32_LOGON_INTERACTIVE,
-  LOGON32_PROVIDER_DEFAULT,
-  ref userHandle
-);
-if (!logonSuccess)
-  throw new Exception(&quot;LogonUser failed&quot;);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;.. but that wouldn&#39;t actually fix the failure.&lt;/p&gt;
-
-&lt;p&gt;The underlying problem was explained by another article &lt;a href=&quot;https://platinumdogs.me/2008/10/30/net-c-impersonation-with-network-credentials/&quot;&gt;.NET (C#) Impersonation with Network Credentials&lt;/a&gt; that explains that&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;If you require the impersonated logon to have network credentials, you must select LOGON32_LOGON_NEW_CREDENTIALS as your logon type, which requires that you select LOGON32_PROVIDER_WINNT50 as the logon provider type&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Once I got the proof-of-concept working from these two articles, I fleshed things out into the following:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
-
-namespace PerformanceCounterCapture
-{
-  public sealed class PerformanceCounterRetriever : IDisposable
-  {
-    private const int LOGON32_LOGON_NEW_CREDENTIALS = 9;
-    private const int LOGON32_PROVIDER_WINNT50 = 3;
-
-    [DllImport(&quot;advapi32.dll&quot;, CharSet = CharSet.Auto)]
-    private static extern bool LogonUser(
-      string lpszUserName,
-      string lpszDomain,
-      string lpszPassword,
-      int dwLogonType,
-      int dwLogonProvider,
-      ref IntPtr phToken);
-
-    private WindowsIdentity _identity;
-    private WindowsImpersonationContext _context;
-    private bool _disposed;
-    private readonly string _server;
-    public PerformanceCounterRetriever(string server, string domain, string user, string password)
-    {
-      if (string.IsNullOrWhiteSpace(server))
-        throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
-      if (string.IsNullOrWhiteSpace(domain))
-        throw new ArgumentException($&quot;Null/blank {nameof(domain)} specified&quot;);
-      if (string.IsNullOrWhiteSpace(user))
-        throw new ArgumentException($&quot;Null/blank {nameof(user)} specified&quot;);
-      if (password == null)
-        throw new ArgumentNullException(nameof(password));
-
-      try
-      {
-        var userHandle = new IntPtr(0);
-        var logonSuccess = LogonUser(
-          user,
-          domain,
-          password,
-          LOGON32_LOGON_NEW_CREDENTIALS,
-          LOGON32_PROVIDER_WINNT50,
-          ref userHandle
-        );
-        if (!logonSuccess)
-          throw new Exception(&quot;LogonUser failed&quot;);
-        _identity = new WindowsIdentity(userHandle);
-        _context = _identity.Impersonate();
-        _server = server;
-        _disposed = false;
-      }
-      finally
-      {
-        Dispose();
-      }
-    }
-    ~PerformanceCounterRetriever()
-    {
-      Dispose(false);
-    }
-
-    public IEnumerable&amp;lt;float&amp;gt; Get(
-      string categoryName,
-      string counterName,
-      string optionalInstanceName = null)
-    {
-      if (string.IsNullOrWhiteSpace(categoryName))
-        throw new ArgumentException($&quot;Null/blank {nameof(categoryName)} specified&quot;);
-      if (string.IsNullOrWhiteSpace(counterName))
-        throw new ArgumentException($&quot;Null/blank {nameof(counterName)} specified&quot;);
-
-      var counters = new List&amp;lt;PerformanceCounter&amp;gt;();
-      var category = new PerformanceCounterCategory(categoryName, _server);
-      foreach (var instanceName in category.GetInstanceNames())
-      {
-        if ((optionalInstanceName == null) || (instanceName == optionalInstanceName))
-          counters.Add(new PerformanceCounter(categoryName, counterName, instanceName, _server));
-      }
-      if (!counters.Any())
-        yield break;
-
-      while (true)
-      {
-        foreach (var c in counters)
-          yield return c.NextValue();
-      }
-    }
-
-    public void Dispose()
-    {
-      Dispose(true);
-      GC.SuppressFinalize(this);
-    }
-
-    private void Dispose(bool disposing)
-    {
-      if (_disposed)
-        return;
-
-      if (_identity != null)
-      {
-        _identity.Dispose();
-        _identity = null;
-      }
-
-      if (_context != null)
-      {
-        _context.Undo();
-        _context.Dispose();
-        _context = null;
-      }
-
-      _disposed = true;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This class may be used in the following way:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using (var counterRetriever = new PerformanceCounterRetriever(&quot;TestBox&quot;, &quot;Home&quot;, &quot;Dan&quot;, &quot;password&quot;))
-{
-  foreach (var value in counterRetriever.Get(&quot;Process&quot;, &quot;% Processor Time&quot;, &quot;TestService&quot;))
-  {
-    Console.WriteLine(
-      &quot;[{0}] TestService: % Processor Time = {1}&quot;,
-      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
-      value
-    );
-    Thread.Sleep(1000);
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The &quot;counterRetriever.Get&quot; call returns an &lt;strong&gt;IEnumerable&amp;lt;float&amp;gt;&lt;/strong&gt; which retrieves a new value every time that a new value is requested from the enumerable reference. The code above (very roughly) imitates PerfMon in that it reads a new &quot;% Processor Time&quot; value every second.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;(Note: The code above never terminates since nothing breaks it out of the loop, which is not useful in many scenarios.. but I&#39;ll talk about dealing with that shortly)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;This is a good first step. However, when I&#39;m analysing the results of my test runs, I want to know more than just how much processor time is being used by the service.&lt;/p&gt;
-
-&lt;h3&gt;Querying multiple performance counters remotely&lt;/h3&gt;
-
-&lt;p&gt;If I want to collect the data from multiple performance counters then I need to get multiple &lt;strong&gt;IEnumerable&amp;lt;float&amp;gt;&lt;/strong&gt; instances from multiple &quot;counterRetriever.Get&quot; calls and then retrieve a value from each before pausing and repeating.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using (var counterRetriever = new PerformanceCounterRetriever(&quot;TestBox&quot;, &quot;Home&quot;, &quot;Dan&quot;, &quot;password&quot;))
-{
-  var processorTime = counterRetriever
-    .Get(&quot;Process&quot;, &quot;% Processor Time&quot;, &quot;TestService&quot;)
-    .GetEnumerator();
-  var percentageTimeInGC = counterRetriever
-    .Get(&quot;.NET CLR Memory&quot;, &quot;% Time in GC&quot;, &quot;TestService&quot;)
-    .GetEnumerator();
-  while (true)
-  {
-    processorTime.MoveNext();
-    Console.WriteLine(
-      &quot;[{0}] TestService: % Processor Time = {1}&quot;,
-      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
-      processorTime.Current
-    );
-    percentageTimeInGC.MoveNext();
-    Console.WriteLine(
-      &quot;[{0}] TestService: % Time in GC = {1}&quot;,
-      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
-      percentageTimeInGC.Current
-    );
-    Thread.Sleep(1000);
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;This could be extended to do the job (in my case, there are seven counters that I&#39;m interested in so the above could be chopped and changed to record them all) but the code will get a bit verbose and &quot;noisy&quot; quite quickly.&lt;/p&gt;
-
-&lt;h3&gt;Troublesome counters&lt;/h3&gt;
-
-&lt;p&gt;There is also a problem with writing code like the above and presuming that you can track all performance counters in the same way. For example, I also want to track the number of garbage collections that have occurred at generations 0, 1 and 2 since the service was restarted. It probably doesn&#39;t make much sense to record the values of these every second; I don&#39;t really care if there had been a single gen 0 garbage collection after 1s and after 2s and after 3s and after 4s, I&#39;d much rather see that at 1s there had been a single gen 0 collection and then, at 4s, there had been a second. I want to know when these kinds of values change and I&#39;m not interested in the repeated values between the changes.&lt;/p&gt;
-
-&lt;p&gt;As another example, I&#39;m also interested in capturing information about the rate at which bytes are allocated by the service, for which I can consult the &quot;Allocated Bytes/sec&quot; counter. However, this counter is only updated after a GC event and will report zero the result of the time. This doesn&#39;t mean that zero bytes per second really were being allocated each time that the counter reports zero, it&#39;s just that there is nothing that can accurately report a value for this counter &lt;em&gt;except&lt;/em&gt; immediately following a collection. For this counter, it&#39;s probably best for me to exclude zero values - particularly while a performance test is underway, since it is basically impossible that the service will ever be allocating &lt;em&gt;zero&lt;/em&gt; bytes per second while it&#39;s deserialising requests and processing them. As with the &quot;number of collections at gen {x}&quot; counters, it will be worth ignoring some of the counter values but it will be important to know &lt;em&gt;when&lt;/em&gt; the values that we do pay attention to were recorded (since, for the &quot;Allocated Bytes/sec&quot; counter, it should be possible to use this information to approximate the allocation rate at any given time).&lt;/p&gt;
-
-&lt;h3&gt;A complete solution&lt;/h3&gt;
-
-&lt;p&gt;To try to address all of these problems, I&#39;ve come up with the following. It&#39;s not the smallest code sample in the world but it should be easy to follow and understand if you need to extend it for your own purposes -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-
-namespace PerformanceCounterCapture
-{
-  public static class PerformanceCounterLogger
-  {
-    /// &amp;lt;summary&amp;gt;
-    /// This will capture useful performance counter data until the specified cancellation token
-    /// is set, at which point it will return the data (as such, it makes sense to call this from
-    /// a background thread)
-    /// &amp;lt;/summary&amp;gt;
-    public static Results Log(
-      string server,
-      string domain,
-      string user,
-      string password,
-      string serviceName,
-      CancellationToken cancellationToken,
-      TimeSpan timeBetweenCaptures)
-    {
-      if (string.IsNullOrWhiteSpace(server))
-        throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
-      if (string.IsNullOrWhiteSpace(domain))
-        throw new ArgumentException($&quot;Null/blank {nameof(domain)} specified&quot;);
-      if (string.IsNullOrWhiteSpace(user))
-        throw new ArgumentException($&quot;Null/blank {nameof(user)} specified&quot;);
-      if (password == null)
-        throw new ArgumentNullException(nameof(password));
-      if (string.IsNullOrWhiteSpace(serviceName))
-        throw new ArgumentException($&quot;Null/blank {nameof(serviceName)} specified&quot;);
-      if (cancellationToken == null)
-        throw new ArgumentNullException(nameof(cancellationToken));
-      if (timeBetweenCaptures.Ticks &amp;lt; 0)
-        throw new ArgumentOutOfRangeException($&quot;{timeBetweenCaptures} must be a non-negative duration&quot;);
-
-      // These lists will be populated periodically (according to timeBetweenCaptures) and, when the
-      // cancellation token is set, they will all be included in the returned data for analysis
-      var processorTimes = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
-      var percentageGarbageCollectorTimes = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
-      var numberOfGen0Collections = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
-      var numberOfGen1Collections = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
-      var numberOfGen2Collections = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
-      var largeObjectHeapSize = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
-      var allocatedBytesPerSeconds = new List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt;();
-      using (var performanceCounterRetriever = new PerformanceCounterRetriever(
-                                                server, domain, user, password))
-      {
-        var performanceCountersToRecord = new[]
-        {
-          new PerformanceCounterDetails(
-            &quot;Process&quot;,
-            &quot;% Processor Time&quot;,
-            serviceName,
-            value =&amp;gt; processorTimes.Add(Tuple.Create(DateTime.Now, value))
-          ),
-          new PerformanceCounterDetails(
-            &quot;.NET CLR Memory&quot;,
-            &quot;% Time in GC&quot;,
-            serviceName,
-            value =&amp;gt; percentageGarbageCollectorTimes.Add(Tuple.Create(DateTime.Now, value))
-          ),
-          new PerformanceCounterDetails(
-            &quot;.NET CLR Memory&quot;,
-            &quot;# Gen 0 Collections&quot;,
-            serviceName,
-            value =&amp;gt; AddValueToListIfNew(numberOfGen0Collections, value)
-          ),
-          new PerformanceCounterDetails(
-            &quot;.NET CLR Memory&quot;,
-            &quot;# Gen 1 Collections&quot;,
-            serviceName,
-            value =&amp;gt; AddValueToListIfNew(numberOfGen1Collections, value)
-          ),
-          new PerformanceCounterDetails(
-            &quot;.NET CLR Memory&quot;,
-            &quot;# Gen 2 Collections&quot;,
-            serviceName,
-            value =&amp;gt; AddValueToListIfNew(numberOfGen2Collections, value)
-          ),
-          new PerformanceCounterDetails(
-            &quot;.NET CLR Memory&quot;,
-            &quot;Large Object Heap size&quot;,
-            serviceName,
-            value =&amp;gt; AddValueToListIfNew(largeObjectHeapSize, value)
-          ),
-          new PerformanceCounterDetails(
-            &quot;.NET CLR Memory&quot;,
-            &quot;Allocated Bytes/sec&quot;,
-            serviceName,
-            value =&amp;gt;
-            {
-              // This is only set after a GC event so there are lots of spurious zeroes that we
-              // want to ignore (this value-ignoring is the main reason that the date that the
-              // value was recorded is included in the result data, so that it&#39;s possible to
-              // approximate values during the missing periods - which may be of variable
-              // duration since the useful values recorded for this are related to GC events)
-              if (value == 0)
-                return;
-              allocatedBytesPerSeconds.Add(Tuple.Create(DateTime.Now, value));
-            }
-          )
-        };
-
-        var allCounterEnumerators = performanceCountersToRecord
-          .Select(counterDetails =&amp;gt; new {
-            Feed =
-              performanceCounterRetriever.Get(
-                counterDetails.CategoryName,
-                counterDetails.CounterName,
-                counterDetails.OptionalInstanceName
-              )
-              .GetEnumerator(),
-            ValueLogger = counterDetails.ValueLogger
-          })
-          .ToArray(); // Don&#39;t call GetFeed every time that we enumerate the set
-
-        // Keep looping and populating the lists until the cancellation token is set - at that
-        // point, return a result object that contains all of the data
-        while (!cancellationToken.IsCancellationRequested)
-        {
-          foreach (var counterEnumerator in allCounterEnumerators)
-          {
-            counterEnumerator.Feed.MoveNext();
-            var value = counterEnumerator.Feed.Current;
-            counterEnumerator.ValueLogger(value);
-          }
-          if (!cancellationToken.IsCancellationRequested)
-            Thread.Sleep(timeBetweenCaptures);
-        }
-        return new Results(
-          processorTimes,
-          percentageGarbageCollectorTimes,
-          numberOfGen0Collections,
-          numberOfGen1Collections,
-          numberOfGen2Collections,
-          largeObjectHeapSize,
-          allocatedBytesPerSeconds
-        );
-      }
-    }
-
-    private static void AddValueToListIfNew(List&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; values, float value)
-    {
-      if (values == null)
-        throw new ArgumentNullException(nameof(value));
-
-      if (!values.Any() || (values.Last().Item2 != value))
-        values.Add(Tuple.Create(DateTime.Now, value));
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;It also needs the following two classes for its internal initialisation and for returning results -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public sealed class PerformanceCounterDetails
-{
-  public PerformanceCounterDetails(
-    string categoryName,
-    string counterName,
-    string optionalInstanceName,
-    Action&amp;lt;float&amp;gt; valueLogger)
-  {
-    if (string.IsNullOrWhiteSpace(categoryName))
-      throw new ArgumentException($&quot;Null/blank {nameof(categoryName)} specified&quot;);
-    if (string.IsNullOrWhiteSpace(counterName))
-      throw new ArgumentException($&quot;Null/blank {nameof(counterName)} specified&quot;);
-    if (valueLogger == null)
-      throw new ArgumentNullException(nameof(valueLogger));
-
-    CategoryName = categoryName;
-    CounterName = counterName;
-    OptionalInstanceName = optionalInstanceName;
-    ValueLogger = valueLogger;
-  }
-
-  public string CategoryName { get; }
-  public string CounterName { get; }
-  public string OptionalInstanceName { get; }
-  public Action&amp;lt;float&amp;gt; ValueLogger { get; }
-}
-
-public sealed class Results
-{
-  public Results(
-    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; processorTimes,
-    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; percentageGarbageCollectorTimes,
-    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; numberOfGen0Collections,
-    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; numberOfGen1Collections,
-    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; numberOfGen2Collections,
-    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; largeObjectHeapSize,
-    IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; allocatedBytesPerSeconds)
-  {
-    if (processorTimes == null)
-      throw new ArgumentNullException(nameof(processorTimes));
-    if (percentageGarbageCollectorTimes == null)
-      throw new ArgumentNullException(nameof(percentageGarbageCollectorTimes));
-    if (numberOfGen0Collections == null)
-      throw new ArgumentNullException(nameof(numberOfGen0Collections));
-    if (numberOfGen1Collections == null)
-      throw new ArgumentNullException(nameof(numberOfGen1Collections));
-    if (numberOfGen2Collections == null)
-      throw new ArgumentNullException(nameof(numberOfGen2Collections));
-    if (largeObjectHeapSize == null)
-      throw new ArgumentNullException(nameof(largeObjectHeapSize));
-    if (allocatedBytesPerSeconds == null)
-      throw new ArgumentNullException(nameof(allocatedBytesPerSeconds));
-
-    ProcessorTimes = processorTimes;
-    PercentageGarbageCollectorTimes = percentageGarbageCollectorTimes;
-    NumberOfGen0Collections = numberOfGen0Collections;
-    NumberOfGen1Collections = numberOfGen1Collections;
-    NumberOfGen2Collections = numberOfGen2Collections;
-    LargeObjectHeapSize = largeObjectHeapSize;
-    AllocatedBytesPerSeconds = allocatedBytesPerSeconds;
-  }
-
-  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; ProcessorTimes { get; }
-  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; PercentageGarbageCollectorTimes { get; }
-  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; NumberOfGen0Collections { get; }
-  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; NumberOfGen1Collections { get; }
-  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; NumberOfGen2Collections { get; }
-  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; LargeObjectHeapSize { get; }
-  public IEnumerable&amp;lt;Tuple&amp;lt;DateTime, float&amp;gt;&amp;gt; AllocatedBytesPerSeconds { get; }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;I don&#39;t think that there&#39;s a great deal that requires explaining in depth - the &lt;strong&gt;PerformanceCounterLogger&lt;/strong&gt; will periodically capture values from all of the counters that I&#39;m interested in, dealing with the special cases described earlier (garbage collection frequency, allocated bytes / sec, etc..) in a blocking manner. It continues to capture counter data until the cancellation token passed to it is set.&lt;/p&gt;
-
-&lt;p&gt;That means that it makes sense to capture the performance counter data on a seperate thread. Something like the following (which is basically what I&#39;m using in my test runs) -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;// Restart the service on the test server
-Restart(&quot;TestBox&quot;, &quot;TestService&quot;);
-
-// Start recording performance counters on a separate thread
-Results performanceCounterResults = null;
-var cancellationTokenSource = new CancellationTokenSource();
-var resultsReadyIndicator = new ManualResetEvent(initialState: false);
-ThreadPool.QueueUserWorkItem(state =&amp;gt;
-{
-  performanceCounterResults = PerformanceCounterLogger.Log(
-    &quot;TestBox&quot;,
-    &quot;Home&quot;,
-    &quot;Dan&quot;,
-    &quot;password&quot;,
-    &quot;TestService&quot;,
-    cancellationTokenSource.Token,
-    TimeSpan.FromSeconds(1)
-  );
-  resultsReadyIndicator.Set();
-});
-
-// TODO: Fire load at the server...........
-
-// Tell the performance counters that it&#39;s time to stop capturing and wait for it to acknowledge
-cancellationTokenSource.Cancel();
-resultsReadyIndicator.WaitOne();
-
-// TODO: Write the &quot;performanceCounterResults&quot; data away to analyse later...........
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;There are two big TODOs in the above code - somehow the request payload needs to be fired at the remote server that is being measured and somehow the performance counter results need to be compared between one run and the next. Obviously, these will vary from one project to the next and so they will be very dependent upon what kind of service that you&#39;re testing (and what performance counters you&#39;re interested in). In my case, I already had a decent system available for replaying old requests so that changes to the system could be examined, all I needed on top of that was a way to capture some performance counters to bring some &lt;em&gt;cold hard numbers&lt;/em&gt; into proceedings - if you&#39;re in a similar position then hopefully this post will be helpful!&lt;/p&gt;
-
-&lt;h3&gt;Shameless plug&lt;/h3&gt;
-
-&lt;p&gt;Although I had a system in place to replay historical requests in order to simulate load, there was a slight problem with this in that the service would read from a database and it was totally feasible that the data persisted there could vary from hour to hour (if not more frequently). This could mean that one performance run would not be directly comparable to the next - one run may return more or less results for a particular query, for example, or have to process some of those results in a different (ie. more or less expensive) manner.&lt;/p&gt;
-
-&lt;p&gt;This would make meaningful comparisons difficult - really, each run should return precisely the same data as the next.&lt;/p&gt;
-
-&lt;p&gt;For this particular service, a few things were in my favour on this front; the service was read only, its job is only to deliver data for rendering on various web sites and it does not have to perform any write operations. It also only specifies a database connection in a fairly limited number of places. This allowed me to add a config option to the service that would (when in a particular test mode) create database connections that get their data from a proxy service instead of going directly to the SQL database.&lt;/p&gt;
-
-&lt;p&gt;The proxy service can be run in either &quot;record&quot; or &quot;replay&quot; mode. First, the service that is under test should have the batch of requests that the processing performance is being measured for replayed while the database proxy service is in &quot;record&quot; mode - this allows the proxy service to populate a cache on disk that contains all of the result sets for all of the database queries performed. After this, all subsequent performance runs are made with the proxy service in &quot;replay&quot; mode - in this configuration, the service will never hit the database and will always return data from its cache. This ensures that the data retrieved during each performance run is consistent, which makes it much easier to reach useful conclusions and make meaningful comparisons.&lt;/p&gt;
-
-&lt;p&gt;The library that I wrote for this database proxy service is called &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;SqlProxyAndReplay&lt;/a&gt; and is available on GitHub and via NuGet (the client needs &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Client&quot;&gt;ProductiveRage.SqlProxyAndReplay.Client&lt;/a&gt; and the server needs &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Service&quot;&gt;ProductiveRage.SqlProxyAndReplay.Service&lt;/a&gt; and &lt;a href=&quot;https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Service.Example&quot;&gt;ProductiveRage.SqlProxyAndReplay.Service.Example&lt;/a&gt;).&lt;/p&gt;
-
-&lt;p&gt;There are some caveats - under the hood, this uses a WCF (binary endpoint) service and it won&#39;t be as fast as hitting a database directly. And, as a .net library, there will be some garbage collection overhead since it will result in additional allocations. However, for testing how the &lt;em&gt;internals&lt;/em&gt; of a service (and not, say, tweaking individual SQL queries to try to eke out more performance) then this shouldn&#39;t be a huge problem since the overhead should be consistent from one run to the next. So long as you are measuring changes in performance runs &lt;em&gt;before&lt;/em&gt; you deploy an update and performance runs &lt;em&gt;after&lt;/em&gt; an update (hopefully improvements!) then the overhead of the database proxy shouldn&#39;t matter.&lt;/p&gt;
-
-&lt;p&gt;Sometimes, of course, the database &lt;em&gt;is&lt;/em&gt; your bottle neck and so you want to capture real queries as they hit it so that you can performance tune them. There are already lot of good tools for this (you can get a long way by attaching SQL Profiler and looking for the most expensive or most frequent quite-expensive queries) but I hadn&#39;t found something useful for my use case, where I wanted to optimise what happened &lt;em&gt;after&lt;/em&gt; any database access and just wanted the database access layer to magically return consistent data time after time. At least, I couldn&#39;t find one that didn&#39;t entail significant work in writing some sort of mock / cached database access layer.&lt;/p&gt;
-
-&lt;p&gt;While the &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;SqlProxyAndReplay&lt;/a&gt; service / library may not be as useful if you have to test a service or application that needs to persist changes made to the backing store, I imagine that it&#39;s common for a lot of large scale applications to want to cache and optimise read operations and so this may well be useful for other people. The &lt;a href=&quot;https://github.com/ProductiveRage/SqlProxyAndReplay&quot;&gt;linked GitHub&lt;/a&gt; repo has more information in its README and there&#39;s a &quot;Tester&quot; console application to demonstrate it in action.&lt;/p&gt;</description>
-			<pubDate>Wed, 10 Aug 2016 21:01:00 GMT</pubDate>
 		</item>
 
 	</channel>

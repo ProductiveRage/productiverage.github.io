@@ -1,0 +1,612 @@
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Type aliases in Bridge.NET (C#)</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<meta name="theme-color" content="#393939" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/type-aliases-in-bridgenet-c-sharp" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="http://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:site" content="productiverage" />
+    <meta name="twitter:title" content="Type aliases in Bridge.NET (C#)" />
+    <meta name="twitter:image" content="http://www.productiverage.com/Content/Images/Grouch.jpg" />
+    <meta name="twitter:description" content="Back in 2016, I wrote Writing React apps using Bridge.NET - The Dan Way (Part Three) and I talked about trying to tighten up the representation of values in the type system. One of my pet peeves.." />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+
+			<div class="Main HasSideBar">
+				
+
+
+		<script type="text/javascript">
+					var disqus_shortname = "productiverage";
+					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+						if (fncConditional()) { fncAction(); return; }
+						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+					}
+					function whenjQueryIsAvailable(fncAction) {
+					    executeWhen(
+							fncAction,
+							function () { return (typeof ($) !== "undefined") },
+							10
+						);
+					}
+					(function () {
+					    whenjQueryIsAvailable(
+							function () { $("div.Content p.Comments").show(); }
+						);
+					}());
+		</script>
+
+	<div class="Content SinglePost">
+		<h3 class="PostDate">2 July 2019</h3><h2><a id="Post114"></a><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></h2>
+
+<p>Back in 2016, I wrote <a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a> and I talked about trying to tighten up the representation of values in the type system. One of my pet peeves that I talked about was how "no value" is represented in reference types and, in particular, with strings.</p>
+
+<p>As a reminder, I was having a rant about how I hate the uncertainty of wondering "should I expect to get null passed in here / returned from here" and I decided to draw a hard line and say that <strong>no</strong>, in <em>my</em> code I would <em>never</em> expect a reference type to have a null value - instead I would always use the <strong>Optional&lt;T&gt;</strong> struct that I included in my NuGet package <a href="https://github.com/ProductiveRage/Bridge.Immutable">ProductiveRage.Immutable</a>. This allows me to make it clear when a method may return a null value (because its return type would be something like <strong>Optional&lt;PersonDetails&gt;</strong>) and it would allow me to make it clear when a method will and won't accept null arguments (it <em>will</em> if the parameter type is <strong>Optional&lt;T&gt;</strong> and it <em>won't</em> if it's <em>not</em>).</p>
+
+<p>Strings, however, have <em>another</em> "no value" state - when they are blank. If I want to have a method argument whose type indicates "this argument must be a string that is not null AND that is not blank" then we can't communicate that. To address that, my blog post introduced <em>another</em> type; the <strong>NonBlankTrimmedString</strong> -</p>
+
+<pre><code>public class NonBlankTrimmedString
+{
+    public NonBlankTrimmedString(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException("Null, blank or whitespace-only value specified");
+        Value = value.Trim();
+    }
+
+    /// &lt;summary&gt;
+    /// This will never be null, blank or have any leading or trailing whitespace
+    /// &lt;/summary&gt;
+    public string Value { get; }
+
+    /// &lt;summary&gt;
+    /// It's convenient to be able to pass a NonBlankTrimmedString instance as any argument
+    /// that requires a string
+    /// &lt;/summary&gt;
+    public static implicit operator string(NonBlankTrimmedString value)
+    {
+        if (value == null)
+            throw new ArgumentNullException("value");
+        return value.Value;
+    }
+}
+</code></pre>
+
+<p>This would allow me to have a method that clearly indicates that it needs a string <em>with a real value</em> - eg.</p>
+
+<pre><code>void DoSomething(NonBlankTrimmedString value);
+</code></pre>
+
+<p>.. and it could be combined with <strong>Optional&lt;T&gt;</strong> to define a method whose type signature indicates that it will take a string with a real value OR it will accept a "no value" - eg.</p>
+
+<pre><code>void DoSomething(Optional&lt;NonBlankTrimmedString&gt; value);
+</code></pre>
+
+<p>This method will <em>not</em> accept a blank string because that's just another state that is not necessary; either you give me a real (non-blank) value or you don't. There is no half-way house of "non-null but still with no value".</p>
+
+<p>As another example, I might want to write a <a href="https://github.com/ProductiveRage/Bridge.React">Bridge.React</a> component whose <strong>Props</strong> type can optionally take an additional class name to render as part of the component - in which case, I might write the class a bit like this:</p>
+
+<pre><code>public sealed class Props
+{
+    public Props(
+        /* .. other property values, */
+        Optional&lt;NonBlankTrimmedString&gt; className = new Optional&lt;NonBlankTrimmedString&gt;())
+    {
+        // .. other properties set here
+        ClassName = className;
+    }
+
+    // .. other public properties exposed here
+
+    public Optional&lt;NonBlankTrimmedString&gt; ClassName { get; }
+}
+</code></pre>
+
+<p>This is all fine and dandy and, pretty much, it just works. If I want to expand this richer type system so that it's used in API requests / responses as well then I can have <strong>Optional&lt;T&gt;</strong> and <strong>NonBlankTrimmedString</strong> types defined in the .NET code that runs on the server as well as in my Bridge project. And if I want to avoid code duplication then I can define the types in a <a href="https://dev.to/rionmonster/sharing-is-caring-using-shared-projects-in-aspnet-e17">Shared Project</a> that is referenced by both the Bridge project and the server API project.</p>
+
+<p>One downside to this approach, though, is that JSON payloads from API calls are going to be larger if I wrap all of my strings in <strong>NonBlankTrimmedString</strong> instances. And there will be more work for <a href="https://github.com/bridgedotnet/Bridge.Newtonsoft.Json">Bridge's version of Newtonsoft Json.NET</a> to do because it has to parse more data and it has to deserialise more instances of types; for every string, instead of just deserialising a value into a string, it needs to deserialise that string value <em>and then</em> create an instance of a <strong>NonBlankTrimmedString</strong> to wrap it. If you have any API calls that return 100s or 1000s of strings then this can become a non-negligible cost.</p>
+
+<p>The full .NET version of Newtonsoft Json.NET has some flexibility with how types are serialised to/from JSON. For example, if I wanted to tell the serialiser that <strong>NonBlankTrimmedString</strong> instances should appear in the JSON as plain strings then I could do so using a <strong>JsonConverter</strong> (there is sample code in the Newtonsoft website that demonstrates how to do it for the <strong>Version</strong> type and the principle would be exactly the same for <strong>NonBlankTrimmedString</strong> - see <a href="https://www.newtonsoft.com/json/help/html/CustomJsonConverterGeneric.htm">Custom JsonConverter&lt;T&gt;</a>).</p>
+
+<p>The Bridge version of the library has no support for custom JsonConverters, though, so we may appear to be a bit stuck.. if it weren't for the fact that Bridge has some low-level tricks that we can use to our advantage.</p>
+
+<p>In order to allow C# code to be written that interacts with JavaScript libraries, Bridge has a few escape hatches for the type system that we can use in a careful manner. For example, I could rewrite the Bridge version of <strong>NonBlankTrimmedString</strong> to look like this:</p>
+
+<pre><code>public class NonBlankTrimmedString
+{
+    protected NonBlankTrimmedString() { }
+
+    /// &lt;summary&gt;
+    /// This will never be null, blank or have any leading or trailing whitespace
+    /// &lt;/summary&gt;
+    public extern string Value { [Template("{this}")] get; }
+
+    /// &lt;summary&gt;
+    /// Create a NonBlankTrimmedString instance by explicitly casting a string
+    /// &lt;/summary&gt;
+    public static explicit operator NonBlankTrimmedString(string value)
+    {
+        if (value == null)
+            return null;
+        value = value.Trim();
+        if (value == "")
+            throw new ArgumentException("Can not cast from a blank or whitespace-only string");
+        return Script.Write&lt;NonBlankTrimmedString&gt;("value");
+    }
+
+    /// &lt;summary&gt;
+    /// It's convenient to be able to pass a NonBlankTrimmedString instance as any argument
+    /// that requires a string
+    /// &lt;/summary&gt;
+    [Template("{value}")]
+    public extern static implicit operator string(NonBlankTrimmedString value);
+}
+</code></pre>
+
+<p>This changes things up a bit. Now there is no public constructor and the only way to get a <strong>NonBlankTrimmedString</strong> instance from a plain string is to explicitly cast to it - eg.</p>
+
+<pre><code>var x = (NonBlankTrimmedString)"hi!";
+</code></pre>
+
+<p>If the source string is blank or whitespace-only then attempting to cast it to a <strong>NonBlankTrimmedString</strong> will result in an exception being thrown.</p>
+
+<p>What's interesting about this class is that it exists only to provide type information to the C# compiler - there will never be an instance of <strong>NonBlankTrimmedString</strong> alive runtime in JavaScript. The reason for this is that the explicit cast performs some validation but then, at runtime, returns the string instance directly back; it <em>doesn't</em> wrap it in an instance of a <strong>NonBlankTrimmedString</strong> class. Similarly, when the "Value" property is requested in C# code, this is translated into JS as a direct reference to "this" (which we know is a plain string). This is sounding complicated as I write this, so let me try to make it clear with an example!</p>
+
+<p>The following C# code:</p>
+
+<pre><code>// Start with a plain string
+var source = "Hi!";
+
+// Create a NonBlankTrimmed by explicitly casting the string
+var x = (NonBlankTrimmedString)source;
+
+// Write the value of the NonBlankTrimmedString to the console
+Console.WriteLine(x.Value);
+</code></pre>
+
+<p>.. is translated into this JS:</p>
+
+<pre><code>// Start with a plain string
+var source = "Hi!";
+
+// Create a NonBlankTrimmed by explicitly casting the string
+var x = Demo.NonBlankTrimmedString.op_Explicit(source);
+
+// Write the value of the NonBlankTrimmedString to the console
+System.Console.WriteLine(x);
+</code></pre>
+
+<p>The reference "x" in the JS runtime is actually just a string (and so the C# "x.Value" is translated into simply "x") and the explicit operator (the method call "Demo.NonBlankTrimmedString.op_Explicit") performs some validation but then (if the validation passes) returns the string right back but claims (for the benefit of the C# compiler and type system) that it is now a <strong>NonBlankTrimmedString</strong>.</p>
+
+<p>This has a couple of benefits - now, plain string values that appear in JSON can be deserialised into <strong>NonBlankTrimmedString</strong> instances by Bridge (while the Bridge version of Json.NET doesn't support type converters, it <em>does</em> support deserialising types using implicit or explicit operators - so, here, it would see a string in the JSON and see that the target type was a <strong>NonBlankTrimmedString</strong> and it would use <strong>NonBlankTrimmedString</strong>'s explicit operator to instantiate the target type), so the JSON returned from the server can be cleaner. <em>And</em> it means that the JS runtime doesn't have to actually create instances of <strong>NonBlankTrimmedString</strong> to wrap those strings up in, which makes the life of the garbage collector easier (again, may be important if you have API responses that need to return 1000s of <strong>NonBlankTrimmedString</strong>).</p>
+
+<p>This is an interesting concept that I'm referring to as a "type alias" - a type that exists only for the compiler and that doesn't affect the runtime. The phrase "type alias" exists in TypeScript and in F# (and in other languages, I'm sure) but I think that it means something slightly different there.. which may mean that I've chosen a confusing name for this C# / Bridge.NET concept! In TypeScript and F#, I don't believe that they allow the level of compiler validation that I'm talking about - certainly in TypeScript, type aliases are more of a convenience that allow you say something like:</p>
+
+<pre><code>type Vector = number[];
+type Vectors = Vector[];
+</code></pre>
+
+<p>.. so that you can then write a method signature that looks like this:</p>
+
+<pre><code>function process(data: Vectors) {
+    // ..
+}
+</code></pre>
+
+<p>.. instead of:</p>
+
+<pre><code>function process(data: number[][]) {
+    // ..
+}
+</code></pre>
+
+<p>.. but the two are identical. TypeScript "type aliases" make things more flexible, <em>not</em> more constrained. To make that clearer, if you wrote:</p>
+
+<pre><code>type CustomerID = number;
+
+function process(id: CustomerID) {
+    // ..
+}
+</code></pre>
+
+<p>.. then you could still call:</p>
+
+<pre><code>process(1); // Passing a plain number into a method whose signature specifies type CustomerID
+</code></pre>
+
+<p>In other words, the TypeScript alias means "anywhere that you see CustomerID, you can pass in a 'number'". This is the opposite of what I want, I want to be able to have methods that specify that they want a <strong>NonBlankTrimmedString</strong> and <em>not</em> just any old string.</p>
+
+<p>I go into this in a little more detail in the section "Type aliases in other languages" at the end of this blog post. My point here was that maybe "type alias" is not the best phrase to use and maybe I'll revisit this in the future.</p>
+
+<p>For now, though, let's get back to the <strong>NonBlankTrimmedString</strong> definition that I've proposed because it has some downsides, as well. As the type <em>only</em> exists at compile time and <em>not</em> at runtine, if I try to query the type of a <strong>NonBlankTrimmedString</strong> instance at runtime then it will report that it is a "System.String" - this is to be expected, since part of the benefit of this approach is that no additional instances are required other than the plain string itself - but if you were wanted to do some crazy reflection for some reason then it might catch you off guard.</p>
+
+<p>Another downside is that if I wanted to create specialised versions of <strong>NonBlankTrimmedString</strong> then I have to duplicate some code. For example, I might want to <a href="https://andrewlock.net/using-strongly-typed-entity-ids-to-avoid-primitive-obsession-part-1/">strongly type</a> my entity IDs and define them as classes derived from <strong>NonBlankTrimmedString</strong>. With the version of <strong>NonBlankTrimmedString</strong> from my 2016 blog post, this would be as simple as this:</p>
+
+<pre><code>// If NonBlankTrimmedString is a regular class then creating derived types is easy as this
+public class OrderID : NonBlankTrimmedString
+{
+    public OrderID(string value) : base(value) { }
+}
+</code></pre>
+
+<p>.. but with this "type alias" approach, it becomes more verbose -</p>
+
+<pre><code>// The explicit operator needs to be reimplemented for each derived type with the type alias
+// alias approach shown earlier :(
+public class ClassName : NonBlankTrimmedString
+{
+    protected ClassName() { }
+
+    public static explicit operator ClassName(string value)
+    {
+        if (value == null)
+            return null;
+        value = value.Trim();
+        if (value == "")
+            throw new ArgumentException("Can not cast from a blank or whitespace-only string");
+        return Script.Write&lt;ClassName&gt;("value");
+    }
+}
+</code></pre>
+
+<p>However, we could make this a little simpler by changing the <strong>NonBlankTrimmedString</strong> type definition to this:</p>
+
+<pre><code>public class NonBlankTrimmedString
+{
+    protected NonBlankTrimmedString() { }
+
+    /// &lt;summary&gt;
+    /// This will never be null, blank or have any leading or trailing whitespace
+    /// &lt;/summary&gt;
+    public extern string Value { [Template("{this}")] get; }
+
+    /// &lt;summary&gt;
+    /// Create a NonBlankTrimmedString instance by explicitly casting a string
+    /// &lt;/summary&gt;
+    public static explicit operator NonBlankTrimmedString(string value)
+        =&gt; Wrap&lt;NonBlankTrimmedString&gt;(value);
+
+    /// &lt;summary&gt;
+    /// It's convenient to be able to pass a NonBlankTrimmedString instance as any argument
+    /// that requires a string
+    /// &lt;/summary&gt;
+    [Template("{value}")]
+    public extern static implicit operator string(NonBlankTrimmedString value);
+
+    protected static T Wrap&lt;T&gt;(string value) where T : NonBlankTrimmedString
+    {
+        if (value == null)
+            return null;
+        value = value.Trim();
+        if (value == "")
+            throw new ArgumentException("Can not cast from a blank or whitespace-only string");
+        return Script.Write&lt;T&gt;("value");
+    }
+}
+</code></pre>
+
+<p>.. and then derived types would look like this:</p>
+
+<pre><code>public class OrderID : NonBlankTrimmedString
+{
+    protected OrderID() { }
+    public static explicit operator OrderID(string value) =&gt; Wrap&lt;OrderID&gt;(value);
+}
+</code></pre>
+
+<h3>(Sort-of-)immutability for "free" through type aliases</h3>
+
+<p>Another use case where this sort of approach seemed interesting was when I was writing some client-side code that received data in the form of arrays and then did some clever calculations and drew some pretty graphs. The API response data was 10s of 1000s of arrays, where each array was 100 floating point numbers. The calculation logic took those arrays and passed them through a bunch of methods to come up with the results but I got myself in a bit of a muddle when there were one or two places that had to manipulate a subset of the data and I realised that I was confusing myself as to whether the data should be altered in place or whether local copies of those parts of the data should be taken and then changed. To make the code easier to follow, I wanted those methods to take local copies to make the changes, rather than mutating them in-place and risking messing up calculations performed on the data later in the pipeline.</p>
+
+<p>What I really wanted was for those methods to have type signatures that would either take an immutable data type or a readonly data type. Immutable is the ideal because it means that not only can the receiving methods not change the data but <em>nothing</em> can change the data. Having readonly types on the method signatures means that the methods can't change the data but it's still technically possible for the caller to change the data. To try to illustrate this, I'll use the <strong>ReadOnlyCollection&lt;T&gt;</strong> type from .NET in an example:</p>
+
+<pre><code>public static void Main()
+{
+    var items = new List&lt;int&gt; { 0, 1, 2, 3 };
+    var readOnlyItems = items.AsReadOnly();
+    DoSomething(
+        readOnlyItems,
+        halfwayPointCallback: () =&gt; items.RemoveAt(0)
+    );
+}
+
+static void DoSomething(ReadOnlyCollection&lt;int&gt; readOnlyItems, Action halfwayPointCallback)
+{
+    Console.WriteLine("Number of readonlyItems: " + readOnlyItems.Count);
+    halfwayPointCallback();
+    Console.WriteLine("Number of readonlyItems: " + readOnlyItems.Count);
+}
+</code></pre>
+
+<p>Here, the "Main" method declares a mutable list and then it create a readonly wrapper around it. The readonly wrapper is passed into the "DoSomething" method and this means "DoSomething" can <em>not</em> directly alter that list. However, it's still possible for the "Main" method to change the underlying list while "DoSomething" is running.</p>
+
+<p>In practice, this is not something that I find commonly happens. As such, while I would <em>prefer</em> immutable structures at all times (because then "Main" <em>couldn't</em> change the contents of the list while "DoSomething" is working on it), being able to wrap the data in a readonly structure is still a significant improvement.</p>
+
+<p>So, some of the more obvious options available to me were:</p>
+
+<ol>
+<li>Stick with using arrays and be careful not to write code that performs any alteration "in place" (<strong>I don't like this situation - C#'s type system has great potential and I want it to help me and save me from myself where possible!</strong>)</li>
+<li>Pass the arrays into the methods as <strong>IEnumerable&lt;float&gt;</strong> (<strong>this isn't a terrible idea in general - it quite clearly communicates that the provided data should be considered read only - but the calculations that I was doing wanted to get the length of the array and to read particular indexed values from the array in unpredictable orders and this isn't very efficient with enumerable types</strong>)</li>
+<li>Create an "immutable list" class that takes an array into the constructor, copies the data and then allows access to the copy only through tightly-controlled members; ie. Length and an indexed property (<strong>This is the most type-safe way but it felt expensive doing this for the 10s of 1000s of arrays that I had</strong>)</li>
+<li>Convert each array into a <strong>List&lt;float&gt;</strong> and then call ".AsReadOnly()" on them (<strong>this is very little code but it also felt expensive with the amount of data that I had</strong>)</li>
+<li>Create a "ReadOnlyArray&lt;T&gt;" type that would be very similar in nature to the <strong>ReadOnlyCollection&lt;T&gt;</strong> in that it would take an array into its constructor and then provide a read only interface for it, <em>without</em> copying the array (<strong>This is a reasonable option and I might have gone this way were it not for liking the idea of option six</strong>)</li>
+<li>Create a "ReadOnlyArray&lt;T&gt;" type <em>alias</em> that I could use to instruct the type system that the data should not be altered but without having to introduce <em>any</em> new types or instances at runtime</li>
+</ol>
+
+<p>I went with the last one because I was all excited about experimenting with "Bridge.NET type aliases" and I wanted to see how well they could work! (In reality, the fifth option was also a good one and some of the others would also be perfectly fine for smaller data sets.. to be honest, there is a chance that they wouldn't have made <em>too</em> much difference even with the data that I was looking at but, again, sometimes you need to make opportunity to experiment! :)</p>
+
+<pre><code>public sealed class ReadOnlyArray&lt;T&gt; : IEnumerable&lt;T&gt;
+{
+    [Template("{data}")]
+    public extern ReadOnlyArray(T[] data);
+
+    [External] // Required due to https://github.com/bridgedotnet/Bridge/issues/4015
+    public extern T this[int index] { [Template("{this}[{index}]")] get; }
+
+    public extern int Length { [Template("length")] get; }
+
+    [External]
+    public extern IEnumerator&lt;T&gt; GetEnumerator();
+
+    [External]
+    extern IEnumerator IEnumerable.GetEnumerator();
+
+    [Template("{value}")]
+    public extern static implicit operator ReadOnlyArray&lt;T&gt;(T[] value);
+}
+</code></pre>
+
+<p>The structure of this class is similar in some ways to that of the <strong>NonBlankTrimmedString</strong>. Unlike that class, there is no validation that is required - I <em>only</em> want to provide access to an array in a limited manner and so it's fine to expose a public constructor (as opposed to the <strong>NonBlankTrimmedString</strong>, where it's important to check that the value is neither null nor blank nor whitespace-only and the [Template] attribute on the constructor doesn't easily allow for any validation).</p>
+
+<p>Even though the constructor may be used on this class, there is still an operator to change an array into a <strong>ReadOnlyArray</strong> so that the deserialisation process is able to read an array of items into a <strong>ReadOnlyArray</strong> instance. I've chosen to use an implicit operator (rather than en explicit operator) here because there is no validation to perform - the <strong>NonBlankTrimmedString</strong> has an explicit operator because that<em>does</em> perform some validation and so it's a casting action that could fail and so I want it to be explicit in code.</p>
+
+<p>As with the <strong>NonBlankTrimmedString</strong>, this type will exist only at compile time and the compiled JavaScript will always be operating directly against the original array. As far as the JS code is aware, there <em>is no</em> wrapper class involved at all. The following C# -</p>
+
+<pre><code>var values = new[] { 1, 2, 3 };
+Console.WriteLine(values.Length);
+
+var readOnlyValuesCtor = new ReadOnlyArray&lt;int&gt;(values);
+Console.WriteLine(readOnlyValuesCtor.Length);
+
+ReadOnlyArray&lt;int&gt; readOnlyValuesCast = values;
+Console.WriteLine(readOnlyValuesCast.Length);
+</code></pre>
+
+<p>.. is translated into this JS:</p>
+
+<pre><code>var values = System.Array.init([1, 2, 3], System.Int32);
+System.Console.WriteLine(values.length);
+
+var readOnlyValuesCtor = values;
+System.Console.WriteLine(readOnlyValuesCtor.length);
+
+var readOnlyValuesCast = values;
+System.Console.WriteLine(readOnlyValuesCast.length);
+</code></pre>
+
+<p>Whether the <strong>ReadOnlyArray&lt;int&gt;</strong> is created by calling its constructor or by an implicit cast in the C# code, the JS is unaware of any change required of the reference and continues to operate on the original array. This is the "free" part of this approach - there is no runtime cost in terms of type conversions or additional references.</p>
+
+<p>The other members of the class need a little more explanation, though. The indexer <em>should</em> be implemented just like the "Length" property, by having an extern property that has a getter with a [Template] attribute on it. However, there is a bug in the Bridge compiler that necessitate an additional [External] attribute be added to the property. Not the end of the world and I'm sure that the Bridge Team will fix it in a future version of the compiler.</p>
+
+<p>The "GetEnumerator" methods require a tiny bit more explanation. In order for the class to implement <strong>IEnumerable&lt;T&gt;</strong>, these methods must be present. But we don't actually have to implement them ourselves. Whenever Bridge encouters a "foreach" in the source C# code, it translates it into JS that calls "GetEnumerator" and then steps through each value. For example, this C# code:</p>
+
+<pre><code>foreach (var value in readOnlyValuesCtor)
+    Console.WriteLine(value);
+</code></pre>
+
+<p>.. becomes this JS:</p>
+
+<pre><code>$t = Bridge.getEnumerator(readOnlyValuesCtor);
+try {
+    while ($t.moveNext()) {
+        var value = $t.Current;
+        System.Console.WriteLine(value);
+    }
+} finally {
+    if (Bridge.is($t, System.IDisposable)) {
+        $t.System$IDisposable$Dispose();
+    }
+}
+</code></pre>
+
+<p>Because Bridge needs to support enumerating over arrays, the function "Bridge.getEnumerator" knows what to do if it is given an array reference. And since a <strong>ReadOnlyArray</strong> <em>is</em> an array reference at runtime, we don't have to do anything special - we don't have to provide a GetEnumerator implementation.</p>
+
+<p>And there we go! As I explained above, I originally encountered this problem when passing an array into a complicated calculation process but this type could <em>also</em> be used for deserialising JSON into a richer type model, just like the <strong>NonBlankTrimmedString</strong> earlier - again, without any overhead in doing so (no instances of wrapper types will be present runtime and there will be no additional references for the garbage collector to track).</p>
+
+<h3><em>Only</em> possible in Bridge.NET?</h3>
+
+<p>I was wracking my brains about whether it would be possible to do something similar with C# running in a .NET environment and I couldn't think of anything. People sometimes think <em>"structs!"</em> when trying to concoct ways to avoid adding references that the garbage collector needs to track but structs are only immune to this if they don't contain any object references within their fields and properties (and there are other edge cases besides this but they're not important right now).</p>
+
+<p>At the end of the day, this "type alias" concept might be a bit of a niche technique and it <em>might</em> even be a case of me playing around, more than it being something that you might use in production.. but I thought that it was interesting nonetheless. And it has made me wish, again, that C# had support for something like this - I've written code before that defines all variety of strongly typed IDs (strings) and Keys (integers) to avoid passing the wrong type of value into the wrong place but it's always felt cumbersome (it's felt worth the effort but that didn't stop wishing me that it was <em>less</em> effort).</p>
+
+<h3>Type aliases in other languages</h3>
+
+<p>I've linked above to an article <a href="https://andrewlock.net/using-strongly-typed-entity-ids-to-avoid-primitive-obsession-part-1/">Using strongly-typed entity IDs to avoid primitive obsession</a>, which is excellent and eloquently expresses some of my thoughts, but I thought that I'd add a summary in here as well (which also gives me an opportunity to go into more detail about the options in TypeScript and F#).</p>
+
+<p>I'll start with an anecdote to set the scene. In a company that I used to work at, we had systems that would retrieve and render different data for different language options. Sometimes data would vary only by language ("English", "French", etc..) but sometimes it would be more specific and vary by language <em>culture</em> (eg. "English - United Kingdom", "English - United States", etc..). An older version of the system would pass around int values for the language or language culture keys. So there might be a method such as:</p>
+
+<pre><code>private string GetTranslatedName(int languageKey)
+</code></pre>
+
+<p>A problem that occurred over and over again is that language keys and language culture keys would get mixed up in the code base - in other words, it was quite common for someone to accidentally pass a language key into a method where a language <em>culture</em> key was expected (this situation was not helped by the fact that much of the developer testing was done in English and the language key and language culture key values in many of the databases were both 1 for English / English UK). Something that I was very keen to get into a new version of the system was to introduce "strongly typed keys" so that this sort of accident could no longer occur. The method's signature would be changed to something like this:</p>
+
+<pre><code>private string GetTranslatedName(LanguageKey languageKey)
+</code></pre>
+
+<p>.. and we would not describe language or language culture keys as ints in the code base. They would always be either an instance of <strong>LanguageKey</strong> or <strong>LanguageCultureKey</strong> - this way, if you attempted to pass a key of the wrong type into a method then you would get a compile error.</p>
+
+<p>The downside is that each key type had to be defined as its own struct, with the following (quite verbose) structure:</p>
+
+<pre><code>public struct LanguageKey : IEquatable&lt;LanguageKey&gt;
+{
+    public LanguageKey(int value) =&gt; Value = value;
+
+    public int Value { get; }
+
+    public bool Equals(LanguageKey other) =&gt; Value.Equals(other.Value);
+    public override bool Equals(object obj) =&gt; (obj is LanguageKey key) &amp;&amp; (key.Value == Value);
+    public override int GetHashCode() =&gt; Value;
+
+    public static bool operator ==(LanguageKey x, LanguageKey y) =&gt; x.Value == y.Value;
+    public static bool operator !=(LanguageKey x, LanguageKey y) =&gt; !(x == y);
+
+    public static explicit operator LanguageKey(int value) =&gt; new LanguageKey(value);
+}
+</code></pre>
+
+<p>Really, though, that is the <em>only</em> downside. As the strongly typed keys are structs without any reference properties or fields, there is no additional work for the garbage collector and there is no memory overhead vs tracking a simple int. But it <em>does</em> still feel a little arduous to have to have these definitions in the code base, particularly when the equivalent F# code looks like this:</p>
+
+<pre><code>[&lt;Struct&gt;] type LanguageKey = LanguageKey of int
+</code></pre>
+
+<p>It's worth noting that this is not actually referred to as a "type alias" in F#; this is a "single case union type". There <em>is</em> a concept called a "type alias" in F# that looks like this:</p>
+
+<pre><code>type LanguageKey = int
+</code></pre>
+
+<p>.. but that code simply says "allow me to use the word 'LanguageKey' anywhere in place of int" - eg. if I have the LanguageKey type alias specified as a method argument type in F# method, like this:</p>
+
+<pre><code>let getTranslatedName (language: LanguageKey) =
+    // (Real work to retrieve translated name would go here but we'll
+    //  just return the string "Whatever" for the sake of this example)
+    "Whatever"
+</code></pre>
+
+<p>.. then the compiler would allow me to pass an int into that method -</p>
+
+<pre><code>// A LanguageKey type alias lets me pass any old int into the method - rubbish!
+let name = getTranslatedName 123
+</code></pre>
+
+<p>.. and that's exactly what I wanted to avoid!</p>
+
+<p>On the other hand, if the type <strong>LanguageKey</strong> was a "single case union type" then the code above would not compile:</p>
+
+<pre><code>// error FS0001: This expression was expected to have type 'LanguageKey' but here has type 'int'
+let name = getTranslatedName 123
+
+// This DOES compile because the types match
+let key = LanguageKey 123
+let name = getTranslatedName 123
+</code></pre>
+
+<p>.. and that's exactly what I <em>did</em> want!</p>
+
+<p>(TypeScript's type aliases are like F#'s type aliases - they are more of a convenience and do not add the sort of type checking that I want)</p>
+
+<p>Things get a bit more awkward if we want to deal with reference types, such as strings, becase we could create a C# class similar to <strong>LanguageKey</strong> (or we could create an F# single case union type) but that would introduce a new instance of a type that must be tracked by the garbage collector - every strongly typed ID involves <em>two</em> references; the underlying string value and the strongly typed wrapper. Much of the time, that's no problem - I've had the odd issue with the .NET GC in the past but, on the whole, it's an amazing and reliable tool.. but because I <em>have</em> had these problems before, it makes me more aware of the trade-off when I introduce wrappers like this.</p>
+
+<p>I'm convinced that using strongly typed IDs is the right thing to do in 99% of cases because it improves code quality and can eradicate a class of real-world mistake. But the concept became even more interesting to me as it appeared possible to introduce a form of type alias into Bridge.NET code that enables those compile time checks but with zero runtime cost. Granted, the type erasure that occurs means that <em>runtime</em> type checking is not possible (the Bridge code can not differentiate between a <strong>string</strong> or a <strong>NonBlankTrimmedString</strong> or a type that is <em>derived</em> from <strong>NonBlankTrimmedString</strong>) but the main driver for me was to improve compile time checking and so that wasn't a problem for me. Maybe it would be a problem in other scenarios, in which case these Bridge.NET "type aliases" might not be appropriate.</p><p class="PostTime">Posted at 21:59</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/i-didnt-understand-why-people-struggled-with-nets-async">I didn&#39;t understand why people struggled with (.NET&#39;s) async</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li></ul></div>
+			<div id="disqus_thread"></div>
+						<script type="text/javascript">
+							var disqus_identifier = "114";
+							var disqus_title = "Type aliases in Bridge.NET (C#)";
+							(function () {
+							    whenjQueryIsAvailable(
+									function () {
+									    $(function () {
+											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+										});
+									}
+								);
+
+								var bStartedLoadingComments = false;
+								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+								    if (bStartedLoadingComments) {
+								        return;
+								    }
+								    var $post = $("div.Content.SinglePost");
+								    var bottomOfPost = $post.position().top + $post.height();
+								    var $window = $(window);
+								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+										bStartedLoadingComments = true;
+										loadComments();
+									}
+								}
+
+								function loadComments() {
+								    var dsq = document.createElement("script");
+									dsq.type = "text/javascript";
+									dsq.async = true;
+									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+								}
+							}());
+						</script>
+	</div>
+
+
+				<div class="Footer">
+					Productive Rage 2019
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+
+				</div>
+				<div class="Search">
+<form action="/Search" method="get" />						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li><li><a href="/i-didnt-understand-why-people-struggled-with-nets-async">I didn&#39;t understand why people struggled with (.NET&#39;s) async</a></li><li><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron">Writing F# to implement &#39;The Single Layer Perceptron&#39;</a></li><li><a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton">Learning F# via some Machine Learning: The Single Layer Perceptron</a></li><li><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet">Trying to set a readonly auto-property value externally (plus, a little BenchmarkDotNet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/7/2019">July 2019 (1)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>
