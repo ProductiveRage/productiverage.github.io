@@ -67,6 +67,222 @@
 		</script>
 
 	<div class="Content ArchiveByTag">
+		<h3 class="PostDate">4 August 2020</h3><h2><a id="Post116"></a><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></h2>
+
+<p>In some cases, it may be desirable to include type name information in <a href="https://www.newtonsoft.com/json">Json.NET</a> output but for those type names to not include assembly names.</p>
+
+<p>In my case it's because I have a <a href="https://dev.to/rionmonster/sharing-is-caring-using-shared-projects-in-aspnet-e17">Shared Project</a> that contains classes that I want to appear in my .NET Core C# server code and in my <a href="https://bridge.net/">Bridge.NET</a> client code and this results in the class names existing in assemblies with different names (but there are also other people with their own cases, such as <a href="https://stackoverflow.com/questions/8039910/how-do-i-omit-the-assembly-name-from-the-type-name-while-serializing-and-deseria">How do I omit the assembly name from the type name while serializing and deserializing in JSON.Net?</a>.</p>
+
+<p>Json.NET has support for customising how the type names are emitted and there is an answer in the Stack Overflow question that I linked just above that points to an <a href="http://james.newtonking.com/archive/2011/11/19/json-net-4-0-release-4-bug-fixes">article</a> written by the Json.NET author illustrating how to do it. Essentially, you create a custom serialization binder that looks a bit like this:</p>
+
+<pre><code>public sealed class TypeNameAssemblyExcludingSerializationBinder : ISerializationBinder
+{
+    public static TypeNameAssemblyExcludingSerializationBinder Instance { get; }
+        = new TypeNameAssemblyExcludingSerializationBinder();
+
+    private TypeNameAssemblyExcludingSerializationBinder() { }
+
+    public void BindToName(Type serializedType, out string assemblyName, out string typeName)
+    {
+        assemblyName = null;
+        typeName = serializedType.FullName;
+    }
+
+    public Type BindToType(string assemblyName, string typeName)
+    {
+        // Note: Some additional work may be required here if the assembly name has been removed
+        // and you are not loading a type from the current assembly or one of the core libraries
+        return Type.GetType(typeName);
+    }
+}
+</code></pre>
+
+<p>Then you serialise your content something like this:</p>
+
+<pre><code>var json = JsonConvert.SerializeObject(
+    new ExampleClass(123, "Test"),
+    new JsonSerializerSettings
+    {
+        Formatting = Formatting.Indented,
+        TypeNameHandling = TypeNameHandling.All,
+        SerializationBinder = TypeNameAssemblyExcludingSerializationBinder.Instance
+    }
+);
+</code></pre>
+
+<p>If the <strong>ExampleClass</strong> looked like this:</p>
+
+<pre><code>public sealed class ExampleClass
+{
+    public ExampleClass(int key, string name)
+    {
+        Key = key;
+        Name = name;
+    }
+    public int Key { get; }
+    public string Name { get; }
+}
+</code></pre>
+
+<p>.. and was in a namespace called "Tester" then the resulting JSON would look like this:</p>
+
+<pre><code>{
+  "$type": "Tester.ExampleClass",
+  "Key": 123,
+  "Name": "Test"
+}
+</code></pre>
+
+<p>To make the difference clear, if the custom serialisation binder had not been used (and if the containing assembly was also called "Tester") then the JSON would have looked like this:</p>
+
+<pre><code>{
+  "$type": "Tester.ExampleClass, Tester",
+  "Key": 123,
+  "Name": "Test"
+}
+</code></pre>
+
+<p>So.. problem solved!</p>
+
+<p>Yes?</p>
+
+<p>No.</p>
+
+<h3>ISerializationBinder is not applied to generic type parameters</h3>
+
+<p>While everything was hunkydory in the example above, there are cases where it isn't. For example, if we wanted to serialise a <em>list</em> of <strong>ExampleClass</strong> instances then we'd have code like this:</p>
+
+<pre><code>var json = JsonConvert.SerializeObject(
+    new List&lt;ExampleClass&gt; { new ExampleClass(123, "Test") },
+    new JsonSerializerSettings
+    {
+        Formatting = Formatting.Indented,
+        TypeNameHandling = TypeNameHandling.All,
+        SerializationBinder = TypeNameAssemblyExcludingSerializationBinder.Instance
+    }
+);
+</code></pre>
+
+<p>.. and the resulting JSON would look like this:</p>
+
+<pre><code>{
+  "$type": "System.Collections.Generic.List`1[[Tester.ExampleClass, Tester]]",
+  "$values": [
+    {
+      "$type": "Tester.ExampleClass",
+      "Key": 123,
+      "Name": "Test"
+    }
+  ]
+}
+</code></pre>
+
+<p>Without the custom serialisation binder, it would have looked like this:</p>
+
+<pre><code>{
+  "$type": "System.Collections.Generic.List`1[[Tester.ExampleClass, Tester]], System.Private.CoreLib",
+  "$values": [
+    {
+      "$type": "Tester.ExampleClass, Tester",
+      "Key": 123,
+      "Name": "Test"
+    }
+  ]
+}
+</code></pre>
+
+<p>.. and so we've successfully removed <em>some</em> of the assembly names as there is no mention of "System.Private.CoreLib" in the List's type and the $type string for the <strong>ExampleClass</strong> instance no longer mentions the "Tester" assembly name but the generic type of the List <em>does</em> mention the "Tester" assembly name and we were trying to prevent assembly names from appearing in the type data!</p>
+
+<p>I've had a good Google around this and there doesn't seem to be a definitive answer anywhere and I had a need for one, so I've put together a solution that does what I need. There is an answer to a similar(ish) stack overflow question <a href="https://stackoverflow.com/a/19927484/3813189">here</a> but it ends with a disclaimer that the regex provided would need tweaking to support nested types and <strong>a)</strong> I definitely wanted to support nested generic type parameters (eg. a Dictionary that maps string keys to List-of-int values) and <strong>b)</strong> regexes and me are not the best of friends - hence my going about it my own way!</p>
+
+<pre><code>public sealed class TypeNameAssemblyExcludingSerializationBinder : ISerializationBinder
+{
+    public static TypeNameAssemblyExcludingSerializationBinder Instance { get; }
+        = new TypeNameAssemblyExcludingSerializationBinder();
+    private TypeNameAssemblyExcludingSerializationBinder() { }
+
+    public void BindToName(Type serializedType, out string assemblyName, out string typeName)
+    {
+        // Note: Setting the assemblyName to null here will only remove it from the main type itself -
+        // it won't remove it from any types specified as generic type parameters (that's what the
+        // RemoveAssemblyNames method is needed for)
+        assemblyName = null;
+        typeName = RemoveAssemblyNames(serializedType.FullName);
+    }
+
+    public Type BindToType(string assemblyName, string typeName)
+    {
+        // Note: Some additional work may be required here if the assembly name has been removed
+        // and you are not loading a type from the current assembly or one of the core libraries
+        return Type.GetType(typeName);
+    }
+
+    private static string RemoveAssemblyNames(string typeName)
+    {
+        var index = 0;
+        var content = new StringBuilder();
+        RecusivelyRemoveAssemblyNames();
+        return content.ToString();
+
+        void RecusivelyRemoveAssemblyNames()
+        {
+            // If we started inside a type name - eg.
+            //
+            //   "System.Int32, System.Private.CoreLib"
+            //
+            // .. then we want to look for the comma that separates the type name from the assembly
+            // information and ignore that content. If we started inside nested generic type content
+            // - eg.
+            //
+            //  "[System.Int32, System.Private.CoreLib], [System.String, System.Private.CoreLib]"
+            //
+            // .. then we do NOT want to start ignoring content after any commas encountered. So
+            // it's important to know here which case we're in.
+            var insideTypeName = typeName[index] != '[';
+
+            var ignoreContent = false;
+            while (index &lt; typeName.Length)
+            {
+                var c = typeName[index];
+                index++;
+
+                if (insideTypeName &amp;&amp; (c == ','))
+                {
+                    ignoreContent = true;
+                    continue;
+                }
+
+                if (!ignoreContent)
+                    content.Append(c);
+
+                if (c == '[')
+                    RecusivelyRemoveAssemblyNames();
+                else if (c == ']')
+                {
+                    if (ignoreContent)
+                    {
+                        // If we encountered a comma that indicated that we were about to start
+                        // an assembly name then we'll have stopped adding content to the string
+                        // builder but we don't want to lose this closing brace, so explicitly
+                        // add it in if that's the case
+                        content.Append(c);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+</code></pre>
+
+<h3>A note about resolving types from type names (without assemblies)</h3>
+
+<p>In .NET, the "Type.GetType" method will return null if it is given a type name that does not correspond to a type that exists in either the current assembly or in one of the core .NET libraries. In Bridge.NET, it doesn't appear that they maintained that requirement and I believe that all types are available, even if an assembly name is not specified - but whether it is or isn't, a similar approach could be used in both cases where you use reflection to look at all loaded assemblies and all of their available types and try to map assembly-name-less type names onto one of those. Getting into this would be completely out of the scope of this post and I'm hoping that you already have an idea in mind if you had got to the point where you wanted to remove all assembly names from your type metadata!</p><p class="PostTime">Posted at 17:25</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li></ul></div>
+			<p class="Comments">
+				<a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output#disqus_thread" data-disqus-identifier="116">Comments</a>
+			</p>
+	</div>
+	<div class="Content ArchiveByTag">
 		<h3 class="PostDate">2 July 2019</h3><h2><a id="Post114"></a><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></h2>
 
 <p>Back in 2016, I wrote <a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three">Writing React apps using Bridge.NET - The Dan Way (Part Three)</a> and I talked about trying to tighten up the representation of values in the type system. One of my pet peeves that I talked about was how "no value" is represented in reference types and, in particular, with strings.</p>
@@ -526,7 +742,7 @@ let name = getTranslatedName 123
 
 <p>Things get a bit more awkward if we want to deal with reference types, such as strings, becase we could create a C# class similar to <strong>LanguageKey</strong> (or we could create an F# single case union type) but that would introduce a new instance of a type that must be tracked by the garbage collector - every strongly typed ID involves <em>two</em> references; the underlying string value and the strongly typed wrapper. Much of the time, that's no problem - I've had the odd issue with the .NET GC in the past but, on the whole, it's an amazing and reliable tool.. but because I <em>have</em> had these problems before, it makes me more aware of the trade-off when I introduce wrappers like this.</p>
 
-<p>I'm convinced that using strongly typed IDs is the right thing to do in 99% of cases because it improves code quality and can eradicate a class of real-world mistake. But the concept became even more interesting to me as it appeared possible to introduce a form of type alias into Bridge.NET code that enables those compile time checks but with zero runtime cost. Granted, the type erasure that occurs means that <em>runtime</em> type checking is not possible (the Bridge code can not differentiate between a <strong>string</strong> or a <strong>NonBlankTrimmedString</strong> or a type that is <em>derived</em> from <strong>NonBlankTrimmedString</strong>) but the main driver for me was to improve compile time checking and so that wasn't a problem for me. Maybe it would be a problem in other scenarios, in which case these Bridge.NET "type aliases" might not be appropriate.</p><p class="PostTime">Posted at 21:59</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li></ul></div>
+<p>I'm convinced that using strongly typed IDs is the right thing to do in 99% of cases because it improves code quality and can eradicate a class of real-world mistake. But the concept became even more interesting to me as it appeared possible to introduce a form of type alias into Bridge.NET code that enables those compile time checks but with zero runtime cost. Granted, the type erasure that occurs means that <em>runtime</em> type checking is not possible (the Bridge code can not differentiate between a <strong>string</strong> or a <strong>NonBlankTrimmedString</strong> or a type that is <em>derived</em> from <strong>NonBlankTrimmedString</strong>) but the main driver for me was to improve compile time checking and so that wasn't a problem for me. Maybe it would be a problem in other scenarios, in which case these Bridge.NET "type aliases" might not be appropriate.</p><p class="PostTime">Posted at 21:59</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li></ul></div>
 			<p class="Comments">
 				<a href="/type-aliases-in-bridgenet-c-sharp#disqus_thread" data-disqus-identifier="114">Comments</a>
 			</p>
@@ -1225,7 +1441,7 @@ private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(default(T), fa
 
 <p>The good news is that this means that there will very soon be almost zero overhead to generic types in Bridge! The bad news is that many of the findings documented here are unnecessary.. However, that's the sort of bad news that I'm happy to accept! The compromise around <strong>Optional&lt;T&gt;</strong>'s "Value" property (for cases where "IsDefined" is false) will no longer be necessary. And I won't have to worry so much in the future; if I'm creating a library class, should I be avoiding generics (or using [IgnoreGeneric]) in case it's used in an expensive loop anywhere?</p>
 
-<p>Despite being out of date even before being published, I'll leave this post here for posterity. I had a lot of fun digging into performance tuning my Bridge / React app. And, in a roundabout way, I feel like I contributed to the optimisation (which I imagine will makes its way into the next release of Bridge) that everyone using Bridge can benefit from! I'm going to call that a win.</p><p class="PostTime">Posted at 22:04</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/Performance" title="2 Posts">Performance</a></li></ul></div>
+<p>Despite being out of date even before being published, I'll leave this post here for posterity. I had a lot of fun digging into performance tuning my Bridge / React app. And, in a roundabout way, I feel like I contributed to the optimisation (which I imagine will makes its way into the next release of Bridge) that everyone using Bridge can benefit from! I'm going to call that a win.</p><p class="PostTime">Posted at 22:04</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/Performance" title="2 Posts">Performance</a></li></ul></div>
 			<p class="Comments">
 				<a href="/performance-tuning-a-bridgenet-react-app#disqus_thread" data-disqus-identifier="105">Comments</a>
 			</p>
@@ -1394,7 +1610,7 @@ public sealed class EmployeeDetails
 
 <p>I guess that only time will tell whether library-specific analysers become as prevelant as I imagine. It's very possible that I'm biased because I'm such a believer in static analysis. Let's wait and see*!</p>
 
-<p>* <em>Unless YOU are a library writer that this might apply to - in which case, make it happen rather than just sitting back to see what MIGHT happen! :)</em></p><p class="PostTime">Posted at 22:33</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
+<p>* <em>Unless YOU are a library writer that this might apply to - in which case, make it happen rather than just sitting back to see what MIGHT happen! :)</em></p><p class="PostTime">Posted at 22:33</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
 			<p class="Comments">
 				<a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier#disqus_thread" data-disqus-identifier="99">Comments</a>
 			</p>
@@ -4408,7 +4624,7 @@ namespace BridgeReactTutorial.API
 
 <p>These are both technologies that I would like to cover in future posts, but probably as shorter follow-up pieces. In terms of <em>how</em> to write React applications in C#, I am happy with what I've covered in these three posts - I wanted to get the example code to where it is now but without jumping straight to the final architecture; I wanted to illustrate <em>why</em> one-way data binding is so beneficial and then why a Flux-like structure is so helpful and then <em>why</em> immutable types are such a good idea. Hopefully, by starting from the basics and introducing new concepts and approaches only when there was a way to illustrate the improvements that they yield, you all agree with me that this is the way to do things! </p>
 
-<p>Of course, if you disagree in general, or on any particular points, or you have any tweaks to what I've suggested then I would be very interested to hear. That's what the comments section is for!</p><p class="PostTime">Posted at 21:32</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
+<p>Of course, if you disagree in general, or on any particular points, or you have any tweaks to what I've suggested then I would be very interested to hear. That's what the comments section is for!</p><p class="PostTime">Posted at 21:32</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
 			<p class="Comments">
 				<a href="/writing-react-apps-using-bridgenet-the-dan-way-part-three#disqus_thread" data-disqus-identifier="98">Comments</a>
 			</p>
@@ -5889,7 +6105,7 @@ namespace BridgeReactTutorial.API
 
 <p>We've covered a lot of ground here, so I'm going to draw things to a close. Flux is a big deal and I've read plenty of articles that make it sound mind-bending and difficult to grasp. Hopefully this has explored <em>why</em> it makes sense as much as how to think in terms of it (and write code in the style of it!).</p>
 
-<p>Next time, now that React and Flux are dealt with, I want to look at how we can go <em>further</em> in the quest to <em>make code easier to reason about and to test</em> - there is a lot more that we can do with the C# type system to really express intent, requirements and limitations and I strongly believe that doing so will lead to higher quality code. As a side benefit, I'll also be showing how to make a simple tweak to components that will offer potentially huge performance benefits to highly-complex / deeply-nested UIs. I really think that using C# and Bridge can be more than just a possibility for writing React applications, it can be one of the <em>best</em> ways to do so!</p><p class="PostTime">Posted at 22:50</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
+<p>Next time, now that React and Flux are dealt with, I want to look at how we can go <em>further</em> in the quest to <em>make code easier to reason about and to test</em> - there is a lot more that we can do with the C# type system to really express intent, requirements and limitations and I strongly believe that doing so will lead to higher quality code. As a side benefit, I'll also be showing how to make a simple tweak to components that will offer potentially huge performance benefits to highly-complex / deeply-nested UIs. I really think that using C# and Bridge can be more than just a possibility for writing React applications, it can be one of the <em>best</em> ways to do so!</p><p class="PostTime">Posted at 22:50</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
 			<p class="Comments">
 				<a href="/writing-react-apps-using-bridgenet-the-dan-way-part-two#disqus_thread" data-disqus-identifier="97">Comments</a>
 			</p>
@@ -7018,7 +7234,7 @@ fieldset.history span.title
 
 <p>Which isn't to save that we haven't covered a lot of good ground! This will serve as a good base from which we can improve things. But we haven't seen the "Flux architecture" at all yet, and have only hinted at why we would want it. I'm not happy with how many of the properties on the various props, state and other data types are presented - one of my pet peeves with APIs is not knowing what can and can't be null; on the <strong>TextInput</strong>'s <strong>Props</strong> class, the "ClassName" string <em>may</em> be null but the "OnChange" callback must not be. These facts are not clear from just looking at the class. Similarly, it would be nice to know whether or not there are any guarantees about the "Title" and "Content" strings on the <strong>MessageDetails</strong> class (is it ever really acceptable for them to be null?). Finally, the reading and writing of messages through the <strong>MessageApi</strong> implementation we have here works fine for one person doing all the writing, but how could we deal with it if the <strong>MessageApi</strong> simulated a server-based API that received new messages from <em>other</em> uses, either through some sort of polling or through a push mechanism? This is an important question for systems that have to support multiple users.</p>
 
-<p>All of these questions will be answered in later posts, along with further advice to try to help you do what I think React does best - write code that is easier to reason about, and thus easier to read, maintain and extend.</p><p class="PostTime">Posted at 23:55</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
+<p>All of these questions will be answered in later posts, along with further advice to try to help you do what I think React does best - write code that is easier to reason about, and thus easier to read, maintain and extend.</p><p class="PostTime">Posted at 23:55</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
 			<p class="Comments">
 				<a href="/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles#disqus_thread" data-disqus-identifier="96">Comments</a>
 			</p>
@@ -7487,7 +7703,7 @@ numbers = numbers.SetValue(2, 4);
 
 <p>So, rather than having props only be immutable during component renders (by a convention that the React library enforces), why not go whole-hog and use fully immutable classes to describe your props types - that way props are <em>fully</em> immutable and you can use the <a href="https://www.nuget.org/packages/Bridge.React">Bridge.React</a>'s <strong>PureComponent</strong> to get performance boosts for free!</p>
 
-<p><em>(Now seems like a good time to remind you of my post "<a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a>", which illustrates how to use the <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a> NuGet package to make defining immutable classes just that bit easier).</em></p><p class="PostTime">Posted at 20:11</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a></li><li><a href="/react-and-flux-with-bridgenet-redux">React (and Flux) with Bridge.net - Redux</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
+<p><em>(Now seems like a good time to remind you of my post "<a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a>", which illustrates how to use the <a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a> NuGet package to make defining immutable classes just that bit easier).</em></p><p class="PostTime">Posted at 20:11</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a></li><li><a href="/react-and-flux-with-bridgenet-redux">React (and Flux) with Bridge.net - Redux</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
 			<p class="Comments">
 				<a href="/easy-purecomponent-react-performance-boosts-for-bridgenet#disqus_thread" data-disqus-identifier="95">Comments</a>
 			</p>
@@ -8020,7 +8236,7 @@ DoSomething("Hello!");
 
 <p>Meanwhile, the second just <em>feels</em> like a good practice so that "CtorSet" and "With" don't crop up over and over again on types that you would not want to use them with.</p>
 
-<p>If anyone really wanted the <strong>IAmImmutable</strong>-requirement to be relaxed (which would allow the immutable types to be written in an even more succinct manner, since they wouldn't need to implement that interface) then I would definitely be up for a debate.</p><p class="PostTime">Posted at 22:22</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
+<p>If anyone really wanted the <strong>IAmImmutable</strong>-requirement to be relaxed (which would allow the immutable types to be written in an even more succinct manner, since they wouldn't need to implement that interface) then I would definitely be up for a debate.</p><p class="PostTime">Posted at 22:22</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/using-roslyn-code-fixes-to-make-the-frictionless-immutable-objects-in-bridge-even-easier">Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
 			<p class="Comments">
 				<a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications#disqus_thread" data-disqus-identifier="93">Comments</a>
 			</p>
@@ -8408,7 +8624,7 @@ public class StatefulControlledTextInput
 
 <h3>More to come</h3>
 
-<p>In React, it is strongly recommended that props and state be considered to be immutable references. In the examples here I've used immutability-by-convention; the "props" classes have not actually been immutable types. I'm intending to write a follow-up article or two because there is more that I want to explore, such as how to use these bindings to write React apps in a "Flux"-like manner and how to take more advantage of genuinely immutable types. But, hopefully, this has been a nice enough introduction into the bindings and got you thinking about trying to use C# to write some React apps! Because, if you're aiming to write a web application in a "Single Page Application" style, if your application is of any serious complexity then you're going to end up with quite a lot of code - and, while I have a real soft spot for JavaScript, if it comes to maintaining a large app that's written in JavaScript or that's written in C# then I know which way <em>I</em> would lean! Thank goodness <a href="http://bridge.net">Bridge.net</a> has come along and let us combine JavaScript frameworks <em>with</em> C# :)</p><p class="PostTime">Posted at 23:29</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
+<p>In React, it is strongly recommended that props and state be considered to be immutable references. In the examples here I've used immutability-by-convention; the "props" classes have not actually been immutable types. I'm intending to write a follow-up article or two because there is more that I want to explore, such as how to use these bindings to write React apps in a "Flux"-like manner and how to take more advantage of genuinely immutable types. But, hopefully, this has been a nice enough introduction into the bindings and got you thinking about trying to use C# to write some React apps! Because, if you're aiming to write a web application in a "Single Page Application" style, if your application is of any serious complexity then you're going to end up with quite a lot of code - and, while I have a real soft spot for JavaScript, if it comes to maintaining a large app that's written in JavaScript or that's written in C# then I know which way <em>I</em> would lean! Thank goodness <a href="http://bridge.net">Bridge.net</a> has come along and let us combine JavaScript frameworks <em>with</em> C# :)</p><p class="PostTime">Posted at 23:29</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
 			<p class="Comments">
 				<a href="/react-and-flux-with-bridgenet-redux#disqus_thread" data-disqus-identifier="92">Comments</a>
 			</p>
@@ -8828,7 +9044,7 @@ public class TableCellAttributes : HTMLAttributes
 
 <p>Unless I'm missing something and someone else can think of a better way? Anyone??</p>
 
-<p><strong>Update (8th October 2015):</strong> I've had some suggestions from a member of the Bridge.net Team on how to reuse some of their work on html5 element definitions to make this a <em>lot</em> easier - so hopefully I'll have an update before too long based upon this. Before I can do so, the Bridge Team are looking into some improvements, such as allowing the "CurrentTarget" property of elements to be more strongly-typed (see <a href="http://forums.bridge.net/forum/general/feature-requests/630-open-461-generic-html5-element-and-event-classes">http://forums.bridge.net/forum/general/feature-requests/630-open-461-generic-html5-element-and-event-classes</a>), but hopefully we'll all have an update before too long!</p><p class="PostTime">Posted at 23:07</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/react-and-flux-with-bridgenet">React (and Flux) with Bridge.net</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
+<p><strong>Update (8th October 2015):</strong> I've had some suggestions from a member of the Bridge.net Team on how to reuse some of their work on html5 element definitions to make this a <em>lot</em> easier - so hopefully I'll have an update before too long based upon this. Before I can do so, the Bridge Team are looking into some improvements, such as allowing the "CurrentTarget" property of elements to be more strongly-typed (see <a href="http://forums.bridge.net/forum/general/feature-requests/630-open-461-generic-html5-element-and-event-classes">http://forums.bridge.net/forum/general/feature-requests/630-open-461-generic-html5-element-and-event-classes</a>), but hopefully we'll all have an update before too long!</p><p class="PostTime">Posted at 23:07</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/react-and-flux-with-bridgenet">React (and Flux) with Bridge.net</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
 			<p class="Comments">
 				<a href="/stronglytyped-react-with-bridgenet#disqus_thread" data-disqus-identifier="90">Comments</a>
 			</p>
@@ -9291,7 +9507,7 @@ namespace Bridge.React
 
 <p>It's a web project that follows the structure I outlined at the top of this post - an MVC project to "host" and then Bridge projects to generate JavaScript from C#; one for the React bindings and another for the logic of the app.</p>
 
-<p>The app itself is very, very simple - it's just a text box that doesn't want to be empty. If you clear it then you get a validation message. Any changes that you make to the input box are communicated to the app as Dispatcher actions, each of which results in a full re-render (in a complex app, React's virtual DOM ensures that this is done in an efficient manner, but in such a small example as this it's probably impossible to tell). Meanwhile, a label alongside the input box is updated with the current time - this is done to illustrate how non-user events (such as API data-retrieved events, for example) may be dealth with in exactly the same way as user events; they go through the Dispatcher and a Store deals with applying these channels to its internal state. Have fun!</p><p class="PostTime">Posted at 21:17</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="11 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
+<p>The app itself is very, very simple - it's just a text box that doesn't want to be empty. If you clear it then you get a validation message. Any changes that you make to the input box are communicated to the app as Dispatcher actions, each of which results in a full re-render (in a complex app, React's virtual DOM ensures that this is done in an efficient manner, but in such a small example as this it's probably impossible to tell). Meanwhile, a label alongside the input box is updated with the current time - this is done to illustrate how non-user events (such as API data-retrieved events, for example) may be dealth with in exactly the same way as user events; they go through the Dispatcher and a Store deals with applying these channels to its internal state. Have fun!</p><p class="PostTime">Posted at 21:17</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
 			<p class="Comments">
 				<a href="/react-and-flux-with-bridgenet#disqus_thread" data-disqus-identifier="87">Comments</a>
 			</p>
@@ -9308,7 +9524,7 @@ namespace Bridge.React
 	</script>
 
 				<div class="Footer">
-					Productive Rage 2019
+					Productive Rage 2020
 				</div>
 			</div>
 
@@ -9326,9 +9542,9 @@ namespace Bridge.React
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li><li><a href="/i-didnt-understand-why-people-struggled-with-nets-async">I didn&#39;t understand why people struggled with (.NET&#39;s) async</a></li><li><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron">Writing F# to implement &#39;The Single Layer Perceptron&#39;</a></li><li><a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton">Learning F# via some Machine Learning: The Single Layer Perceptron</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li><li><a href="/i-didnt-understand-why-people-struggled-with-nets-async">I didn&#39;t understand why people struggled with (.NET&#39;s) async</a></li><li><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron">Writing F# to implement &#39;The Single Layer Perceptron&#39;</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (1)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>
