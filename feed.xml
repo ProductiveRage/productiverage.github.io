@@ -10,7 +10,7 @@
 		<description>Dan's techie ramblings</description>
 		<language>en-gb</language>
 
-		<lastBuildDate>Tue, 04 Aug 2020 17:25:00 GMT</lastBuildDate>
+		<lastBuildDate>Fri, 07 Aug 2020 23:24:00 GMT</lastBuildDate>
 		<docs>http://blogs.law.harvard.edu/tech/rss</docs>
 		
 		<image>
@@ -23,6 +23,872 @@
 
 		<xhtml:meta xmlns:xhtml="http://www.w3.org/1999/xhtml" name="robots" content="noindex" /> 
 
+		<item>
+			<title>How are barcodes read?? (Library-less image processing in C#)</title>
+            <link>http://www.productiverage.com/how-are-barcodes-read-libraryless-image-processing-in-c-sharp</link>
+			<guid>http://www.productiverage.com/how-are-barcodes-read-libraryless-image-processing-in-c-sharp</guid>
+			<description>&lt;p&gt;I&#39;ve been using MyFitnessPal and it has the facility to load nutrition information by scanning the barcode on the product. I can guess how the retrieval works once the barcode number is obtained (a big database somewhere) but it struck me that I had no idea how the reading of the barcode &lt;em&gt;itself&lt;/em&gt; worked and.. well, I&#39;m curious and enjoy the opportunity to learn something new to me by writing the code to do it. I do enjoy being able to look up (almost) anything on the internet to find out how it works!&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;(For anyone who wants to either play along but not copy-paste the code themselves or for anyone who wants to jump to the end result, I&#39;ve put the code - along with the example image I&#39;ve used in this post - up on a &lt;a href=&quot;https://github.com/ProductiveRage/BarcodeReader&quot;&gt;GitHub repo&lt;/a&gt;)&lt;/em&gt;&lt;/p&gt;
+
+&lt;h3&gt;The plan of attack&lt;/h3&gt;
+
+&lt;p&gt;There are two steps required here:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Read image and try to identify areas that look like barcodes&lt;/li&gt;
+&lt;li&gt;Try to extract numbers from the looks-like-a-barcode regions&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;As with anything, these steps may be broken down into smaller tasks. The first step can be done like this:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Barcodes are black and white regions that have content that has steep &quot;gradients&quot; in image intensity horizontally (where there is a change from a black bar to a white space) and little change in intensity vertically (as each bar is a vertical line), so first we greyscale the image and then generate horizontal and vertical intensity gradients values for each point in the image and combine the values by subtracting vertical gradient from horizontal gradient&lt;/li&gt;
+&lt;li&gt;These values are normalised so that they are all on the scale zero to one - this data could be portrayed as another greyscale image where the brightest parts are most likely to be within barcodes&lt;/li&gt;
+&lt;li&gt;These values are then &quot;spread out&quot; or &quot;blurred&quot; and then a threshold value is applied where every value about it is changed into a 1 and every value below it a 0&lt;/li&gt;
+&lt;li&gt;This &quot;mask&quot; (where every value is a 0 or 1) should have identified many of the pixels within the barcodes and we want to group these pixels into distinct objects&lt;/li&gt;
+&lt;li&gt;There is a chance, though, that there could be gaps between bars that mean that a single barcode is spread across multiple masked-out objects and we need to try to piece them back together into one area (since the bars are tall and narrow, this may be done by considering a square area over every object and then combining objects whose squared areas overlap into one)&lt;/li&gt;
+&lt;li&gt;This process will result in a list of areas that may be barcodes - any that are taller than they are wide are ignored (because barcode regions are always wider than they are tall)&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;The second step can be broken down into:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Take the maybe-barcode region of the image, greyscale it and then turn into a mask by setting any pixel with an intensity less than a particular threshold to zero and otherwise to one&lt;/li&gt;
+&lt;li&gt;Take a horizontal slice across the image region - all of the pixels on the first row of the image - and change the zero-or-one raw data into a list of line lengths where a new line starts at any transition from zero-to-one or one-to-zero (so &quot;01001000110&quot; becomes &quot;1,1,2,1,3,2,1&quot; because there is 1x zero and then 1x one and then 2x zero and then 1x one, etc..)&lt;/li&gt;
+&lt;li&gt;These line lengths should correspond to bar sizes (and space-between-bar sizes) if we&#39;ve found a barcode - so run the values through the magic barcode bar-size-reading algorithm (see section 2.1 in &lt;a href=&quot;https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2859730/&quot;&gt;https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2859730/&lt;/a&gt;) and if we get a number (and the checksum is correct) then we&#39;re done, hurrah!&lt;/li&gt;
+&lt;li&gt;If we couldn&#39;t get a number from this horizontal slice then move one pixel down and go back around&lt;/li&gt;
+&lt;li&gt;If it was not possible to extract a number from any of the slices through the image region then it&#39;s either not a barcode or it&#39;s somehow so distorted in the image that we can&#39;t read it&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;This approach is fairly resilient to changes in lighting and orientation because the barcode regions are still likely to have the highest horizontal intensity gradient whether the image is dark or light (and even if &lt;em&gt;part&lt;/em&gt; of the image is light and part of it is dark) and the barcode-reading algorithm works on ratios of bar/space-between-bar widths and these remain constant if the image is rotated.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;(Some of the techniques are similar to things that I did in my &lt;a href=&quot;http://www.productiverage.com/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet&quot;&gt;Face or no face (finding faces in photos using C# and Accord.NET)&lt;/a&gt; and so I&#39;ll be using some of the same code shortly that I described then)&lt;/em&gt;&lt;/p&gt;
+
+&lt;h3&gt;Identifying maybe-barcode images&lt;/h3&gt;
+
+&lt;p&gt;Let&#39;s this image as an example to work with (peanut butter.. I &lt;em&gt;do&lt;/em&gt; love peanut butter) -&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Delicious peanut butter&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;Before looking at any code, let&#39;s visualise the process.&lt;/p&gt;
+
+&lt;p&gt;We&#39;re going to consider horizontal and vertical gradient intensity maps - at every point in the image we either look to the pixels to the left and to the right (for the horizontal gradient) or we look at the pixels above and below (for the vertical gradient) and the larger the change, the brighter the pixel in the gradient intensity map&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Horizontal gradient intensity&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-HorizontalAndVerticalGradients.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;And when they&#39;re combined by subtracting the vertical gradient at each point from the horizontal gradient, it looks lke this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Combined gradient intensity&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-CombinedGradients.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;If this image is blurred then we get this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Blurred combined gradient intensity&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-Blurred.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;.. and if we create a binary mask by saying &quot;normalise the intensity values so that their range goes from zero (for the darkest pixel) to one (for the brightest) and then set any pixels that are in the bottom third in terms of intensity to 0 and set the rest to 1&quot; then we get this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Mask of possibly-part-of-a-barcode areas&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-Mask.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;If each distinct area (where an &quot;area&quot; means &quot;a group of pixels that are connected&quot;) is identified and squares overlaid and centered around the areas then we see this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Mask of possibly-part-of-a-barcode areas, extended into squared areas&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-MaskSquares.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;.. and if the areas whose bounding squares overlap are combined and then cropped around the white pixels then we end up with this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Combined possibly-a-barcode areas&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-MaskSquaresCombined.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;This has identified the area around the barcode and also two tiny other areas - when we come to trying to read barcode numbers out of these, the tiny regions will result in no value while the area around the genuine barcode content &lt;em&gt;should&lt;/em&gt; result in a number successfully being read. But I&#39;m getting ahead of myself.. let&#39;s look at the code required to perform the above transformations.&lt;/p&gt;
+
+&lt;p&gt;I&#39;m going to start with a &lt;strong&gt;DataRectangle&lt;/strong&gt; for performing transformations -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static class DataRectangle
+{
+    public static DataRectangle&amp;lt;T&amp;gt; For&amp;lt;T&amp;gt;(T[,] values) =&amp;gt; new DataRectangle&amp;lt;T&amp;gt;(values);
+}
+
+public sealed class DataRectangle&amp;lt;T&amp;gt;
+{
+    private readonly T[,] _protectedValues;
+    public DataRectangle(T[,] values) : this(values, isolationCopyMayBeBypassed: false) { }
+    private DataRectangle(T[,] values, bool isolationCopyMayBeBypassed)
+    {
+        if ((values.GetLowerBound(0) != 0) || (values.GetLowerBound(1) != 0))
+            throw new ArgumentException(&quot;Both dimensions must have lower bound zero&quot;);
+        var arrayWidth = values.GetUpperBound(0) + 1;
+        var arrayHeight = values.GetUpperBound(1) + 1;
+        if ((arrayWidth == 0) || (arrayHeight == 0))
+            throw new ArgumentException(&quot;zero element arrays are not supported&quot;);
+
+        Width = arrayWidth;
+        Height = arrayHeight;
+
+        if (isolationCopyMayBeBypassed)
+            _protectedValues = values;
+        else
+        {
+            _protectedValues = new T[Width, Height];
+            Array.Copy(values, _protectedValues, Width * Height);
+        }
+    }
+
+    /// &amp;lt;summary&amp;gt;
+    /// This will always be greater than zero
+    /// &amp;lt;/summary&amp;gt;
+    public int Width { get; }
+
+    /// &amp;lt;summary&amp;gt;
+    /// This will always be greater than zero
+    /// &amp;lt;/summary&amp;gt;
+    public int Height { get; }
+
+    public T this[int x, int y]
+    {
+        get
+        {
+            if ((x &amp;lt; 0) || (x &amp;gt;= Width))
+                throw new ArgumentOutOfRangeException(nameof(x));
+            if ((y &amp;lt; 0) || (y &amp;gt;= Height))
+                throw new ArgumentOutOfRangeException(nameof(y));
+            return _protectedValues[x, y];
+        }
+    }
+
+    public IEnumerable&amp;lt;Tuple&amp;lt;Point, T&amp;gt;&amp;gt; Enumerate(Func&amp;lt;Point, T, bool&amp;gt;? optionalFilter = null)
+    {
+        for (var x = 0; x &amp;lt; Width; x++)
+        {
+            for (var y = 0; y &amp;lt; Height; y++)
+            {
+                var value = _protectedValues[x, y];
+                var point = new Point(x, y);
+                if (optionalFilter?.Invoke(point, value) ?? true)
+                    yield return Tuple.Create(point, value);
+            }
+        }
+    }
+
+    public DataRectangle&amp;lt;TResult&amp;gt; Transform&amp;lt;TResult&amp;gt;(Func&amp;lt;T, TResult&amp;gt; transformer)
+    {
+        return Transform((value, coordinates) =&amp;gt; transformer(value));
+    }
+
+    public DataRectangle&amp;lt;TResult&amp;gt; Transform&amp;lt;TResult&amp;gt;(Func&amp;lt;T, Point, TResult&amp;gt; transformer)
+    {
+        var transformed = new TResult[Width, Height];
+        for (var x = 0; x &amp;lt; Width; x++)
+        {
+            for (var y = 0; y &amp;lt; Height; y++)
+                transformed[x, y] = transformer(_protectedValues[x, y], new Point(x, y));
+        }
+        return new DataRectangle&amp;lt;TResult&amp;gt;(transformed, isolationCopyMayBeBypassed: true);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;And then I&#39;m going to add a way to load image data into this structure -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static class BitmapExtensions
+{
+    /// &amp;lt;summary&amp;gt;
+    /// This will return values in the range 0-255 (inclusive)
+    /// &amp;lt;/summary&amp;gt;
+    // Based on http://stackoverflow.com/a/4748383/3813189
+    public static DataRectangle&amp;lt;double&amp;gt; GetGreyscale(this Bitmap image)
+    {
+        var values = new double[image.Width, image.Height];
+        var data = image.LockBits(
+            new Rectangle(0, 0, image.Width, image.Height),
+            ImageLockMode.ReadOnly,
+            PixelFormat.Format24bppRgb
+        );
+        try
+        {
+            var pixelData = new Byte[data.Stride];
+            for (var lineIndex = 0; lineIndex &amp;lt; data.Height; lineIndex++)
+            {
+                Marshal.Copy(
+                    source: data.Scan0 + (lineIndex * data.Stride),
+                    destination: pixelData,
+                    startIndex: 0,
+                    length: data.Stride
+                );
+                for (var pixelOffset = 0; pixelOffset &amp;lt; data.Width; pixelOffset++)
+                {
+                    // Note: PixelFormat.Format24bppRgb means the data is stored in memory as BGR
+                    const int PixelWidth = 3;
+                    var r = pixelData[pixelOffset * PixelWidth + 2];
+                    var g = pixelData[pixelOffset * PixelWidth + 1];
+                    var b = pixelData[pixelOffset * PixelWidth];
+                    values[pixelOffset, lineIndex] = (0.2989 * r) + (0.5870 * g) + (0.1140 * b);
+                }
+            }
+        }
+        finally
+        {
+            image.UnlockBits(data);
+        }
+        return DataRectangle.For(values);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;With these classes, we can load an image and calculate the combined horizontal-gradient-minus-vertical-gradient value like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static IEnumerable&amp;lt;Rectangle&amp;gt; GetPossibleBarcodeAreasForBitmap(Bitmap image)
+{
+    var greyScaleImageData = image.GetGreyscale();
+    var combinedGradients = greyScaleImageData.Transform((intensity, pos) =&amp;gt;
+    {
+        // Consider gradients to be zero at the edges of the image because there aren&#39;t pixels
+        // both left/right or above/below and so it&#39;s not possible to calculate a real value
+        var horizontalChange = (pos.X == 0) || (pos.X == greyScaleImageData.Width - 1)
+            ? 0
+            : greyScaleImageData[pos.X + 1, pos.Y] - greyScaleImageData[pos.X - 1, pos.Y];
+        var verticalChange = (pos.Y == 0) || (pos.Y == greyScaleImageData.Height - 1)
+            ? 0
+            : greyScaleImageData[pos.X, pos.Y + 1] - greyScaleImageData[pos.X, pos.Y - 1];
+        return Math.Max(0, Math.Abs(horizontalChange) - Math.Abs(verticalChange));
+    });        
+
+    // .. more will go here soon
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Before jumping straight into the image analysis, though, it&#39;s worth resizing the source image if it&#39;s large. Since this stage of the processing is looking for areas that look approximately like barcodes, we don&#39;t require a lot of granularity - I&#39;m envisaging (as with the MyFitnessPal use case) source images where the barcode takes up a significant space in the image and is roughly aligned with the view port* and so resizing the image such that the largest side is 300px should work well. If you wanted to scan an image where there were many barcodes to process (or even where there was only one but it was very small) then you might want to allow larger inputs than this - the more data that there is, though, the more work that must be done and the slower that the processing will be!&lt;/p&gt;
+
+&lt;p&gt;* &lt;em&gt;(The barcode has to be roughly aligned with the viewport because the approaching of looking for areas with large horizontal variance in intensity with minor vertical variance would not work - as we&#39;ll see later, though, there is considerable margin for error in this approach and perfect alignment is not required)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;A naive approach to this would be force the image so that its largest side is 300px, regardless of what it was originally. However, this is unnecessary if the largest side is already less than 300px (scaling it up will actually give us more work to do) and if the largest side is not much more than 300px then it&#39;s probably not worth doing either - scaling it down may make any barcodes areas fuzzy and risk reducing the effectiveness of the processing while not actually reducing the required work. So I&#39;m going to say that if the largest side of the image is 450px or larger than resize it so that its largest side is 300px and do nothing otherwise. To achieve that, we need a method like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static DataRectangle&amp;lt;double&amp;gt; GetGreyscaleData(
+    Bitmap image,
+    int resizeIfLargestSideGreaterThan,
+    int resizeTo)
+{
+    var largestSide = Math.Max(image.Width, image.Height);
+    if (largestSide &amp;lt;= resizeIfLargestSideGreaterThan)
+        return image.GetGreyscale();
+
+    int width, height;
+    if (image.Width &amp;gt; image.Height)
+    {
+        width = resizeTo;
+        height = (int)(((double)image.Height / image.Width) * width);
+    }
+    else
+    {
+        height = resizeTo;
+        width = (int)(((double)image.Width / image.Height) * height);
+    }
+    using var resizedImage = new Bitmap(image, width, height);
+    return resizedImage.GetGreyscale();
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The next steps are to &quot;normalise&quot; the combined intensity variance values so that they fit the range zero-to-one, to &quot;blur&quot; this data and to then create a binary mask where the brighter pixels get set to one and the darker pixels get set to zero. In other words, to extend the code earlier (that calculated the intensity variance values) like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static IEnumerable&amp;lt;Rectangle&amp;gt; GetPossibleBarcodeAreasForBitmap(Bitmap image)
+{
+    var greyScaleImageData = GetGreyscaleData(
+        image,
+        resizeIfLargestSideGreaterThan: 450,
+        resizeTo: 300
+    );
+    var combinedGradients = greyScaleImageData.Transform((intensity, pos) =&amp;gt;
+    {
+        // Consider gradients to be zero at the edges of the image because there aren&#39;t pixels
+        // both left/right or above/below and so it&#39;s not possible to calculate a real value
+        var horizontalChange = (pos.X == 0) || (pos.X == greyScaleImageData.Width - 1)
+            ? 0
+            : greyScaleImageData[pos.X + 1, pos.Y] - greyScaleImageData[pos.X - 1, pos.Y];
+        var verticalChange = (pos.Y == 0) || (pos.Y == greyScaleImageData.Height - 1)
+            ? 0
+            : greyScaleImageData[pos.X, pos.Y + 1] - greyScaleImageData[pos.X, pos.Y - 1];
+        return Math.Max(0, Math.Abs(horizontalChange) - Math.Abs(verticalChange));
+    });
+
+    const int maxRadiusForGradientBlurring = 2;
+    const double thresholdForMaskingGradients = 1d / 3;
+
+    var mask = Blur(Normalise(combinedGradients), maxRadiusForGradientBlurring)
+        .Transform(value =&amp;gt; (value &amp;gt;= thresholdForMaskingGradients));
+
+    // .. more will go here soon
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;To do that we, need a &quot;Normalise&quot; method - which is simple:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static DataRectangle&amp;lt;double&amp;gt; Normalise(DataRectangle&amp;lt;double&amp;gt; values)
+{
+    var max = values.Enumerate().Max(pointAndValue =&amp;gt; pointAndValue.Item2);
+    return (max == 0)
+        ? values
+        : values.Transform(value =&amp;gt; (value / max));
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. and a &quot;Blur&quot; method - which is a little less simple but hopefully still easy enough to follow &lt;em&gt;(for every point, look at the points around it and take an average of all of them; it just looks for a square area, which is fine for small &quot;maxRadius&quot; values but which might be better implemented as a circular area if large &quot;maxRadius&quot; values might be needed, which they aren&#39;t in this code):&lt;/em&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static DataRectangle&amp;lt;double&amp;gt; Blur(DataRectangle&amp;lt;double&amp;gt; values, int maxRadius)
+{
+    return values.Transform((value, point) =&amp;gt;
+    {
+        var valuesInArea = new List&amp;lt;double&amp;gt;();
+        for (var x = -maxRadius; x &amp;lt;= maxRadius; x++)
+        {
+            for (var y = -maxRadius; y &amp;lt;= maxRadius; y++)
+            {
+                var newPoint = new Point(point.X + x, point.Y + y);
+                if ((newPoint.X &amp;lt; 0) || (newPoint.Y &amp;lt; 0)
+                || (newPoint.X &amp;gt;= values.Width) || (newPoint.Y &amp;gt;= values.Height))
+                    continue;
+                valuesInArea.Add(values[newPoint.X, newPoint.Y]);
+            }
+        }
+        return valuesInArea.Average();
+    });
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This gets us to this point:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Mask of possibly-part-of-a-barcode areas&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-Mask.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;.. which feels like good progress!&lt;/p&gt;
+
+&lt;p&gt;Now we need to try to identify distinct &quot;islands&quot; of pixels where each &quot;island&quot; or &quot;object&quot; is a set of points that are within a single connected area. A straightforward way to do that is to look at every point in the mask that is set to 1 and either:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Perform a pixel-style &quot;flood fill&quot; starting at this point in order to find other points in an object&lt;/li&gt;
+&lt;li&gt;If this pixel has already been included in such a fill operation, do nothing (because it&#39;s already been accounted for)&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;This was made easier for me by reading the article &lt;a href=&quot;https://simpledevcode.wordpress.com/2015/12/29/flood-fill-algorithm-using-c-net/&quot;&gt;Flood Fill algorithm (using C#.Net)&lt;/a&gt;..&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static IEnumerable&amp;lt;IEnumerable&amp;lt;Point&amp;gt;&amp;gt; GetDistinctObjects(DataRectangle&amp;lt;bool&amp;gt; mask)
+{
+    // Flood fill areas in the looks-like-bar-code mask to create distinct areas
+    var allPoints = new HashSet&amp;lt;Point&amp;gt;(
+        mask.Enumerate(optionalFilter: (point, isMasked) =&amp;gt; isMasked).Select(point =&amp;gt; point.Item1)
+    );
+    while (allPoints.Any())
+    {
+        var currentPoint = allPoints.First();
+        var pointsInObject = GetPointsInObject(currentPoint).ToArray();
+        foreach (var point in pointsInObject)
+            allPoints.Remove(point);
+        yield return pointsInObject;
+    }
+
+    // Inspired by code at
+    // https://simpledevcode.wordpress.com/2015/12/29/flood-fill-algorithm-using-c-net/
+    IEnumerable&amp;lt;Point&amp;gt; GetPointsInObject(Point startAt)
+    {
+        var pixels = new Stack&amp;lt;Point&amp;gt;();
+        pixels.Push(startAt);
+
+        var valueAtOriginPoint = mask[startAt.X, startAt.Y];
+        var filledPixels = new HashSet&amp;lt;Point&amp;gt;();
+        while (pixels.Count &amp;gt; 0)
+        {
+            var currentPoint = pixels.Pop();
+            if ((currentPoint.X &amp;lt; 0) || (currentPoint.X &amp;gt;= mask.Width)
+            || (currentPoint.Y &amp;lt; 0) || (currentPoint.Y &amp;gt;= mask.Height))
+                continue;
+
+            if ((mask[currentPoint.X, currentPoint.Y] == valueAtOriginPoint)
+            &amp;amp;&amp;amp; !filledPixels.Contains(currentPoint))
+            {
+                filledPixels.Add(new Point(currentPoint.X, currentPoint.Y));
+                pixels.Push(new Point(currentPoint.X - 1, currentPoint.Y));
+                pixels.Push(new Point(currentPoint.X + 1, currentPoint.Y));
+                pixels.Push(new Point(currentPoint.X, currentPoint.Y - 1));
+                pixels.Push(new Point(currentPoint.X, currentPoint.Y + 1));
+            }
+        }
+        return filledPixels;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The problem is that, even with the blurring we performed, there will likely be some groups of distinct objects that are actually part of a single barcode. These areas need to be joined together. It&#39;s quite possible for there to be relatively large gaps in the middle of barcodes (there is in the example that we&#39;ve been looking at) and so we might not easily be able to just take the distinct objects that we&#39;ve got and join together areas that seem &quot;close enough&quot;.&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Areas that are possibly part of a barcode&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-MaskObjects.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;On the basis that individual bars in a barcode are tall compared to the largest possible width that any of them can be (which I&#39;ll go into more detail about later on), it seems like a reasonable idea to take any areas that are taller than they are wide and expand their width until they become square. That would give us this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Mask of possibly-part-of-a-barcode areas, extended into squared areas&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-MaskSquares.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;We&#39;d then work out which of these &quot;squared off&quot; rectangles overlap (if any) and replace overlapping rectangles with rectangles that cover their combined areas, which would look like this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Overlapping squared-off areas that have been combined&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-MaskSquaresCombinedPreTrimmed.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;The only problem with this is that the combined rectangles extend too far to the left and right of the areas, so we need to trim them down. The will be fairly straightforward because we have the information about what distinct objects there are and each object is just a list of points - so we work out which objects have points within each of the combined bounding areas and then we work out which out of all of the objects for each combined area has the smallest &quot;x&quot; value and smallest &quot;y&quot; value and which have the largest values. That way, we can change the combined bounding areas to only cover actual barcode pixels. Which would leave us with this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Combined possibly-a-barcode areas&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-MaskSquaresCombined.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;That might sound like a lot of complicated work but if we take a bit of a brute force* approach to it then it can be expressed like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static IEnumerable&amp;lt;Rectangle&amp;gt; GetOverlappingObjectBounds(
+    IEnumerable&amp;lt;IEnumerable&amp;lt;Point&amp;gt;&amp;gt; objects)
+{
+    // Translate each &quot;object&quot; (a list of connected points) into a bounding box (squared off if
+    // it was taller than it was wide)
+    var squaredOffBoundedObjects = new HashSet&amp;lt;Rectangle&amp;gt;(
+        objects.Select((points, index) =&amp;gt;
+        {
+            var bounds = Rectangle.FromLTRB(
+                points.Min(p =&amp;gt; p.X),
+                points.Min(p =&amp;gt; p.Y),
+                points.Max(p =&amp;gt; p.X) + 1,
+                points.Max(p =&amp;gt; p.Y) + 1
+            );
+            if (bounds.Height &amp;gt; bounds.Width)
+                bounds.Inflate((bounds.Height - bounds.Width) / 2, 0);
+            return bounds;
+        })
+    );
+
+    // Loop over the boundedObjects and reduce the collection by merging any two rectangles
+    // that overlap and then starting again until there are no more bounds merges to perform
+    while (true)
+    {
+        var combinedOverlappingAreas = false;
+        foreach (var bounds in squaredOffBoundedObjects)
+        {
+            foreach (var otherBounds in squaredOffBoundedObjects)
+            {
+                if (otherBounds == bounds)
+                    continue;
+
+                if (bounds.IntersectsWith(otherBounds))
+                {
+                    squaredOffBoundedObjects.Remove(bounds);
+                    squaredOffBoundedObjects.Remove(otherBounds);
+                    squaredOffBoundedObjects.Add(Rectangle.FromLTRB(
+                        Math.Min(bounds.Left, otherBounds.Left),
+                        Math.Min(bounds.Top, otherBounds.Top),
+                        Math.Max(bounds.Right, otherBounds.Right),
+                        Math.Max(bounds.Bottom, otherBounds.Bottom)
+                    ));
+                    combinedOverlappingAreas = true;
+                    break;
+                }
+            }
+            if (combinedOverlappingAreas)
+                break;
+        }
+        if (!combinedOverlappingAreas)
+            break;
+    }
+
+    return squaredOffBoundedObjects.Select(bounds =&amp;gt;
+    {
+        var allPointsWithinBounds = objects
+            .Where(points =&amp;gt; points.Any(point =&amp;gt; bounds.Contains(point)))
+            .SelectMany(points =&amp;gt; points)
+            .ToArray(); // Don&#39;t re-evaluate in the four accesses below
+        return Rectangle.FromLTRB(
+            left: allPointsWithinBounds.Min(p =&amp;gt; p.X),
+            right: allPointsWithinBounds.Max(p =&amp;gt; p.X) + 1,
+            top: allPointsWithinBounds.Min(p =&amp;gt; p.Y),
+            bottom: allPointsWithinBounds.Max(p =&amp;gt; p.Y) + 1
+        );
+    });
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;* &lt;em&gt;(There are definitely more efficient ways that this could be done but since we&#39;re only looking at 300px images then we&#39;re not likely to end up with huge amounts of data to deal with)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;To complete the process, we need to do three more things:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Since barcodes are wider than they are tall, we can discard any regions that don&#39;t fit this shape (of which there are two in the example image)&lt;/li&gt;
+&lt;li&gt;The remaining regions are expanded a little across so that they more clearly surround the barcode region, rather than being butted right up to it (this will make the barcode reading process a little easier)&lt;/li&gt;
+&lt;li&gt;As the regions that have been identified may well be on a resized version of the source image, they may need to scaled up so that they correctly apply to the source&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;To do that, we&#39;ll start from this code that we saw earlier:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var mask = Blur(Normalise(combinedGradients), maxRadiusForGradientBlurring)
+    .Transform(value =&amp;gt; (value &amp;gt;= thresholdForMaskingGradients));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. and expand it like so (removing the &quot;// .. more will go here soon&quot; comment), using the methods above:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// Determine how much the image was scaled down (if it had to be scaled down at all)
+// by comparing the width of the potentially-scaled-down data to the source image
+var reducedImageSideBy = (double)image.Width / greyScaleImageData.Width;
+
+var mask = Blur(Normalise(combinedGradients), maxRadiusForGradientBlurring)
+    .Transform(value =&amp;gt; (value &amp;gt;= thresholdForMaskingGradients));
+
+return GetOverlappingObjectBounds(GetDistinctObjects(mask))
+    .Where(boundedObject =&amp;gt; boundedObject.Width &amp;gt; boundedObject.Height)
+    .Select(boundedObject =&amp;gt;
+    {
+        var expandedBounds = boundedObject;
+        expandedBounds.Inflate(width: expandedBounds.Width / 10, height: 0);
+        expandedBounds.Intersect(
+            Rectangle.FromLTRB(0, 0, greyScaleImageData.Width, greyScaleImageData.Height)
+        );
+        return new Rectangle(
+            x: (int)(expandedBounds.X * reducedImageSideBy),
+            y: (int)(expandedBounds.Y * reducedImageSideBy),
+            width: (int)(expandedBounds.Width * reducedImageSideBy),
+            height: (int)(expandedBounds.Height * reducedImageSideBy)
+        );
+    });
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The final result is that the barcode has been successfully located on the image - hurrah!&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Barcode located!&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-Identified.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;With this information, we should be able to extract regions or &quot;sub images&quot; from the source image and attempt to decipher the barcode value in it (presuming that there IS a bar code in it and we haven&#39;t got a false positive match).&lt;/p&gt;
+
+&lt;p&gt;As we&#39;ll see in a moment, the barcode doesn&#39;t have to be perfectly lined up - some rotation is acceptable (depending upon the image, up to around 20 or 30 degrees should be fine). The MyFitnessPal app has a couple of fallbacks that I&#39;ve noticed, such as being able to read barcodes that are upside down or even back to front (which can happen if a barcode is scanned from the wrong side of a transparent wrapper). While I won&#39;t be writing code here for either of those approaches, I&#39;m sure that you could envisage how it could be done - the source image data could be processed as described here and then, if no barcode is read, rotated 180 degrees and re-processed and reversed and re-processed, etc..&lt;/p&gt;
+
+&lt;h3&gt;How to read a bar code&lt;/h3&gt;
+
+&lt;p&gt;A barcode is comprised of both black and white bars - so it&#39;s not just the black parts that are significant, it is the spaces between them as well.&lt;/p&gt;
+
+&lt;p&gt;The format of a barcode is as follows:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Three single-width bars (a black one, a white one and another black one) that are used to gauge what is considered to be a &quot;single width&quot;&lt;/li&gt;
+&lt;li&gt;Information for six numbers then appears, where each number is encoded by a sequence of four bars (white, black, white, black) - particular combinations of bar widths relate to particular digits (see below)&lt;/li&gt;
+&lt;li&gt;Another guard section appears with five single width bars (white, black, white, black, white)&lt;/li&gt;
+&lt;li&gt;Six more numbers appear (using the same bar-width-combinations encoding as before but the groups of four bars are now black, white, black, white)&lt;/li&gt;
+&lt;li&gt;A final guard section of three single width bards (black, white, black)&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;The numbers are encoded using the following system:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt; Digit      Bar widths
+
+   0        3, 2, 1, 1
+   1        2, 2, 2, 1
+   2        2, 1, 2, 2
+   3        1, 4, 1, 1
+   4        1, 1, 3, 2
+   5        1, 2, 3, 1
+   6        1, 1, 1, 4
+   7        1, 3, 1, 2
+   8        1, 2, 1, 3
+   9        3, 1, 1, 2
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;em&gt;(Note that every combination of values totals 7 when they added up - this is very helpful later!)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;To see what that looks like in the real world, here&#39;s a slice of that barcode from the jar of peanut butter with each section and each numberic value identified:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;Barcode numbers interpreted&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-AnnotatedValues.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;*(I should point out that the article &lt;a href=&quot;https://habr.com/en/post/439768/&quot;&gt;How does a barcode work?&lt;/a&gt; was extremely helpful in the research I did for this post and I&#39;m very grateful to the author for having written it in such an approachable manner!)&lt;/p&gt;
+
+&lt;p&gt;Any combination of bar widths that is not found in the table is considered to be invalid. On the one hand, you might think that this a potential loss; the format could support more combinations of bar widths to encode more values and then more data could be packed into the same space. There is an advantage, however, to having relatively few valid combinations of bar widths - it makes easier to tell whether the information being read appears to be correct. If a combination is encountered that seems incorrect then the read attempt should be aborted and retried. The format has existed for decades and it would make sense, bearing that in mind, to prioritise making it easier for the hardware to read rather prioritising trying to cram as much data in there as possible. There is &lt;em&gt;also&lt;/em&gt; a checksum included in the numerical data to try to catch any &quot;misreads&quot; but when working with low resolutions or hardware with little computing power, the easier that it is to bail out of a scan and to retry the better.&lt;/p&gt;
+
+&lt;p&gt;The way to tackle the reading is to:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Convert the sub image to greyscale&lt;/li&gt;
+&lt;li&gt;Create a binary mask so that the darker pixels become 0 and the lighter ones become 1&lt;/li&gt;
+&lt;li&gt;Take a single line across the area&lt;/li&gt;
+&lt;li&gt;Change the individual 1s and 0s into lengths of continuous &quot;runs&quot; of values
+
+&lt;ul&gt;
+&lt;li&gt;eg. 0001100 would become 3, 2, 2 because there are three 0s then two 1s and then two 0s&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;These runs of values will represent the different sized (black and white) bars that were encountered
+
+&lt;ul&gt;
+&lt;li&gt;For a larger image, each run length will be longer than for a small image but that won&#39;t matter because when we encounter runs of four bar length values that we think should be interpreted as a single digit, we&#39;ll do some dividing to try to guess the average size of a single width bar&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;Take these runs of values, skip through the expected guard regions and try to interpret each set of four bars that is thought to represent a digit of the bar code as that digit&lt;/li&gt;
+&lt;li&gt;If successful then perform a checksum calculation on the output and return the value ass a success if it meets expectations&lt;/li&gt;
+&lt;li&gt;If the line couldn&#39;t be interpreted as a barcode or the checksum calculation fails then take the next line down and go back to step 4&lt;/li&gt;
+&lt;li&gt;If there are no more lines to attempt then a barcode could not be identified in the image&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;This processing is fairly light computationally and so there is no need to resize the &quot;may be a barcode&quot; image region before attempting the work. In fact, it&#39;s benefical to &lt;em&gt;not&lt;/em&gt; shrink it as shrinking it will likely make the barcode section fuzzier and that makes the above steps less likely to work - the ideal case for creating a binary mask is where there is no significant &quot;seepage&quot; of pixel intensity between the black bar areas and the white bar areas. That&#39;s not to say that the images have to be crystal clear or perfectly aligned with the camera because the redundancy built into the format works in our favour here - if one line across the image can&#39;t be read because it&#39;s fuzzy then there&#39;s a good chance that one of the other lines will be legible.&lt;/p&gt;
+
+&lt;p&gt;60 length values is the precise number that we expect to find - there is expected to be some blank space before the barcode starts (1) and then a guard section of three single-width lines that we use to gauge bar width (3) and then six numbers that are encoded in four bars each (6x4=24) and then a guard section of five single-width lines (5) and then six numbers (6x4=24) and then a final guard region of three single-width bars, giving 1+3+24+5+24+3=60.&lt;/p&gt;
+
+&lt;p&gt;There will likely be another section of blank content after the barcode that we ignore&lt;/p&gt;
+
+&lt;p&gt;If we don&#39;t want to validate the final guard region then we can work with a barcode image where some of the end of cut off, so long as the data for the 12 digits is there; in this case, 57 lengths if the minimum number that we can accept&lt;/p&gt;
+
+&lt;h3&gt;Reading the numeric value with code&lt;/h3&gt;
+
+&lt;p&gt;I&#39;m going to try to present the code in approximately the same order as the steps presented above. So, firstly we need to convert the sub image to greyscale and create a binary mark from it. Then we&#39;ll go line by line down the image data and try to read a value. So we&#39;ll take this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public static string? TryToReadBarcodeValue(Bitmap subImage)
+{
+    const double threshold = 0.5;
+
+     // Black lines are considered 1 and so we set to true if it&#39;s a dark pixel (and 0 if light)
+    var mask = subImage.GetGreyscale().Transform(intensity =&amp;gt; intensity &amp;lt; (256 * threshold));
+    for (var y = 0; y &amp;lt; mask.Height; y++)
+    {
+        var value = TryToReadBarcodeValueFromSingleLine(mask, y);
+        if (value is object)
+            return value;
+    }
+    return null;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;.. and the read-each-slice-of-the-image code looks like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static string? TryToReadBarcodeValueFromSingleLine(
+    DataRectangle&amp;lt;bool&amp;gt; barcodeDetails,
+    int sliceY)
+{
+    if ((sliceY &amp;lt; 0) || (sliceY &amp;gt;= barcodeDetails.Height))
+        throw new ArgumentOutOfRangeException(nameof(sliceY));
+
+    var lengths = GetBarLengthsFromBarcodeSlice(barcodeDetails, sliceY).ToArray();
+    if (lengths.Length &amp;lt; 57)
+    {
+        // As explained, we&#39;d like 60 bars (which would include the final guard region) but we
+        // can still make an attempt with 57 (but no fewer)
+        // - There will often be another section of blank content after the barcode that we ignore
+        // - If we don&#39;t want to validate the final guard region then we can work with a barcode
+        //   image where some of the end is cut off, so long as the data for the 12 digits is
+        //   there (this will be the case where there are only 57 lengths)
+        return null;
+    }
+
+    var offset = 0;
+    var extractedNumericValues = new List&amp;lt;int&amp;gt;();
+    for (var i = 0; i &amp;lt; 14; i++)
+    {
+        if (i == 0)
+        {
+            // This should be the first guard region and it should be a pattern of three single-
+            // width bars
+            offset += 3;
+        }
+        else if (i == 7)
+        {
+            // This should be the guard region in the middle of the barcode and it should be a
+            // pattern of five single-width bars
+            offset += 5;
+        }
+        else
+        { 
+            var value = TryToGetValueForLengths(
+                lengths[offset],
+                lengths[offset + 1],
+                lengths[offset + 2],
+                lengths[offset + 3]
+            );
+            if (value is null)
+                return null;
+            extractedNumericValues.Add(value.Value);
+            offset += 4;
+        }
+    }
+
+    // Calculate what the checksum should be based upon the first 11 numbers and ensure that
+    // the 12th matches it
+    if (extractedNumericValues.Last() != CalculateChecksum(extractedNumericValues.Take(11)))
+        return null;
+
+    return string.Join(&quot;&quot;, extractedNumericValues);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;With the code below, we find the runs of continous 0 or 1 lengths that will represent bars are return that list (again, for larger images each run will be longer and for smaller images each run will be shorter but this will be taken care of later) -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static IEnumerable&amp;lt;int&amp;gt; GetBarLengthsFromBarcodeSlice(
+    DataRectangle&amp;lt;bool&amp;gt; barcodeDetails,
+    int sliceY)
+{
+    if ((sliceY &amp;lt; 0) || (sliceY &amp;gt;= barcodeDetails.Height))
+        throw new ArgumentOutOfRangeException(nameof(sliceY));
+
+    // Take the horizontal slice of the data
+    var values = new List&amp;lt;bool&amp;gt;();
+    for (var x = 0; x &amp;lt; barcodeDetails.Width; x++)
+        values.Add(barcodeDetails[x, sliceY]);
+
+    // Split the slice into bars - we only care about how long each segment is when they
+    // alternate, not whether they&#39;re dark bars or light bars
+    var segments = new List&amp;lt;Tuple&amp;lt;bool, int&amp;gt;&amp;gt;();
+    foreach (var value in values)
+    {
+        if ((segments.Count == 0) || (segments[^1].Item1 != value))
+            segments.Add(Tuple.Create(value, 1));
+        else
+            segments[^1] = Tuple.Create(value, segments[^1].Item2 + 1);
+    }
+    if ((segments.Count &amp;gt; 0) &amp;amp;&amp;amp; !segments[0].Item1)
+    {
+        // Remove the white space before the first bar
+        segments.RemoveAt(0);
+    }
+    return segments.Select(segment =&amp;gt; segment.Item2);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Now we need to implement the &quot;TryToGetValueForLengths&quot; method that &quot;TryToReadBarcodeValueFromSingleLine&quot; calls. This takes four bar lengths that are thought to represent a single digit in the bar code value (they are not part of a guard region or anything like that). It take those four bar lengths and guesses how many pixels across a single bar would be - which is made my simpler by the fact that all of the possible combinations of bar lengths in the lookup chart that we saw earlier add up to 7.&lt;/p&gt;
+
+&lt;p&gt;There&#39;s a little flexibility introduced here to try to account for a low quality image or if the threshold was a bit strong in the creation of the binary mask; we&#39;ll take that calculated expected width of a single bar and tweak it up or down a little if apply that division to the bar lengths means that we made some of the bars too small that they disappeared or too large and it seemed like the total width would be more than seven single estimated-width bars. There&#39;s only a &lt;em&gt;little&lt;/em&gt; flexibility here because if we fail then we can always try another line of the image! (Or maybe it will turn out that this sub image was a false positive match and there isn&#39;t a bar code in it at all).&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static int? TryToGetValueForLengths(int l0, int l1, int l2, int l3)
+{
+    if (l0 &amp;lt;= 0)
+        throw new ArgumentOutOfRangeException(nameof(l0));
+    if (l1 &amp;lt;= 0)
+        throw new ArgumentOutOfRangeException(nameof(l1));
+    if (l2 &amp;lt;= 0)
+        throw new ArgumentOutOfRangeException(nameof(l2));
+    if (l3 &amp;lt;= 0)
+        throw new ArgumentOutOfRangeException(nameof(l3));
+
+    // Take a guess at what the width of a single bar is based upon these four values
+    // (the four bars that encode a number should add up to a width of seven)
+    var raw = new[] { l0, l1, l2, l3 };
+    var singleWidth = raw.Sum() / 7d;
+    var adjustment = singleWidth / 10;
+    var attemptedSingleWidths = new HashSet&amp;lt;double&amp;gt;();
+    while (true)
+    {
+        var normalised = raw.Select(x =&amp;gt; Math.Max(1, (int)Math.Round(x / singleWidth))).ToArray();
+        var sum = normalised.Sum();
+        if (sum == 7)
+            return TryToGetNumericValue(normalised[0], normalised[1], normalised[2], normalised[3]);
+
+        attemptedSingleWidths.Add(singleWidth);
+        if (sum &amp;gt; 7)
+            singleWidth += adjustment;
+        else
+            singleWidth -= adjustment;
+        if (attemptedSingleWidths.Contains(singleWidth))
+        {
+            // If we&#39;ve already tried this width-of-a-single-bar value then give up -
+            // it doesn&#39;t seem like we can make the input values make sense
+            return null;
+        }
+    }
+
+    static int? TryToGetNumericValue(int i0, int i1, int i2, int i3)
+    {
+        var lookFor = string.Join(&quot;&quot;, new[] { i0, i1, i2, i3 });
+        var lookup = new[]
+        {
+            // These values correspond to the lookup chart shown earlier
+            &quot;3211&quot;, &quot;2221&quot;, &quot;2122&quot;, &quot;1411&quot;, &quot;1132&quot;, &quot;1231&quot;, &quot;1114&quot;, &quot;1312&quot;, &quot;1213&quot;, &quot;3112&quot;
+        };
+        for (var i = 0; i &amp;lt; lookup.Length; i++)
+        {
+            if (lookFor == lookup[i])
+                return i;
+        }
+        return null;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Finally we need the CalculateChecksum method (as noted in the code, there&#39;s a great explanation of how to do this in &lt;a href=&quot;https://en.wikipedia.org/wiki/Check_digit#UPC&quot;&gt;wikipedia&lt;/a&gt;) -&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;private static int CalculateChecksum(IEnumerable&amp;lt;int&amp;gt; values)
+{
+    if (values == null)
+        throw new ArgumentNullException(nameof(values));
+    if (values.Count() != 11)
+        throw new ArgumentException(&quot;Should be provided with precisely 11 values&quot;);
+
+    // See https://en.wikipedia.org/wiki/Check_digit#UPC
+    var checksumTotal = values
+        .Select((value, index) =&amp;gt; (index % 2 == 0) ? (value * 3) : value)
+        .Sum();
+    var checksumModulo = checksumTotal % 10;
+    if (checksumModulo != 0)
+        checksumModulo = 10 - checksumModulo;
+    return checksumModulo;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;With this code, we have executed all of the planned steps outlined before.&lt;/p&gt;
+
+&lt;p&gt;It should be noted that, even with the small amount of flexibility in the &quot;TryToGetValueForLengths&quot; method, in the peanut butter bar code example it requires 15 calls to &quot;GetBarLengthsFromBarcodeSlice&quot; until a bar code is successfully matched! Presumably, this is because there is a little more distortion further up the bar code due to the curve of the jar.&lt;/p&gt;
+
+&lt;p&gt;That&#39;s not to say, however, that this approach to bar reading is particularly fussy. The redundancy and simplicity, not to mention the &lt;em&gt;size&lt;/em&gt; of the average bar code, means that there is plenty of opportunity to try reading a sub image in multiple slices until one of them does match. In fact, I mentioned earlier that the barcode doesn&#39;t have to be perfectly at 90 degrees in order to be interpretable and that some rotation is acceptable. This hopefully makes some intuitive sense based upon the logic above and how it doesn&#39;t matter how long each individual bar code line is because they are averaged out - if a bar code was rotated a little and then a read was attempted of it line by line then the ratios between each line should remain consistent and the same data should be readable.&lt;/p&gt;
+
+&lt;p&gt;To illustrate, here&#39;s a zoomed-in section of the middle of the peanut butter bar code in the orientation shown so far:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;A strip of the peanut butter jar&#39;s bar code&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-SingleStrip.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;If we then rotate it like this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;The peanut butter jar rotated slightly&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-Rotated.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;.. then the code above will still read the value correctly because a strip across the rotated bar code looks like this:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;A strip of the peanut butter jar&#39;s bar code from the rotated image&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-SingleStripFromRotated.png&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;Hopefully it&#39;s clear enough that, for each given line, the ratios are essentially the same as for the non-rotated strip:&lt;/p&gt;
+
+&lt;p&gt;&lt;img alt=&quot;A strip of the peanut butter jar&#39;s bar code&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/PeanutBarcode-SingleStrip.jpg&quot; class=&quot;NoBorder AlwaysFullWidth&quot;&gt;&lt;/p&gt;
+
+&lt;p&gt;To get a reading from an image that is rotated more than this requires a very clear source image and will still be limited by the first stage of processing - that tried to find sections where the horizontal image intensity changed with steep gradients but the vertical intensity did not. If the image is rotated too much then there will be more vertical image intensity differences encountered and it is less likely to identify it as a &quot;maybe a bar code&quot; region.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;(Note: I experimented with rotated images that were produced by an online barcode generator and had more success - meaning that I could rotate them more than I could with real photographs - but that&#39;s because those images are generated with stark black and white and the horizontal / vertical intensity gradients are maintained for longer when the image is rotated if they start with such a high level of clarity.. I&#39;m more interested in reading values from real photographs and so I would suggest that only fairly moderate rotation will work - though it would still be plenty for an MyFitnessPal-type app that expects the User to hold the bar code in roughly the right orientation!)&lt;/em&gt;&lt;/p&gt;
+
+&lt;h3&gt;Tying it all together&lt;/h3&gt;
+
+&lt;p&gt;We&#39;ve looked at the separate steps involved in the whole reading process, all that is left is to combine them. The &quot;GetPossibleBarcodeAreasForBitmap&quot; and &quot;TryToReadBarcodeValue&quot; methods can be put together into a fully functioning program like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;static void Main()
+{
+    using var image = new Bitmap(&quot;Source.jpg&quot;);
+
+    var barcodeValues = new List&amp;lt;string&amp;gt;();
+    foreach (var area in GetPossibleBarcodeAreasForBitmap(image))
+    {
+        using var areaBitmap = new Bitmap(area.Width, area.Height);
+        using (var g = Graphics.FromImage(areaBitmap))
+        {
+            g.DrawImage(
+                image,
+                destRect: new Rectangle(0, 0, areaBitmap.Width, areaBitmap.Height),
+                srcRect: area,
+                srcUnit: GraphicsUnit.Pixel
+            );
+        }
+        var valueFromBarcode = TryToReadBarcodeValue(areaBitmap);
+        if (valueFromBarcode is object)
+            barcodeValues.Add(valueFromBarcode);
+    }
+
+    if (!barcodeValues.Any())
+        Console.WriteLine(&quot;Couldn&#39;t read any bar codes from the source image :(&quot;);
+    else
+    {
+        Console.WriteLine(&quot;Read the following bar code(s) from the image:&quot;);
+        foreach (var barcodeValue in barcodeValues)
+            Console.WriteLine(&quot;- &quot; + barcodeValue);
+    }
+
+    Console.WriteLine();
+    Console.WriteLine(&quot;Press [Enter] to terminate..&quot;);
+    Console.ReadLine();
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3&gt;Finito!&lt;/h3&gt;
+
+&lt;p&gt;And with that, we&#39;re finally done! I must admit that I started writing this post about three years ago and it&#39;s been in my TODO list for a loooooong time now. But I&#39;ve taken a week off work and been able to catch up with a few things and have finally been able to cross it off the list. And I&#39;m quite relieved that I didn&#39;t give up on it entirely because it was a fun little project and coming back to it now allowed me to tidy it up a bit with the newer C# 8 syntax and even enable the nullable reference types option on the project (I sure do hate unintentional nulls being allowed to sneak in!)&lt;/p&gt;
+
+&lt;p&gt;A quick reminder if you want to see it in action or play about it yourself, the &lt;a href=&quot;https://github.com/ProductiveRage/BarcodeReader&quot;&gt;GitHub repo is here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Thanks to anyone that read this far!&lt;/p&gt;</description>
+			<pubDate>Fri, 07 Aug 2020 23:24:00 GMT</pubDate>
+		</item>
 		<item>
 			<title>Removing ALL assembly names in Json.NET TypeNameHandling output</title>
             <link>http://www.productiverage.com/removing-all-assembly-names-in-jsonnet-typenamehandling-output</link>
@@ -4249,393 +5115,6 @@ using (var image = new Bitmap(path))
 
 &lt;p&gt;Finally, I want to mention again the article &quot;&lt;a href=&quot;http://crsouza.com/2010/04/27/kernel-support-vector-machines-for-classification-and-regression-in-c/&quot;&gt;Kernel Support Vector Machines for Classification and Regression in C#&lt;/a&gt;&quot; by Accord.NET&#39;s C&#233;sar Souza. Here, he introduces the SVM in a much more formal way than I&#39;ve done here, he includes a video about &quot;&lt;a href=&quot;https://www.youtube.com/watch?v=3liCbRZPrZA&quot;&gt;The Kernel Trick&lt;/a&gt;&quot; (which is a simple yet mind-blowing way in which the linear kernel can be used to classify data that doesn&#39;t immediately look like it would work for), he talks about other kernels (aside from linear he also describes polynomial and gaussian) and he describes how the Sequential Minimal Optimization learning algorithm works. There&#39;s a lot of code and there&#39;s illustrated examples at the end. When I found this article fairly early on in my research, I recognised how much care had gone into preparing it but also knew that I needed something a little more beginner-level first! So I bookmarked it for future reference and now I think that I understand (almost all of) it. Hopefully, if you started off knowing nothing but have followed all the way through this post, then you will too!&lt;/p&gt;</description>
 			<pubDate>Sun, 12 Feb 2017 18:39:00 GMT</pubDate>
-		</item>
-		<item>
-			<title>Migrating my Full Text Indexer to .NET Core (supporting multi-target NuGet packages)</title>
-            <link>http://www.productiverage.com/migrating-my-full-text-indexer-to-net-core-supporting-multitarget-nuget-packages</link>
-			<guid>http://www.productiverage.com/migrating-my-full-text-indexer-to-net-core-supporting-multitarget-nuget-packages</guid>
-			<description>&lt;p&gt;So it looks increasingly like .NET Core is going to be an important technology in the near future, in part because Microsoft is developing much of it in the open (in a significant break from their past approach to software), in part because some popular projects support it (&lt;a href=&quot;https://github.com/StackExchange/dapper-dot-net&quot;&gt;Dapper&lt;/a&gt;, &lt;a href=&quot;http://automapper.org/&quot;&gt;AutoMapper&lt;/a&gt;, &lt;a href=&quot;http://www.newtonsoft.com/json&quot;&gt;Json.NET&lt;/a&gt;) and in part because of excitement from blog posts such as &lt;a href=&quot;http://web.ageofascent.com/asp-net-core-exeeds-1-15-million-requests-12-6-gbps/&quot;&gt;ASP.NET Core – 2300% More Requests Served Per Second&lt;/a&gt;.&lt;/p&gt;
-
-&lt;p&gt;All I really knew about it was that it was a cut-down version of the .NET framework which should be able to run on platforms other than Windows, which &lt;em&gt;might&lt;/em&gt; be faster in some cases and which may still undergo some important changes in the near future (such as moving away from the new &quot;project.json&quot; project files and back to something more traditional in terms of Visual Studio projects - see &lt;a href=&quot;https://wildermuth.com/2016/05/12/The-Future-of-project-json-in-ASP-NET-Core&quot;&gt;The Future of project.json in ASP.NET Core&lt;/a&gt;).&lt;/p&gt;
-
-&lt;p&gt;To try to find out more, I&#39;ve taken a codebase that I wrote years ago and have migrated it to .NET Core. It&#39;s not enormous but it spans multiple projects, has a (small-but-better-than-nothing) test suite and supports serialising search indexes to and from disk for caching purposes. My hope was that I would be able to probe some of the limitations of .NET Core with this non-trivial project but that it wouldn&#39;t be such a large task that it take more than a few sessions spaced over a few days to complete.&lt;/p&gt;
-
-&lt;h4&gt;Spoilers&lt;/h4&gt;
-
-&lt;p&gt;&lt;strong&gt;Would I be able to migrate one project at a time within the solution to .NET Core and still have the whole project building successfully (while some of the other projects were still targeting the &quot;full fat&quot; .NET framework)?&lt;/strong&gt; Yes, but some hacks are required.&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;Would it be easy (or even possible) to create a NuGet package that would work on both .NET Core and .NET 4.5?&lt;/strong&gt; Yes.&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;Would the functionality that is no longer present in .NET Core cause me problems?&lt;/strong&gt; Largely, no. The restricted reflection capabilities, no - if I pull in an extra dependency. The restricted serialisation facilities, &lt;em&gt;yes&lt;/em&gt; (but I&#39;m fairly happy with the solution and compromises that I ended up with).&lt;/p&gt;
-
-&lt;h3&gt;What, really, is .NET Core (and what is the Full Text Indexer)?&lt;/h3&gt;
-
-&lt;p&gt;Essentially,&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;.NET Core is a new cross-platform .NET Product .. [and] is composed of the following parts: A .NET runtime .. A set of framework libraries .. A set of SDK tools and language compilers .. The &#39;dotnet&#39; app host, which is used to launch .NET Core apps&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;&lt;em&gt;(from Scott Hanselman&#39;s &quot;&lt;a href=&quot;http://www.hanselman.com/blog/NETCore10IsNowReleased.aspx&quot;&gt;.NET Core 1.0 is now released!.NET Core 1.0 is now released!&lt;/a&gt;&quot; post)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;What .NET Core means in the context of this migration is that there are new project types in Visual Studio to use that target new .NET frameworks. Instead of .NET 4.6.1, for example, there is &quot;netstandard1.6&quot; for class libraries and &quot;netcoreapp1.0&quot; for console applications.&lt;/p&gt;
-
-&lt;p&gt;The new Visual Studio project types become available after you install the &lt;a href=&quot;https://www.microsoft.com/net/core#windows&quot;&gt;Visual Studio Tooling&lt;/a&gt; - alternatively, the &quot;dotnet&quot; command line tool makes things very easy so you can could create projects using nothing more than notepad and &quot;dotnet&quot; if you want to! Since I was just getting started, I chose to stick in my Visual Studio comfort zone.&lt;/p&gt;
-
-&lt;p&gt;The Full Text Indexer code that I&#39;m migrating was something that I wrote a few years ago while I was working with a Lucene integration (&quot;this full text indexing lark.. &lt;em&gt;how hard could it really be!&lt;/em&gt;&quot;). It&#39;s a set of class libraries; &quot;Common&quot; (which has no dependencies other than the .NET framework), &quot;Core&quot; (which depends upon Common), &quot;Helpers&quot; (which depends upon both Common and Core), and &quot;Querier&quot; (which also depends upon Common and Core). Then there is a &quot;UnitTests&quot; project and a &quot;Tester&quot; console application, which loads some data from a Sqlite database file, constructs an index and then performs a search or two (just to demonstrate how it works end-to-end).&lt;/p&gt;
-
-&lt;p&gt;My plan was to try migrating one project at a time over to .NET Core, to move in baby steps so that I could be confident that everything would remain in a working state for most of the time.&lt;/p&gt;
-
-&lt;h3&gt;Creating the first .NET Core project&lt;/h3&gt;
-
-&lt;p&gt;The first thing I did was delete the &quot;Common&quot; project entirely (deleted it from Visual Studio and then manually deleted all of the files) and then created a brand new .NET Core class library called &quot;Common&quot;. I then used my source control client to revert the deletions of the class files so that they appeared within the new project&#39;s folder structure. I expected to then have to &quot;Show All Files&quot; and explicitly include these files in the project but it turns out that .NET Core project files don&#39;t specify files to include, it&#39;s presumed that all files in the folder will be included. Makes sense!&lt;/p&gt;
-
-&lt;p&gt;It wouldn&#39;t compile, though, because some of the classes have the &lt;strong&gt;[Serializable]&lt;/strong&gt; attribute on them and this doesn&#39;t exist in .NET Core. As I understand it, that&#39;s because the framework&#39;s serialisation mechanisms have been stripped right back with the intention of the framework being able to specialise at framework-y core competencies and for there to be an increased reliance on external libraries for other functionality.&lt;/p&gt;
-
-&lt;p&gt;This attribute is used through my library because there is an &lt;strong&gt;IndexDataSerialiser&lt;/strong&gt; that allows an index to be persisted to disk for caching purposes. It uses the &lt;strong&gt;BinaryFormatter&lt;/strong&gt; to do this, which requires that the types that you need to be serialised be decorated with the &lt;strong&gt;[Serializable]&lt;/strong&gt; attribute or they implement the &lt;strong&gt;ISerializable&lt;/strong&gt; interface. Neither the &lt;strong&gt;BinaryFormatter&lt;/strong&gt; nor the &lt;strong&gt;ISerializable&lt;/strong&gt; interface are available within .NET Core. I will need to decide what to do about this later - ideally, I&#39;d like to continue to be able to support reading and writing to the same format as I have done before (if only to see if it&#39;s possible when migrating to Core). For now, though, I&#39;ll just remove the &lt;strong&gt;[Serializable]&lt;/strong&gt; attributes and worry about it later.&lt;/p&gt;
-
-&lt;p&gt;So, with very little work, the Common project was compiling for the &quot;netstandard1.6&quot; target framework.&lt;/p&gt;
-
-&lt;p&gt;Unfortunately, the projects that rely on Common weren&#39;t compiling because their references to it were removed when I removed the project from the VS solution. And, if I try to add references to the new Common project I&#39;m greeted with this:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;A reference to &#39;Common&#39; could not be added. An assembly must have a &#39;dll&#39; or &#39;exe&#39; extension in order to be referenced.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;The problem is that Common is being built for &quot;netstandard1.6&quot; but &lt;em&gt;only&lt;/em&gt; that framework. I also want it to support a &quot;full fat&quot; .NET framework, like 4.5.2 - in order to do this I need to edit the project.json file so that the build process creates multiple versions of the project, one .NET 4.5.2 as well as the one for netstandard. That means changing it from this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;{
-  &quot;version&quot;: &quot;1.0.0-*&quot;,
-
-  &quot;dependencies&quot;: {
-    &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
-  },
-
-  &quot;frameworks&quot;: {
-    &quot;netstandard1.6&quot;: {
-      &quot;imports&quot;: &quot;dnxcore50&quot;
-    }
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;to this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;{
-  &quot;version&quot;: &quot;1.0.0-*&quot;,
-
-  &quot;dependencies&quot;: {},
-
-  &quot;frameworks&quot;: {
-    &quot;netstandard1.6&quot;: {
-      &quot;imports&quot;: &quot;dnxcore50&quot;,
-      &quot;dependencies&quot;: {
-        &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
-      }
-    },
-    &quot;net452&quot;: {}
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Two things have happened - an additional entry has been added to the &quot;frameworks&quot; section (&quot;net452&quot; joins &quot;netstandard1.6&quot;) and the &quot;NETStandard.Library&quot; dependency has moved from being something that is always required by the project to something that is only required by the project when it&#39;s being built for netstandard.&lt;/p&gt;
-
-&lt;p&gt;Now, Common may be added as a reference to the other projects.&lt;/p&gt;
-
-&lt;p&gt;However.. they won&#39;t compile. Visual Studio will be full of errors that required classes do not exist in the current context.&lt;/p&gt;
-
-&lt;h3&gt;Adding a reference to a .NET Core project from a .NET 4.5.2 project in the same solution&lt;/h3&gt;
-
-&lt;p&gt;Although the project.json configuration does mean that two version of the Common library are being produced (looking in the bin/Debug folder, there are two sub-folders &quot;net452&quot; and &quot;netstandard1.6&quot; and each have their own binaries in), it seems that the &quot;Add Reference&quot; functionality in Visual Studio doesn&#39;t (currently) support adding references. There is an issue on GitHub about this; &lt;a href=&quot;https://github.com/dotnet/core/issues/231&quot;&gt;Allow &quot;Add Reference&quot; to .NET Core class library that uses .NET Framework from a traditional class library&lt;/a&gt; but it seems like the conclusion is that this will be fixed in the future, when the changes have been completed that move away from .NET Core projects having a project.json file and towards a new kind of &quot;.csproj&quot; file.&lt;/p&gt;
-
-&lt;p&gt;There is a workaround, though. Instead of selecting the project from the Add Reference dialog, you click &quot;Browse&quot; and then select that file in the &quot;Common/bin/Debug/net452&quot; folder. Then the project &lt;em&gt;will&lt;/em&gt; build. This isn&#39;t a perfect solution, though, since it will &lt;em&gt;always&lt;/em&gt; reference the Debug build. When building in Release configuration, you also want the referenced binaries from other projects to be built in Release configuration. To do that, I had to open each &quot;.csproj&quot; file notepad and change&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;Reference Include=&quot;Common&quot;&amp;gt;
-  &amp;lt;HintPath&amp;gt;..\Common\bin\Debug\net452\Common.dll&amp;lt;/HintPath&amp;gt;
-&amp;lt;/Reference&amp;gt;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;to&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;Reference Include=&quot;Common&quot;&amp;gt;
-  &amp;lt;HintPath&amp;gt;..\Common\bin\$(Configuration)\net452\Common.dll&amp;lt;/HintPath&amp;gt;
-&amp;lt;/Reference&amp;gt;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;A little bit annoying but not the end of the world (credit for this fix, btw, goes to this Stack Overflow answer to &lt;a href=&quot;http://stackoverflow.com/a/37323585/3813189&quot;&gt;Attach unit tests to ASP.NET Core project&lt;/a&gt;).&lt;/p&gt;
-
-&lt;p&gt;What makes it even more annoying is the link from the referencing project (say, the Core project) to the &lt;em&gt;referenced&lt;/em&gt; project (the Common project) is not as tightly integrated as when a project reference is normally added through Visual Studio. For example, while you can set breakpoints on the Common project and they will be hit when the Core project calls into that code, using &quot;Go To Definition&quot; to navigate from code in the Core project into code in the referenced Common project &lt;em&gt;doesn&#39;t&lt;/em&gt; work (it takes you to a &quot;from metadata&quot; view rather than taking you to the actual file). On top of this, the referencing project doesn&#39;t know that it needs to be rebuilt if the referenced project is rebuilt - so, if the Common library is changed and rebuilt then the Core library may continue to work against an old version of the Common binary unless you explicitly rebuild Core as well.&lt;/p&gt;
-
-&lt;p&gt;These are frustrations that I would not want to live with long term. However, the plan here is to migrate all of the projects over to .NET Core and so I think that I can put up with these limitations so long as they only affect me as I migrate the projects over one-by-one.&lt;/p&gt;
-
-&lt;h3&gt;The second project (additional dependencies required)&lt;/h3&gt;
-
-&lt;p&gt;I repeated the procedure for second project; &quot;Core&quot;. This also contained files with types marked as &lt;strong&gt;[Serializable]&lt;/strong&gt; (which I just removed for now) and there was the &lt;strong&gt;IndexDataSerialiser&lt;/strong&gt; class that used the &lt;strong&gt;BinaryFormatter&lt;/strong&gt; to allow data to be persisted to disk - this also had to go, since there was no support for it in .NET Core (I&#39;ll talk about what I did with serialisation later on). I needed to add a reference to the Common project - thankfully adding a reference to a .NET Core project &lt;em&gt;from&lt;/em&gt; a .NET Core project works perfectly, so the workaround that I had to apply before (when the Core project was still .NET 4.5.2) wasn&#39;t necessary.&lt;/p&gt;
-
-&lt;p&gt;However, it still didn&#39;t compile.&lt;/p&gt;
-
-&lt;p&gt;In the &quot;Core&quot; project lives the &lt;strong&gt;EnglishPluralityStringNormaliser&lt;/strong&gt; class, which
-is used to adjust tokens (ie. words) so that the singular and plural versions of the same word are considered equivalent (eg. &quot;cat&quot; and &quot;cats&quot;, &quot;category&quot; and &quot;categories&quot;). Internally, it generates a compiled LINQ expression to try to perform its work as efficiently as possible and it requires reflection to do that. Calling &quot;GetMethod&quot; and &quot;GetProperty&quot; on a &lt;strong&gt;Type&lt;/strong&gt; is not supported in netstandard, though, and an additional dependency is required. So the Core project.json file needed to be changed to look like this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;{
-  &quot;version&quot;: &quot;1.0.0-*&quot;,
-
-  &quot;dependencies&quot;: {
-    &quot;Common&quot;: &quot;1.0.0-*&quot;
-  },
-
-  &quot;frameworks&quot;: {
-    &quot;netstandard1.6&quot;: {
-      &quot;imports&quot;: &quot;dnxcore50&quot;,
-      &quot;dependencies&quot;: {
-        &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
-        &quot;System.Reflection.TypeExtensions&quot;: &quot;4.1.0&quot;
-      }
-    },
-    &quot;net452&quot;: {}
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The Common project is a dependency regardless of what the target framework is during the build process but the &quot;System.Reflection.TypeExtensions&quot; package is also required when building for netstandard (but not .NET 4.5.2), as this includes extensions methods for &lt;strong&gt;Type&lt;/strong&gt; such as &quot;GetMethod&quot; and &quot;GetProperty&quot;.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Note: Since these are extension methods in netstandard, a &quot;using System.Reflection;&quot; statement is required at the top of the class - this is not required when building for .NET 4.5.2 because &quot;GetMethod&quot; and &quot;GetProperty&quot; are instance methods on &lt;strong&gt;Type&lt;/strong&gt;.&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;There was one other dependency that was required for Core to build - &quot;System.Globalization.Extensions&quot;. This was because the &lt;strong&gt;DefaultStringNormaliser&lt;/strong&gt; class includes the line&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;var normalisedValue = value.Normalize(NormalizationForm.FormKD);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;which resulted in the error&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;&#39;string&#39; does not contain a definition for &#39;Normalize&#39; and no extension method &#39;Normalize&#39; accepting a first argument of type &#39;string&#39; could be found (are you missing a using directive or an assembly reference?)&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;This is another case of functionality that is in .NET 4.5.2 but that is an optional package for .NET Core. Thankfully, it&#39;s easy to find out what additional package needs to be included - the &quot;lightbulb&quot; code fix options will try to look for a package to resolve the problem and it correctly identifies that &quot;System.Globalization.Extensions&quot; contains a relevant extension method (as illustrated below).&lt;/p&gt;
-
-&lt;p&gt;&lt;img alt=&quot;TODO&quot; src=&quot;http://www.productiverage.com/Content/Images/Posts/SystemGlobalizationExtensionsDependency.png&quot; class=&quot;AlwaysFullWidth NoBorder&quot;&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Note: Selecting the &quot;Add package System.Globalization.Extensions 4.0.1&quot; option will add the package as a dependecy for netstandard in the project.json file and it will add the required &quot;using System.Globalization;&quot; statement to the class - which is very helpful of it!&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;All that remained now was to use the workaround from before to add the .NET Core version of the &quot;Core&quot; project as a reference to the projects that required it.&lt;/p&gt;
-
-&lt;h3&gt;The third and fourth projects (both class libraries)&lt;/h3&gt;
-
-&lt;p&gt;The process for the &quot;Helpers&quot; and &quot;Querier&quot; class libraries was simple. Neither required anything that wasn&#39;t included in netstandard1.6 and so it was just a case of going through the motions.&lt;/p&gt;
-
-&lt;h3&gt;The &quot;Tester&quot; Console Application&lt;/h3&gt;
-
-&lt;p&gt;At this point, all of the projects that constituted the actual &quot;Full Text Indexer&quot; were building for both the netstandard1.6 framework and .NET 4.5.2 - so I could have stopped here, really (aside from the serialisation issues I had been putting off). But I thought I might as well go all the way and see if there were any interesting differences in migrating Console Applications and xUnit test suite projects.&lt;/p&gt;
-
-&lt;p&gt;For the Tester project; no, not much was different. It has an end-to-end example integration where it loads data from a Sqlite database file of Blog posts using Dapper and then creates a search index. The posts contain markdown content and so three NuGet packages were required - &lt;a href=&quot;https://www.nuget.org/packages/Dapper&quot;&gt;Dapper&lt;/a&gt;, &lt;a href=&quot;https://www.nuget.org/packages/System.Data.Sqlite&quot;&gt;System.Data.Sqlite&lt;/a&gt; and &lt;a href=&quot;https://www.nuget.org/packages/MarkdownSharp&quot;&gt;MarkdownSharp&lt;/a&gt;.&lt;/p&gt;
-
-&lt;p&gt;Dapper supports .NET Core and so that was no problem but the other two did not. Thankfully, though, there were alternatives that &lt;em&gt;did&lt;/em&gt; support netstandard - &lt;a href=&quot;https://www.nuget.org/packages/Microsoft.Data.Sqlite&quot;&gt;Microsoft.Data.Sqlite&lt;/a&gt; and &lt;a href=&quot;https://www.nuget.org/packages/Markdown&quot;&gt;Markdown&lt;/a&gt;. Using Microsoft.Data.Sqlite required some (very minor) code changes while Markdown exposed exactly the same interface as MarkdownSharp.&lt;/p&gt;
-
-&lt;h3&gt;The xUnit Test Suite Project&lt;/h3&gt;
-
-&lt;p&gt;The &quot;UnitTests&quot; project didn&#39;t require anything &lt;em&gt;very&lt;/em&gt; different but there are a few gotchas to watch out for..&lt;/p&gt;
-
-&lt;p&gt;The first is that you need to create a &quot;Console Application (.NET Core)&quot; project since xUnit works with the &quot;netcoreapp1.0&quot; framework (which console applications target) and not &quot;netstandard1.6&quot; (which is what class libraries target).&lt;/p&gt;
-
-&lt;p&gt;The second is that, presuming you want the Visual Studio test runner integration (which, surely, you do!) you need to not only add the &quot;xunit&quot; NuGet package but also the &quot;dotnet-test-xunit&quot; package. Thirdly, you need to enable the &quot;Include prerelease&quot; option in the NuGet Package Manager to locate versions of these packages that work with .NET Core (this will, of course, change with time - but as of November 2016 these packages are only available as &quot;prereleases&quot;).&lt;/p&gt;
-
-&lt;p&gt;Fourthly, you need to add a line&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&quot;testRunner&quot;: &quot;xunit&quot;,
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;to the project.json file.&lt;/p&gt;
-
-&lt;p&gt;Having done all of this, the project should compile &lt;em&gt;and&lt;/em&gt; the tests should appear in the Test Explorer window.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Note: I wanted to fully understand each step required to create an xUnit test project but you could also just follow the instructions at &lt;a href=&quot;https://xunit.github.io/docs/getting-started-dotnet-core.html&quot;&gt;Getting started with xUnit.net (.NET Core / ASP.NET Core)&lt;/a&gt; which provides you a complete project.json to paste in - one of the nice things about .NET Core projects is that changing (and saving) the project.json is all it takes to change from being a class library (and targeting netstandard) to being a console application (and targeting netcoreapp). Similarly, references to other projects and to NuGet packges are all specified there and saving changes to that project file results in those reference immediately being resolved and any specified packages being downloaded.&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;In the class library projects, I made them all target both netstandard and net452. With the test suite project, if the project.json file is changed to target both .NET Core (&quot;netcoreapp1.0&quot;, since it&#39;s a console app) and full fat .NET (&quot;net452&quot;) then two different versions of the suite will be built. The clever thing about this is that if you use the command line to run the tests -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;dotnet test
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;.. then it will run the tests in both versions. Since there are going to be some differences between the different frameworks and, quite feasibly, between different versions of dependencies then it&#39;s a very handy tool to be able to run the tests against all of the versions of .NET that your libraries target.&lt;/p&gt;
-
-&lt;p&gt;There is a &quot;but&quot; here, though. While the command line test process will target both frameworks, the Visual Studio Test Explorer doesn&#39;t. I &lt;em&gt;think&lt;/em&gt; that it only targets the first framework that is specified in the project.json file but I&#39;m not completely sure. I just know that it doesn&#39;t run them both. Which is a pity. On the bright side, I do like that .NET Core is putting the command line first - not only because I&#39;m a command line junkie but also because it makes it very easy to integrate into build servers and continuous integration  processes. I do hope that one day (soon) that the VS integration will be as thorough as the command line tester, though.&lt;/p&gt;
-
-&lt;h3&gt;Building NuGet packages&lt;/h3&gt;
-
-&lt;p&gt;So, now, there are no errors and everything is building for .NET Core &lt;em&gt;and&lt;/em&gt; for &quot;classic&quot;* .NET.&lt;/p&gt;
-
-&lt;p&gt;* &lt;em&gt;I&#39;m still not sure what the accepted terminology is for non-.NET-Core projects, I don&#39;t really think that &quot;full fat framework&quot; is the official designation :)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;There are no nasty workarounds required for the references (like when the not-yet-migrated .NET 4.5.2 projects were referencing the .NET Core projects). It&#39;s worth mentioning that that workaround was only required when the .NET 4.5.2 project wanted to reference a .NET Core project &lt;em&gt;from within the same solution&lt;/em&gt; - if the project that targeted both &quot;netstandard1.6&quot; and &quot;net452&quot; was built into a NuGet package then that package could be added to a .NET Core project &lt;em&gt;or&lt;/em&gt; to a .NET 4.5.2 project &lt;em&gt;without any workarounds&lt;/em&gt;. Which makes me think that now is a good time to talk about building NuGet packages from .NET Core projects..&lt;/p&gt;
-
-&lt;p&gt;The project.json file has enough information that the &quot;dotnet&quot; command line can create a NuGet package from it. So, if you run the following command (you need to be in the root of the project that you&#39;re interested in to do this) -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;dotnet pack
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;.. then you will get a NuGet package built, ready to distribute! This is very handy, it makes things very simple. And if the project.json targets both netstandard1.6 and net452 then you will get a NuGet package that may be added to either a .NET Core project or a .NET 4.5.2 (or later) project.&lt;/p&gt;
-
-&lt;p&gt;I hadn&#39;t created the Full Text Indexer as a NuGet package before now, so this seemed like a good time to think about how exactly I wanted to do it.&lt;/p&gt;
-
-&lt;p&gt;There were a few things that I wanted to change with what &quot;dotnet pack&quot; gave me at this point -&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;The name and ID of the package comes from the project name, so the Core project resulted into a package named &quot;Core&quot;, which is too vague&lt;/li&gt;
-&lt;li&gt;I wanted to include additional metadata in the packages such as a description, project link and icon url&lt;/li&gt;
-&lt;li&gt;If each project would be built into a separate package then it might not be clear to someone what packages are required and how they work together, so it probably makes sense to have a combined package that pulls in everything&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;For points one and two, the &quot;&lt;a href=&quot;https://docs.microsoft.com/en-us/dotnet/articles/core/tools/project-json&quot;&gt;project.json reference&lt;/a&gt;&quot; documentation has a lot of useful information. It describes the &quot;name&quot; attribute -&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;The name of the project, used for the assembly name as well as the name of the package. The top level folder name is used if this property is not specified.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;So, it sounds like I could add a line to the Common project -&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&quot;name&quot;: &quot;FullTextIndexer.Common&quot;,
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;.. which would result in the NuGet package for &quot;Common&quot; having the ID &quot;FullTextIndexer.Common&quot;. And it does!&lt;/p&gt;
-
-&lt;p&gt;However, there is a problem with doing this.&lt;/p&gt;
-
-&lt;p&gt;The &quot;Common&quot; project is going to be built into a NuGet package called &quot;FullTextIndexer.Common&quot; so the projects that depend upon it will need updating - their project.json files need to change the dependency from &quot;Common&quot; to &quot;FullTextIndexer.Common&quot;. If the Core project, for example, wasn&#39;t updated to state &quot;FullTextIndexer.Common&quot; as a dependency then the &quot;Core&quot; NuGet package would have a dependency on a package called &quot;Common&quot;, which wouldn&#39;t exist (because I want to publish it as &quot;FullTextIndexer.Common&quot;). The issue is that if Core&#39;s project.json is updated to specify &quot;FullTextIndexer.Common&quot; as a dependency then the following errors are reported:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;NuGet Package Restore failed for one or more packages. See details in the Output window.&lt;/p&gt;
-  
-  &lt;p&gt;The dependency FullTextIndexer.Common &gt;= 1.0.0-* could not be resolved.&lt;/p&gt;
-  
-  &lt;p&gt;The given key was not present in the dictionary.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;To cut a long story short, after some trial and error experimenting (and having been unable to find any documentation about this or reports of anyone having the same problem) it seems that the problem is that .NET Core dependencies within a solution depend upon the project folders having the same name as the package name - so my problem was that I had a project folder called &quot;Common&quot; that was building a NuGet package called &quot;FullTextIndexer.Common&quot;. Renaming the &quot;Common&quot; folder to &quot;FullTextIndexer.Common&quot; fixed it. It probably makes sense to keep the project name, package name and folder name consistent in general, I just wish that the error messages had been more helpful because the process of discovering this was very frustrating!&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Note: Since I renamed the project folder to &quot;FullTextIndexer.Common&quot;, I didn&#39;t need the &quot;name&quot; option in the project.json file and so I removed it (the default behaviour of using the top level folder name is fine).&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;The &lt;a href=&quot;https://docs.microsoft.com/en-us/dotnet/articles/core/tools/project-json&quot;&gt;project.json reference&lt;/a&gt; made the second task simple, though, by documenting the &quot;&lt;a href=&quot;https://docs.microsoft.com/en-us/dotnet/articles/core/tools/project-json#packoptions&quot;&gt;packOptions&lt;/a&gt;&quot; section. To cut to the chase, I changed the Common&#39;s project.json to the following:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;{
-  &quot;version&quot;: &quot;1.0.0-*&quot;,
-
-  &quot;packOptions&quot;: {
-    &quot;iconUrl&quot;: &quot;https://secure.gravatar.com/avatar/6a1f781d4d5e2d50dcff04f8f049767a?s=200&quot;,
-    &quot;projectUrl&quot;: &quot;https://bitbucket.org/DanRoberts/full-text-indexer&quot;,
-    &quot;tags&quot;: [ &quot;C#&quot;, &quot;full text index&quot;, &quot;search&quot; ]
-  },
-  &quot;authors&quot;: [ &quot;ProductiveRage&quot; ],
-  &quot;copyright&quot;: &quot;Copyright 2016 ProductiveRage&quot;,
-
-  &quot;dependencies&quot;: {},
-
-  &quot;frameworks&quot;: {
-    &quot;netstandard1.6&quot;: {
-      &quot;imports&quot;: &quot;dnxcore50&quot;,
-      &quot;dependencies&quot;: {
-        &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
-      }
-    },
-    &quot;net452&quot;: {}
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;I updated the other class library projects similarly and updated the dependency names on all of the projects in the solution so that everything was consistent and compiling.&lt;/p&gt;
-
-&lt;p&gt;Finally, I created an additional project named simply &quot;FullTextIndexer&quot; whose only role in life is to generate a NuGet package that includes all of the others (it doesn&#39;t have any code of its own). Its project.json file looks like this:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;{
-  &quot;version&quot;: &quot;1.0.0-*&quot;,
-
-  &quot;packOptions&quot;: {
-    &quot;summary&quot;: &quot;A project to try implementing a full text index service from scratch in C# and .NET Core&quot;,
-    &quot;iconUrl&quot;: &quot;https://secure.gravatar.com/avatar/6a1f781d4d5e2d50dcff04f8f049767a?s=200&quot;,
-    &quot;projectUrl&quot;: &quot;https://bitbucket.org/DanRoberts/full-text-indexer&quot;,
-    &quot;tags&quot;: [ &quot;C#&quot;, &quot;full text index&quot;, &quot;search&quot; ]
-  },
-  &quot;authors&quot;: [ &quot;ProductiveRage&quot; ],
-  &quot;copyright&quot;: &quot;Copyright 2016 ProductiveRage&quot;,
-
-  &quot;dependencies&quot;: {
-    &quot;FullTextIndexer.Common&quot;: &quot;1.0.0-*&quot;,
-    &quot;FullTextIndexer.Core&quot;: &quot;1.0.0-*&quot;,
-    &quot;FullTextIndexer.Helpers&quot;: &quot;1.0.0-*&quot;,
-    &quot;FullTextIndexer.Querier&quot;: &quot;1.0.0-*&quot;
-  },
-
-  &quot;frameworks&quot;: {
-    &quot;netstandard1.6&quot;: {
-      &quot;imports&quot;: &quot;dnxcore50&quot;,
-      &quot;dependencies&quot;: {
-        &quot;NETStandard.Library&quot;: &quot;1.6.0&quot;
-      }
-    },
-    &quot;net452&quot;: {}
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;One final note about NuGet packages before I move on - the default behaviour of &quot;dotnet pack&quot; is to build the project in Debug configuration. If you want to build in release mode then you can use the following:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;dotnet pack --configuration Release
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3&gt;&quot;Fixing&quot; the serialisation problem&lt;/h3&gt;
-
-&lt;p&gt;Serialisation in .NET Core seems to a bone of contention - the Microsoft Team are sticking to their guns in terms of not supporting it and, instead, promoting other solutions:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Binary Serialization&lt;/p&gt;
-  
-  &lt;p&gt;Justification. After a decade of servicing we&#39;ve learned that serialization is incredibly complicated and a huge compatibility burden for the types supporting it. Thus, we made the decision that serialization should be a protocol implemented on top of the available public APIs. However, binary serialization requires intimate knowledge of the types as it allows to serialize object graphs including private state.&lt;/p&gt;
-  
-  &lt;p&gt;Replacement. Choose the serialization technology that fits your goals for formatting and footprint. Popular choices include data contract serialization, XML serialization, JSON.NET, and protobuf-net.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;&lt;em&gt;(from &quot;&lt;a href=&quot;https://github.com/dotnet/corefx/blob/2b15de70c1cf9f585c4878a722de4dbe42b4940b/Documentation/project-docs/porting.md#binary-serialization&quot;&gt;Porting to .NET Core&lt;/a&gt;&quot;)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;Meanwhile, people have voiced their disagreement in GitHub issues such as &quot;&lt;a href=&quot;https://github.com/dotnet/corefx/issues/6564&quot;&gt;Question: Serialization support going forward from .Net Core 1.0&lt;/a&gt;&quot;.&lt;/p&gt;
-
-&lt;p&gt;The problem with recommendations such as &lt;a href=&quot;http://www.newtonsoft.com/json&quot;&gt;Json.NET&lt;/a&gt;) and &lt;a href=&quot;https://github.com/mgravell/protobuf-net&quot;&gt;protobuf-net&lt;/a&gt; is that they require changes to code that previously worked with BinaryFormatter - there is no simple switchover. Another consideration is that I wanted to see if it was possible to migrate my code over to supporting .NET Core while still making it compatible with any existing installation, such that it could still deserialise any disk-cached data that had been persisted in the past (the chances of this being a realistic use case are exceedingly slim - I doubt that anyone but me has used the Full Text Indexer - I just wanted to see if it seemed feasible).&lt;/p&gt;
-
-&lt;p&gt;For the sake of this post, I&#39;m going to cheat a little. While I have come up with a way to serialise index data that works with netstandard, it would probably best be covered another day (and it isn&#39;t compatible with historical data, unfortunately). A good-enough-for-now approach was to use &quot;&lt;a href=&quot;https://msdn.microsoft.com/en-us/library/4y6tbswk.aspx&quot;&gt;conditional directives&lt;/a&gt;&quot;, which are basically a way to say &quot;if you&#39;re building in this configuration then include this code (and if you&#39;re not, then don&#39;t)&quot;. This allowed me the restore all of the &lt;strong&gt;[Serializable]&lt;/strong&gt; attributes that I removed earlier - but only if building for .NET 4.5.2 (and not for .NET Core). For example:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;#if NET452
-    [Serializable]
-#endif
-    public class Whatever
-    {
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The &lt;strong&gt;[Serializable]&lt;/strong&gt; attribute will be included in the binaries for .NET 4.5.2 and not for .NET Core.&lt;/p&gt;
-
-&lt;p&gt;You need to be careful with precisely what conditions you specify, though. When I first tried this, I used the line &quot;if #net452&quot; (where the string &quot;net452&quot; is consistent with the framework target string in the project.json files) but the attribute wasn&#39;t being included in the .NET 4.5.2 builds. There was no error reported, it just wasn&#39;t getting included. I had to look up the supported values to see if I&#39;d made a silly mistake and it was the casing - it needs to be &quot;NET452&quot; and not &quot;net452&quot;.&lt;/p&gt;
-
-&lt;p&gt;I used the same approach to restore the &lt;strong&gt;ISerializable&lt;/strong&gt; implementations that some classes had and I used it to conditionally compile the entirety of the &lt;strong&gt;IndexDataSerialiser&lt;/strong&gt; (which I got back out of my source control history, having deleted it earlier).&lt;/p&gt;
-
-&lt;p&gt;This meant that if the &quot;FullTextIndexer&quot; package is added to a project building for the &quot;classic&quot; .NET framework then all of the serialisation options that were previously available still will be - any disk-cached data may be read back using the &lt;strong&gt;IndexDataSerialiser&lt;/strong&gt;. It &lt;em&gt;wouldn&#39;t&lt;/em&gt; be possible if the package is added to a .NET Core project but this compromise felt much better than nothing.&lt;/p&gt;
-
-&lt;h3&gt;Final tweaks and parting thoughts&lt;/h3&gt;
-
-&lt;p&gt;The migration is almost complete at this point. There&#39;s one minor thing I&#39;ve noticed while experimenting with .NET Core projects; if a new solution is created whose first project is a .NET Core class library or console application, the project files aren&#39;t put into the root of the solution - instead, they are in a &quot;src&quot; folder. Also, there is a &quot;global.json&quot; file in the solution root that enables.. &lt;em&gt;magic special things&lt;/em&gt;. If I&#39;m being honest, I haven&#39;t quite wrapped my head around all of the potential benefits of global.json (though there is an explanation of one of the benefits here; &lt;a href=&quot;https://ievangelist.github.io/blog/the-global-json/&quot;&gt;The power of the global.json&lt;/a&gt;). What I&#39;m getting around to saying is that I want my now-.NET-Core solution to look like a &quot;native&quot; .NET Core solution, so I tweaked the folder structure and the .sln file to be consistent with a solution that had been .NET Core from the start. I&#39;m a fan of consistency and I think it makes sense to have my .NET Core solution follow the same arrangement as everyone else&#39;s .NET Core solutions.&lt;/p&gt;
-
-&lt;p&gt;Having gone through this whole process, I think that there&#39;s an important question to answer: &lt;strong&gt;Will I now switch to defaulting to supporting .NET Core for all new projects?&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;.. and the answer is, today, if I&#39;m being honest.. no.&lt;/p&gt;
-
-&lt;p&gt;There are just a few too many rough edges and question marks. The biggest one is the change that&#39;s going to happen away from &quot;project.json&quot; and to a variation of the &quot;.csproj&quot; format. I&#39;m sure that there will be some sort of simple migration tool but I&#39;d rather know &lt;em&gt;for sure&lt;/em&gt; what the implications are going to be around this change before I commit too much to .NET Core.&lt;/p&gt;
-
-&lt;p&gt;I&#39;m also a bit annoyed that the Productivity Power Tools remove-and-sort-usings-on-save doesn&#39;t work with .NET Core projects (there&#39;s an &lt;a href=&quot;https://github.com/Microsoft/VS-PPT/issues/40&quot;&gt;issue on GitHub&lt;/a&gt; about this but it hasn&#39;t bee responded to since August 2016, so I&#39;m not sure if it will get fixed).&lt;/p&gt;
-
-&lt;p&gt;Finally, I&#39;m sure I read an issue around analysers being included in NuGet packages for .NET Core - that they weren&#39;t getting loaded correctly. I can&#39;t find the issue now so I&#39;ve done some tests to try to confirm or deny the rumour.. I&#39;ve got a very simple project that includes an analyser and whose package targets both .NET 4.5 and netstandard1.6 and the analyser &lt;em&gt;does&lt;/em&gt; seem to install correctly and be included in the build process (see &lt;a href=&quot;https://github.com/ProductiveRage/ProductiveRage.SealedClassVerification&quot;&gt;ProductiveRage.SealedClassVerification&lt;/a&gt;) but I still have a few concerns; in .csproj files, analyser are all explicitly referenced (and may be enabled or disabled in the Solution Explorer by going into References/Analyzers) but I can&#39;t see how they&#39;re referenced in .NET Core projects (and they don&#39;t appear in the Solution Explorer). Another (minor) thing is that, while the analyser does get executed and any warnings displayed in the Error List in Visual Studio, there are no squigglies underlining the offending code. I don&#39;t know why that is and it makes me worry that the integration is perhaps a bit flakey. I&#39;m a big fan of analysers and so I want to be sure that they are fully supported*. Maybe this will get tidied up when the new project format comes about.. whenever that will be.&lt;/p&gt;
-
-&lt;p&gt;* &lt;em&gt;(&lt;strong&gt;Update:&lt;/strong&gt; Having since added a code fix to the &quot;SealedClassVerification&quot; analyser, I&#39;ve realised that the no-squigglies-in-editor problem is worse than I first thought - it means that the lightbulb for the code fix does not appear in the editor and so the code fix can not be used. I also found the GitHub issue that I mentioned: &quot;&lt;a href=&quot;https://github.com/dotnet/roslyn-analyzers/issues/1028&quot;&gt;Analyzers fail on .NET Core projects&lt;/a&gt;&quot;, it says that improvements are on the way &quot;in .NET Core 1.1&quot; which should be released sometime this year.. maybe then will improve things)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;I think that things are &lt;em&gt;close&lt;/em&gt; (and I like that Microsoft is making this all available early on and accepting feedback on it) but I don&#39;t think that it&#39;s quite ready enough for me to switch to it full time yet.&lt;/p&gt;
-
-&lt;p&gt;Finally, should you be curious at all about the Full Text Indexer project that I&#39;ve been talking about, the source code is available here: &lt;a href=&quot;https://bitbucket.org/DanRoberts/full-text-indexer&quot;&gt;bitbucket.org/DanRoberts/full-text-indexer&lt;/a&gt; and there are a range of old posts that I wrote about how it works (see &quot;&lt;a href=&quot;http://www.productiverage.com/the-full-text-indexer-post-roundup&quot;&gt;The Full Text Indexer Post Round-up&lt;/a&gt;&quot;).&lt;/p&gt;</description>
-			<pubDate>Sun, 13 Nov 2016 13:38:00 GMT</pubDate>
 		</item>
 
 	</channel>
