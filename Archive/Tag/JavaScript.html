@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -41,68 +40,52 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">5 March 2015</h3><h2><a id="Post82"></a><a href="/simple-typescript-type-definitions-for-amd-modules">Simple TypeScript type definitions for AMD modules</a></h2>
-
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">5 March 2015</h3><h2><a id="simple-typescript-type-definitions-for-amd-modules" href="/simple-typescript-type-definitions-for-amd-modules">Simple TypeScript type definitions for AMD modules</a></h2>
 <p>I wanted to write a TypeScript type definition file for a JavaScript module that I wrote last year, so that I could use it from within TypeScript in a seamless manner - with argument and return type annotations present. I considered porting it to TypeScript but since all that I really wanted was the type annotations, it seemed like a type definition file would be just the job and prevent me from maintaining the code in two languages (well, three, actually, since I originally ported it from C#).</p>
-
-<p>The module in question is the <a href="https://bitbucket.org/DanRoberts/cssparserjs">CSS Parser</a> that I previously wrote about porting (see <a href="/the-c-sharp-css-parser-in-javascript">The C# CSS Parser in JavaScript</a>), it's written to be referenced directly in the browser as a script tag or to be loaded asynchronously (which I also wrote about in <a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a>).</p>
-
+<p>The module in question is the <a href="/the-c-sharp-css-parser-in-javascript">CSS Parser](https://bitbucket.org/DanRoberts/cssparserjs) that I previously wrote about porting (see [The C# CSS Parser in JavaScript</a>), it's written to be referenced directly in the browser as a script tag or to be loaded asynchronously (which I also wrote about in <a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a>).</p>
 <p>I wanted to write a type definition to work with the AMD module loading that TypeScript supports. And this is where I came a bit unstuck.</p>
-
 <p>I must admit that, writing this now, it seems that nothing that I'm about to cover is particularly complicated or confusing - it's just that when I tried to find out how to do it, I found it really difficult! The <a href="https://github.com/borisyankov/DefinitelyTyped">DefinitelyTyped</a> GitHub repo seemed like it should be a good start, since surely it would cover any use case I could thing of.. but it was also difficult to know where to start since I couldn't think of any packages that I knew, that would support AMD and whose type definitions would be small enough that I would be able to understand them by just trying to stare them down.</p>
-
 <p>There is an official TypeScript article that is commonly linked to by Stack Overflow answers: <a href="https://typescript.codeplex.com/wikipage?title=Writing%20Definition%20%28.d.ts%29%20Files">Writing Definition (.d.ts) Files</a>, but this seems to take quite a high level view and I couldn't work out how to expose my module's functionality in an AMD fashion.</p>
-
 <h3>The short answer</h3>
-
 <p>In my case, I basically had a module of code that exposed functions. Nothing needed to be instantiated in order to calls these functions, they were just available.</p>
-
-<p>To reduce it down to the most simple case, imagine that my module only exposed a single function "GetLength" that took a single parameter of type string and returned a value of type number, the type definition would then be:</p>
-
+<p>To reduce it down to the most simple case, imagine that my module only exposed a single function &quot;GetLength&quot; that took a single parameter of type string and returned a value of type number, the type definition would then be:</p>
 <pre><code>declare module SimpleExample {
   export function GetLength(content: string): number;
 }
 
 export = SimpleExample;
 </code></pre>
-
 <p>This allows for the module to be used in TypeScript elsewhere with code such as</p>
+<pre><code>import simpleExample = require(&quot;simpleExample&quot;);
 
-<pre><code>import simpleExample = require("simpleExample");
-
-console.log(simpleExample.GetLength("test"));
+console.log(simpleExample.GetLength(&quot;test&quot;));
 </code></pre>
-
 <p>So easy! So straight-forward! And yet it seemed like it took me a long time to get to this point :(</p>
-
 <p>One of the problems I struggled with is that there are multiple ways to express the same thing. The following seemed more natural to me, in a way -</p>
-
 <pre><code>interface SimpleExample {
   GetLength(content: string): number;
 }
@@ -110,39 +93,28 @@ console.log(simpleExample.GetLength("test"));
 declare var simpleExampleInstance: SimpleExample;
 export = simpleExampleInstance;
 </code></pre>
-
 <p>It is common for a module to build up an instance to export as the AMD interface and the arrangement above does, in fact, explicitly describe the module as containing an instance that implements a specified interface. This interface is what consuming TypeScript code will work against.</p>
-
-<p><em>Side note: It doesn't matter what name is given to "simpleExampleInstance" since it is just a variable that is being directly exported.</em></p>
-
-<p>In this simple case, the TypeScript example still works - the module may be consumed and the "GetLength" method may be called as expected. It is only when things become more complicated (as we shall see below) that this approach becomes troublesome (meaning we will see that the "declare module" approach turns out to be a better way to do things).</p>
-
+<p><em>Side note: It doesn't matter what name is given to &quot;simpleExampleInstance&quot; since it is just a variable that is being directly exported.</em></p>
+<p>In this simple case, the TypeScript example still works - the module may be consumed and the &quot;GetLength&quot; method may be called as expected. It is only when things become more complicated (as we shall see below) that this approach becomes troublesome (meaning we will see that the &quot;declare module&quot; approach turns out to be a better way to do things).</p>
 <h3>Implementation details</h3>
-
-<p>So that's a simple example, now to get back to the case I was actually working on. The first method that I want to expose is "ParseCss". This takes in a string and returns an array of "categorised character strings" - these are strings of content with a "Value" string, an "IndexInSource" number and a "CharacterCategorisation" number. So the string</p>
-
+<p>So that's a simple example, now to get back to the case I was actually working on. The first method that I want to expose is &quot;ParseCss&quot;. This takes in a string and returns an array of &quot;categorised character strings&quot; - these are strings of content with a &quot;Value&quot; string, an &quot;IndexInSource&quot; number and a &quot;CharacterCategorisation&quot; number. So the string</p>
 <pre><code>body { color: red; }
 </code></pre>
-
 <p>is broken down into</p>
-
-<pre><code>Value: "body", IndexInSource: 0, CharacterCategorisation: 4
-Value: " ", IndexInSource: 4, CharacterCategorisation: 7
-Value: "{", IndexInSource: 5, CharacterCategorisation: 2
-Value: " ", IndexInSource: 6, CharacterCategorisation: 7
-Value: "color", IndexInSource: 7, CharacterCategorisation: 4
-Value: ":", IndexInSource: 12, CharacterCategorisation: 5
-Value: " ", IndexInSource: 13, CharacterCategorisation: 7
-Value: "red", IndexInSource: 14, CharacterCategorisation: 6
-Value: ";", IndexInSource: 17, CharacterCategorisation: 3
-Value: " ", IndexInSource: 18, CharacterCategorisation: 7
-Value: "}", IndexInSource: 19, CharacterCategorisation: 1
+<pre><code>Value: &quot;body&quot;, IndexInSource: 0, CharacterCategorisation: 4
+Value: &quot; &quot;, IndexInSource: 4, CharacterCategorisation: 7
+Value: &quot;{&quot;, IndexInSource: 5, CharacterCategorisation: 2
+Value: &quot; &quot;, IndexInSource: 6, CharacterCategorisation: 7
+Value: &quot;color&quot;, IndexInSource: 7, CharacterCategorisation: 4
+Value: &quot;:&quot;, IndexInSource: 12, CharacterCategorisation: 5
+Value: &quot; &quot;, IndexInSource: 13, CharacterCategorisation: 7
+Value: &quot;red&quot;, IndexInSource: 14, CharacterCategorisation: 6
+Value: &quot;;&quot;, IndexInSource: 17, CharacterCategorisation: 3
+Value: &quot; &quot;, IndexInSource: 18, CharacterCategorisation: 7
+Value: &quot;}&quot;, IndexInSource: 19, CharacterCategorisation: 1
 </code></pre>
-
-<p>The CharacterCategorisation values come from a enum-like type in the library; an object named "CharacterCategorisationOptions" with properties named "Comment", "CloseBrace", "OpenBrace", etc.. that are mapped onto numeric values. These values are an ideal candidates for representation by the TypeScript "const enum" construct - and since there are a fixed set of values it's no problem to explicitly include them in the type definition. (Note that the "const enum" was introduced with TypeScript 1.4 and is not available in previous versions).</p>
-
+<p>The CharacterCategorisation values come from a enum-like type in the library; an object named &quot;CharacterCategorisationOptions&quot; with properties named &quot;Comment&quot;, &quot;CloseBrace&quot;, &quot;OpenBrace&quot;, etc.. that are mapped onto numeric values. These values are an ideal candidates for representation by the TypeScript &quot;const enum&quot; construct - and since there are a fixed set of values it's no problem to explicitly include them in the type definition. (Note that the &quot;const enum&quot; was introduced with TypeScript 1.4 and is not available in previous versions).</p>
 <p>This leads to the following:</p>
-
 <pre><code>declare module CssParser {
   export function ParseCss(content: string): CategorisedCharacterString[];
 
@@ -166,11 +138,8 @@ Value: "}", IndexInSource: 19, CharacterCategorisation: 1
 
 export = CssParser;
 </code></pre>
-
-<p>This is the first point at which the alternate "interface" approach that I mentioned earlier starts to fall apart - it is not possible to nest the enum within the interface, TypeScript will give you compile warnings. And if it is not nested within the interface then it can't be explicitly exported from the module and could not be be accessed from calling code.</p>
-
+<p>This is the first point at which the alternate &quot;interface&quot; approach that I mentioned earlier starts to fall apart - it is not possible to nest the enum within the interface, TypeScript will give you compile warnings. And if it is not nested within the interface then it can't be explicitly exported from the module and could not be be accessed from calling code.</p>
 <p>To try to make this a bit clearer, what we <em>could</em> do is</p>
-
 <pre><code>interface CssParser {
   ParseCss(content: string): CategorisedCharacterString[];
 }
@@ -195,28 +164,19 @@ declare const enum CharacterCategorisationOptions {
 declare var parser: CssParser;
 export = parser;
 </code></pre>
-
 <p>and then we <em>could</em> consume this with</p>
+<pre><code>import parser = require(&quot;cssparser/CssParserJs&quot;);
 
-<pre><code>import parser = require("cssparser/CssParserJs");
-
-var content = parser.ParseCss("body { color: red; }");
+var content = parser.ParseCss(&quot;body { color: red; }&quot;);
 </code></pre>
-
 <p>but we could <em>not</em> do something like</p>
-
 <pre><code>var firstFragmentIsWhitespace =
   (content[0].CharacterCategorisation === parser.CharacterCategorisationOptions.Whitespace);
 </code></pre>
-
-<p>since the "CharacterCategorisationOptions" type is not exported from the module.</p>
-
-<p>Using the "declare module" approach allows us to nest the enum in that module which then <em>is</em> exported and then so <em>can</em> be accessed by the calling code.</p>
-
-<p>The same applies to exporting nested classes. Which leads me on to the next part of the parser interface - if the parsing method encounters content that it can not parse then it will throw a "ParseError". This error class has "name" and "message" properties like any other JavaScript Error but it has an additional "indexInSource" property to indicate where the troublesome character(s) occurred.</p>
-
+<p>since the &quot;CharacterCategorisationOptions&quot; type is not exported from the module.</p>
+<p>Using the &quot;declare module&quot; approach allows us to nest the enum in that module which then <em>is</em> exported and then so <em>can</em> be accessed by the calling code.</p>
+<p>The same applies to exporting nested classes. Which leads me on to the next part of the parser interface - if the parsing method encounters content that it can not parse then it will throw a &quot;ParseError&quot;. This error class has &quot;name&quot; and &quot;message&quot; properties like any other JavaScript Error but it has an additional &quot;indexInSource&quot; property to indicate where the troublesome character(s) occurred.</p>
 <p>The type definition now looks like</p>
-
 <pre><code>declare module CssParser {
   export function ParseCss(content: string): CategorisedCharacterString[];
 
@@ -242,39 +202,32 @@ var content = parser.ParseCss("body { color: red; }");
     name: string;
     message: string;
     indexInSource: number;
-  }      
+  }
 }
 
 export = CssParser;
 </code></pre>
-
 <p>There are complications around extending the Error object in both JavaScript and TypeScript, but I don't need to worry about that here since the library deals with it, all I need to do is describe the library's interface.</p>
-
 <p>This type definition now supports the following consuming code -</p>
-
-<pre><code>import parser = require("cssparser/CssParserJs");
+<pre><code>import parser = require(&quot;cssparser/CssParserJs&quot;);
 
 try {
-  var content = parser.ParseCss("body { color: red; }");
-  console.log("Parsed into " + content.length + " segment(s)");
+  var content = parser.ParseCss(&quot;body { color: red; }&quot;);
+  console.log(&quot;Parsed into &quot; + content.length + &quot; segment(s)&quot;);
 }
 catch (e) {
   if (e instanceof parser.ParseError) {
     var parseError = &lt;parser.ParseError&gt;e;
-    console.log("ParseError at index " + parseError.indexInSource + ": " + parseError.message);
+    console.log(&quot;ParseError at index &quot; + parseError.indexInSource + &quot;: &quot; + parseError.message);
   }
   else {
     console.log(e.message);
   }
 }
 </code></pre>
-
-<p>The library has two other methods to expose yet. As well as "ParseCss" there is a "ParseLess" function - this applies slightly different rules, largely around the handling of comments (<a href="http://lesscss.org/">Less</a> supports single line comments that start with "//" whereas CSS only allows the "/* .. */" format).</p>
-
-<p>And then there is the "ExtendedLessParser.ParseIntoStructuredData" method. "ParseCss" and "ParseLess" do a very cheap pass through style content to try to break it down and categorise sections while "ParseIntoStructuredData" takes that data, processes it more thoroughly and returns a hierarchical representation of the styles.</p>
-
+<p>The library has two other methods to expose yet. As well as &quot;ParseCss&quot; there is a &quot;ParseLess&quot; function - this applies slightly different rules, largely around the handling of comments (<a href="http://lesscss.org/">Less</a> supports single line comments that start with &quot;//&quot; whereas CSS only allows the &quot;/* .. */&quot; format).</p>
+<p>And then there is the &quot;ExtendedLessParser.ParseIntoStructuredData&quot; method. &quot;ParseCss&quot; and &quot;ParseLess&quot; do a very cheap pass through style content to try to break it down and categorise sections while &quot;ParseIntoStructuredData&quot; takes that data, processes it more thoroughly and returns a hierarchical representation of the styles.</p>
 <p>The final type definition becomes</p>
-
 <pre><code>declare module CssParser {
   export function ParseCss(content: string): CategorisedCharacterString[];
   export function ParseLess(content: string): CategorisedCharacterString[];
@@ -328,15 +281,10 @@ catch (e) {
 
 export = CssParser;
 </code></pre>
-
-<p>The "ExtendedLessParser.ParseIntoStructuredData" nested method is exposed as a function within a nested module. Similarly, the interface and enum for its return type are both nested in there. The method signature is somewhat interesting in that the library will accept either a string being passed into "ParseIntoStructuredData" or the result of a "ParseLess" call. TypeScript has support for this and the method signature indicates that it will accept either "string" or "CategorisedCharacterString[]" (this relies upon "union type" support that became available in TypeScript 1.4). There is also an optional argument to indicate that comments should be excluded from the return content, this is also easy to express in TypeScript (by including the question mark after the argument name).</p>
-
+<p>The &quot;ExtendedLessParser.ParseIntoStructuredData&quot; nested method is exposed as a function within a nested module. Similarly, the interface and enum for its return type are both nested in there. The method signature is somewhat interesting in that the library will accept either a string being passed into &quot;ParseIntoStructuredData&quot; or the result of a &quot;ParseLess&quot; call. TypeScript has support for this and the method signature indicates that it will accept either &quot;string&quot; or &quot;CategorisedCharacterString[]&quot; (this relies upon &quot;union type&quot; support that became available in TypeScript 1.4). There is also an optional argument to indicate that comments should be excluded from the return content, this is also easy to express in TypeScript (by including the question mark after the argument name).</p>
 <h3>Limitations</h3>
-
 <p>For the module at hand, this covers everything that I needed to do!</p>
-
-<p>However.. while reading up further on type definitions, I did come across one limitation that I think is unfortunate. There is no support for get-only properties on either interfaces or classes. For my CSS Parser, that isn't an issue because I didn't write it in a manner that enforced immutability. But if the <strong>CssFragment</strong> type (for example) <em>was</em> written with properties that only supported "get" then I might have wanted to write the interface as</p>
-
+<p>However.. while reading up further on type definitions, I did come across one limitation that I think is unfortunate. There is no support for get-only properties on either interfaces or classes. For my CSS Parser, that isn't an issue because I didn't write it in a manner that enforced immutability. But if the <strong>CssFragment</strong> type (for example) <em>was</em> written with properties that only supported &quot;get&quot; then I might have wanted to write the interface as</p>
 <pre><code>interface CssFragment {
   get FragmentCategorisation(): FragmentCategorisationOptions;
   get Selectors(): string[];
@@ -345,13 +293,9 @@ export = CssParser;
   get SourceLineIndex(): number;
 }
 </code></pre>
-
 <p>But this is not supported. You will get compile errors.</p>
-
 <p>In fairness, this shouldn't be a surprise, since TypeScript does not support properties in interfaces in its regular code; so it's not only within type definitions that it throws its toys out of the pram when you try to do this.</p>
-
 <p>So, instead, you might try to represent that data with a class, since classes <em>do</em> support get-only properties in regular TypeScript. However, if you attempt to write</p>
-
 <pre><code>export class CssFragment {
   get FragmentCategorisation(): FragmentCategorisationOptions;
   get Selectors(): string[];
@@ -360,82 +304,62 @@ export = CssParser;
   get SourceLineIndex(): number;
 }
 </code></pre>
-
 <p>then you would <em>still</em> receive a compile error</p>
-
 <blockquote>
-  <p>An accessor cannot be declared in an ambient context</p>
+<p>An accessor cannot be declared in an ambient context</p>
 </blockquote>
-
 <p>Interestingly, this should <em>also</em> not be too surprising (although it surprised me until I looked into it!) since the following code is legal:</p>
-
 <pre><code>class ClassWithGetOnlyName {
   get name(): string {
-    return "Jim";
+    return &quot;Jim&quot;;
   }
 }
 
 var example = new ClassWithGetOnlyName();
-example.name = "Bob"; // Setting a property that only has a getter!
+example.name = &quot;Bob&quot;; // Setting a property that only has a getter!
 
 alert(example.name);
 </code></pre>
-
-<p>Here, the alert will show "Jim" since that is what the property getter returns. But it is not illegal to try to <em>set</em> the property (it's just that the "setting" action is effectively ignored). So TypeScript doesn't support the notion of a "get-only" (or "readonly") property.</p>
-
+<p>Here, the alert will show &quot;Jim&quot; since that is what the property getter returns. But it is not illegal to try to <em>set</em> the property (it's just that the &quot;setting&quot; action is effectively ignored). So TypeScript doesn't support the notion of a &quot;get-only&quot; (or &quot;readonly&quot;) property.</p>
 <p>I think this is unfortunate, considering there are more and more libraries being released that incorporate immutability (Facebook released a library <em>dedicated</em> to immutable collections: <a href="https://github.com/facebook/immutable-js">immutable-js</a>). There are issues in TypeScript's GitHub repo about this already, albeit with no ready solution available: see <a href="https://github.com/Microsoft/TypeScript/issues/339">Compiler allows assignments to read-only properties</a> and <a href="https://github.com/Microsoft/TypeScript/issues/12">Suggestion: read-only modifier</a>.</p>
-
 <p>If you're writing a library from scratch that has immutable types then you can work around it by returning data from functions instead of properties - eg.</p>
-
 <pre><code>class ClassWithGetOnlyName {
   getName(): string {
-    return "Jim";
+    return &quot;Jim&quot;;
   }
 }
 
 var example = new ClassWithGetOnlyName();
 alert(example.getName());
 </code></pre>
-
 <p>However, if you wanted to write a type definition for an existing library that was intended to return immutable types (that exposed the data through properties) then you would be unable to represent this in TypeScript. Which is a pity.</p>
-
-<p>Which leaves me ending on a bum note when, otherwise, this exercise has been a success! So let's forget the downsides for now and celebrate the achievements instead! The CSS Parser JavaScript port is now available with a TypeScript definition file - hurrah! Everyone should now scurry off and download it from either npm (<a href="https://www.npmjs.com/package/cssparserjs">npmjs.com/package/cssparserjs</a>) or <a href="https://bitbucket.org/DanRoberts/cssparserjs">bitbucket.org/DanRoberts/cssparserjs</a> and get parsing!! :)</p><p class="PostTime">Posted at 19:19</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/the-c-sharp-css-parser-in-javascript">The C# CSS Parser in JavaScript</a></li><li><a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/simple-typescript-type-definitions-for-amd-modules#disqus_thread" data-disqus-identifier="82">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">29 January 2015</h3><h2><a id="Post81"></a><a href="/typescript-es6-classes-for-react-components-without-the-hacks">TypeScript / ES6 classes for React components - without the hacks!</a></h2>
-
+<p>Which leaves me ending on a bum note when, otherwise, this exercise has been a success! So let's forget the downsides for now and celebrate the achievements instead! The CSS Parser JavaScript port is now available with a TypeScript definition file - hurrah! Everyone should now scurry off and download it from either npm (<a href="https://www.npmjs.com/package/cssparserjs">npmjs.com/package/cssparserjs</a>) or <a href="https://bitbucket.org/DanRoberts/cssparserjs">bitbucket.org/DanRoberts/cssparserjs</a> and get parsing!! :)</p>
+<p class="PostTime">Posted at 19:19</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/the-c-sharp-css-parser-in-javascript">The C# CSS Parser in JavaScript</a></li><li><a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/simple-typescript-type-definitions-for-amd-modules#disqus_thread" data-disqus-identifier="82">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">29 January 2015</h3><h2><a id="typescript-es6-classes-for-react-components-without-the-hacks" href="/typescript-es6-classes-for-react-components-without-the-hacks">TypeScript / ES6 classes for React components - without the hacks!</a></h2>
 <p>React 0.13 has just been released into beta, a release I've been eagerly anticipating! This has been the release where finally they will be supporting ES6 classes to create React components. Fully supported, no messing about and jumping through hoops and hoping that breaking API changes don't drop in and catch you off guard.</p>
-
 <p>Back in September, I wrote about <a href="/writing-react-components-in-typescript">Writing React components in TypeScript</a> and realised that before I had actually posted it that the version of React I was using was out of date and I would have to re-work it all again or wait until ES6 classes were natively supported (which was on the horizon back then, it's just that there were no firm dates). I took the lazy option and have been sticking to React 0.10.. until now!</p>
-
 <p><strong>Update (16th March 2015):</strong> React 0.13 was officially released last week, it's no longer in beta - this is excellent news! There appear to be very little changed since the beta so everything here is still applicable.</p>
-
 <h3>Getting the new code</h3>
-
 <p>I've got my head around npm, which is the recommended way to get the source. I had a few teething problems a few months ago with first getting going (I need python?? Oh, not that version..) but now everything's rosy. So off I went:</p>
-
 <blockquote>
-  <p>npm install react@0.13.0-beta.1</p>
+<p>npm install react@0.13.0-beta.1</p>
 </blockquote>
-
-<p>I saw that the "lib" folder had the source code for the files, the dependencies are all nicely broken up. Then I had a small meltdown and stressed about how to build from source - did I need to run browserify or something?? I got that working, with some light hacking it about, and got to playing around with it. It was only later that I realised that there's also a "dist" folder with built versions - both production (ie. minified) and development. Silly boy.</p>
-
+<p>I saw that the &quot;lib&quot; folder had the source code for the files, the dependencies are all nicely broken up. Then I had a small meltdown and stressed about how to build from source - did I need to run browserify or something?? I got that working, with some light hacking it about, and got to playing around with it. It was only later that I realised that there's also a &quot;dist&quot; folder with built versions - both production (ie. minified) and development. Silly boy.</p>
 <p>To start with, I stuck to vanilla JavaScript to play around with it (I didn't want to start getting confused as to whether any problems were with React or with TypeScript <em>with</em> React). The online <a href="http://facebook.github.io/react/jsx-compiler.html">JSX Compiler</a> can perform ES6 translations as well as JSX, which meant that I could take the example</p>
-
 <pre><code>class HelloMessage extends React.Component {
   render() {
     return &lt;div&gt;Hello {this.props.name}&lt;/div&gt;;
   }
 }
 
-React.render(&lt;HelloMessage name="Sebastian" /&gt;, mountNode);
+React.render(&lt;HelloMessage name=&quot;Sebastian&quot; /&gt;, mountNode);
 </code></pre>
-
-<p>and translate it into JavaScript (this deals with creating a class, derives it "from React.Component" and it illustrates what the JSX syntax hides - particularly the "React.createElement" call):</p>
-
+<p>and translate it into JavaScript (this deals with creating a class, derives it &quot;from React.Component&quot; and it illustrates what the JSX syntax hides - particularly the &quot;React.createElement&quot; call):</p>
 <pre><code>var ____Class1 = React.Component;
 for (var ____Class1____Key in ____Class1) {
   if (____Class1.hasOwnProperty(____Class1____Key)) {
@@ -448,26 +372,23 @@ HelloMessage.prototype.constructor = HelloMessage;
 HelloMessage.__superConstructor__ = ____Class1;
 
 function HelloMessage() {
-  "use strict";
+  &quot;use strict&quot;;
   if (____Class1 !== null) {
     ____Class1.apply(this, arguments);
   }
 }
 HelloMessage.prototype.render = function() {
-  "use strict";
-  return React.createElement("div", null, "Hello ", this.props.name);
+  &quot;use strict&quot;;
+  return React.createElement(&quot;div&quot;, null, &quot;Hello &quot;, this.props.name);
 };
 
 React.render(
-  React.createElement(HelloMessage, { name: "Sebastian" }),
+  React.createElement(HelloMessage, { name: &quot;Sebastian&quot; }),
   mountNode
 );
 </code></pre>
-
-<p>I put this into a test page and it worked! ("mountNode" just needs to be a container element - any div that you want to render your content inside).</p>
-
+<p>I put this into a test page and it worked! (&quot;mountNode&quot; just needs to be a container element - any div that you want to render your content inside).</p>
 <p>The derive-class code isn't identical to that you see in TypeScript's output. If you've looked at what TypeScript emits, this might be familiar:</p>
-
 <pre><code>var __extends = this.__extends || function (d, b) {
   for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
   function __() { this.constructor = d; }
@@ -475,39 +396,26 @@ React.render(
   d.prototype = new __();
 };
 </code></pre>
-
-<p>I tried hacking this in, in place of the inheritance approach from the JSX Compiler and it still worked. I presumed it would, but it's always best to take baby steps if you don't understand it all perfectly - and I must admit that I've been a bit hazy on some of React's terminology around components, classes, elements, factories, whatever.. (despite having read "<a href="http://facebook.github.io/react/blog/2014/10/14/introducing-react-elements.html">Introducing React Elements</a>" what feels like a hundred times).</p>
-
+<p>I tried hacking this in, in place of the inheritance approach from the JSX Compiler and it still worked. I presumed it would, but it's always best to take baby steps if you don't understand it all perfectly - and I must admit that I've been a bit hazy on some of React's terminology around components, classes, elements, factories, whatever.. (despite having read &quot;<a href="http://facebook.github.io/react/blog/2014/10/14/introducing-react-elements.html">Introducing React Elements</a>&quot; what feels like a hundred times).</p>
 <h3>Another wrong turn</h3>
-
 <p>In the code above, the arrangement of the line</p>
-
 <pre><code>React.render(
-  React.createElement(HelloMessage, { name: "Sebastian" }),
+  React.createElement(HelloMessage, { name: &quot;Sebastian&quot; }),
   mountNode
 );
 </code></pre>
-
 <p>is very important. I must have spent <em>hours</em> earlier struggling with getting it working in TypeScript because I thought it was</p>
-
 <pre><code>React.render(
-  React.createElement(new HelloMessage({ name: "Sebastian" })),
+  React.createElement(new HelloMessage({ name: &quot;Sebastian&quot; })),
   mountNode
 );
 </code></pre>
-
 <p>It's not.</p>
-
-<p>It it <em>not</em> a new instance passed to "createElement"; it's a type and a properties object. I'm not sure where I got the idea from that it was the other way around - perhaps because I got all excited about it working with classes and then presumed that you worked directly with instances of those classes. Doh.</p>
-
+<p>It it <em>not</em> a new instance passed to &quot;createElement&quot;; it's a type and a properties object. I'm not sure where I got the idea from that it was the other way around - perhaps because I got all excited about it working with classes and then presumed that you worked directly with instances of those classes. Doh.</p>
 <h3>Time for TypeScript!</h3>
-
 <p>Like I said, I've been clinging to my hacked-about way to get TypeScript working with React until now (waiting until I could throw it away entirely, rather than replace it for something else.. which I would then have to throw away entirely when this release turned up). I took a lot of inspiration from code in the <a href="https://github.com/fdecampredon/react-typescript">react-typescript</a> repo. But that repo hasn't been kept up to date (for the same reason as I had, I believe, that the author knew that it was only going to be required until ES6 classes were supported). There is a link there to <a href="https://github.com/Asana/typed-react/">typed-react</a>, which seems to have been maintained for 0.12. This seemed like the best place to start.</p>
-
-<p><strong>Update (16th March 2015):</strong> With React 0.13's official release, the <a href="https://github.com/borisyankov/DefinitelyTyped/tree/master/react">DefinitelyTyped repo</a> has been updated and now <em>does</em> work with 0.13, I'm leaving the below section untouched for posterity but you might want to skip to the next section "Writing a TypeScript React component" if you're using the DefinitelyTyped definition.</p>
-
-<p>In fact, after some investigation, very little needs changing. Starting with their React type definitions (from the file <a href="https://github.com/Asana/typed-react/blob/master/typings/react/react.d.ts">typings/react/reactd.ts</a>), we need to expose the "React.Component" class but currently that is described by an interface. So the following must be changed -</p>
-
+<p><strong>Update (16th March 2015):</strong> With React 0.13's official release, the <a href="https://github.com/borisyankov/DefinitelyTyped/tree/master/react">DefinitelyTyped repo</a> has been updated and now <em>does</em> work with 0.13, I'm leaving the below section untouched for posterity but you might want to skip to the next section &quot;Writing a TypeScript React component&quot; if you're using the DefinitelyTyped definition.</p>
+<p>In fact, after some investigation, very little needs changing. Starting with their React type definitions (from the file <a href="https://github.com/Asana/typed-react/blob/master/typings/react/react.d.ts">typings/react/reactd.ts</a>), we need to expose the &quot;React.Component&quot; class but currently that is described by an interface. So the following must be changed -</p>
 <pre><code>interface Component&lt;P&gt; {
   getDOMNode&lt;TElement extends Element&gt;(): TElement;
   getDOMNode(): Element;
@@ -517,30 +425,22 @@ React.render(
   replaceProps(nextProps: P, callback?: () =&gt; void): void;
 }
 </code></pre>
-
 <p>for this -</p>
-
 <pre><code>export class Component&lt;P&gt; {
   constructor(props: P);
   protected props: P;
 }
 </code></pre>
-
-<p>I've removed isMounted and setProps because they've been deprecated from React. I've also removed the getDOMNode methods since I think they spill out more information than is necessary and I've removed replaceProps since the way that I've been using React I've not seen the use for it - I think it makes more sense to request a full re-render* rather than poke things around. You may not agree with me on these, so feel free to leave them in! Similarly, I've changed the access level of "props" to protected, since I don't think that it should be public information. This requires TypeScript 1.3, which might be why the typed-react version doesn't specify it.</p>
-
-<p>* <em>When I say "re-render", I mean that when some action changes the state of the application, I call React.render again and let the Virtual DOM do it's magic around making this efficient. Plus I'm experimenting at the moment with making the most of immutable data structures and returning false from shouldComponentUpdate where it's clear that the data can't have changed - so the Virtual DOM has less work to do. But that's straying from the point of this post a bit..</em></p>
-
+<p>I've removed isMounted and setProps because they've been deprecated from React. I've also removed the getDOMNode methods since I think they spill out more information than is necessary and I've removed replaceProps since the way that I've been using React I've not seen the use for it - I think it makes more sense to request a full re-render* rather than poke things around. You may not agree with me on these, so feel free to leave them in! Similarly, I've changed the access level of &quot;props&quot; to protected, since I don't think that it should be public information. This requires TypeScript 1.3, which might be why the typed-react version doesn't specify it.</p>
+<p>* <em>When I say &quot;re-render&quot;, I mean that when some action changes the state of the application, I call React.render again and let the Virtual DOM do it's magic around making this efficient. Plus I'm experimenting at the moment with making the most of immutable data structures and returning false from shouldComponentUpdate where it's clear that the data can't have changed - so the Virtual DOM has less work to do. But that's straying from the point of this post a bit..</em></p>
 <p>Then the external interface needs changing from</p>
-
 <pre><code>interface Exports extends TopLevelAPI {
   DOM: ReactDOM;
   PropTypes: ReactPropTypes;
   Children: ReactChildren;
 }
 </code></pre>
-
 <p>to</p>
-
 <pre><code>interface Exports extends TopLevelAPI {
   DOM: ReactDOM;
   PropTypes: ReactPropTypes;
@@ -548,13 +448,9 @@ React.render(
   Component: Component&lt;any&gt;;
 }
 </code></pre>
-
-<p />Quite frankly, I'm not 100% sure why specifying "Component<any>" works as it does, since I would have thought that you could <em>only</em> then inherit from "Component<any>", rather than being able to specify whatever type param that you want. But it <em>does</em> work, thankfully (my understanding of type definitions is a little shallow at this point, so there's very likely something here that I don't quite understand which allows it work as it does).<p />
-
+<p>Quite frankly, I'm not 100% sure why specifying &quot;Component<any>&quot; works as it does, since I would have thought that you could <em>only</em> then inherit from &quot;Component<any>&quot;, rather than being able to specify whatever type param that you want. But it <em>does</em> work, thankfully (my understanding of type definitions is a little shallow at this point, so there's very likely something here that I don't quite understand which allows it work as it does).</any></any></p>
 <h3>Writing a TypeScript React component</h3>
-
 <p>So now we can write this:</p>
-
 <pre><code>import React = require('react');
 
 interface Props { name: string; role: string; }
@@ -564,7 +460,7 @@ class PersonDetailsComponent extends React.Component&lt;Props&gt; {
     super(props);
   }
   public render() {
-    return React.DOM.div(null, this.props.name + " is a " + this.props.role);
+    return React.DOM.div(null, this.props.name + &quot; is a &quot; + this.props.role);
 
   }
 }
@@ -575,94 +471,67 @@ function Factory(props: Props) {
 
 export = Factory;
 </code></pre>
-
-<p>Note that we are able to specify a type param for "React.Component" and, when you edit this in TypeScript, "this.props" is correctly identified as being of that type.</p>
-
-<p><strong>Update (16th March 2015):</strong> If you are using the DefinitelyTyped definitions then you need to specify both "Props" <em>and</em> "State" type params (I recommend that Component State never be used and that it always be specified as "{}", but that's out of the scope of this post) - ie.</p>
-
+<p>Note that we are able to specify a type param for &quot;React.Component&quot; and, when you edit this in TypeScript, &quot;this.props&quot; is correctly identified as being of that type.</p>
+<p><strong>Update (16th March 2015):</strong> If you are using the DefinitelyTyped definitions then you need to specify both &quot;Props&quot; <em>and</em> &quot;State&quot; type params (I recommend that Component State never be used and that it always be specified as &quot;{}&quot;, but that's out of the scope of this post) - ie.</p>
 <pre><code>class PersonDetailsComponent extends React.Component&lt;Props, {}&gt; {
 </code></pre>
-
-<p>The pattern I've used is to declare a class that is <em>not</em> exported. Rather, a "Factory" function is made available to the world. This is to prevent the problem that I described earlier - originally I was exporting the class and was trying to call</p>
-
+<p>The pattern I've used is to declare a class that is <em>not</em> exported. Rather, a &quot;Factory&quot; function is made available to the world. This is to prevent the problem that I described earlier - originally I was exporting the class and was trying to call</p>
 <pre><code>React.render(
   React.createElement(new PersonDetailsComponent({
-    name: "Bob",
-    role: "Mouse catcher"
+    name: &quot;Bob&quot;,
+    role: &quot;Mouse catcher&quot;
   })),
   mountNode
 );
 </code></pre>
-
 <p>but this does not work. The correct approach is to export a Factory method and then to consume the component thusly:</p>
-
 <pre><code>React.render(
   PersonDetailsComponent({
-    name: "Bob",
-    role: "Mouse catcher"
+    name: &quot;Bob&quot;,
+    role: &quot;Mouse catcher&quot;
   }),
   this._renderContainer
 );
 </code></pre>
-
 <p>Thankfully, the render method is specified in the type definition as</p>
-
 <pre><code>render&lt;P&gt;(
   element: ReactElement&lt;P&gt;,
   container: Element,
   callback?: () =&gt; void
 ): Component&lt;P&gt;;
 </code></pre>
-
-<p>so, if you forget to apply the structure of non-exported-class / exported-Factory-method and tried to export the class and new-one-up and pass it to "React.render" directly, you would get a compile error such as</p>
-
+<p>so, if you forget to apply the structure of non-exported-class / exported-Factory-method and tried to export the class and new-one-up and pass it to &quot;React.render&quot; directly, you would get a compile error such as</p>
 <blockquote>
-  <p>Argument of type 'PersonDetailsComponent' is not assignable to parameter of type 'ReactElement&lt;Props&gt;'</p>
+<p>Argument of type 'PersonDetailsComponent' is not assignable to parameter of type 'ReactElement&lt;Props&gt;'</p>
 </blockquote>
-
 <p>I do love it when the compiler can pick up on your silly mistakes!</p>
-
 <p><strong>Update (16th March 2015):</strong> Again, there is a slight difference between the <a href="https://github.com/Asana/typed-react/">typed-react</a> definition that I was originally using and the now-updated <a href="https://github.com/borisyankov/DefinitelyTyped/tree/master/react">DefinitelyTyped repo</a> version. With DefinitelyTyped, the render method is specified as:</p>
-
 <pre><code>render&lt;P, S&gt;(
     element: ReactElement&lt;P&gt;,
     container: Element,
     callback?: () =&gt; any
 ): Component&lt;P, S&gt;
 </code></pre>
-
-<p>but the meaning is much the same.        </p>
-
+<p>but the meaning is much the same.</p>
 <h3>Migration plan</h3>
-
-<p>The hacky way I've been working until now <em>did</em> allow instances of component classes to be used, so migrating over is going to require some boring mechanical work to change them - and to add Factory methods to each component. But, since they all shared a common base class (the "ReactComponentBridge"), it also shouldn't be too much work to change those base classes to "React.Component" in one search-and-replace. And there aren't too many other breaking changes to worry about. I was using "setProps" earlier on in development but I've already gotten rid of all those - so I'm optimistic that moving over to 0.13 isn't going to be too big of a deal.</p>
-
-<p>It's worth bearing in mind that 0.13 is still in beta at the moment, but it seems like the changes that I'm interested in here are unlikely to vary too much between now and the official release. So if I get cracking, maybe I can finish migrating not long after it's officially here - instead of being stuck a few releases behind!</p><p class="PostTime">Posted at 01:02</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></li><li><a href="/typescript-state-machines">TypeScript State Machines</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
-			<p class="Comments">
-				<a href="/typescript-es6-classes-for-react-components-without-the-hacks#disqus_thread" data-disqus-identifier="81">Comments</a>
-			</p>
-	</any></any></div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">8 January 2015</h3><h2><a id="Post80"></a><a href="/typescript-classes-for-react-flux-actions">TypeScript classes for (React) Flux actions</a></h2>
-
-<p>I've been playing with React over the last few months and I'm still a fan. I've followed Facebook's advice and gone with the "Flux" architecture (there's so many good articles about this out there that I couldn't even decide whic one to link to) but I've been writing the code using TypeScript. So far, most of my qualms with this approach have been with TypeScript rather than React; I don't like the closing-brace formatting that Visual Studio does and doesn't let you change, its generics system is really good but <em>not quite</em> as good as I'd like (not as good as C#'s, for example, and I sometimes wish generic type params were available at runtime for testing but I do understand why they're not). I wish the "Allow implicit 'any' types" option defaulted to unchecked rather than checked (I presume this is to encourage "gradual typing" but if I'm using TypeScript I'd rather go whole-hog).</p>
-
+<p>The hacky way I've been working until now <em>did</em> allow instances of component classes to be used, so migrating over is going to require some boring mechanical work to change them - and to add Factory methods to each component. But, since they all shared a common base class (the &quot;ReactComponentBridge&quot;), it also shouldn't be too much work to change those base classes to &quot;React.Component&quot; in one search-and-replace. And there aren't too many other breaking changes to worry about. I was using &quot;setProps&quot; earlier on in development but I've already gotten rid of all those - so I'm optimistic that moving over to 0.13 isn't going to be too big of a deal.</p>
+<p>It's worth bearing in mind that 0.13 is still in beta at the moment, but it seems like the changes that I'm interested in here are unlikely to vary too much between now and the official release. So if I get cracking, maybe I can finish migrating not long after it's officially here - instead of being stuck a few releases behind!</p>
+<p class="PostTime">Posted at 01:02</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></li><li><a href="/typescript-state-machines">TypeScript State Machines</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
+            <p class="Comments">
+                <a href="/typescript-es6-classes-for-react-components-without-the-hacks#disqus_thread" data-disqus-identifier="81">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">8 January 2015</h3><h2><a id="typescript-classes-for-react-flux-actions" href="/typescript-classes-for-react-flux-actions">TypeScript classes for (React) Flux actions</a></h2>
+<p>I've been playing with React over the last few months and I'm still a fan. I've followed Facebook's advice and gone with the &quot;Flux&quot; architecture (there's so many good articles about this out there that I couldn't even decide whic one to link to) but I've been writing the code using TypeScript. So far, most of my qualms with this approach have been with TypeScript rather than React; I don't like the closing-brace formatting that Visual Studio does and doesn't let you change, its generics system is really good but <em>not quite</em> as good as I'd like (not as good as C#'s, for example, and I sometimes wish generic type params were available at runtime for testing but I do understand why they're not). I wish the &quot;Allow implicit 'any' types&quot; option defaulted to unchecked rather than checked (I presume this is to encourage &quot;gradual typing&quot; but if I'm using TypeScript I'd rather go whole-hog).</p>
 <p>But what I thought were going to be the big problems with it haven't been, really - type definitions and writing the components (though I am using a bit of a hack that relies upon an older version of React - I'm hoping to change this when 0.13 comes out and introduces better support for ES6 classes).</p>
-
-<p>Writing the components in "pure" TypeScript results in more code than jsx.. it's not the end of the world, but something that would combine the benefits of both (strong typing <em>and</em> succint jsx format) would be wonderful. There are various possibilities that I believe people are looking into, from <a href="https://github.com/ripieno/typescript-react-jsx">modifying the TypeScript compiler to support jsx</a> to the work that Facebook themselves are doing around "Flow" which "<a href="https://github.com/facebook/flow">Adds static typing to JavaScript to improve developer productivity and code quality</a>". Neither of these are ready for me to integrate into Visual Studio, which I'm still using since I like it so much for my other development work.</p>
-
+<p>Writing the components in &quot;pure&quot; TypeScript results in more code than jsx.. it's not the end of the world, but something that would combine the benefits of both (strong typing <em>and</em> succint jsx format) would be wonderful. There are various possibilities that I believe people are looking into, from <a href="https://github.com/ripieno/typescript-react-jsx">modifying the TypeScript compiler to support jsx</a> to the work that Facebook themselves are doing around &quot;Flow&quot; which &quot;<a href="https://github.com/facebook/flow">Adds static typing to JavaScript to improve developer productivity and code quality</a>&quot;. Neither of these are ready for me to integrate into Visual Studio, which I'm still using since I like it so much for my other development work.</p>
 <p>What I want to talk about today, though, is one of the ways that TypeScript's capabilities can make a nice tweak to how the Flux architecture may be realised. Hopefully the following isn't blindly obvious and well-known, I failed to find any other posts out there explaining it so I'm going to try to take credit for it! :)</p>
-
 <h3>As recommended and apparently done by everyone..</h3>
-
 <p>Here's the diagram that everyone who's looked into Flux will have seen many times before (since I've nicked it straight from the <a href="http://facebook.github.io/react/blog/2014/07/30/flux-actions-and-the-dispatcher.html">React blog's post</a> about it) -</p>
-
 <p><img src="/Content/Images/Posts/FluxDiagram.png" alt="The Flux Architecture" title="The Flux Architecture" /></p>
-
-<p>In the middle are the "Action Creators", which create objects that represent actions (and any associated data) so that the Dispatcher has something to send out. Stores listen for these actions - checking whether a given action is one that they're interested in and extracting the information from it as required.</p>
-
-<p>As a concrete example, here is how actions are created in Facebook's "TODO" example (from their <a href="https://github.com/facebook/flux/blob/master/examples/flux-todomvc/js/actions/TodoActions.js">repo on GitHub</a>):</p>
-
+<p>In the middle are the &quot;Action Creators&quot;, which create objects that represent actions (and any associated data) so that the Dispatcher has something to send out. Stores listen for these actions - checking whether a given action is one that they're interested in and extracting the information from it as required.</p>
+<p>As a concrete example, here is how actions are created in Facebook's &quot;TODO&quot; example (from their <a href="https://github.com/facebook/flux/blob/master/examples/flux-todomvc/js/actions/TodoActions.js">repo on GitHub</a>):</p>
 <pre><code>/*
  * Copyright (c) 2014, Facebook, Inc.
  * All rights reserved.
@@ -752,11 +621,8 @@ var TodoActions = {
 
 module.exports = TodoActions;
 </code></pre>
-
-<p>Every action has an "actionType" property. Some have an "id" property, some have a "text" property, some have both, some have neither. Other examples I've seen follow a similar pattern where the ActionCreator (or ActionCreator<strong>s</strong>, since sometimes there are multiple - as in the <a href="https://github.com/facebook/flux/tree/master/examples/flux-chat/js/actions">chat example</a> in that same Facebook repo) is what is responsible for knowing how data is represented by each action. Stores assume that if the "actionType" is what they expect then all of the other properties they expect to be associated with that action will be present.</p>
-
+<p>Every action has an &quot;actionType&quot; property. Some have an &quot;id&quot; property, some have a &quot;text&quot; property, some have both, some have neither. Other examples I've seen follow a similar pattern where the ActionCreator (or ActionCreator<strong>s</strong>, since sometimes there are multiple - as in the <a href="https://github.com/facebook/flux/tree/master/examples/flux-chat/js/actions">chat example</a> in that same Facebook repo) is what is responsible for knowing how data is represented by each action. Stores assume that if the &quot;actionType&quot; is what they expect then all of the other properties they expect to be associated with that action will be present.</p>
 <p>Here's a snippet I've taken from <a href="http://blog.krawaller.se/posts/react-js-architecture-flux-vs-reflux/">another post</a>:</p>
-
 <pre><code>var action = payload.action;
 switch(action.actionType){
   case AppConstants.ADD_ITEM:
@@ -773,19 +639,12 @@ switch(action.actionType){
     break;
 }
 </code></pre>
-
-<p>Some actions have an "item" property, some have an "index". The ActionCreator was responsible for correctly populating data appropriate to the "actionType".</p>
-
+<p>Some actions have an &quot;item&quot; property, some have an &quot;index&quot;. The ActionCreator was responsible for correctly populating data appropriate to the &quot;actionType&quot;.</p>
 <h3>Types, types, types</h3>
-
 <p>When I first start writing code like this for my own projects, it felt wrong. Wasn't I using TypeScript so that I had a nice reassuring type safety net to protect me against my own mistakes?</p>
-
-<p><em>Side note: For me, this is one of the best advantages of "strong typing", the fact the compiler can tell me if I've mistyped a property or argument, or if I want to change the name of one of them then the compiler can change all references rather than it being a manual process. The other biggie for me is how beneficial it can be in helping document APIs (both internal and external) - for other people using my code.. or just me when it's been long enough that I can't remember all of the ins and outs of what I've written! These are more important to me than getting worried about whether "static languages" can definitely perform better than "dynamic" ones (let's not open that can of worms).</em></p>
-
-<p>Surely, I asked myself, if these objects have properties that vary based upon an "actionType" magic string, these would be better expressed as actual types? Like classes?</p>
-
+<p><em>Side note: For me, this is one of the best advantages of &quot;strong typing&quot;, the fact the compiler can tell me if I've mistyped a property or argument, or if I want to change the name of one of them then the compiler can change all references rather than it being a manual process. The other biggie for me is how beneficial it can be in helping document APIs (both internal and external) - for other people using my code.. or just me when it's been long enough that I can't remember all of the ins and outs of what I've written! These are more important to me than getting worried about whether &quot;static languages&quot; can definitely perform better than &quot;dynamic&quot; ones (let's not open that can of worms).</em></p>
+<p>Surely, I asked myself, if these objects have properties that vary based upon an &quot;actionType&quot; magic string, these would be better expressed as actual types? Like classes?</p>
 <p>Working from the example above, there would be classes such as:</p>
-
 <pre><code>class AddItemAction {
   constructor(private _index: number) { }
   get index() {
@@ -794,21 +653,15 @@ switch(action.actionType){
 }
 export = AddItemAction;
 </code></pre>
-
-<p>I'm a fan of the AMD pattern so I would have a separate file per action class and then explicitly "import" (in TypeScript terms) them into Stores that reference them. The main reason I'm leaning towards the AMD pattern is that you can use require.js to load in the script required to render the first "page" and then dynamically load in additional script as more functionality of the application is used. This should avoid the risk of the dreaded multi-megabyte initial download (and the associated delays). I'm still proving this to myself - it's looking very promising so far but I haven't written any multi-megabyte applications yet!</p>
-
+<p>I'm a fan of the AMD pattern so I would have a separate file per action class and then explicitly &quot;import&quot; (in TypeScript terms) them into Stores that reference them. The main reason I'm leaning towards the AMD pattern is that you can use require.js to load in the script required to render the first &quot;page&quot; and then dynamically load in additional script as more functionality of the application is used. This should avoid the risk of the dreaded multi-megabyte initial download (and the associated delays). I'm still proving this to myself - it's looking very promising so far but I haven't written any multi-megabyte applications yet!</p>
 <p>I also like things to be immutable, otherwise the above could have been shortened even further to:</p>
-
 <pre><code>class AddItemAction {
   constructor(public index: number) { }
 }
 export = AddItemAction;
 </code></pre>
-
 <p>But, technically, this could lead to one Store changing data in an action, which could affect what another Store does with the data. An effect that would only happen if that first Store received the action before the second one. Yuck. I don't imagine anyone would <em>want</em> to do something like that but immutability means that it's not even possible, even by accident (<em>especially</em> by accident).</p>
-
 <p>So if there were classes for each action then the listening code would look more like this:</p>
-
 <pre><code>if (action instanceof AddItemAction) {
   this._addItem(action);
 }
@@ -822,24 +675,16 @@ if (action instanceof DecreaseItemAction) {
   this._decreaseItem(action);
 }
 </code></pre>
-
-<p>I prefer to have the functions receive the actual action. The <strong>AddItemAction</strong> instance is passed to the "_addItem" function, for example, rather than just the "index" property value - eg.</p>
-
+<p>I prefer to have the functions receive the actual action. The <strong>AddItemAction</strong> instance is passed to the &quot;_addItem&quot; function, for example, rather than just the &quot;index&quot; property value - eg.</p>
 <pre><code>private _addItem(action: AddItemAction) {
   // Do whatever..
 }
 </code></pre>
-
-<p>This is at least partly because it makes the type comparing code more succinct - the "action" reference will be of type "any" (as will be seen further on in this post) and so TypeScript lets us pass it straight in to methods such as _addItem since it presumes that if it's "any" then it can be used <em>anywhere</em>, even as an function argument that has a specific type annotation. The type check that is made before _addItem is called gives us the confidence that the data is appropriate to pass to _addItem, the TypeScript compiler will then happily take our word for it.</p>
-
-<p><strong>Update (25th February 2015):</strong> A couple of people in the comments suggested that the action property on the payload should implement an interface to "mark" it as an action. This is something I considered originally but I dismissed it and I think I'm going to continue to dismiss it for the following reason: the interface would be "empty" since there is no property or method that all actions would need to share. If this were C# then every action class would have to explicitly implement this "empty interface" and so we could do things like search for all implementation of <strong>IAction</strong> within a given project or binary. In TypeScript, however, interfaces may be implemented implicitly ("<a href="http://blogs.msdn.com/b/typescript/archive/2013/01/24/interfaces-walkthrough.aspx">TypeScript is structural</a>"). This means that <em>any</em> object may be considered to have (implicitly) implemented <strong>IAction</strong>, if <strong>IAction</strong> is an empty interface. And this means that there would be no reliable way to search for implementations of <strong>IAction</strong> in a code base. You could search for classes that <em>explicitly</em> implement it, but if you have to rely upon people to follow the convention of decorating all action classes with a particular interface then you might as well rely on a simpler convention such as keeping all actions within files under an "action" folder.</p>
-
+<p>This is at least partly because it makes the type comparing code more succinct - the &quot;action&quot; reference will be of type &quot;any&quot; (as will be seen further on in this post) and so TypeScript lets us pass it straight in to methods such as _addItem since it presumes that if it's &quot;any&quot; then it can be used <em>anywhere</em>, even as an function argument that has a specific type annotation. The type check that is made before _addItem is called gives us the confidence that the data is appropriate to pass to _addItem, the TypeScript compiler will then happily take our word for it.</p>
+<p><strong>Update (25th February 2015):</strong> A couple of people in the comments suggested that the action property on the payload should implement an interface to &quot;mark&quot; it as an action. This is something I considered originally but I dismissed it and I think I'm going to continue to dismiss it for the following reason: the interface would be &quot;empty&quot; since there is no property or method that all actions would need to share. If this were C# then every action class would have to explicitly implement this &quot;empty interface&quot; and so we could do things like search for all implementation of <strong>IAction</strong> within a given project or binary. In TypeScript, however, interfaces may be implemented implicitly (&quot;<a href="http://blogs.msdn.com/b/typescript/archive/2013/01/24/interfaces-walkthrough.aspx">TypeScript is structural</a>&quot;). This means that <em>any</em> object may be considered to have (implicitly) implemented <strong>IAction</strong>, if <strong>IAction</strong> is an empty interface. And this means that there would be no reliable way to search for implementations of <strong>IAction</strong> in a code base. You could search for classes that <em>explicitly</em> implement it, but if you have to rely upon people to follow the convention of decorating all action classes with a particular interface then you might as well rely on a simpler convention such as keeping all actions within files under an &quot;action&quot; folder.</p>
 <h3>Server vs User actions</h3>
-
 <p>Another concept that this works well with is one that I think I first read at Atlassian's blog: <a href="http://blogs.atlassian.com/2014/08/flux-architecture-step-by-step/">Flux Step By Step</a> - the idea of identifying a given action as originating from a view (from a user interaction, generally) or from the server (such as an ajax callback).</p>
-
-<p>They suggested the use of an <strong>AppDispatcher</strong> with two distinct methods, each wrapping an action up with an appropriate "source" value -</p>
-
+<p>They suggested the use of an <strong>AppDispatcher</strong> with two distinct methods, each wrapping an action up with an appropriate &quot;source&quot; value -</p>
 <pre><code>var AppDispatcher = copyProperties(new Dispatcher(), {
 
   /**
@@ -868,20 +713,15 @@ if (action instanceof DecreaseItemAction) {
 
 });
 </code></pre>
-
-<p>Again, these are "magic string" values. I like the idea, but TypeScript has the tools to do better.</p>
-
+<p>Again, these are &quot;magic string&quot; values. I like the idea, but TypeScript has the tools to do better.</p>
 <p>I have a module with an enum for this:</p>
-
 <pre><code>enum PayloadSources {
   Server,
   View
 }
 export = PayloadSources;
 </code></pre>
-
 <p>and then an <strong>AppDispatcher</strong> of my own -</p>
-
 <pre><code>import Dispatcher = require('third_party/Dispatcher/Dispatcher');
 import PayloadSources = require('constants/PayloadSources');
 import IDispatcherMessage = require('dispatcher/IDispatcherMessage');
@@ -920,9 +760,7 @@ var appDispatcher = (function () {
 // This is effectively a singleton reference, as seems to be the standard pattern for Flux
 export = appDispatcher;
 </code></pre>
-
 <p>The <strong>IDispatcherMessage</strong> is very simple:</p>
-
 <pre><code>import PayloadSources = require('constants/PayloadSources');
 interface IDispatcherMessage {
   source: PayloadSources;
@@ -930,9 +768,7 @@ interface IDispatcherMessage {
 }
 export = IDispatcherMessage;
 </code></pre>
-
 <p>This allows me to listen for actions with code thusly -</p>
-
 <pre><code>AppDispatcher.register(message =&gt; {
   var action = message.action;
   if (action instanceof AddItemAction) {
@@ -943,97 +779,69 @@ export = IDispatcherMessage;
   }
   // etc..
 </code></pre>
-
-<p>Now, if I come across a good reason to rename the "index" property on the <strong>AddItemAction</strong> class, I can perform a refactor action that will fix it everywhere. If I don't use the IDE to perform the refactor, and just change the property name in one place, then I'll get TypeScript compiler errors about an "index" property that no longer exists.</p>
-
+<p>Now, if I come across a good reason to rename the &quot;index&quot; property on the <strong>AddItemAction</strong> class, I can perform a refactor action that will fix it everywhere. If I don't use the IDE to perform the refactor, and just change the property name in one place, then I'll get TypeScript compiler errors about an &quot;index&quot; property that no longer exists.</p>
 <h3>The mysterious Dispatcher</h3>
-
-<p>One thing I skimmed over in the above is what the "third_party/Dispatcher/Dispatcher" component is. The simple answer is that I took the <a href="https://github.com/facebook/flux/blob/master/src/Dispatcher.js">Dispatcher.js</a> file from the Flux repo and messed about with it a tiny bit to get it to compile as TypeScript with my preferred disabling of the option "Allow implicit 'any' types". In case this is a helpful place for anyone to start, I've put the result up on pastebin as <a href="http://pastebin.com/wjqUty4U">TypeScript Flux Dispatcher</a>, along with the required support class <a href="http://pastebin.com/DzY3CgGD">TypeScript Flux Dispatcher - invariant support class</a>.</p>
-
+<p>One thing I skimmed over in the above is what the &quot;third_party/Dispatcher/Dispatcher&quot; component is. The simple answer is that I took the <a href="https://github.com/facebook/flux/blob/master/src/Dispatcher.js">Dispatcher.js</a> file from the Flux repo and messed about with it a tiny bit to get it to compile as TypeScript with my preferred disabling of the option &quot;Allow implicit 'any' types&quot;. In case this is a helpful place for anyone to start, I've put the result up on pastebin as <a href="http://pastebin.com/wjqUty4U">TypeScript Flux Dispatcher</a>, along with the required support class <a href="http://pastebin.com/DzY3CgGD">TypeScript Flux Dispatcher - invariant support class</a>.</p>
 <h3>Final notes</h3>
-
 <p>I'm still experimenting with React and Flux but this is one of the areas that I've definitely been happy with. I like the Flux architecture and the very clear way in which interactions are handled (and the clear direction of flow of information). Describing the actions with TypeScript classes feels very natural to me. It might be that I start grouping multiple actions into a single module as my applications get bigger, but for now I'm fine with one per file.</p>
-
-<p>The only thing I'm only <em>mostly</em> happy with is my bold declaration in the <strong>AppDispatcher</strong> class; "This is effectively a singleton reference, as seems to be the standard pattern for Flux". It's not the class that's exported from that module, it's an instance of the <strong>AppDispatcher</strong> which is used by everything in the app. This makes sense in a lot of ways, since it needs to be used in so many places; there will be various Stores that register to listen to it but there are likely to be many, <em>many</em> React components, any one of which could accept some sort of interaction that requires an action be created (and so be sent to the <strong>AppDispatcher</strong>). One alternative approach would be to use dependency injection to pass an <strong>AppDispatcher</strong> through every component that might need it. In fact, I did try that in one early experiment but found it extremely cumbersome, so I'm happy to settle for what I've got here.</p>
-
+<p>The only thing I'm only <em>mostly</em> happy with is my bold declaration in the <strong>AppDispatcher</strong> class; &quot;This is effectively a singleton reference, as seems to be the standard pattern for Flux&quot;. It's not the class that's exported from that module, it's an instance of the <strong>AppDispatcher</strong> which is used by everything in the app. This makes sense in a lot of ways, since it needs to be used in so many places; there will be various Stores that register to listen to it but there are likely to be many, <em>many</em> React components, any one of which could accept some sort of interaction that requires an action be created (and so be sent to the <strong>AppDispatcher</strong>). One alternative approach would be to use dependency injection to pass an <strong>AppDispatcher</strong> through every component that might need it. In fact, I did try that in one early experiment but found it extremely cumbersome, so I'm happy to settle for what I've got here.</p>
 <p>However, the reason (one of, at least!) that singletons got such a bad name is that they can making unit testing very awkward. I'm still in the early phases of investigating what I think is the best way to test a React / Flux application (there are a lot of articles out there explaining good ways to tackle it and I'm trying to work my way through some of their ideas). One thing that I'm contemplating, particularly for testing simple React components, is to take advantage of the fact that I'm using AMD everywhere and to try changing the require.js configuration for tests - for any given test, when an <strong>AppDispatcher</strong> is requested, some sort of mock object could be provided in its place.</p>
-
-<p>This would have the two main benefits that it could expose convenient methods to confirm that a particular action was raised following a given interaction (which may be the main point of that particular test) but also that there would be no shared state that needs resetting between tests; each test would provide its own <strong>AppDispatcher</strong> stand-in. I've not properly explored this yet, it's still in the idea phase, but I think it also has promise. And - if it all goes to plan - it's another reason way for me to convince myself that AMD loading within TypeScript is the way to go!</p><p class="PostTime">Posted at 22:24</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/writing-react-components-in-typescript">Writing React components in TypeScript</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
-			<p class="Comments">
-				<a href="/typescript-classes-for-react-flux-actions#disqus_thread" data-disqus-identifier="80">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">24 September 2014</h3><h2><a id="Post75"></a><a href="/writing-react-components-in-typescript">Writing React components in TypeScript</a></h2>
-
+<p>This would have the two main benefits that it could expose convenient methods to confirm that a particular action was raised following a given interaction (which may be the main point of that particular test) but also that there would be no shared state that needs resetting between tests; each test would provide its own <strong>AppDispatcher</strong> stand-in. I've not properly explored this yet, it's still in the idea phase, but I think it also has promise. And - if it all goes to plan - it's another reason way for me to convince myself that AMD loading within TypeScript is the way to go!</p>
+<p class="PostTime">Posted at 22:24</p><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/writing-react-components-in-typescript">Writing React components in TypeScript</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>
+            <p class="Comments">
+                <a href="/typescript-classes-for-react-flux-actions#disqus_thread" data-disqus-identifier="80">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">24 September 2014</h3><h2><a id="writing-react-components-in-typescript" href="/writing-react-components-in-typescript">Writing React components in TypeScript</a></h2>
 <p><strong>Whoops..</strong> <em>I started writing this post a while ago and have only just got round to finishing it off. Now I realise that it applies to React 0.10 but the code here doesn't work in the now-current 0.11. On top of this,</em> hopefully <em>this will become unnecessary when 0.12 is released. I talk about this in the last part of the post. But until 0.12 is out (and confirmed to address the problem), I'm going to stick to 0.10 and use the solution that I talk about here.</em></p>
-
 <p><strong>Update (29th January 2015):</strong> React 0.13 beta has been released and none of this workaround is required any more - I've written about it here: <a href="/typescript-es6-classes-for-react-components-without-the-hacks">TypeScript / ES6 classes for React components - without the hacks!</a></p>
-
-<p>I've been playing around with React recently, putting together some prototypes to try to identify any pitfalls in what I think is an excellent idea and framework, with a view to convincing everyone else at work that we should consider it for new products. I'm no JavaScript hater but I do strongly believe in strongly typed code being easier to maintain in the long run for projects of significant size. Let's not get into an argument about whether strong or "weak" typing is best - before we know it we could end up worrying about what <a href="http://ericlippert.com/2012/10/15/is-c-a-strongly-typed-or-a-weakly-typed-language">strongly typed even means</a>! If you don't agree with me then you probably don't see any merit to TypeScript and you probably already guessed that this post will not be of interest to you! :)</p>
-
+<p>I've been playing around with React recently, putting together some prototypes to try to identify any pitfalls in what I think is an excellent idea and framework, with a view to convincing everyone else at work that we should consider it for new products. I'm no JavaScript hater but I do strongly believe in strongly typed code being easier to maintain in the long run for projects of significant size. Let's not get into an argument about whether strong or &quot;weak&quot; typing is best - before we know it we could end up worrying about what <a href="http://ericlippert.com/2012/10/15/is-c-a-strongly-typed-or-a-weakly-typed-language">strongly typed even means</a>! If you don't agree with me then you probably don't see any merit to TypeScript and you probably already guessed that this post will not be of interest to you! :)</p>
 <p>So I wanted to try bringing together the benefits of React with the benefits of TypeScript.. I'm clearly not the only one since there is already a type definition available in NuGet: <a href="https://www.nuget.org/packages/React.TypeScript.DefinitelyTyped">React.TypeScript.DefinitelyTyped</a>. This seems to be the recommended definition and appears to be in active development. I'd love it even more if there was an official definition from Facebook themselves (they have one for their <a href="https://github.com/facebook/immutable-js">immutable-js</a> library) but having one here is a great start. This allows us to call methods in the React library and know what types the arguments should be and what they will return (and the compiler will tell us if we break these contracts by passing the wrong types or trying to mistreat the return values).</p>
-
 <p>However, there are a few problems. Allow me to venture briefly back to square one..</p>
-
 <h3>Back to basics: A React component</h3>
-
 <p>This is a very simple component in React -</p>
-
 <pre><code>var MyButton = React.createClass({
   _clickHandler: function() {
-    alert('Clicked MyButton with message "' + this.props.message + '"');
+    alert('Clicked MyButton with message &quot;' + this.props.message + '&quot;');
   },
   render: function() {
     return &lt;button onClick={this._clickHandler}&gt;{this.props.message}&lt;/button&gt;;
   }
 });
 </code></pre>
-
-<p>It's pretty boring but it illustrates a few principles. Firstly, it's written in "jsx" - a format like JavaScript but that needs some processing to actually become JavaScript. The &lt;button&gt; declaration looks like html, for example, and needs altering to become real JavaScript. If we're going to write components in TypeScript then we can't use this format since Visual Studio doesn't understand it (granted I'm making a bit of a leap assuming that you're using Visual Studio for this - it's not necessary, but I suspect most people writing TypeScript <em>will</em> use it since the TypeScript support is so good).</p>
-
-<p>The good news is that the translation from "jsx" to JavaScript is not a complex one*. It results in slightly longer code but it's still easily readable (and writable). So the above would be, written in native JavaScript -</p>
-
+<p>It's pretty boring but it illustrates a few principles. Firstly, it's written in &quot;jsx&quot; - a format like JavaScript but that needs some processing to actually become JavaScript. The &lt;button&gt; declaration looks like html, for example, and needs altering to become real JavaScript. If we're going to write components in TypeScript then we can't use this format since Visual Studio doesn't understand it (granted I'm making a bit of a leap assuming that you're using Visual Studio for this - it's not necessary, but I suspect most people writing TypeScript <em>will</em> use it since the TypeScript support is so good).</p>
+<p>The good news is that the translation from &quot;jsx&quot; to JavaScript is not a complex one*. It results in slightly longer code but it's still easily readable (and writable). So the above would be, written in native JavaScript -</p>
 <pre><code>var MyButton = React.createClass({
   _clickHandler: function() {
-    alert('Clicked MyButton with message "' + this.props.message + '"');
+    alert('Clicked MyButton with message &quot;' + this.props.message + '&quot;');
   },
   render: function() {
     return React.DOM.button({ onClick: this._clickHandler }, this.props.message);
   }
 });
 </code></pre>
-
-<p>* <em>(It</em> can <em>do other clever stuff like translate "fat arrow" functions into JavaScript that is compatible with older browsers, but let's not get bogged down with that here - since I want to use TypeScript rather than jsx, it's not that relevant right now).</em></p>
-
-<p>This simple example is illustrating something useful that can be taken for granted since React 0.4; <em>autobinding</em>. When "_clickHandler" is called, the "this" reference is bound to the component instance, so "this.props.message" is accessible. Before 0.4, you had to use the "React.autoBind" method - eg.</p>
-
+<p>* <em>(It</em> can <em>do other clever stuff like translate &quot;fat arrow&quot; functions into JavaScript that is compatible with older browsers, but let's not get bogged down with that here - since I want to use TypeScript rather than jsx, it's not that relevant right now).</em></p>
+<p>This simple example is illustrating something useful that can be taken for granted since React 0.4; <em>autobinding</em>. When &quot;_clickHandler&quot; is called, the &quot;this&quot; reference is bound to the component instance, so &quot;this.props.message&quot; is accessible. Before 0.4, you had to use the &quot;React.autoBind&quot; method - eg.</p>
 <pre><code>var MyButton = React.createClass({
   _clickHandler: React.autoBind(function() {
-    alert('Clicked MyButton with message "' + this.props.message + '"');
+    alert('Clicked MyButton with message &quot;' + this.props.message + '&quot;');
   }),
   render: function() {
     return React.DOM.button({ onClick: this._clickHandler }, this.props.message);
   }
 });
 </code></pre>
-
 <p>but these days it just works as you would expect (or as you would hope, perhaps). This happened back in July 2013 - see <a href="http://facebook.github.io/react/blog/2013/07/02/react-v0-4-autobind-by-default.html">New in React v0.4: Autobind by Default</a>.</p>
-
 <h3>A TypeScript React component: Take 1</h3>
-
-<p>If we naively try to write TypeScript code that starts off with the JavaScript above then we find we have no intellisense. The editor has no idea about "this.props" - no idea that it is defined, certainly no idea that it has a property "message" that should be a string. This shouldn't really be a surprise since the "this" in this case is just an anonymous object that we're passing to "React.createClass"; no information about the type has been specified, so it is considered to be of type "any".</p>
-
-<p><img alt="TypeScript React Component 'this' issue" src="/Content/Images/Posts/TypeScriptComponentThisIsAny.png" class="AlwaysFullWidth" /></p>
-
-<p>If we continue like this then we're going to miss out on the prime driver for using TypeScript in the first place - we might as well just write the components in JavaScript or "jsx"! (In fairness, this is something that I considered.. with React, and particularly the recommended Flux architecture, the "view components" are a relatively thin layer over components that could easily be written in TypeScript and so benefit from being strongly typed.. the view components could remain "more dynamic" and be covered by the class of unit tests that are often used to cover cases that are impossible with the guarantees of strong typing).</p>
-
+<p>If we naively try to write TypeScript code that starts off with the JavaScript above then we find we have no intellisense. The editor has no idea about &quot;this.props&quot; - no idea that it is defined, certainly no idea that it has a property &quot;message&quot; that should be a string. This shouldn't really be a surprise since the &quot;this&quot; in this case is just an anonymous object that we're passing to &quot;React.createClass&quot;; no information about the type has been specified, so it is considered to be of type &quot;any&quot;.</p>
+<img alt="TypeScript React Component 'this' issue" src="/Content/Images/Posts/TypeScriptComponentThisIsAny.png" class="AlwaysFullWidth" />
+<p>If we continue like this then we're going to miss out on the prime driver for using TypeScript in the first place - we might as well just write the components in JavaScript or &quot;jsx&quot;! (In fairness, this is something that I considered.. with React, and particularly the recommended Flux architecture, the &quot;view components&quot; are a relatively thin layer over components that could easily be written in TypeScript and so benefit from being strongly typed.. the view components could remain &quot;more dynamic&quot; and be covered by the class of unit tests that are often used to cover cases that are impossible with the guarantees of strong typing).</p>
 <p>The obvious thing to try was to have a TypeScript class along the lines of</p>
-
 <pre><code>class MyButton {
   props: { message: string };
   private _clickHandler() {
-    alert('Clicked MyButton with message "' + this.props.message + '"');
+    alert('Clicked MyButton with message &quot;' + this.props.message + '&quot;');
   }
   public render() {
     return React.DOM.button({ onClick: this._clickHandler }, this.props.message);
@@ -1042,25 +850,17 @@ export = IDispatcherMessage;
 
 var MyButtonReactComponent = React.createClass(new MyButton());
 </code></pre>
-
-<p>This would solve the internal type specification issue (where "this" is "any"). However, when the "React.createClass" function is called at runtime, an error is thrown..</p>
-
+<p>This would solve the internal type specification issue (where &quot;this&quot; is &quot;any&quot;). However, when the &quot;React.createClass&quot; function is called at runtime, an error is thrown..</p>
 <blockquote>
-  <p>Error: Invariant Violation: createClass(...): Class specification must implement a <code>render</code> method.</p>
+<p>Error: Invariant Violation: createClass(...): Class specification must implement a <code>render</code> method.</p>
 </blockquote>
-
-<p>I'm not completely sure, but I suspect that the React framework code is expecting an object with a property that is a function named "render" while the class instance passed to it has a function "render" on its prototype rather than a property on the reference itself.</p>
-
+<p>I'm not completely sure, but I suspect that the React framework code is expecting an object with a property that is a function named &quot;render&quot; while the class instance passed to it has a function &quot;render&quot; on its prototype rather than a property on the reference itself.</p>
 <h3>Looking for help elsewhere</h3>
-
 <p>When I got to this point, I figured that someone else must have had encountered the same problem - particularly since there exists this TypeScript definition for React in the first place! I came across a GitHub project <a href="https://github.com/fdecampredon/react-typescript">React TypeScript</a> which describes itself as a</p>
-
 <blockquote>
-  <p>React wrapper to make it play nicely with typescript.</p>
+<p>React wrapper to make it play nicely with typescript.</p>
 </blockquote>
-
 <p>An example in the README shows</p>
-
 <pre><code>import React = require('react');
 import ReactTypescript = require('react-typescript');
 
@@ -1072,33 +872,22 @@ class HelloMessage extends ReactTypescript.ReactComponentBase&lt;{ name: string;
 
 React.renderComponent(new HelloMessage({ name: 'Jhon' }), mountNode);
 </code></pre>
-
 <p>which looks like exactly what I want!</p>
-
 <p>The problems are that it clearly states..</p>
-
 <blockquote>
-  <p>warning: ReactTypescript can actually only be used with commonjs modules and browserify, if someone does want AMD I'll gladly accept any PR that would packages it for another format.</p>
+<p>warning: ReactTypescript can actually only be used with commonjs modules and browserify, if someone does want AMD I'll gladly accept any PR that would packages it for another format.</p>
 </blockquote>
-
-<p>.. and I'm very interesting in using AMD and require.js to load modules "on demand" (so that if I develop a large app then I have a way to prevent the "megabyte-plus initial JavaScript download").</p>
-
+<p>.. and I'm very interesting in using AMD and require.js to load modules &quot;on demand&quot; (so that if I develop a large app then I have a way to prevent the &quot;megabyte-plus initial JavaScript download&quot;).</p>
 <p>Also, I'm concerned that the maintained TypeScript definition that I referenced earlier claims to be</p>
-
 <blockquote>
-  <p>Based on TodoMVC sample by @fdecampredon, improved by @wizzard0, MIT licensed.</p>
+<p>Based on TodoMVC sample by @fdecampredon, improved by @wizzard0, MIT licensed.</p>
 </blockquote>
-
-<p>fdecampredon is the author of this "React TypeScript" repo.. which hasn't been updated in seven months. So I'm concerned that the definitions might not be getting updated here - there are already a lot of differences between the <a href="https://github.com/fdecampredon/react-typescript/blob/master/declarations/react.d.ts">react.d.ts</a> in this project and that in the maintained NuGet package's <a href="https://github.com/wizzard0/react-typescript-definitions/blob/master/react.d.ts">react.d.ts</a>.</p>
-
+<p>fdecampredon is the author of this &quot;React TypeScript&quot; repo.. which hasn't been updated in seven months. So I'm concerned that the definitions might not be getting updated here - there are already a lot of differences between the <a href="https://github.com/fdecampredon/react-typescript/blob/master/declarations/react.d.ts">react.d.ts</a> in this project and that in the maintained NuGet package's <a href="https://github.com/wizzard0/react-typescript-definitions/blob/master/react.d.ts">react.d.ts</a>.</p>
 <p>In addition to this, the README states that</p>
-
 <blockquote>
-  <p>In react, methods are automatically bound to a component, this is not the case when using ReactTypeScript, to activate this behavious you can use the autoBindMethods function of ReactTypeScript</p>
+<p>In react, methods are automatically bound to a component, this is not the case when using ReactTypeScript, to activate this behavious you can use the autoBindMethods function of ReactTypeScript</p>
 </blockquote>
-
-<p>This refers to what I talked about earlier; the "auto-binding" convenience to make writing components more natural. There are two examples of ways around this. You can use the ReactTypeScript library's "autoBindMethods" function -</p>
-
+<p>This refers to what I talked about earlier; the &quot;auto-binding&quot; convenience to make writing components more natural. There are two examples of ways around this. You can use the ReactTypeScript library's &quot;autoBindMethods&quot; function -</p>
 <pre><code>class MyButton extends ReactTypeScript.ReactComponentBase&lt;{ message: string}, any&gt; {
   clickHandler(event: React.MouseEvent) {
     alert(this.props.message);
@@ -1108,16 +897,14 @@ React.renderComponent(new HelloMessage({ name: 'Jhon' }), mountNode);
   }
 }
 
-// If this isn't called then "this.props.message" will error in clickHandler as "this" is not
+// If this isn't called then &quot;this.props.message&quot; will error in clickHandler as &quot;this&quot; is not
 // bound to the instance of the class
 ReactTypeScript.autoBindMethods(MyButton);
 </code></pre>
-
-<p>or you can use the TypeScript "fat arrow" to bind the function to the "this" reference that you would expect:</p>
-
+<p>or you can use the TypeScript &quot;fat arrow&quot; to bind the function to the &quot;this&quot; reference that you would expect:</p>
 <pre><code>class MyButton extends  ReactTypeScript.ReactComponentBase&lt;{ message: string}, any&gt; {
-  // If the fat arrow isn't used for the clickHandler definition then "this.props.message" will
-  // error in clickHandler as "this" is not bound to the instance of the class
+  // If the fat arrow isn't used for the clickHandler definition then &quot;this.props.message&quot; will
+  // error in clickHandler as &quot;this&quot; is not bound to the instance of the class
   clickHandler = (event: React.MouseEvent) =&gt; {
     alert(this.props.message);
   }
@@ -1126,40 +913,28 @@ ReactTypeScript.autoBindMethods(MyButton);
   }
 }
 </code></pre>
-
 <p>The first approach feels a bit clumsy, that you must always remember to call this method for all component classes. The second approach doesn't feel too bad, it's just a case of being vigilant and always using fat arrows - but if you forget, you won't find out until runtime. Considering that I want to use to TypeScript to catch more errors at compile time, this still doesn't feel ideal.</p>
-
-<p>The final concern I have is that the library includes a large-ish <a href="https://github.com/fdecampredon/react-typescript/blob/master/third_party/react-internal.js">react-internal.js</a> file. What I'm going to suggest further down does unfortunately dip its toe into React's (undocumented) internals but I've tried to keep it to the bare minimum. This "react-internal.js" worries me as it might be relying on a range of implementation details, any of which (as far as I know) could potentially change and break my code.</p>
-
+<p>The final concern I have is that the library includes a large-ish <a href="https://github.com/fdecampredon/react-typescript/blob/master/third_party/react-internal.js">react-internal.js</a> file. What I'm going to suggest further down does unfortunately dip its toe into React's (undocumented) internals but I've tried to keep it to the bare minimum. This &quot;react-internal.js&quot; worries me as it might be relying on a range of implementation details, any of which (as far as I know) could potentially change and break my code.</p>
 <p>In case I'm sounding down on this library, I don't mean to be - I've tried it out and it does actually work, and there are not a lot of successful alternatives out there. So I've got plenty of respect for this guy, getting his hands dirty and inspiring me to follow in his footsteps!</p>
-
 <h3><s>Stealing</s> Taking inspiration - A TypeScript React component: Take 2</h3>
-
 <p>So I want a way to</p>
-
 <ol>
 <li>Write a TypeScript class that can be used as a React component</li>
-<li>Use the seemingly-maintained <a href="https://www.nuget.org/packages/React.TypeScript.DefinitelyTyped">NuGet-delivered type definition</a> and limit access to the "internals" as much as possible</li>
+<li>Use the seemingly-maintained <a href="https://www.nuget.org/packages/React.TypeScript.DefinitelyTyped">NuGet-delivered type definition</a> and limit access to the &quot;internals&quot; as much as possible</li>
 <li>Have the component's methods always be auto-bound</li>
 </ol>
-
 <p>I'd better say this up-front, though: I'm willing to sacrifice the support for mixins here.</p>
-
-<p>fdecampredon's "React TypeScript" library <em>does</em> support mixins so it's technically possible but I'm not convinced at this time that they're worth the complexity required by the implementation since I don't think they fit well with the model of a TypeScript component.</p>
-
-<p>The basic premise is that you can name mixin objects which are "merged into" the component code, adding properties such as functions that may be called by the component's code. Since TypeScript wouldn't be aware of the properties added by mixins, it would think that there were missing methods / properties and flag them as errors if they were used within the component.</p>
-
-<p>On top of this, I've not been convinced by the use cases for mixins that I've seen so far. In the official <a href="http://facebook.github.io/react/docs/reusable-components.html#mixins">React docs section about mixins</a>, it uses the example of a timer that is automatically cleared when the component is unmounted. There's a question on Stack Overflow "<a href="http://stackoverflow.com/questions/21854938">Using mixins vs components for code reuse in Facebook React</a>" where the <a href="http://stackoverflow.com/a/21857309">top answer</a> talks about using mixins to perform common form validation work to display errors or enable or disable inputs by directly altering internal state on the component. As I understand the Flux architecture, the one-way message passing should result in validation being done in the store rather than the view / component. This allows the validation to exist in a central (and easily-testable) location and to <em>not</em> exist in the components. This also goes for the timer example, the logic-handling around whatever events are being raised on a timer should not exist within the components.</p>
-
+<p>fdecampredon's &quot;React TypeScript&quot; library <em>does</em> support mixins so it's technically possible but I'm not convinced at this time that they're worth the complexity required by the implementation since I don't think they fit well with the model of a TypeScript component.</p>
+<p>The basic premise is that you can name mixin objects which are &quot;merged into&quot; the component code, adding properties such as functions that may be called by the component's code. Since TypeScript wouldn't be aware of the properties added by mixins, it would think that there were missing methods / properties and flag them as errors if they were used within the component.</p>
+<p>On top of this, I've not been convinced by the use cases for mixins that I've seen so far. In the official <a href="http://facebook.github.io/react/docs/reusable-components.html#mixins">React docs section about mixins</a>, it uses the example of a timer that is automatically cleared when the component is unmounted. There's a question on Stack Overflow &quot;<a href="http://stackoverflow.com/questions/21854938">Using mixins vs components for code reuse in Facebook React</a>&quot; where the <a href="http://stackoverflow.com/a/21857309">top answer</a> talks about using mixins to perform common form validation work to display errors or enable or disable inputs by directly altering internal state on the component. As I understand the Flux architecture, the one-way message passing should result in validation being done in the store rather than the view / component. This allows the validation to exist in a central (and easily-testable) location and to <em>not</em> exist in the components. This also goes for the timer example, the logic-handling around whatever events are being raised on a timer should not exist within the components.</p>
 <p>What I have ended up with is this:</p>
-
 <pre><code>import React = require('react');
 
 // The props and state references may be passed in through the constructor
 export class ReactComponentBase&lt;P, S&gt; {
   constructor(props?: P, state?: S) {
 
-    // Auto-bind methods on the derived type so that the "this" reference is as expected
+    // Auto-bind methods on the derived type so that the &quot;this&quot; reference is as expected
     // - Only do this the first time an instance of the derived class is created
     var autoBoundTypeScriptMethodsFlagName = '__autoBoundTypeScriptMethods';
     var autoBindMapPropertyName = '__reactAutoBindMap'; // This is an internal React value
@@ -1178,7 +953,7 @@ export class ReactComponentBase&lt;P, S&gt; {
         }
       }
       for (functionName in cp) {
-        if (!cp.hasOwnProperty(functionName) || (functionName === "constructor")) {
+        if (!cp.hasOwnProperty(functionName) || (functionName === &quot;constructor&quot;)) {
           continue;
         }
         var fnc = cp[functionName];
@@ -1198,7 +973,7 @@ export class ReactComponentBase&lt;P, S&gt; {
   state: S;
 }
 ReactComponentBase.prototype = React.createClass({
-  // The component must share the "componentConstructor" that is present on the prototype of
+  // The component must share the &quot;componentConstructor&quot; that is present on the prototype of
   // the return values from React.createClass
   render: function () {
     return null;
@@ -1221,15 +996,13 @@ export function renderComponent&lt;P, S&gt;(
     );
 }
 </code></pre>
-
 <p>This allows the following component to be written:</p>
-
 <pre><code>import React = require('react');
 import ReactComponentBridge = require('components/ReactComponentBridge');
 
 class MyButton extends ReactComponentBridge.ReactComponentBase&lt;{ message: string }, any&gt; {
   myButtonClickHandler(event: React.MouseEvent) {
-    alert('Clicked MyButton with message "' + this.props.message + '"');
+    alert('Clicked MyButton with message &quot;' + this.props.message + '&quot;');
   }
   render() {
     return React.DOM.button({ onClick: this.myButtonClickHandler }, 'Click Me');
@@ -1238,9 +1011,7 @@ class MyButton extends ReactComponentBridge.ReactComponentBase&lt;{ message: str
 
 export = MyButton;
 </code></pre>
-
 <p>which may be rendered with:</p>
-
 <pre><code>import ReactComponentBridge = require('components/ReactComponentBridge');
 import MyButton = require('components/MyButton');
 
@@ -1249,49 +1020,33 @@ ReactComponentBridge.renderComponent(
   document.getElementById('container')
 );
 </code></pre>
-
 <p>Hurrah! Success! All is well with the world! I've got the benefits of TypeScript <em>and</em> the benefits of React and the Flux architecture (ok, the last one doesn't need any of this or even require React - it could really be used with whatever framework you chose). There's just one thing..</p>
-
 <h3>I'm out of date</h3>
-
 <p>Like I said at the start of this post, as I got to rounding it out to publish, I realised that I wasn't on the latest version of React (current 0.11.2, while I was still using 0.10) and that this code didn't actually work on that version. Sigh.</p>
-
 <p>However, the good news is that it sounds like 0.12 (still in alpha at the moment) is going to make things a lot easier. The changes in 0.11 appear to be paving the way for 0.12 to shakes things up a bit. Changes are documented at <a href="https://gist.github.com/sebmarkbage/d7bce729f38730399d28">New React Descriptor Factories and JSX</a> which talks about how the problem they're trying to solve with the new code is a</p>
-
 <blockquote>
-  <p>Simpler API for ES6 classes</p>
+<p>Simpler API for ES6 classes</p>
 </blockquote>
-
-<p>.. and there is a note in the <a href="https://github.com/reactjs/react-future/blob/master/01%20-%20Core/05%20-%20Elements.js">react-future</a> GitHub repo ("Specs &amp; docs for potential future and experimental React APIs and JavaScript syntax") that</p>
-
+<p>.. and there is a note in the <a href="https://github.com/reactjs/react-future/blob/master/01%20-%20Core/05%20-%20Elements.js">react-future</a> GitHub repo (&quot;Specs &amp; docs for potential future and experimental React APIs and JavaScript syntax&quot;) that</p>
 <blockquote>
-  <p>A React component module will no longer export a helper function to create virtual elements. Instead it's the responsibility of the consumer to efficiently create the virtual element.</p>
-  
-  <p>Languages that compile to JS can choose to implement the element signature in whatever way is idiomatic for that language:</p>
+<p>A React component module will no longer export a helper function to create virtual elements. Instead it's the responsibility of the consumer to efficiently create the virtual element.</p>
+<p>Languages that compile to JS can choose to implement the element signature in whatever way is idiomatic for that language:</p>
 </blockquote>
-
 <p>TypeScript implements some ES6 features (such as classes, which are how I want to represent React components) so (hopefully) this means that soon-to-hit versions of React are going to make ES6-classes-for-components much easier (and negate the need for a workaround such as is documented here).</p>
-
-<p>The articles that I've linked to (I'm not quite sure how official that all is, btw!) <em>are</em> talking about a future version since they refer to the method "React.createFactory", which isn't available in 0.11.2. I have cloned the in-progress master repo from <a href="https://github.com/facebook/react">github.com/facebook/react</a> and built the 0.12-alpha code* and that <em>does</em> have that method. However, I haven't yet managed to get it working as I was hoping. I only built it a couple of hours ago, though, and I want to get this post rounded out rather than let it drag on any longer! And, I'm sure, when this mechanism for creating React components is made available, I'm sure a lot of information will be released about it!</p>
-
-<p>* <em>(npm</em> is <em>a great tool but it still can't make</em> everything <em>easy.. first I didn't realise that the version of node.js I was using was out of date and it prevented some dependencies from being installed. Then I had to install Python - but 2.7 was required, I found out, after I'd installed 3.4.</em> Then <em>I didn't have Git installed on the computer I was trying to build React from. Then I had to mess about with setting environment variables for the Python and Git locations. But it</em> did <em>work, and when I think about how difficult it would have been without a decent package manager I stop feeling the need to complain about it too much :)</em></p><p class="PostTime">Posted at 23:12</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/writing-react-components-in-typescript#disqus_thread" data-disqus-identifier="75">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">19 August 2014</h3><h2><a id="Post73"></a><a href="/the-c-sharp-css-parser-in-javascript">The C# CSS Parser in JavaScript</a></h2>
-
+<p>The articles that I've linked to (I'm not quite sure how official that all is, btw!) <em>are</em> talking about a future version since they refer to the method &quot;React.createFactory&quot;, which isn't available in 0.11.2. I have cloned the in-progress master repo from <a href="https://github.com/facebook/react">github.com/facebook/react</a> and built the 0.12-alpha code* and that <em>does</em> have that method. However, I haven't yet managed to get it working as I was hoping. I only built it a couple of hours ago, though, and I want to get this post rounded out rather than let it drag on any longer! And, I'm sure, when this mechanism for creating React components is made available, I'm sure a lot of information will be released about it!</p>
+<p>* <em>(npm</em> is <em>a great tool but it still can't make</em> everything <em>easy.. first I didn't realise that the version of node.js I was using was out of date and it prevented some dependencies from being installed. Then I had to install Python - but 2.7 was required, I found out, after I'd installed 3.4.</em> Then <em>I didn't have Git installed on the computer I was trying to build React from. Then I had to mess about with setting environment variables for the Python and Git locations. But it</em> did <em>work, and when I think about how difficult it would have been without a decent package manager I stop feeling the need to complain about it too much :)</em></p>
+<p class="PostTime">Posted at 23:12</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/writing-react-components-in-typescript#disqus_thread" data-disqus-identifier="75">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">19 August 2014</h3><h2><a id="the-c-sharp-css-parser-in-javascript" href="/the-c-sharp-css-parser-in-javascript">The C# CSS Parser in JavaScript</a></h2>
 <p>I was talking last month (in <a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a>) about <a href="http://brackets.io">Adobe Brackets</a> and how much I'd been enjoying giving it a try - and how its extensions are written in JavaScript.</p>
-
-<p>Well this had made me ambitious and wondering whether I could write an extension that would lint LESS stylesheets according to the rules I proposed last year in "<a href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a>" - rules which have now been put into use on some major UK tourism destination websites through my subtle influence at work (and, granted, the Web Team Leader's enthusiasm.. but it's my blog so I'm going to try to take all the credit I can :) We have a LESS processor that applies these rules, the only problem is that it's written in C# and so can't easily be used by the Brackets editor.</p>
-
-<p>But in the past I've <a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">rewritten my own full text-indexer into JavaScript</a> so translating my <a href="https://bitbucket.org/DanRoberts/cssparser">C# CSSParser</a> shouldn't be too big of a thing. The main processing is described by a state machine - I published a slightly rambling explanation in my post <a href="/parsing-css">Parsing CSS</a> which I followed up with <a href="/c-sharp-state-machines">C# State Machines</a>, that talks about the same topic but in a more focused manner. This made things really straight forward for translation.</p>
-
-<p>When parsing content and categorising a sequence of characters as a Comment or a StylePropertyValue or whatever else, there is a class that represents the current state and knows what character(s) may result in a state change. For example, a single-line-comment processor only has to look out for a line return and then it may return to whatever character type it was before the comment started. A multi-line comment will be looking out for the characters "*/". A StylePropertyValue will be looking out for a semi-colon or a closing brace, but it also needs to look for quote characters that indicate the start of a quoted section - within this quoted content, semi-colons and closing braces do <em>not</em> indicate the end of the content, only a matching end quote does. When this closing quote is encountered, the logic reverts back to looking for a semi-colon or closing brace.</p>
-
+<p>Well this had made me ambitious and wondering whether I could write an extension that would lint LESS stylesheets according to the rules I proposed last year in &quot;<a href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a>&quot; - rules which have now been put into use on some major UK tourism destination websites through my subtle influence at work (and, granted, the Web Team Leader's enthusiasm.. but it's my blog so I'm going to try to take all the credit I can :) We have a LESS processor that applies these rules, the only problem is that it's written in C# and so can't easily be used by the Brackets editor.</p>
+<p>But in the past I've <a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">rewritten my own full text-indexer into JavaScript</a> so translating my <a href="/parsing-css">C# CSSParser](https://bitbucket.org/DanRoberts/cssparser) shouldn't be too big of a thing. The main processing is described by a state machine - I published a slightly rambling explanation in my post [Parsing CSS</a> which I followed up with <a href="/c-sharp-state-machines">C# State Machines</a>, that talks about the same topic but in a more focused manner. This made things really straight forward for translation.</p>
+<p>When parsing content and categorising a sequence of characters as a Comment or a StylePropertyValue or whatever else, there is a class that represents the current state and knows what character(s) may result in a state change. For example, a single-line-comment processor only has to look out for a line return and then it may return to whatever character type it was before the comment started. A multi-line comment will be looking out for the characters &quot;*/&quot;. A StylePropertyValue will be looking out for a semi-colon or a closing brace, but it also needs to look for quote characters that indicate the start of a quoted section - within this quoted content, semi-colons and closing braces do <em>not</em> indicate the end of the content, only a matching end quote does. When this closing quote is encountered, the logic reverts back to looking for a semi-colon or closing brace.</p>
 <p>Each processor is self-contained and most of them contain very little logic, so it was possible to translate them by just taking the C# code, pasting it into a JavaScript file, altering the structure to be JavaScript-esque and removing the types. As an example, this C# class</p>
-
 <pre><code>public class SingleLineCommentSegment : IProcessCharacters
 {
   private readonly IGenerateCharacterProcessors _processorFactory;
@@ -1301,9 +1056,9 @@ ReactComponentBridge.renderComponent(
     IGenerateCharacterProcessors processorFactory)
   {
     if (processorFactory == null)
-      throw new ArgumentNullException("processorFactory");
+      throw new ArgumentNullException(&quot;processorFactory&quot;);
     if (characterProcessorToReturnTo == null)
-      throw new ArgumentNullException("characterProcessorToReturnTo");
+      throw new ArgumentNullException(&quot;characterProcessorToReturnTo&quot;);
 
     _processorFactory = processorFactory;
     _characterProcessorToReturnTo = characterProcessorToReturnTo;
@@ -1312,10 +1067,10 @@ ReactComponentBridge.renderComponent(
   public CharacterProcessorResult Process(IWalkThroughStrings stringNavigator)
   {
     if (stringNavigator == null)
-      throw new ArgumentNullException("stringNavigator");
+      throw new ArgumentNullException(&quot;stringNavigator&quot;);
 
     // For single line comments, the line return should be considered part of the comment content
-    // (in the same way that the "/*" and "*/" sequences are considered part of the content for
+    // (in the same way that the &quot;/*&quot; and &quot;*/&quot; sequences are considered part of the content for
     // multi-line comments)
     var currentCharacter = stringNavigator.CurrentCharacter;
     var nextCharacter = stringNavigator.CurrentCharacter;
@@ -1341,16 +1096,14 @@ ReactComponentBridge.renderComponent(
   }
 }
 </code></pre>
-
 <p>becomes</p>
-
 <pre><code>var getSingleLineCommentSegment = function (characterProcessorToReturnTo) {
   var processor = {
     Process: function (stringNavigator) {
       // For single line comments, the line return should be considered part of the comment content
-      // (in the same way that the "/*" and "*/" sequences are considered part of the content for
+      // (in the same way that the &quot;/*&quot; and &quot;*/&quot; sequences are considered part of the content for
       // multi-line comments)
-      if (stringNavigator.DoesCurrentContentMatch("\r\n")) {
+      if (stringNavigator.DoesCurrentContentMatch(&quot;\r\n&quot;)) {
         return getCharacterProcessorResult(
           CharacterCategorisationOptions.Comment,
           getSkipNextCharacterSegment(
@@ -1358,8 +1111,8 @@ ReactComponentBridge.renderComponent(
             characterProcessorToReturnTo
           )
         );
-      } else if ((stringNavigator.CurrentCharacter === "\r")
-          || (stringNavigator.CurrentCharacter === "\n")) {
+      } else if ((stringNavigator.CurrentCharacter === &quot;\r&quot;)
+          || (stringNavigator.CurrentCharacter === &quot;\n&quot;)) {
         return getCharacterProcessorResult(
           CharacterCategorisationOptions.Comment,
           characterProcessorToReturnTo
@@ -1374,106 +1127,79 @@ ReactComponentBridge.renderComponent(
   return processor;
 };
 </code></pre>
-
-<p>There are some concessions I made in the translation. Firstly, I tend to be very strict with input validation in C# (I long for a world where I can replace it all with code contracts but the last time I looked into the .net work done on that front it didn't feel quite ready) and try to rely on rich types to make the compiler work for me as much as possible (in both documenting intent and catching silly mistakes I may make). But in JavaScript we have no types to rely on and it seems like the level of input validation that I would perform in C# would be very difficult to replicate as reliably without them. Maybe I'm rationalising, but while searching for a precedent for this sort of thing, I came across the article <a href="https://www.joyent.com/developers/node/design/errors">Error Handling in Node.js</a> which distinguishes between "operational" and "programmer" errors and states that</p>
-
+<p>There are some concessions I made in the translation. Firstly, I tend to be very strict with input validation in C# (I long for a world where I can replace it all with code contracts but the last time I looked into the .net work done on that front it didn't feel quite ready) and try to rely on rich types to make the compiler work for me as much as possible (in both documenting intent and catching silly mistakes I may make). But in JavaScript we have no types to rely on and it seems like the level of input validation that I would perform in C# would be very difficult to replicate as reliably without them. Maybe I'm rationalising, but while searching for a precedent for this sort of thing, I came across the article <a href="https://www.joyent.com/developers/node/design/errors">Error Handling in Node.js</a> which distinguishes between &quot;operational&quot; and &quot;programmer&quot; errors and states that</p>
 <blockquote>
-  <p>Programmer errors are bugs in the program. These are things that can always be avoided by changing the code. They can never be handled properly (since by definition the code in question is broken).</p>
+<p>Programmer errors are bugs in the program. These are things that can always be avoided by changing the code. They can never be handled properly (since by definition the code in question is broken).</p>
 </blockquote>
-
 <p>One example in the article is</p>
-
 <blockquote>
-  <p>passed a "string" where an object was expected</p>
+<p>passed a &quot;string&quot; where an object was expected</p>
 </blockquote>
-
-<p>Since the "getSingleLineCommentSegment" function shown above is private to the CSS Parser class that I wrote, it holds true that any invalid arguments passed to it would be programmer error. So in the JavaScript version, I've been relaxed around this kind of validation. Not, mind you, that this means that I intend to start doing the same thing in my C# code - I still think that where static analysis is possible that every effort should be used to document in the code what is right and what is wrong. And while (without relying on some of the clever stuff I believe that is in the code contracts work that Microsoft has done) argument validation exceptions can't contribute to <em>static</em> analysis, I do still see it as documentation for pre-compile-time.</p>
-
-<p>Another concession I made was that in the C# version I went to effort to ensure that processors could be re-used if their configuration was identical - so there wouldn't have to be a new instances of a SingleLineCommentSegment processor for <em>every</em> single-line comment encountered. A "processorFactory" would new up an instance if an existing instance didn't already exist that could be used. This was really an optimisation that was intended for parsing huge amounts of content, as were some of the other decisions made in the C# version - such as the strict use of <strong>IEnumerable</strong> with only very limited read-ahead (so if the input was being read from a stream, for example, only a very small part of the stream's data need be in memory at any one time). For the JavaScript version, I am only imagining it being used to validate a single file and if that entire file can't be held as an array of characters by the editor then I think there are bigger problems afoot!</p>
-
-<p>So the complications around the "processorFactory" were skipped and the content was internally represented by a string that was the entire content. (Since the processor format expects a "string navigator" that reads a single character at a time, the JavaScript version has an equivalent object but internally this has a reference to the whole string, whereas the C# version did lots of work to deal with streams or any other enumerable source*).</p>
-
+<p>Since the &quot;getSingleLineCommentSegment&quot; function shown above is private to the CSS Parser class that I wrote, it holds true that any invalid arguments passed to it would be programmer error. So in the JavaScript version, I've been relaxed around this kind of validation. Not, mind you, that this means that I intend to start doing the same thing in my C# code - I still think that where static analysis is possible that every effort should be used to document in the code what is right and what is wrong. And while (without relying on some of the clever stuff I believe that is in the code contracts work that Microsoft has done) argument validation exceptions can't contribute to <em>static</em> analysis, I do still see it as documentation for pre-compile-time.</p>
+<p>Another concession I made was that in the C# version I went to effort to ensure that processors could be re-used if their configuration was identical - so there wouldn't have to be a new instances of a SingleLineCommentSegment processor for <em>every</em> single-line comment encountered. A &quot;processorFactory&quot; would new up an instance if an existing instance didn't already exist that could be used. This was really an optimisation that was intended for parsing huge amounts of content, as were some of the other decisions made in the C# version - such as the strict use of <strong>IEnumerable</strong> with only very limited read-ahead (so if the input was being read from a stream, for example, only a very small part of the stream's data need be in memory at any one time). For the JavaScript version, I am only imagining it being used to validate a single file and if that entire file can't be held as an array of characters by the editor then I think there are bigger problems afoot!</p>
+<p>So the complications around the &quot;processorFactory&quot; were skipped and the content was internally represented by a string that was the entire content. (Since the processor format expects a &quot;string navigator&quot; that reads a single character at a time, the JavaScript version has an equivalent object but internally this has a reference to the whole string, whereas the C# version did lots of work to deal with streams or any other enumerable source*).</p>
 <p>* <em>(If you have time to kill, I wrote a post last year.. well, more of an essay.. about how the C# code could access a <strong>TextReader</strong> through an immutable interface wrapper - internally an event was required on the implementation and if you've ever wanted to know the deep ins and outs of C#'s event system, how it can appear to cause memory leaks and what crazy hoops can be jumped through or avoided then you might enjoy it! See <a href="/autoreleasing-event-listeners">Auto-releasing Event Listeners</a>).</em></p>
-
 <h3>Fast-forward a bit..</h3>
-
 <p>The actual details of the translating of the code aren't that interesting, it really was largely by rote with the biggest problem being concentrating hard enough that I didn't make silly mistakes. The optional second stage of processing - that takes categorised strings (Comment, StylePropertyName, etc..) and translates them into the heriarchical data that a LESS stylesheet describes - used bigger functions with messier logic, rather than the state machine of the first parsing phase, but it still wasn't particularly complicated and so the same approach to translation was used.</p>
-
-<p>One thing I did quite get in to was making sure that I followed all of JSLint's recommendations, since Brackets highlights every rule that you break by default. I touched on JSLint last time (in <a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a>) - I really like what Google did with Go in having a <a href="http://golang.org/pkg/fmt">formatter</a> that dictates how the code should be laid out and so having JSLint shout at me for having brackets on the wrong line meant that I stuck to a standard and didn't have to worry about it. I didn't inherently like having an "else" start on the same line as the closing brace of the previous condition, but if that's the way that everyone using JSLint (such as everyone following the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a> when writing extensions) then fair enough, I'll just get on with it!</p>
-
-<p>Some of the rules I found quite odd, such as its hatred of "++", but then I've always found that one strange. According to the official site,</p>
-
+<p>One thing I did quite get in to was making sure that I followed all of JSLint's recommendations, since Brackets highlights every rule that you break by default. I touched on JSLint last time (in <a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a>) - I really like what Google did with Go in having a <a href="http://golang.org/pkg/fmt">formatter</a> that dictates how the code should be laid out and so having JSLint shout at me for having brackets on the wrong line meant that I stuck to a standard and didn't have to worry about it. I didn't inherently like having an &quot;else&quot; start on the same line as the closing brace of the previous condition, but if that's the way that everyone using JSLint (such as everyone following the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a> when writing extensions) then fair enough, I'll just get on with it!</p>
+<p>Some of the rules I found quite odd, such as its hatred of &quot;++&quot;, but then I've always found that one strange. According to the official site,</p>
 <blockquote>
-  <p>The ++ (increment) and -- (decrement) operators have been known to contribute to bad code by encouraging excessive trickiness</p>
+<p>The ++ (increment) and -- (decrement) operators have been known to contribute to bad code by encouraging excessive trickiness</p>
 </blockquote>
-
-<p>I presume that this refers to confusion between "i++" and "++i" but the extended version of "i++" may be used: "i = i + 1" or "i += 1". Alternatively, mutation of a loop counter can be avoided entirely with the use of "forEach" -</p>
-
+<p>I presume that this refers to confusion between &quot;i++&quot; and &quot;++i&quot; but the extended version of &quot;i++&quot; may be used: &quot;i = i + 1&quot; or &quot;i += 1&quot;. Alternatively, mutation of a loop counter can be avoided entirely with the use of &quot;forEach&quot; -</p>
 <pre><code>[1, 2, 3].forEach(function(element, index) {
 </code></pre>
-
-<p>This relies upon a level of compatibility when considering JavaScript in the browser (though ancient browsers can have this worked around with polyfills) but since I had a Brackets extension as the intended target, "forEach" seemed like the best way forward. It also meant that I could avoid the warning</p>
-
+<p>This relies upon a level of compatibility when considering JavaScript in the browser (though ancient browsers can have this worked around with polyfills) but since I had a Brackets extension as the intended target, &quot;forEach&quot; seemed like the best way forward. It also meant that I could avoid the warning</p>
 <blockquote>
-  <p>Avoid use of the continue statement. It tends to obscure the control flow of the function.</p>
+<p>Avoid use of the continue statement. It tends to obscure the control flow of the function.</p>
 </blockquote>
-
-<p>by returning early from the enumeration function rather than continuing the loop (for cases where I wanted to use "continue" within a loop).</p>
-
-<p>I think it's somewhat difficult to justify returning early within an inline function being more or less guilty of obscuring the control flow than a "continue" in a loop, but using "forEach" consistently avoided two warnings and reduced mutation of local variables which I think is a good thing since it reduces (even if only slightly) mental overhead when reading code.</p>
-
+<p>by returning early from the enumeration function rather than continuing the loop (for cases where I wanted to use &quot;continue&quot; within a loop).</p>
+<p>I think it's somewhat difficult to justify returning early within an inline function being more or less guilty of obscuring the control flow than a &quot;continue&quot; in a loop, but using &quot;forEach&quot; consistently avoided two warnings and reduced mutation of local variables which I think is a good thing since it reduces (even if only slightly) mental overhead when reading code.</p>
 <p>At this point, I had code that would take style content such as</p>
-
 <pre><code>div.w1, div.w2 {
   p {
     strong, em { font-weight: bold; }
   }
 }
 </code></pre>
-
 <p>and parse it with</p>
-
 <pre><code>var result = CssParserJs.ExtendedLessParser.ParseIntoStructuredData(content);
 </code></pre>
-
 <p>into a structure</p>
-
 <pre><code>[{
-  "FragmentCategorisation": 3,
-  "Selectors": [ "div.w1", "div.w2" ],
-  "ParentSelectors": [],
-  "SourceLineIndex": 0,
-  "ChildFragments": [{
-      "FragmentCategorisation": 3,
-      "Selectors": [ "p" ],
-      "ParentSelectors": [ [ "div.w1", "div.w2" ] ],
-      "SourceLineIndex": 1,
-      "ChildFragments": [{
-          "FragmentCategorisation": 3,
-          "Selectors": [ "strong", "em" ],
-          "ParentSelectors": [ [ "div.w1", "div.w2" ], [ "p" ] ],
-          "ChildFragments": [{
-              "FragmentCategorisation": 4,
-              "Value": "font-weight",
-              "SourceLineIndex": 2
+  &quot;FragmentCategorisation&quot;: 3,
+  &quot;Selectors&quot;: [ &quot;div.w1&quot;, &quot;div.w2&quot; ],
+  &quot;ParentSelectors&quot;: [],
+  &quot;SourceLineIndex&quot;: 0,
+  &quot;ChildFragments&quot;: [{
+      &quot;FragmentCategorisation&quot;: 3,
+      &quot;Selectors&quot;: [ &quot;p&quot; ],
+      &quot;ParentSelectors&quot;: [ [ &quot;div.w1&quot;, &quot;div.w2&quot; ] ],
+      &quot;SourceLineIndex&quot;: 1,
+      &quot;ChildFragments&quot;: [{
+          &quot;FragmentCategorisation&quot;: 3,
+          &quot;Selectors&quot;: [ &quot;strong&quot;, &quot;em&quot; ],
+          &quot;ParentSelectors&quot;: [ [ &quot;div.w1&quot;, &quot;div.w2&quot; ], [ &quot;p&quot; ] ],
+          &quot;ChildFragments&quot;: [{
+              &quot;FragmentCategorisation&quot;: 4,
+              &quot;Value&quot;: &quot;font-weight&quot;,
+              &quot;SourceLineIndex&quot;: 2
           }, {
-              "FragmentCategorisation": 5,
-              "Property": {
-                  "FragmentCategorisation": 4,
-                  "Value": "font-weight",
-                  "SourceLineIndex": 2
+              &quot;FragmentCategorisation&quot;: 5,
+              &quot;Property&quot;: {
+                  &quot;FragmentCategorisation&quot;: 4,
+                  &quot;Value&quot;: &quot;font-weight&quot;,
+                  &quot;SourceLineIndex&quot;: 2
               },
-              "Values": [ "bold" ],
-              "SourceLineIndex": 2
+              &quot;Values&quot;: [ &quot;bold&quot; ],
+              &quot;SourceLineIndex&quot;: 2
           }],
-          "SourceLineIndex": 2
+          &quot;SourceLineIndex&quot;: 2
       }]
   }]
 }];
 </code></pre>
-
-<p>where the "FragmentCategorisation" values come from an enum-emulating reference CssParser.ExtendedLessParser.FragmentCategorisationOptions which has the properties</p>
-
+<p>where the &quot;FragmentCategorisation&quot; values come from an enum-emulating reference CssParser.ExtendedLessParser.FragmentCategorisationOptions which has the properties</p>
 <pre><code>Comment: 0
 Import: 1,
 MediaQuery: 2,
@@ -1481,128 +1207,92 @@ Selector: 3,
 StylePropertyName: 4,
 StylePropertyValue: 5
 </code></pre>
-
 <h3>So it works?</h3>
-
 <p>At this point, it was looking rosey - the translation had been painless, I'd made the odd silly mistake which I'd picked up quickly and it was giving the results I expected for some strings of content I was passing in. However, it's hard to be sure that it's <em>all</em> working perfectly without trying to exercise more of the code. Or without constructing some unit tests!</p>
-
-<p>The C# project has unit tests, using <a href="https://github.com/xunit/xunit">xUnit</a>. When I was looking at dependency management for my last post, one of the packages I was looking at was <a href="https://github.com/jashkenas/underscore">Underscore</a> which I was looking up to as an implementation of what people who knew what they were doing were actually doing. That repository includes a "test" folder which makes use of <a href="http://qunitjs.com/">QUnit</a>. A basic QUnit configuration consists of an html page that loads in the QUnit library - this makes available methods such as "ok", "equal", "notEqual", "deepEqual" (for comparing objects where the references need not be the same but all of their properties and the properties of nested types must match), "raises" (for testing for errors being raised), etc.. The html page also loads in one or more JavaScript files that describe the tests. The tests may be of the form</p>
-
+<p>The C# project has unit tests, using <a href="https://github.com/xunit/xunit">xUnit</a>. When I was looking at dependency management for my last post, one of the packages I was looking at was <a href="https://github.com/jashkenas/underscore">Underscore</a> which I was looking up to as an implementation of what people who knew what they were doing were actually doing. That repository includes a &quot;test&quot; folder which makes use of <a href="http://qunitjs.com/">QUnit</a>. A basic QUnit configuration consists of an html page that loads in the QUnit library - this makes available methods such as &quot;ok&quot;, &quot;equal&quot;, &quot;notEqual&quot;, &quot;deepEqual&quot; (for comparing objects where the references need not be the same but all of their properties and the properties of nested types must match), &quot;raises&quot; (for testing for errors being raised), etc.. The html page also loads in one or more JavaScript files that describe the tests. The tests may be of the form</p>
 <pre><code>test('AttributeSelectorsShouldNotBeIdentifiedAsPropertyValues', function () {
-  var content = "a[href] { }",
+  var content = &quot;a[href] { }&quot;,
       expected = [
-        { Value: "a[href]", IndexInSource: 0, CharacterCategorisation: 4 },
-        { Value: " ", IndexInSource: 7, CharacterCategorisation: 7 },
-        { Value: "{", IndexInSource: 8, CharacterCategorisation: 2 },
-        { Value: " ", IndexInSource: 9, CharacterCategorisation: 7 },
-        { Value: "}", IndexInSource: 10, CharacterCategorisation: 1 }
+        { Value: &quot;a[href]&quot;, IndexInSource: 0, CharacterCategorisation: 4 },
+        { Value: &quot; &quot;, IndexInSource: 7, CharacterCategorisation: 7 },
+        { Value: &quot;{&quot;, IndexInSource: 8, CharacterCategorisation: 2 },
+        { Value: &quot; &quot;, IndexInSource: 9, CharacterCategorisation: 7 },
+        { Value: &quot;}&quot;, IndexInSource: 10, CharacterCategorisation: 1 }
       ];
   deepEqual(CssParserJs.ParseLess(content), expected);
 });
 </code></pre>
-
 <p>so they're nice and easy to read and easy to write.</p>
-
 <p><em>(Note: In the actual test code, I've used the enum-esque values instead of their numeric equivalents, so instead of</em></p>
-
 <pre><code>CharacterCategorisation: 4
 </code></pre>
-
 <p><em>I've used</em></p>
-
 <pre><code>CharacterCategorisation: CssParserJs.CharacterCategorisationOptions.SelectorOrStyleProperty
 </code></pre>
-
 <p><em>which makes it even easier to read and write - but it made arranging the code in this post awkward without requiring scroll bars in the code display, which I don't like!).</em></p>
-
 <p>The QUnit html page will execute all of the tests and display details about which passed and which failed.</p>
-
 <p>I translated the tests from the C# code into this format and they all passed! I will admit that it's not the most thorough test suite, but it does pick up a lot of parse cases and I did get into the habit of adding tests as I was adding functionality and fixing bugs when I was first writing the C# version, so having them all pass felt good.</p>
-
-<p>The final thing to add to the QUnit tests was a way to run them without loading a full browser. Again, this is a solved problem and, again, I looked to Underscore as a good example of what to do. That library uses <a href="http://phantomjs.org">PhantomJS</a> which is a "headless WebKit scriptable with a JavaScript API", according to the site. (I'm not sure if that should say "WebKit scriptable <em>browser</em>" or not, but you get the idea). This allows for the test scripts to be run at the command line and the output summary to be displayed. The tests are in a subfolder "test", within which is another folder "vendor", which includes the JavaScript and CSS for the core QUnit code. This allows for tests to be run (assuming you have PhantomJS installed) with</p>
-
+<p>The final thing to add to the QUnit tests was a way to run them without loading a full browser. Again, this is a solved problem and, again, I looked to Underscore as a good example of what to do. That library uses <a href="http://phantomjs.org">PhantomJS</a> which is a &quot;headless WebKit scriptable with a JavaScript API&quot;, according to the site. (I'm not sure if that should say &quot;WebKit scriptable <em>browser</em>&quot; or not, but you get the idea). This allows for the test scripts to be run at the command line and the output summary to be displayed. The tests are in a subfolder &quot;test&quot;, within which is another folder &quot;vendor&quot;, which includes the JavaScript and CSS for the core QUnit code. This allows for tests to be run (assuming you have PhantomJS installed) with</p>
 <pre><code>phantomjs test/vendor/runner.js test/index.html
 </code></pre>
-
 <h3>Share and share alike</h3>
-
 <p>As with all my public code, I've released this on bitbucket (at <a href="https://bitbucket.org/DanRoberts/cssparserjs">https://bitbucket.org/DanRoberts/cssparserjs</a>) but, since I've been looking into dependency management and npm, I've also released it as an npm package!</p>
-
-<p>This turned out to be really easy after looking on the <a href="https://www.npmjs.org/">npm site</a>. It's basically a case of constructing a "package.json" file with some details about the package - eg.</p>
-
+<p>This turned out to be really easy after looking on the <a href="https://www.npmjs.org/">npm site</a>. It's basically a case of constructing a &quot;package.json&quot; file with some details about the package - eg.</p>
 <pre><code>{
-  "name": "cssparserjs",
-  "description": "A simple CSS Parser for JavaScript",
-  "homepage": "https://bitbucket.org/DanRoberts/cssparserjs",
-  "author": "Dan Roberts &lt;dangger36@gmail.com&gt;",
-  "main": "CssParserJs.js",
-  "version": "1.2.1",
-  "devDependencies": {
-    "phantomjs": "1.9.7-1"
+  &quot;name&quot;: &quot;cssparserjs&quot;,
+  &quot;description&quot;: &quot;A simple CSS Parser for JavaScript&quot;,
+  &quot;homepage&quot;: &quot;https://bitbucket.org/DanRoberts/cssparserjs&quot;,
+  &quot;author&quot;: &quot;Dan Roberts &lt;dangger36@gmail.com&gt;&quot;,
+  &quot;main&quot;: &quot;CssParserJs.js&quot;,
+  &quot;version&quot;: &quot;1.2.1&quot;,
+  &quot;devDependencies&quot;: {
+    &quot;phantomjs&quot;: &quot;1.9.7-1&quot;
   },
-  "scripts": {
-    "test": "phantomjs test/vendor/runner.js test/index.html"
+  &quot;scripts&quot;: {
+    &quot;test&quot;: &quot;phantomjs test/vendor/runner.js test/index.html&quot;
   },
-  "licenses": [
+  &quot;licenses&quot;: [
     {
-      "type": "MIT",
-      "url": "https://bitbucket.org/DanRoberts/cssparserjs/src/4a9bb17f5a8a4fc0c2c164625b9dc3b8f7a03058/LICENSE.txt"
+      &quot;type&quot;: &quot;MIT&quot;,
+      &quot;url&quot;: &quot;https://bitbucket.org/DanRoberts/cssparserjs/src/4a9bb17f5a8a4fc0c2c164625b9dc3b8f7a03058/LICENSE.txt&quot;
     }
   ]
 }
 </code></pre>
-
-<p>and then using "npm publish" at the command line. The name is in the json file, so it know <em>what</em> it's publishing. If you don't have an npm user then you use "npm adduser" first, and follow the prompts it gives you.</p>
-
+<p>and then using &quot;npm publish&quot; at the command line. The name is in the json file, so it know <em>what</em> it's publishing. If you don't have an npm user then you use &quot;npm adduser&quot; first, and follow the prompts it gives you.</p>
 <p>This was pleasantly simple. For some reason I had expected there to be more hoops to jump through.. find it now at <a href="https://www.npmjs.org/package/cssparserjs">www.npmjs.org/package/cssparserjs</a>! :)</p>
-
-<p>It's worth noting when publishing that, by default, it will publish nearly all of the files in the folder (and subfolders). If you want to ignore any, then add them to an ".npmignore" file. If there's no ".npmignore" file but there <em>is</em> a ".gitignore" file then it will use the rules in there. And there are a set of default rules, so I didn't have to worry about it sending any files from the ".hg" folder relating to the Mercurial repo, since ".hg" is one of its default ignores. The documentation on the main site is really good for this: <a href="https://www.npmjs.org/doc/misc/npm-developers.html">npmjs Developers Guide</a>.</p>
-
+<p>It's worth noting when publishing that, by default, it will publish nearly all of the files in the folder (and subfolders). If you want to ignore any, then add them to an &quot;.npmignore&quot; file. If there's no &quot;.npmignore&quot; file but there <em>is</em> a &quot;.gitignore&quot; file then it will use the rules in there. And there are a set of default rules, so I didn't have to worry about it sending any files from the &quot;.hg&quot; folder relating to the Mercurial repo, since &quot;.hg&quot; is one of its default ignores. The documentation on the main site is really good for this: <a href="https://www.npmjs.org/doc/misc/npm-developers.html">npmjs Developers Guide</a>.</p>
 <h3>What else have I learned?</h3>
-
 <p>This last few weeks have been a voyage of exploration in modern JavaScript for me - there are new techniques and delivery mechanisms and frameworks that I was aware of but not intimately familiar with and I feel like I've plugged some of the holes in my knowledge and experience with what I've written about recently. One thing I've also finally put to bed was the use of the variety of <a href="http://en.wikipedia.org/wiki/Hungarian_notation">Hungarian Notation</a> I had still been using with JavaScript. I know, I know - don't judge me! :)</p>
-
-<p>Since JavaScript has no type annotations, I have historically named variables with a type prefix, such as "strName" or "intIndex" but I've never been 100% happy with it. While it <em>can</em> be helpful for arguments or variables with primitive types, once you start using "objPropertyDetails" or "arrPageDetails", you have very little information to work with - is the "objPropertyDetails" a JavaScript class? Or an object expected in a particular format (such as JSON with particular properties)? And what are the types in "arrPageDetails"?? Other than it being an array, this gives you almost no useful information. And so, having looked around at some of the big libraries and frameworks, I've finally decided to stop doing it. It's silly. There, I've said it! Maybe I should be looking into <a href="http://usejsdoc.org/about-getting-started.html">JSDoc</a> for public interfaces (which is where I think type annotations are even more important than internally within functions; when you want to share information with someone else who might be calling your code). Or maybe I should just be using TypeScript more! But these discussions are for another day..</p>
-
+<p>Since JavaScript has no type annotations, I have historically named variables with a type prefix, such as &quot;strName&quot; or &quot;intIndex&quot; but I've never been 100% happy with it. While it <em>can</em> be helpful for arguments or variables with primitive types, once you start using &quot;objPropertyDetails&quot; or &quot;arrPageDetails&quot;, you have very little information to work with - is the &quot;objPropertyDetails&quot; a JavaScript class? Or an object expected in a particular format (such as JSON with particular properties)? And what are the types in &quot;arrPageDetails&quot;?? Other than it being an array, this gives you almost no useful information. And so, having looked around at some of the big libraries and frameworks, I've finally decided to stop doing it. It's silly. There, I've said it! Maybe I should be looking into <a href="http://usejsdoc.org/about-getting-started.html">JSDoc</a> for public interfaces (which is where I think type annotations are even more important than internally within functions; when you want to share information with someone else who might be calling your code). Or maybe I should just be using TypeScript more! But these discussions are for another day..</p>
 <p>I haven't actually talked about the Brackets plugin that I was writing this code for, and how well that did or didn't go (what a cliffhanger!) but I think this post has gone on long enough and I'm going make a clean break at this point and pick that up another day.</p>
-
-<p>(The short version is that the plugin environment is easy to work with and has lots of capabilities and was fun to work with - check back soon for more details!).</p><p class="PostTime">Posted at 22:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Brackets" title="3 Posts">Brackets</a></li><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/the-c-sharp-css-parser-in-javascript#disqus_thread" data-disqus-identifier="73">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">23 July 2014</h3><h2><a id="Post72"></a><a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></h2>
-
+<p>(The short version is that the plugin environment is easy to work with and has lots of capabilities and was fun to work with - check back soon for more details!).</p>
+<p class="PostTime">Posted at 22:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Brackets" title="3 Posts">Brackets</a></li><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/the-c-sharp-css-parser-in-javascript#disqus_thread" data-disqus-identifier="73">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">23 July 2014</h3><h2><a id="javascript-dependencies-that-work-with-brackets-node-and-inbrowser" href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></h2>
 <p><strong>tl;dr</strong> - I wanted to create a JavaScript package I could use in an <a href="http://brackets.io">Adobe Brackets</a> extension <em>and</em> release to <a href="https://www.npmjs.org">npm</a> for use with <a href="http://nodejs.org">Node.js</a> <em>and</em> have work in the browser as an old-school script tag import. It turned out that my knowledge of JavaScript dependency management was woefully out of date and while I came up with this solution..</p>
-
 <pre><code>/*jslint vars: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
 /*global define, require, module */
-(this.define || function (f) { "use strict"; var n = "dependencyName", s = this, r = f((typeof (require) === "undefined") ? function (d) { return s[d]; } : require); if ((typeof (module) !== "undefined") &amp;&amp; module.exports) { module.exports = r; } else { this[n] = r; } }).call(this, function (require) {
-  "use strict";
+(this.define || function (f) { &quot;use strict&quot;; var n = &quot;dependencyName&quot;, s = this, r = f((typeof (require) === &quot;undefined&quot;) ? function (d) { return s[d]; } : require); if ((typeof (module) !== &quot;undefined&quot;) &amp;&amp; module.exports) { module.exports = r; } else { this[n] = r; } }).call(this, function (require) {
+  &quot;use strict&quot;;
 
   return {
       // Dependency interface goes here..
   };
 });
 </code></pre>
-
 <p>.. there may very well have plenty of room for improvement - but the meandering journey to get here taught me a lot (and so if there is a better solution out there, I'll happily switch over to it and chalk this all up to a learning experience!).</p>
-
 <p>This is the story of how I arrived at the cryptic jumble of characters above.</p>
-
 <h3>Back to the beginning</h3>
-
 <p>I've been working on an extension for <a href="http://brackets.io">Adobe Brackets</a>, an editor I've been trying out recently and liking for writing JavaScript and LESS stylesheets in particular. I used to instinctively go to Visual Studio for everything, but recently it's gone from starting up in a couple of seconds to taking over 40 if not a minute (I think it was since I installed Xamarin and then NuGet for VS 2010 that it got really bad, but it might have been something else and I'm unfairly misassigning blame).</p>
-
-<p>Brackets is written in JavaScript and its extensions are JavaScript modules, the API seems excellent so far. I like that linting of files is, by default, enabled on save. It has JSLint checks built in for JavaScript files and JSLint is specified in the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a>. I actually quite like a good coding convention or style guide - it takes the guess work out of a lot of decisions and, in writing a Brackets extension, I thought I'd jump right in and try to make sure that I write everything "Brackets style".</p>
-
+<p>Brackets is written in JavaScript and its extensions are JavaScript modules, the API seems excellent so far. I like that linting of files is, by default, enabled on save. It has JSLint checks built in for JavaScript files and JSLint is specified in the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a>. I actually quite like a good coding convention or style guide - it takes the guess work out of a lot of decisions and, in writing a Brackets extension, I thought I'd jump right in and try to make sure that I write everything &quot;Brackets style&quot;.</p>
 <p>Although I have written a lot of JavaScript in the past (and continue to do so), I've gotten out of touch with modern dependency management. JavaScript dependencies for projects at work are based on a custom dependency manager of sorts and my personal projects tend to be a bit more ad hoc.</p>
-
 <h3>Good practices for browser scripts, leading into Node.js</h3>
-
 <p>I started off writing a module in my normal manner, which tends to involve wrapping the code in an <a href="http://en.wikipedia.org/wiki/Immediately-invoked_function_expression">IIFE</a> and then exporting public references into a fixed namespace. This works fine if the JavaScript is being loaded directly into a web page - eg.</p>
-
 <pre><code>(function () {
 
     var myModule = this.myModule || {};
@@ -1614,31 +1304,20 @@ StylePropertyValue: 5
 
 }());
 </code></pre>
-
-<p>This allows code elsewhere in the page to call "myModule.AwesomeProcessor.Process(value)" and ensures that any private methods and variables used to describe the "AwesomeProcessor" don't leak out and that nothing in global scope gets stomped over (unless there's already a "myModule.AwesomeProcessor" somewhere).</p>
-
-<p>Then I looked into Node.js, since it's on my list of things to know more about, that I currently know very little about. I knew that there was some sort of standard dependency management system for it since I've seen "npm" mentioned all over the place. I went to <a href="https://www.npmjs.org">npmjs.org</a> to try to find out more about how this worked. Not knowing where to start, I plucked out the first name that came to mind: <a href="https://github.com/jashkenas/underscore">Underscore</a>, to see if it was listed. I clicked through to its <a href="https://github.com/jashkenas/underscore">GitHub</a> page to see how it was arranged and found</p>
-
+<p>This allows code elsewhere in the page to call &quot;myModule.AwesomeProcessor.Process(value)&quot; and ensures that any private methods and variables used to describe the &quot;AwesomeProcessor&quot; don't leak out and that nothing in global scope gets stomped over (unless there's already a &quot;myModule.AwesomeProcessor&quot; somewhere).</p>
+<p>Then I looked into Node.js, since it's on my list of things to know more about, that I currently know very little about. I knew that there was some sort of standard dependency management system for it since I've seen &quot;npm&quot; mentioned all over the place. I went to <a href="https://www.npmjs.org">npmjs.org</a> to try to find out more about how this worked. Not knowing where to start, I plucked out the first name that came to mind: <a href="https://github.com/jashkenas/underscore">Underscore</a>, to see if it was listed. I clicked through to its <a href="https://github.com/jashkenas/underscore">GitHub</a> page to see how it was arranged and found</p>
 <pre><code>// Establish the root object, `window` in the browser, or `exports` on the server.
 var root = this;
 </code></pre>
-
-<p>Flipping to information specifically about writing Node.js modules (why didn't I just start <a href="http://nodejs.org/docs/latest/api/modules.html#modules_modules">here</a>??) I find that the <em>exports</em> reference is one that properties can be set on that will be part of the object returned from a "requires" call. For example, if I have a script that requests a dependency be loaded with</p>
-
+<p>Flipping to information specifically about writing Node.js modules (why didn't I just start <a href="http://nodejs.org/docs/latest/api/modules.html#modules_modules">here</a>??) I find that the <em>exports</em> reference is one that properties can be set on that will be part of the object returned from a &quot;requires&quot; call. For example, if I have a script that requests a dependency be loaded with</p>
 <pre><code>var simple = require('./simplest-module-ever');
 </code></pre>
-
-<p>and the file "simplest-module-ever.js" contains</p>
-
+<p>and the file &quot;simplest-module-ever.js&quot; contains</p>
 <pre><code>exports.answer = 42;
 </code></pre>
-
-<p>then simple will be set to an object with a property "answer" with value 42. Easy!</p>
-
-<p>This example was taken directly from "<a href="http://howtonode.org/creating-custom-modules">Creating Custom Modules</a>" on "How to Node", so thanks to Aaron Blohowiak! :)</p>
-
-<p>Unlike the "exports.answer" example above, the Underscore file is contained within an interesting IIFE -</p>
-
+<p>then simple will be set to an object with a property &quot;answer&quot; with value 42. Easy!</p>
+<p>This example was taken directly from &quot;<a href="http://howtonode.org/creating-custom-modules">Creating Custom Modules</a>&quot; on &quot;How to Node&quot;, so thanks to Aaron Blohowiak! :)</p>
+<p>Unlike the &quot;exports.answer&quot; example above, the Underscore file is contained within an interesting IIFE -</p>
 <pre><code>(function() {
 
     // Establish the root object, `window` in the browser, or `exports` on the server.
@@ -1648,36 +1327,23 @@ var root = this;
 
 }.call(this));
 </code></pre>
-
-<p>The ".call(this)" at the bottom ensures that the "this" reference is maintained inside the function, so that when it's loaded into Node "this" is the "exports" reference that may be added to and in the browser "this" is the window, which also may have properties set on it. But the IIFE means that if it <em>is</em> being loaded in the browser that no global state is stomped on or private references leaked. When loaded into Node, some clever magic is done that ensures that the content is loaded in its own scope and that it doesn't leak anything out, which is why no IIFE is present on the "<a href="http://howtonode.org/creating-custom-modules">Creating Custom Modules</a>" example.</p>
-
-<p>It's also worth noting on that page, that "Node implements <a href="http://www.commonjs.org/specs/modules/1.0">CommonJS Modules 1.0</a>", which is helpful information when trying to compare all of the different mechanism that different solutions use.</p>
-
+<p>The &quot;.call(this)&quot; at the bottom ensures that the &quot;this&quot; reference is maintained inside the function, so that when it's loaded into Node &quot;this&quot; is the &quot;exports&quot; reference that may be added to and in the browser &quot;this&quot; is the window, which also may have properties set on it. But the IIFE means that if it <em>is</em> being loaded in the browser that no global state is stomped on or private references leaked. When loaded into Node, some clever magic is done that ensures that the content is loaded in its own scope and that it doesn't leak anything out, which is why no IIFE is present on the &quot;<a href="http://howtonode.org/creating-custom-modules">Creating Custom Modules</a>&quot; example.</p>
+<p>It's also worth noting on that page, that &quot;Node implements <a href="http://www.commonjs.org/specs/modules/1.0">CommonJS Modules 1.0</a>&quot;, which is helpful information when trying to compare all of the different mechanism that different solutions use.</p>
 <p>At this point, I did't know the difference between RequireJS, CommonJS, AMD; I had just heard the names. And didn't really know what else could be out there that I <em>hadn't</em> heard of!</p>
-
 <h3>What does Brackets use?</h3>
-
 <p>Having considered the above, I then came to realise that I hadn't actually looked into how Brackets deals with modules - which was somewhat foolish, considering a Brackets extension was to be my end goal! Part of the reason for this is that I got sidelined looking into pushing a package onto <a href="https://www.npmjs.org">npmjs</a>, but I'll talk about that another day, I don't want to stumble too far from my dependency implementation adventure right now.</p>
-
 <p>I learned from <a href="http://artoale.com/tutorial/brackets/2013/09/30/writing-brackets-extension-01">Writing Brackets extension - part 1</a> that</p>
-
 <blockquote>
-  <p>Brackets extensions use the AMD CommonJS Wrapper</p>
+<p>Brackets extensions use the AMD CommonJS Wrapper</p>
 </blockquote>
-
 <p>and that this essentially means that each file has a standard format</p>
-
 <pre><code>define(function (require, exports, module) {
 
 });
 </code></pre>
-
-<p>where define is a method that is provided by the dependency management system that calls an anonymous factory method that it provides with function arguments "require" (for nested dependencies), "export" (the same as with Node) and "module" (which I'm not going to talk about until further down). The factory method returns an object which is the dependency that has been loaded.</p>
-
+<p>where define is a method that is provided by the dependency management system that calls an anonymous factory method that it provides with function arguments &quot;require&quot; (for nested dependencies), &quot;export&quot; (the same as with Node) and &quot;module&quot; (which I'm not going to talk about until further down). The factory method returns an object which is the dependency that has been loaded.</p>
 <p>The advantage of it being a non-immediately invoked function is that it can be dealt with asynchronously (which is what the A in AMD stands for) and only evaluated when required.</p>
-
 <p>To mirror the example earlier, this could be</p>
-
 <pre><code>define(function (require, exports, module) {
 
     return {
@@ -1688,36 +1354,25 @@ var root = this;
 
 });
 </code></pre>
-
-<p>This dependency would be the "AwesomeProcessor" dependency and no namespace would be required to avoid clashes, since calling code requiring this dependency would state</p>
-
-<pre><code>var awesomeProcessor = require("awesomeprocessor");
+<p>This dependency would be the &quot;AwesomeProcessor&quot; dependency and no namespace would be required to avoid clashes, since calling code requiring this dependency would state</p>
+<pre><code>var awesomeProcessor = require(&quot;awesomeprocessor&quot;);
 </code></pre>
-
 <p>and scoping is cleverly handled so that no global state may be affected.</p>
-
 <p>The define method may also be called with a reference to return directly as the dependency - eg.</p>
-
 <pre><code>define({
     Process: function (value) {
         // Whatever..
     }
 });
 </code></pre>
-
 <p>in which case the dependency is not lazily instantiated, but otherwise the pattern is very similar.</p>
-
 <h3>So I can't have one file work with Node <em>and</em> with Brackets?? :(</h3>
-
 <p>Now I had my npm module that I wanted to use as a Brackets dependency, but the two formats looked completely different.</p>
-
-<p>There has been a lot written about this, particularly there is the "<a href="https://github.com/umdjs/umd">UMD (Universal Module Definition)</a>" code on GitHub with lots of patterns of ways to have modules that combine support for a variety of dependency managers, but when I looked at some of the examples I wasn't sure exactly what each was doing and I couldn't tell immediately which example (if any) would address the combination I was interested in; to work with Node <em>and</em> with Brackets <em>and</em> as a browser script.</p>
-
-<p>After some more stumbling around, I encounted <a href="http://webreflection.blogspot.co.uk/2013/01/a-simplified-universal-module-definition.html">A Simplified Universal Module Definition</a> which had this pattern to work with "define" if it was present -</p>
-
+<p>There has been a lot written about this, particularly there is the &quot;<a href="https://github.com/umdjs/umd">UMD (Universal Module Definition)</a>&quot; code on GitHub with lots of patterns of ways to have modules that combine support for a variety of dependency managers, but when I looked at some of the examples I wasn't sure exactly what each was doing and I couldn't tell immediately which example (if any) would address the combination I was interested in; to work with Node <em>and</em> with Brackets <em>and</em> as a browser script.</p>
+<p>After some more stumbling around, I encounted <a href="http://webreflection.blogspot.co.uk/2013/01/a-simplified-universal-module-definition.html">A Simplified Universal Module Definition</a> which had this pattern to work with &quot;define&quot; if it was present -</p>
 <pre><code>(this.define || function(){})(
 this.what = function(){
-    var Hello = "Hello";
+    var Hello = &quot;Hello&quot;;
     return {
         ever: function () {
             console.log(Hello);
@@ -1725,55 +1380,34 @@ this.what = function(){
     };
 }());
 </code></pre>
-
 <p>I liked the look of this, it's compact and clever!</p>
-
-<p>When loaded using AMD, the "define" method is called using the dependency-reference-passed-as-argument approach, as opposed to factory-function-for-instantiating-dependency-reference-passed-as-argument. The argument passed is "this.what = function() { .. }" which is <em>not</em> an equality check, it will set "this.what" to the return value of the anonymous function and also pass on that value to the define method - it's like</p>
-
-<pre><code>return a = "MyName";
+<p>When loaded using AMD, the &quot;define&quot; method is called using the dependency-reference-passed-as-argument approach, as opposed to factory-function-for-instantiating-dependency-reference-passed-as-argument. The argument passed is &quot;this.what = function() { .. }&quot; which is <em>not</em> an equality check, it will set &quot;this.what&quot; to the return value of the anonymous function and also pass on that value to the define method - it's like</p>
+<pre><code>return a = &quot;MyName&quot;;
 </code></pre>
-
-<p>this will set a to "MyName" and then return "a" (which is, of course, now "MyName").</p>
-
-<p>So that works in my Brackets scenario just fine (note that the "this" reference is a temporary object in the Brackets case, and the setting of the "what" property on it effectively results in nothing happening - it is the fact that a reference is passed to the "define" method that makes things happen).</p>
-
-<p>When loaded into Node, where "define" is not available, it calls an anonymous "empty function" (one that performs no action), performing the "this.what = function() { .. }" work to pass as the argument. The argument is ignored as the empty function does nothing, but the "this.what" reference has been set. This works for the browser as well!</p>
-
+<p>this will set a to &quot;MyName&quot; and then return &quot;a&quot; (which is, of course, now &quot;MyName&quot;).</p>
+<p>So that works in my Brackets scenario just fine (note that the &quot;this&quot; reference is a temporary object in the Brackets case, and the setting of the &quot;what&quot; property on it effectively results in nothing happening - it is the fact that a reference is passed to the &quot;define&quot; method that makes things happen).</p>
+<p>When loaded into Node, where &quot;define&quot; is not available, it calls an anonymous &quot;empty function&quot; (one that performs no action), performing the &quot;this.what = function() { .. }&quot; work to pass as the argument. The argument is ignored as the empty function does nothing, but the &quot;this.what&quot; reference has been set. This works for the browser as well!</p>
 <p>It took me a couple of minutes to wrap my head around this, but I appreciated it when it clicked!</p>
-
-<p>One thing I didn't like, though, was that there seemed to be an "extra" object reference required in Node. If that file was my "what" dependency loaded in with</p>
-
-<pre><code>var a = require("what");
+<p>One thing I didn't like, though, was that there seemed to be an &quot;extra&quot; object reference required in Node. If that file was my &quot;what&quot; dependency loaded in with</p>
+<pre><code>var a = require(&quot;what&quot;);
 </code></pre>
-
-<p>then to get at the "ever" function, I need to access</p>
-
+<p>then to get at the &quot;ever&quot; function, I need to access</p>
 <pre><code>a.what.ever();
 </code></pre>
-
 <p>I would rather be able to say</p>
-
-<pre><code>var what = require("what");
+<pre><code>var what = require(&quot;what&quot;);
 what.ever();
 </code></pre>
-
-<p>This is how it would appear in the Brackets, since the reference to "what" is returned directly.</p>
-
-<p>However, in the browser, this is desirable behaviour if I'm loading this with a script tag, since "this" will be window reference (ie. the global scope) and so after including the script tag, I'll be able to say</p>
-
+<p>This is how it would appear in the Brackets, since the reference to &quot;what&quot; is returned directly.</p>
+<p>However, in the browser, this is desirable behaviour if I'm loading this with a script tag, since &quot;this&quot; will be window reference (ie. the global scope) and so after including the script tag, I'll be able to say</p>
 <pre><code>what.ever();
 </code></pre>
-
-<p>as "what" will have been added to the global scope.</p>
-
+<p>as &quot;what&quot; will have been added to the global scope.</p>
 <h3>More on Node packages</h3>
-
-<p>So I've already found that "this" in a Node package is an alias onto "exports", which allows us to declare what to return as the elements of the dependency. Well, it turns out that there are more references available within the dependency scope. For example, the "require" function is available so that dependencies that the current dependency depend on may be loaded. The "exports" reference is available <em>and</em> a "module" reference is available. Interestingly, these are the same three references passed into the "define" method - so it's the same information, just exposed in a different manner.</p>
-
-<p>It further turns out that "exports" is an alias onto an "exports" property on "module". However, the property on "module" can be overwritten completely, so (in a Node package)</p>
-
+<p>So I've already found that &quot;this&quot; in a Node package is an alias onto &quot;exports&quot;, which allows us to declare what to return as the elements of the dependency. Well, it turns out that there are more references available within the dependency scope. For example, the &quot;require&quot; function is available so that dependencies that the current dependency depend on may be loaded. The &quot;exports&quot; reference is available <em>and</em> a &quot;module&quot; reference is available. Interestingly, these are the same three references passed into the &quot;define&quot; method - so it's the same information, just exposed in a different manner.</p>
+<p>It further turns out that &quot;exports&quot; is an alias onto an &quot;exports&quot; property on &quot;module&quot;. However, the property on &quot;module&quot; can be overwritten completely, so (in a Node package)</p>
 <pre><code>module.exports = function(){
-    var Hello = "Hello";
+    var Hello = &quot;Hello&quot;;
     return {
         ever: function () {
             console.log(Hello);
@@ -1781,21 +1415,16 @@ what.ever();
     };
 };
 </code></pre>
-
 <p>could be used such that</p>
-
-<pre><code>var what = require("what");
+<pre><code>var what = require(&quot;what&quot;);
 what.ever();
 </code></pre>
-
-<p><em>does</em> work. Which is what I wanted! But now there's a requirement that the "module" reference be available, which is no good for the browser.</p>
-
-<p>So I chopped and changed things around such that the there-is-no-define-method-available route (ie. Node and the browser, so far as I'm concerned) calls a factory method and either sets "module.exports" to the return value or sets "this.what" to the return value. For the case where there <em>is</em> a "define" method (ie. Brackets), the factory method will be passed into it - no funny business required.</p>
-
+<p><em>does</em> work. Which is what I wanted! But now there's a requirement that the &quot;module&quot; reference be available, which is no good for the browser.</p>
+<p>So I chopped and changed things around such that the there-is-no-define-method-available route (ie. Node and the browser, so far as I'm concerned) calls a factory method and either sets &quot;module.exports&quot; to the return value or sets &quot;this.what&quot; to the return value. For the case where there <em>is</em> a &quot;define&quot; method (ie. Brackets), the factory method will be passed into it - no funny business required.</p>
 <pre><code>(this.define || function (factory) {
 
     var result = factory();
-    if ((typeof (module) !== "undefined") &amp;&amp; module.exports) {
+    if ((typeof (module) !== &quot;undefined&quot;) &amp;&amp; module.exports) {
         module.exports = result;
     else {
         this.what = result;
@@ -1803,7 +1432,7 @@ what.ever();
 
 }).call(this, function () {
 
-    var Hello = "Hello";
+    var Hello = &quot;Hello&quot;;
     return {
         ever: function () {
             console.log(Hello);
@@ -1812,34 +1441,26 @@ what.ever();
 
 });
 </code></pre>
-
 <h3>Final tweaks</h3>
-
 <p>At this point, it was shaping up well, but there were a couple of other minor niggles I wanted to address.</p>
-
-<p>In the browser, if the file is being loaded with a script tag, then any other dependencies should also be loaded through script tag(s) - so if "dependency2" requires "dependency1" in order to operate, then the "dependency1" script should be loaded before "dependency2". But in Node and Brackets, I want to be able to load them through calls to "require".</p>
-
-<p>This means that I wanted any "require" calls to be ignored when the script is loaded in the browser. This may be contentious, but it made sense to me.. and if you wanted a more robust dependency-handling mechanism for use in the browser, well <a href="http://requirejs.org">RequireJS</a> actually <em>is</em> intended for in-browser use - so you could use that to deal with complicated dependencies instead of relying on the old-fashioned script tag method!</p>
-
-<p>Also for the browser case, that named "what" reference is not as obvious as it could be - and it <em>should</em> be obvious since it needs to vary for each dependency.</p>
-
+<p>In the browser, if the file is being loaded with a script tag, then any other dependencies should also be loaded through script tag(s) - so if &quot;dependency2&quot; requires &quot;dependency1&quot; in order to operate, then the &quot;dependency1&quot; script should be loaded before &quot;dependency2&quot;. But in Node and Brackets, I want to be able to load them through calls to &quot;require&quot;.</p>
+<p>This means that I wanted any &quot;require&quot; calls to be ignored when the script is loaded in the browser. This may be contentious, but it made sense to me.. and if you wanted a more robust dependency-handling mechanism for use in the browser, well <a href="http://requirejs.org">RequireJS</a> actually <em>is</em> intended for in-browser use - so you could use that to deal with complicated dependencies instead of relying on the old-fashioned script tag method!</p>
+<p>Also for the browser case, that named &quot;what&quot; reference is not as obvious as it could be - and it <em>should</em> be obvious since it needs to vary for each dependency.</p>
 <p>Finally, since I'm using Brackets and its on-by-default JSLint plugin, I wanted the code to meet those exacting style guide standards (using the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a> options).</p>
-
 <p>So these requirements lead to</p>
-
 <pre><code>/*jslint vars: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
 /*global define, require, module */
 (this.define || function (factory) {
 
-    "use strict";
+    &quot;use strict&quot;;
 
-    var dependencyName = "what",
+    var dependencyName = &quot;what&quot;,
         self = this,
-        result = factory((typeof (require) === "undefined")
+        result = factory((typeof (require) === &quot;undefined&quot;)
             ? function (dependency) { return self[dependency]; }
             : require);
 
-    if ((typeof (module) !== "undefined") &amp;&amp; module.exports) {
+    if ((typeof (module) !== &quot;undefined&quot;) &amp;&amp; module.exports) {
         module.exports = result;
     } else {
         this[dependencyName] = result;
@@ -1847,9 +1468,9 @@ what.ever();
 
 }).call(this, function (require) {
 
-    "use strict";
+    &quot;use strict&quot;;
 
-    var Hello = "Hello";
+    var Hello = &quot;Hello&quot;;
     return {
         ever: function () {
             console.log(Hello);
@@ -1858,24 +1479,18 @@ what.ever();
 
 });
 </code></pre>
-
-<p>A "require" argument is passed to the factory method now. For the Brackets case, this is fine since a "requires" argument is passed when "define" calls the factory method anyway. When "define" does not exist but the environment has a "require" method available, then this will be passed to the factory method (for Node). If there <em>isn't</em> a "require" method available then the dependency is retrieved from the original "this" reference - this is for the browser case (where "this" would have been the global window reference when the dependency code was evaulated).</p>
-
-<p>the "require" passed will be an empty function; this is for the browser case.</p>
-
-<p><strong><em>Correction (19th August 2014):</em></strong> I originally used an empty function if there was no "require" method available, for the browser case. But this was obviously wrong, since it would mean that nested depedencies would not have been  supported, when it was my intention that they should be.</p>
-
+<p>A &quot;require&quot; argument is passed to the factory method now. For the Brackets case, this is fine since a &quot;requires&quot; argument is passed when &quot;define&quot; calls the factory method anyway. When &quot;define&quot; does not exist but the environment has a &quot;require&quot; method available, then this will be passed to the factory method (for Node). If there <em>isn't</em> a &quot;require&quot; method available then the dependency is retrieved from the original &quot;this&quot; reference - this is for the browser case (where &quot;this&quot; would have been the global window reference when the dependency code was evaulated).</p>
+<p>the &quot;require&quot; passed will be an empty function; this is for the browser case.</p>
+<p><em><strong>Correction (19th August 2014):</strong> I originally used an empty function if there was no &quot;require&quot; method available, for the browser case. But this was obviously wrong, since it would mean that nested depedencies would not have been  supported, when it was my intention that they should be.</em></p>
 <p>The only other important change is a string to specify the dependency name, right at the start of the content - so it's easy to see straight away what needs changing if this template is copy-pasted for other modules.</p>
-
 <p>Minified, this becomes</p>
-
 <pre><code>/*jslint vars: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
 /*global define, require, module */
-(this.define || function (f) { "use strict"; var n = "what", s = this, r = f((typeof (require) === "undefined") ? function (d) { return n[d]; } : require); if ((typeof (module) !== "undefined") &amp;&amp; module.exports) { module.exports = r; } else { this[n] = r; } }).call(this, function (require) {
+(this.define || function (f) { &quot;use strict&quot;; var n = &quot;what&quot;, s = this, r = f((typeof (require) === &quot;undefined&quot;) ? function (d) { return n[d]; } : require); if ((typeof (module) !== &quot;undefined&quot;) &amp;&amp; module.exports) { module.exports = r; } else { this[n] = r; } }).call(this, function (require) {
 
-    "use strict";
+    &quot;use strict&quot;;
 
-    var Hello = "Hello";
+    var Hello = &quot;Hello&quot;;
     return {
         ever: function () {
             console.log(Hello);
@@ -1884,33 +1499,29 @@ what.ever();
 
 });
 </code></pre>
-
-<p>The only part that needs to change between files is the value of "n" (which was named "dependencyName" before minification).</p>
-
+<p>The only part that needs to change between files is the value of &quot;n&quot; (which was named &quot;dependencyName&quot; before minification).</p>
 <h3>The end (probably not really the end)</h3>
-
 <p>So.. I've achieved what I originally set out to do, which was to create a package that could be used by Node, Brackets or direct-in-the-browser.</p>
+<p>But more importantly, I've learnt a lot about some of the modern methods of dealing with dependencies in JavaScript. I suspect that there's a reasonable chance that I will change this template in the future, possibly to one of the &quot;<a href="https://github.com/umdjs/umd">UMD (Universal Module Definition)</a>&quot; examples if one matches my needs or possibly I'll just refine what I currently have.</p>
+<p>But for now, I want to get back to actually writing the meat of the package instead of worrying about how to deliver it!</p>
+<p class="PostTime">Posted at 20:44</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Brackets" title="3 Posts">Brackets</a></li><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser#disqus_thread" data-disqus-identifier="72">Comments</a>
+            </p>
+    </div>
 
-<p>But more importantly, I've learnt a lot about some of the modern methods of dealing with dependencies in JavaScript. I suspect that there's a reasonable chance that I will change this template in the future, possibly to one of the "<a href="https://github.com/umdjs/umd">UMD (Universal Module Definition)</a>" examples if one matches my needs or possibly I'll just refine what I currently have.</p>
-
-<p>But for now, I want to get back to actually writing the meat of the package instead of worrying about how to deliver it!</p><p class="PostTime">Posted at 20:44</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Brackets" title="3 Posts">Brackets</a></li><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser#disqus_thread" data-disqus-identifier="72">Comments</a>
-			</p>
-	</div>
-
-	<script type="text/javascript">
-					(function () {
-						var s = document.createElement("script");
-						s.type = "text/javascript";
-						s.async = true;
-						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
-						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
-					} ());
-	</script>
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -1920,17 +1531,16 @@ what.ever();
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

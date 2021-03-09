@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -46,40 +45,34 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content SinglePost">
-		<h3 class="PostDate">23 July 2012</h3><h2><a id="Post31"></a><a href="/the-full-text-indexer-adding-and-subtracting">The Full Text Indexer - Adding and Subtracting</a></h2>
-
+    <div class="Content SinglePost">
+        <h3 class="PostDate">23 July 2012</h3><h2><a id="the-full-text-indexer-adding-and-subtracting" href="/the-full-text-indexer-adding-and-subtracting">The Full Text Indexer - Adding and Subtracting</a></h2>
 <p>The <a href="/the-full-text-indexer">Full Text Indexer</a> that I talked about last time took a definition for an Index Generator for a specific TSource type and produced an IndexData instance, using that generator, for a TSource set.</p>
-
 <p>In the example shown there, it created an IndexGenerator for IArticle and then generated an Index for an IArticle list. The IIndexData&lt;int&gt; (TKey is an int in this case as the key on IArticle is its Id field, which is an int). This IIndexData&lt;int&gt; is an immututable data structure and so it may not be immediately obvious how to update it when the source data has changed.</p>
-
 <p>Last time I mentioned that IIndexData&lt;TKey&gt; has this method:</p>
-
 <pre><code>public interface IIndexData&lt;TKey&gt;
 {
     /// &lt;summary&gt;
@@ -89,9 +82,7 @@
     NonNullImmutableList&lt;WeightedEntry&lt;TKey&gt;&gt; GetMatches(string source);
 }
 </code></pre>
-
 <p>but the full interface is:</p>
-
 <pre><code>public interface IIndexData&lt;TKey&gt;
 {
     /// &lt;summary&gt;
@@ -143,23 +134,14 @@
     IEqualityComparer&lt;TKey&gt; KeyComparer { get; }
 }
 </code></pre>
-
-<p>The TokenComparer and KeyComparer are the instances passed into the IndexGenerator's constructor (a DefaultStringNormaliser and an IntEqualityComparer in last time's example). The GetAllTokens method returns a set of tokens that have matches in the IndexData (where multiple tokens are present in the data that are considered equivalent, only one will be in the set returned by GetAllTokens - the example used the DefaultStringNormaliser which ignores case, so if data for the tokens "Token" and "TOKEN" is present, and encountered in that order, then only "Token" would be in the GetAllTokens set, "TOKEN" wouldn't have been added as a distint value as it is equivalent to "Token").</p>
-
+<p>The TokenComparer and KeyComparer are the instances passed into the IndexGenerator's constructor (a DefaultStringNormaliser and an IntEqualityComparer in last time's example). The GetAllTokens method returns a set of tokens that have matches in the IndexData (where multiple tokens are present in the data that are considered equivalent, only one will be in the set returned by GetAllTokens - the example used the DefaultStringNormaliser which ignores case, so if data for the tokens &quot;Token&quot; and &quot;TOKEN&quot; is present, and encountered in that order, then only &quot;Token&quot; would be in the GetAllTokens set, &quot;TOKEN&quot; wouldn't have been added as a distint value as it is equivalent to &quot;Token&quot;).</p>
 <p>The interesting methods in this context are Combine and Remove.</p>
-
 <h3>Remove</h3>
-
 <p>Remove is the simpler of the two so I'll address that first: A predicate is passed to it which filters which key values should be allowed through, data which passes this filtering will be used to form a new IIndexData instance which will be returned from the method. The original IndexData instance remains unaltered while a filtered version is provided which meets the particular criteria.</p>
-
 <h3>Combine</h3>
-
-<p>The Combine method will take one or more additional IIndexData instances (for the same TKey type) and bring all of the content from these and the original index into a new instance describing aggregated data. Where data for the same keys appear in the indexes, the match weights will be combined using a specified "WeightedEntryCombiner" (which just takes a set of floats and returns a single value representing them all; the most common case is to sum the values but they could be averaged or the greatest value taken - whatever's most appropriate!).</p>
-
+<p>The Combine method will take one or more additional IIndexData instances (for the same TKey type) and bring all of the content from these and the original index into a new instance describing aggregated data. Where data for the same keys appear in the indexes, the match weights will be combined using a specified &quot;WeightedEntryCombiner&quot; (which just takes a set of floats and returns a single value representing them all; the most common case is to sum the values but they could be averaged or the greatest value taken - whatever's most appropriate!).</p>
 <h3>Pulling an example together</h3>
-
-<p>To show these methods in action I've extended the IArticle IndexGenerator concept that I showed in the <a href="/the-full-text-indexer">previous post</a> by wrapping it in another class that maintains an index based upon changing data by keeping a "source data summary" of what keys were used to generate the current data and what the last modified dates of the source data was. I'm aiming to come up with an "IndexBuilder" that will expose the following:</p>
-
+<p>To show these methods in action I've extended the IArticle IndexGenerator concept that I showed in the <a href="/the-full-text-indexer">previous post</a> by wrapping it in another class that maintains an index based upon changing data by keeping a &quot;source data summary&quot; of what keys were used to generate the current data and what the last modified dates of the source data was. I'm aiming to come up with an &quot;IndexBuilder&quot; that will expose the following:</p>
 <pre><code>/// &lt;summary&gt;
 /// This will never return null
 /// &lt;/summary&gt;
@@ -170,17 +152,14 @@ public IIndexData&lt;TKey&gt; Index { get; }
 /// &lt;/summary&gt;
 public IIndexData&lt;TKey&gt; UpdateIndex(NonNullImmutableList&lt;TSource&gt; values);
 </code></pre>
-
-<p>All the same types will be required in the IndexBuilder constructor that the IndexGenerator required last time (the Content Retrievers, Key Comparer, Token Comparer, Weighted Entry Combiner and Logger) along with one additional dependency; a "Source Item Status Retriever". This is just a delegate that takes an instance of the generic type parameter TSource and returns a SourceDataSummary instance that reports its Key and a LastModifiedDate (so hardly rocket science!). This will enable the IndexBuilder to maintain a summary of the input data that was used to build the current index and so determine what work (if any) is required when UpdateIndex is called.</p>
-
+<p>All the same types will be required in the IndexBuilder constructor that the IndexGenerator required last time (the Content Retrievers, Key Comparer, Token Comparer, Weighted Entry Combiner and Logger) along with one additional dependency; a &quot;Source Item Status Retriever&quot;. This is just a delegate that takes an instance of the generic type parameter TSource and returns a SourceDataSummary instance that reports its Key and a LastModifiedDate (so hardly rocket science!). This will enable the IndexBuilder to maintain a summary of the input data that was used to build the current index and so determine what work (if any) is required when UpdateIndex is called.</p>
 <p>If the example code last time didn't look too scary, then neither should this:</p>
-
 <pre><code>// Instantiate an IndexBuilder that will index IArticles (which have ints as their Keys).
 // - Content Retrievers describe how to extract data from each IArticle, there is a delegate
-//   to retrieve Key and LastModifiedDate from IArticle (the "Source Item Status Retriever"),
+//   to retrieve Key and LastModifiedDate from IArticle (the &quot;Source Item Status Retriever&quot;),
 //   there's a Token Breaker which breaks up the content, there's a String Normaliser which
-//   compares the resulting Tokens to group them together, there's a "Weighted Entry
-//   Combiner" which creates an aggregate weight for Tokens that are grouped,
+//   compares the resulting Tokens to group them together, there's a &quot;Weighted Entry
+//   Combiner&quot; which creates an aggregate weight for Tokens that are grouped,
 //   there's an IntEqualityComparer that acts as a Key Comparer and there's
 //   a Logger. See; nothing to it! :D
 
@@ -208,28 +187,24 @@ var indexBuilder = new IndexBuilder&lt;IArticle, int&gt;(
     new NullLogger()
 );
 </code></pre>
-
 <p>Instead of instantiating an IndexGenerator directly we're going to use the IndexBuilder that I'm describing, and we'll pass data to it thusly:</p>
-
 <pre><code>var articles = new[]
 {
-    new Article(1, new DateTime(2012, 7, 21, 0, 0, 1), "One", "One Content"),
-    new Article(2, new DateTime(2012, 8, 21, 0, 0, 1), "Two", "Two Content"),
-    new Article(3, new DateTime(2012, 9, 21, 0, 0, 1), "Three", "Three Content")
+    new Article(1, new DateTime(2012, 7, 21, 0, 0, 1), &quot;One&quot;, &quot;One Content&quot;),
+    new Article(2, new DateTime(2012, 8, 21, 0, 0, 1), &quot;Two&quot;, &quot;Two Content&quot;),
+    new Article(3, new DateTime(2012, 9, 21, 0, 0, 1), &quot;Three&quot;, &quot;Three Content&quot;)
 };
 var index = indexBuilder.UpdateIndex(new NonNullImmutableList&lt;IArticle&gt;(articles));
 </code></pre>
-
-<p>The source data types are not very interesting and are here only for completeness of the example, to be honest! </p>
-
+<p>The source data types are not very interesting and are here only for completeness of the example, to be honest!</p>
 <pre><code>public class Article : IArticle
 {
     public Article(int id, DateTime lastModified, string title, string content)
     {
         if (string.IsNullOrWhiteSpace(title))
-            throw new ArgumentException("Null/blank title specified");
+            throw new ArgumentException(&quot;Null/blank title specified&quot;);
         if (string.IsNullOrWhiteSpace(content))
-            throw new ArgumentException("Null/blank content specified");
+            throw new ArgumentException(&quot;Null/blank content specified&quot;);
 
         Id = id;
         LastModified = lastModified;
@@ -269,9 +244,7 @@ public interface IArticle
     string Content { get; }
 }
 </code></pre>
-
 <p>And finally (<em>finally!</em>) the IndexBuilder itself. The constructor takes up a chunk of space, validating all of the input. Then there's a few lines taken up by the definition of the SourceItemStatusRetriever and SourceDataSummary class. At the end there's the UpdateIndex method which determines what work needs to be done to get its IndexData instance to match the new source data - and <em>it</em> uses the Remove and Combine methods to synchronise the index with the data:</p>
-
 <pre><code>using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -306,31 +279,31 @@ namespace FullTextIndexerDemo
             ILogger logger)
         {
             if (contentRetrievers == null)
-                throw new ArgumentNullException("contentRetrievers");
+                throw new ArgumentNullException(&quot;contentRetrievers&quot;);
             if (!contentRetrievers.Any())
-                throw new ArgumentException("No contentRetrievers specified");
+                throw new ArgumentException(&quot;No contentRetrievers specified&quot;);
             if (sourceItemStatusRetriever == null)
-                throw new ArgumentNullException("sourceItemStatusRetriever");
+                throw new ArgumentNullException(&quot;sourceItemStatusRetriever&quot;);
             if (keyComparer == null)
-                throw new ArgumentNullException("keyComparer");
+                throw new ArgumentNullException(&quot;keyComparer&quot;);
             if (tokenBreaker == null)
-                throw new ArgumentNullException("tokenBreaker");
+                throw new ArgumentNullException(&quot;tokenBreaker&quot;);
             if (stringNormaliser == null)
-                throw new ArgumentNullException("stringNormaliser");
+                throw new ArgumentNullException(&quot;stringNormaliser&quot;);
             if (weightedEntryCombiner == null)
-                throw new ArgumentNullException("weightedEntryCombiner");
+                throw new ArgumentNullException(&quot;weightedEntryCombiner&quot;);
             if (logger == null)
-                throw new ArgumentNullException("logger");
+                throw new ArgumentNullException(&quot;logger&quot;);
 
             var contentRetrieversTidied = new List&lt;ContentRetriever&lt;TSource, TKey&gt;&gt;();
             foreach (var contentRetriever in contentRetrievers)
             {
                 if (contentRetriever == null)
-                    throw new ArgumentException("Null encountered in contentRetrievers set");
+                    throw new ArgumentException(&quot;Null encountered in contentRetrievers set&quot;);
                 contentRetrieversTidied.Add(contentRetriever);
             }
             if (!contentRetrieversTidied.Any())
-                throw new ArgumentException("No contentRetrievers specified");
+                throw new ArgumentException(&quot;No contentRetrievers specified&quot;);
 
             _contentRetrievers = contentRetrieversTidied;
             _sourceItemStatusRetriever = sourceItemStatusRetriever;
@@ -361,7 +334,7 @@ namespace FullTextIndexerDemo
             public SourceDataSummary(TKey key, DateTime lastModified)
             {
                 if (key == null)
-                    throw new ArgumentNullException("key");
+                    throw new ArgumentNullException(&quot;key&quot;);
 
                 Key = key;
                 LastModified = lastModified;
@@ -389,7 +362,7 @@ namespace FullTextIndexerDemo
         public IIndexData&lt;TKey&gt; UpdateIndex(NonNullImmutableList&lt;TSource&gt; values)
         {
             if (values == null)
-                throw new ArgumentNullException("values");
+                throw new ArgumentNullException(&quot;values&quot;);
 
             var newIndexSummary = values
                 .Select(value =&gt; _sourceItemStatusRetriever(value))
@@ -477,54 +450,52 @@ namespace FullTextIndexerDemo
     }
 }
 </code></pre>
-
 <p>In case this class needs to be used in a multi-threaded environment there is a write-lock used for any calls to UpdateIndex but requests for the Index property for reading only will require no locks since the IndexData is an immutable structure! (This includes the case where index data may be cached in memory and shared between web requests which is an implicit multi-threading scenario rather than an explicit situation where you may dealing with Threads / ThreadPools / whatever yourself).</p>
-
 <p>(If we were nitpicking then we could be concerned that there's no way to ensure that the TKey type is immutable and so the weighted entries described by the IndexData could feasibly change - but in this case they're ints, so there's nothing to worry about, and in other cases I would strongly suggest an immutable type be used for TKey at all times. Next time I'm going to cover more complex TKey possibilities in <a href="/the-full-text-indexer-going-international">The Full Text Indexer - Going International!</a>).</p>
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="/the-full-text-indexer-post-roundup">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 21:37</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-full-text-indexer">The Full Text Indexer</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-full-text-indexer-going-international">The Full Text Indexer - Going International!</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li></ul></div>
+                <div id="disqus_thread"></div>
+                <script type="text/javascript">
+					var disqus_identifier = "31";
+					var disqus_title = "The Full Text Indexer - Adding and Subtracting";
+					(function () {
+						whenjQueryIsAvailable(
+							function () {
+								$(function () {
+									loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+									$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+								});
+							}
+						);
 
-<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="/the-full-text-indexer-post-roundup">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p><p class="PostTime">Posted at 21:37</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/the-full-text-indexer">The Full Text Indexer</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-full-text-indexer-going-international">The Full Text Indexer - Going International!</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li></ul></div>
-			<div id="disqus_thread"></div>
-						<script type="text/javascript">
-							var disqus_identifier = "31";
-							var disqus_title = "The Full Text Indexer - Adding and Subtracting";
-							(function () {
-							    whenjQueryIsAvailable(
-									function () {
-									    $(function () {
-											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
-											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
-										});
-									}
-								);
+						var bStartedLoadingComments = false;
+						function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+							if (bStartedLoadingComments) {
+								return;
+							}
+							var $post = $("div.Content.SinglePost");
+							var bottomOfPost = $post.position().top + $post.height();
+							var $window = $(window);
+							if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+								bStartedLoadingComments = true;
+								loadComments();
+							}
+						}
 
-								var bStartedLoadingComments = false;
-								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
-								    if (bStartedLoadingComments) {
-								        return;
-								    }
-								    var $post = $("div.Content.SinglePost");
-								    var bottomOfPost = $post.position().top + $post.height();
-								    var $window = $(window);
-								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
-										bStartedLoadingComments = true;
-										loadComments();
-									}
-								}
-
-								function loadComments() {
-								    var dsq = document.createElement("script");
-									dsq.type = "text/javascript";
-									dsq.async = true;
-									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-								}
-							}());
-						</script>
-	</div>
+						function loadComments() {
+							var dsq = document.createElement("script");
+							dsq.type = "text/javascript";
+							dsq.async = true;
+							dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+							(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+						}
+					}());
+                </script>
+    </div>
 
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -534,17 +505,16 @@ namespace FullTextIndexerDemo
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -41,48 +40,38 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">14 June 2015</h3><h2><a id="Post86"></a><a href="/throwing-exceptions-through-com">Throwing exceptions through COM</a></h2>
-
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">14 June 2015</h3><h2><a id="throwing-exceptions-through-com" href="/throwing-exceptions-through-com">Throwing exceptions through COM</a></h2>
 <p>At work, I've got a project where we're trying to migrate from an old technology to new - we've got COM components that used to be hosted in one environment that has now been replaced, with a view to replacing the legacy COM components in the future. This means that these components are often brought to life in this new environment and have some of their internal functionality relying on calls back into the new host. In a roundabout way, what I'm trying to say is that these COM components are called <em>by</em> .net code, they call back <em>into</em> that .net code themselves and sometimes have to deal with exceptions being thrown by the .net code they're calling and have to communicate those failures back <em>up</em> to the .net code that called <em>them</em>!</p>
-
 <p>Phew! I think I just made unnecessarily hard work out of that introduction! :D</p>
-
 <p>So.. an interesting problem has arisen in this scenario. There are limits to the ways in which managed (.net) code can talk with unmanaged (COM) code. Most of the time you can get away with following a few simple rules around types and then letting the .net interoperability magic do its work.</p>
-
-<p>One place where this falls down is in exception handling. Specifically, if the (.net) hosting environment calls a COM component that calls back into the host - if that call throws an exception then that exception travels through the COM component and comes out the other side.. just not quite in the way that you might expect. Exceptions from COM components can basically only express a string message and a 32-bit "HRESULT" value (this is simplifying a bit, but it's close enough). The HRESULT value is a status code that follows a particular format (see the MSDN article "<a href="https://msdn.microsoft.com/en-us/library/cc231198.aspx">HRESULT</a>" for the full details, but I'll touch on it further down).</p>
-
-<p>If the HRESULT is a value that .net recognises as relating nicely to a particular framework exception, then it will represent the error from the COM component as an instance of that exception - eg. "COR_E_ENDOFSTREAM" (0x80070026, or -2147024858 as an <strong>Int32</strong>) will result in an <strong>EndOfStreamException</strong> being raised. Any value that isn't considered special enough to have its own framework type will be raised as a <strong>COMException</strong>.</p>
-
+<p>One place where this falls down is in exception handling. Specifically, if the (.net) hosting environment calls a COM component that calls back into the host - if that call throws an exception then that exception travels through the COM component and comes out the other side.. just not quite in the way that you might expect. Exceptions from COM components can basically only express a string message and a 32-bit &quot;HRESULT&quot; value (this is simplifying a bit, but it's close enough). The HRESULT value is a status code that follows a particular format (see the MSDN article &quot;<a href="https://msdn.microsoft.com/en-us/library/cc231198.aspx">HRESULT</a>&quot; for the full details, but I'll touch on it further down).</p>
+<p>If the HRESULT is a value that .net recognises as relating nicely to a particular framework exception, then it will represent the error from the COM component as an instance of that exception - eg. &quot;COR_E_ENDOFSTREAM&quot; (0x80070026, or -2147024858 as an <strong>Int32</strong>) will result in an <strong>EndOfStreamException</strong> being raised. Any value that isn't considered special enough to have its own framework type will be raised as a <strong>COMException</strong>.</p>
 <p>This means that if you have any custom exceptions that you want to have pass through the system then you're in for a nasty surprise.</p>
-
 <p>Take the following contrived example:</p>
-
 <pre><code>public string GetMagicName(int id)
 {
   try
@@ -98,20 +87,17 @@
 
 private string GetMagicNameFromComponent(int id)
 {
-  // Note: The "_widgetiser" reference is a ComVisible .net component passed into
+  // Note: The &quot;_widgetiser&quot; reference is a ComVisible .net component passed into
   // the COM component as a dependency
   dynamic legacyComponent = Activator.CreateInstance(
-    Type.GetTypeFromProgID("OldSystem.Calculator")
+    Type.GetTypeFromProgID(&quot;OldSystem.Calculator&quot;)
   );
   legacyComponent.Widgetiser = _widgetiser;
   return legacyComponent.GetMagicName(id);
 }
 </code></pre>
-
-<p>There is a fictional "Calculator" COM component that was used by the old system. It had a "Widgetiser" dependency that was provided by this old system. In the new system, this component is still required but as part of the work of replacing the system around it, a new "Widgetiser" has been created - it is a facade over functionality in the new system, such that the interface expected by the legacy components is still available.</p>
-
-<p>In this story I'm telling, sometimes the call into the legacy component fails. Of those times, it is useful for us to know which were due to a problem raised by the "Widgetiser" and which were due to something else that originated in the component. Helpfully, the Widgetiser throws specialised exceptions -</p>
-
+<p>There is a fictional &quot;Calculator&quot; COM component that was used by the old system. It had a &quot;Widgetiser&quot; dependency that was provided by this old system. In the new system, this component is still required but as part of the work of replacing the system around it, a new &quot;Widgetiser&quot; has been created - it is a facade over functionality in the new system, such that the interface expected by the legacy components is still available.</p>
+<p>In this story I'm telling, sometimes the call into the legacy component fails. Of those times, it is useful for us to know which were due to a problem raised by the &quot;Widgetiser&quot; and which were due to something else that originated in the component. Helpfully, the Widgetiser throws specialised exceptions -</p>
 <pre><code>[Serializable]
 public class WidgetiserException : Exception
 {
@@ -122,7 +108,7 @@ public class WidgetiserException : Exception
 
   public string GadgetName { get; private set; }
 
-  private const string GADGET_NAME_ID = "GadgetName";
+  private const string GADGET_NAME_ID = &quot;GadgetName&quot;;
   protected WidgetiserException(SerializationInfo info, StreamingContext context)
     : base(info, context)
   {
@@ -135,27 +121,16 @@ public class WidgetiserException : Exception
   }
 }
 </code></pre>
-
-<p>This follows the best practices (it ends with the word "Exception", it's serialisable and it has the serialisation-based constructor and GetObjectData method).</p>
-
+<p>This follows the best practices (it ends with the word &quot;Exception&quot;, it's serialisable and it has the serialisation-based constructor and GetObjectData method).</p>
 <p>However..</p>
-
-<p>In testing, it's found that the "Log Widgetiser dependency failure.." condition is never entered.</p>
-
+<p>In testing, it's found that the &quot;Log Widgetiser dependency failure..&quot; condition is never entered.</p>
 <p>This shouldn't (now) be a surprise since I've just explained that custom exceptions can never come directly from COM failures; any exception may only be represented by a <strong>COMException</strong> or some other specific framework exception classes.</p>
-
 <p>But I want my custom exceptions! And I don't want to have to worry about whether particular code in my new system is allowed to throw custom exceptions because it will only ever be called by .net code, or if it will have to stick to built-in exception types since it <em>might</em> be called by legacy components.</p>
-
 <h3>Working with what we've got</h3>
-
-<p>So what we're basically limited to working with is a message (string) and a "HRESULT". If the Widgetiser throws an exception then, while it will be transformed into a <strong>COMException</strong> when it comes out of the COM component, whatever message and HRESULT values we specify will be maintained.</p>
-
-<p>The HRESULT is a structure that describes a response - either a success or a failure. The first (ie. most significant) of its 32 bits indicates "severity" (1 being failure, 0 being success). Then there's a reserved bit, then a bit to indicate whether this is a "customer" response (1) or a Microsoft / framework value (0). Then two more bits we don't worry about and set to zero, then 11 bits to indicate a "Facility" (but since the options for Facility are things like "The error code is specific to Windows CE" and "The source of the error code is a Windows Defender component" it makes sense to leave these all as zero for custom errors, which means "Default Facility"). <em>Then</em> there's 16 bits for an error code. This, basically, can be whatever you like but each code should uniquely identify a given error type.</p>
-
+<p>So what we're basically limited to working with is a message (string) and a &quot;HRESULT&quot;. If the Widgetiser throws an exception then, while it will be transformed into a <strong>COMException</strong> when it comes out of the COM component, whatever message and HRESULT values we specify will be maintained.</p>
+<p>The HRESULT is a structure that describes a response - either a success or a failure. The first (ie. most significant) of its 32 bits indicates &quot;severity&quot; (1 being failure, 0 being success). Then there's a reserved bit, then a bit to indicate whether this is a &quot;customer&quot; response (1) or a Microsoft / framework value (0). Then two more bits we don't worry about and set to zero, then 11 bits to indicate a &quot;Facility&quot; (but since the options for Facility are things like &quot;The error code is specific to Windows CE&quot; and &quot;The source of the error code is a Windows Defender component&quot; it makes sense to leave these all as zero for custom errors, which means &quot;Default Facility&quot;). <em>Then</em> there's 16 bits for an error code. This, basically, can be whatever you like but each code should uniquely identify a given error type.</p>
 <p>So, if we raise custom exceptions that have unique error codes then we could potentially use the HRESULT value from the <strong>COMException</strong> to map back to the original type (just like happens with those special exception types that .net automatically maps, like COR_E_ENDOFSTREAM to <strong>EndOfStreamException</strong>).</p>
-
 <p>The simplest approach, then, would be to change our calling code -</p>
-
 <pre><code>public string GetMagicName(int id)
 {
   try
@@ -173,18 +148,16 @@ public class WidgetiserException : Exception
 
 private string GetMagicNameFromComponent(int id)
 {
-  // Note: The "_widgetiser" reference is a ComVisible .net component passed into
+  // Note: The &quot;_widgetiser&quot; reference is a ComVisible .net component passed into
   // the COM component as a dependency
   dynamic legacyComponent = Activator.CreateInstance(
-    Type.GetTypeFromProgID("OldSystem.Calculator")
+    Type.GetTypeFromProgID(&quot;OldSystem.Calculator&quot;)
   );
   legacyComponent.Widgetiser = _widgetiser;
   return legacyComponent.GetMagicName(id);
 }
 </code></pre>
-
 <p>and to change the exception class slightly -</p>
-
 <pre><code>[Serializable]
 public class WidgetiserException : COMException
 {
@@ -194,33 +167,22 @@ public class WidgetiserException : COMException
   {
     // .. the rest of the class is unaltered..
 </code></pre>
-
 <p><em>(Note: Inheriting from <strong>COMException</strong> doesn't magically allow for the exception class to be recognised when it pops out of a COM component, but it does have a constructor that takes a message and a HRESULT value, which is handy here).</em></p>
-
 <p>This still feels too error-prone for my liking, though. What if I add a range of custom exceptions that need to be supported? Then I'd need to check for all of these different HRESULT values in my try..catch blocks.</p>
-
-<p>A slight variation would be to have a helper function "TryToRetrieveCustomException" -</p>
-
+<p>A slight variation would be to have a helper function &quot;TryToRetrieveCustomException&quot; -</p>
 <pre><code>public static Exception TryToRetrieveCustomException(COMException e)
 {
   if (e.HResult == WidgetiserException.ERROR_HRESULT)
-    return new WidgetiserException(e.message, "something");
+    return new WidgetiserException(e.message, &quot;something&quot;);
   return null;
 }
 </code></pre>
-
-<p>and to call <em>this</em> from within each catch block. That way, when new exceptions are defined they only need to explicitly be considered by the "TryToRetrieveCustomException" function and not within every possibly-affected catch block.</p>
-
-<p>Another thing that bothers me is that (returning to my example) the "GetMagicName" function has to consider that it's relying upon a COM component and that a <strong>COMException</strong> must be caught. In the future, the COM component may get re-written into a .net version - at which point, it will look odd to future maintainers that a <strong>COMException</strong> is being caught when, really, it's a <strong>WidgetiserException</strong> that is of interest.</p>
-
+<p>and to call <em>this</em> from within each catch block. That way, when new exceptions are defined they only need to explicitly be considered by the &quot;TryToRetrieveCustomException&quot; function and not within every possibly-affected catch block.</p>
+<p>Another thing that bothers me is that (returning to my example) the &quot;GetMagicName&quot; function has to consider that it's relying upon a COM component and that a <strong>COMException</strong> must be caught. In the future, the COM component may get re-written into a .net version - at which point, it will look odd to future maintainers that a <strong>COMException</strong> is being caught when, really, it's a <strong>WidgetiserException</strong> that is of interest.</p>
 <p>We can do better.</p>
-
-<h3>The "COMSurvivableException"</h3>
-
-<p>In case you weren't paying full attention, there is <em>another</em> problem in the "TryToRetrieveCustomException" function above - the constructor on the <strong>WidgetiserException</strong> takes two arguments; the message and the gadgetName. When "TryToRetrieveCustomException" creates a new <strong>WidgetiserException</strong>, it can only set the message (not the gadgetName) since that's all that's available on the <strong>COMException</strong> that is has a reference to. It doesn't know what the gadgetName should be!</p>
-
+<h3>The &quot;COMSurvivableException&quot;</h3>
+<p>In case you weren't paying full attention, there is <em>another</em> problem in the &quot;TryToRetrieveCustomException&quot; function above - the constructor on the <strong>WidgetiserException</strong> takes two arguments; the message and the gadgetName. When &quot;TryToRetrieveCustomException&quot; creates a new <strong>WidgetiserException</strong>, it can only set the message (not the gadgetName) since that's all that's available on the <strong>COMException</strong> that is has a reference to. It doesn't know what the gadgetName should be!</p>
 <p>Let's jump straight into a possible solution -</p>
-
 <pre><code>[Serializable]
 public abstract class COMSurvivableException : COMException
 {
@@ -230,9 +192,9 @@ public abstract class COMSurvivableException : COMException
     : base(messageWithAnyStateData)
   {
     if (string.IsNullOrWhiteSpace(messageWithAnyStateData))
-      throw new ArgumentException("Null/blank messageWithAnyStateData specified");
+      throw new ArgumentException(&quot;Null/blank messageWithAnyStateData specified&quot;);
     if (reviver == null)
-      throw new ArgumentNullException("reviver");
+      throw new ArgumentNullException(&quot;reviver&quot;);
 
     lock (_revivers)
     {
@@ -252,7 +214,7 @@ public abstract class COMSurvivableException : COMException
   public static void RethrowAsOriginalIfPossible(COMException e)
   {
     if (e == null)
-      throw new ArgumentNullException("e");
+      throw new ArgumentNullException(&quot;e&quot;);
 
     var uniqueErrorCode = CustomErrorHResultGenerator.GetErrorCode(e.HResult);
     Reviver reviver;
@@ -283,15 +245,10 @@ public abstract class COMSurvivableException : COMException
   }
 }
 </code></pre>
-
 <p>This is a base class that exceptions may be derived from if they must be able to survive travelling through COM components.</p>
-
-<p>Each derived class will be responsible for declaring a unique error code and a "reviver". The error code is of type <strong>ushort</strong>, which is a 16 bit .net type - there's no point making the derived types do the maths around working out how to set the is-failure, is-custom-error, etc.. bits in a HRESULT. A reviver is basically just a way to de-serialise data that is stored in the message property.</p>
-
-<p>Derived classes are responsible for serialising data in the message property - this sounds like it could be complex but it can also be very simple in many cases (as shown below). The <strong>COMSurvivableException</strong> maintains mappings of error codes to revivers so that it can implement a "RethrowAsOriginalIfPossible" function to handle translating a <strong>COMException</strong> back into a more meaningful type.</p>
-
+<p>Each derived class will be responsible for declaring a unique error code and a &quot;reviver&quot;. The error code is of type <strong>ushort</strong>, which is a 16 bit .net type - there's no point making the derived types do the maths around working out how to set the is-failure, is-custom-error, etc.. bits in a HRESULT. A reviver is basically just a way to de-serialise data that is stored in the message property.</p>
+<p>Derived classes are responsible for serialising data in the message property - this sounds like it could be complex but it can also be very simple in many cases (as shown below). The <strong>COMSurvivableException</strong> maintains mappings of error codes to revivers so that it can implement a &quot;RethrowAsOriginalIfPossible&quot; function to handle translating a <strong>COMException</strong> back into a more meaningful type.</p>
 <p>In practice, this means that we could implement <strong>WidgetiserException</strong> as</p>
-
 <pre><code>[Serializable]
 public class WidgetiserException : COMSurvivableException
 {
@@ -305,7 +262,7 @@ public class WidgetiserException : COMSurvivableException
 
   protected override ushort UniqueErrorCode { get { return 1; } }
 
-  private const string GADGET_NAME_ID = "GadgetName";
+  private const string GADGET_NAME_ID = &quot;GadgetName&quot;;
   protected WidgetiserException(SerializationInfo info, StreamingContext context)
     : base(info, context)
   {
@@ -319,20 +276,18 @@ public class WidgetiserException : COMSurvivableException
 
   private static string GetMessageWithStateData(string message, string gadgetName)
   {
-    return (message ?? "").Replace("\n", " ") + "\n" + gadgetName;
+    return (message ?? &quot;&quot;).Replace(&quot;\n&quot;, &quot; &quot;) + &quot;\n&quot; + gadgetName;
   }
   private static COMSurvivableException Revive(string messageWithAnyStateData)
   {
-    var messageParts = (messageWithAnyStateData ?? "").Split(new[] { '\n' }, 2);
+    var messageParts = (messageWithAnyStateData ?? &quot;&quot;).Split(new[] { '\n' }, 2);
     if (messageParts.Length != 2)
-      throw new Exception("Invalid state data");
+      throw new Exception(&quot;Invalid state data&quot;);
     return new WidgetiserException(messageParts[0], messageParts[1]);
   }
 }
 </code></pre>
-
 <p>and then change the COM component calling code to</p>
-
 <pre><code>public string GetMagicName(int id)
 {
   try
@@ -350,10 +305,10 @@ private string GetMagicNameFromComponent(int id)
 {
   try
   {
-    // Note: The "_widgetiser" reference is a ComVisible .net component passed into
+    // Note: The &quot;_widgetiser&quot; reference is a ComVisible .net component passed into
     // the COM component as a dependency
     dynamic legacyComponent = Activator.CreateInstance(
-      Type.GetTypeFromProgID("OldSystem.Calculator")
+      Type.GetTypeFromProgID(&quot;OldSystem.Calculator&quot;)
     );
     legacyComponent.Widgetiser = _widgetiser;
     return legacyComponent.GetMagicName(id);
@@ -365,156 +320,93 @@ private string GetMagicNameFromComponent(int id)
   }
 }
 </code></pre>
-
-<p>Note that the "GetMagicName" function has now returned to the idealised version that I started with.</p>
-
-<p>There are a couple of sacrifices - the <strong>WidgetiserException</strong> has expanded a little and it has become aware that it must be "COM-survivable". This adds some maintenance burden in that all exceptions that may have to pass through a COM component need to know that this may happen. And, in the glorious future in which all COM components have been rewritten with efficient, clean, testable, <em>beautiful</em> .net versions, it will look strange that there are still exceptions in use which identify themselves as COM-survivable. When this day arrives, it should not be much work to change the custom exceptions to <em>not</em> derive from <strong>COMSurvivableException</strong> - and doing so should be a pleasingly cathartic way to celebrate the completed migration :)</p>
-
-<p>Another cost is that the call to the COM component has now got an <em>additional</em> try..catch block. I think this is a very reasonable trade-off, though, since now the complexity has been pushed right down to the call site of the COM component (the "GetMagicNameFromComponent" function) - the function that calls <em>that</em> ("GetMagicName") is clean. And when the COM component is no longer used, when the "Activator.CreateInstance" call is replaced with a simple new'ing-up of a .net class, the no-longer-necessary try..catch may be removed - this is another benefit to the complexity being pushed down to the call site; it's clear what it's for (unlike in the first solution I proposed, where it's <em>not</em> clear why the "GetMagicNumber" function has to go querying HRESULT values until you look into the "GetMagicNameFromComponent" that it calls).</p>
-
+<p>Note that the &quot;GetMagicName&quot; function has now returned to the idealised version that I started with.</p>
+<p>There are a couple of sacrifices - the <strong>WidgetiserException</strong> has expanded a little and it has become aware that it must be &quot;COM-survivable&quot;. This adds some maintenance burden in that all exceptions that may have to pass through a COM component need to know that this may happen. And, in the glorious future in which all COM components have been rewritten with efficient, clean, testable, <em>beautiful</em> .net versions, it will look strange that there are still exceptions in use which identify themselves as COM-survivable. When this day arrives, it should not be much work to change the custom exceptions to <em>not</em> derive from <strong>COMSurvivableException</strong> - and doing so should be a pleasingly cathartic way to celebrate the completed migration :)</p>
+<p>Another cost is that the call to the COM component has now got an <em>additional</em> try..catch block. I think this is a very reasonable trade-off, though, since now the complexity has been pushed right down to the call site of the COM component (the &quot;GetMagicNameFromComponent&quot; function) - the function that calls <em>that</em> (&quot;GetMagicName&quot;) is clean. And when the COM component is no longer used, when the &quot;Activator.CreateInstance&quot; call is replaced with a simple new'ing-up of a .net class, the no-longer-necessary try..catch may be removed - this is another benefit to the complexity being pushed down to the call site; it's clear what it's for (unlike in the first solution I proposed, where it's <em>not</em> clear why the &quot;GetMagicNumber&quot; function has to go querying HRESULT values until you look into the &quot;GetMagicNameFromComponent&quot; that it calls).</p>
 <h3>Other remarks</h3>
-
-<p>The <strong>WidgetiserException</strong> class above uses a very coarse "serialisation" mechanism - it hopes that the "message" string will have no line returns in (replacing any that it <em>does</em> have with spaces) and then uses a line return as a delimiter in a string that combines the "message" and "gadgetName" properties. This is very simple to "deserialise", the combined string need only be split on the first line return and then the two original values are once again available. It's feasible that this approach would not be acceptable in some use cases (if the "message" value must be allowed to contain line returns) but I just used it to make the example clear. The serialisation mechanism could use the .net xml serialiser, for example, to cram the exception's state into a string. Or you might be a big fan of <a href="http://www.newtonsoft.com/json">Json.NET</a> and want to serialise into json. So long as you can record the derived classes' data in a string to give to the <strong>COMSurvivableException</strong>, you can do whatever you want!</p>
-
+<p>The <strong>WidgetiserException</strong> class above uses a very coarse &quot;serialisation&quot; mechanism - it hopes that the &quot;message&quot; string will have no line returns in (replacing any that it <em>does</em> have with spaces) and then uses a line return as a delimiter in a string that combines the &quot;message&quot; and &quot;gadgetName&quot; properties. This is very simple to &quot;deserialise&quot;, the combined string need only be split on the first line return and then the two original values are once again available. It's feasible that this approach would not be acceptable in some use cases (if the &quot;message&quot; value must be allowed to contain line returns) but I just used it to make the example clear. The serialisation mechanism could use the .net xml serialiser, for example, to cram the exception's state into a string. Or you might be a big fan of <a href="http://www.newtonsoft.com/json">Json.NET</a> and want to serialise into json. So long as you can record the derived classes' data in a string to give to the <strong>COMSurvivableException</strong>, you can do whatever you want!</p>
 <p>On the <strong>COMSurvivableException</strong> class itself, you might notice that it has to lock its error-code-to-reviver mappings dictionary whenever a new instance of an exception is created that is derived from this abstract class. And locks it <em>again</em> when that mapping data is read in order to try to translate a <strong>COMException</strong> back into its original form. There are times to stress and worry about whether locking is going to affect throughput and what it might do to concurrency, but when you're throwing an exception then you're already in the middle of a fairly expensive operation (it has to generate a stack trace, aside from anything else) and so this is not somewhere where a little bit of locking is going to be anything to lose sleep over.</p>
-
-<p>The "RethrowAsOriginalIfPossible" function on the <strong>COMSurvivableException</strong> class is decorated with the "DebuggerStepThrough" attribute. This instructs the debugger never to break inside this function. Considering that the sole purpose of this method is to raise an exception for the caller, it makes little sense to allow the debugger to stop <em>inside</em> the function - the point is to deliver interesting information to the <em>caller</em> of "RethrowAsOriginalIfPossible" and <em>that</em> is where it may make sense for a debugger to stop on an exception. Only a minor tweak but it makes this whole dirty workaround a little more palatable when used in the real world.</p>
-
+<p>The &quot;RethrowAsOriginalIfPossible&quot; function on the <strong>COMSurvivableException</strong> class is decorated with the &quot;DebuggerStepThrough&quot; attribute. This instructs the debugger never to break inside this function. Considering that the sole purpose of this method is to raise an exception for the caller, it makes little sense to allow the debugger to stop <em>inside</em> the function - the point is to deliver interesting information to the <em>caller</em> of &quot;RethrowAsOriginalIfPossible&quot; and <em>that</em> is where it may make sense for a debugger to stop on an exception. Only a minor tweak but it makes this whole dirty workaround a little more palatable when used in the real world.</p>
 <h3>More information</h3>
-
 <p>I've already linked to the <a href="https://msdn.microsoft.com/en-us/library/cc231198.aspx">MSDN article that explains the layout of the HRESULT value</a> but it might also be of interest to know which HRESULT values are automatically translated into framework exception types - see <a href="https://msdn.microsoft.com/en-us/library/9ztbc5s1(v=vs.110).aspx">How to: Map HRESULTs and Exceptions</a>. That article lists the constants by name, I don't know of any better way to find out what the numeric values are (should you need them) than putting the name into Google and following a link or two!</p>
-
-<p>Finally, there was an old MSDN article about doing something similar in nature to what I've covered here - but it seems to have gone off-line now, the link I had to it is broken. Thankfully the <a href="http://archive.org/web/">WayBackMachine</a> can help us and make available <a href="http://web.archive.org/web/20080223185930/http://msdn.microsoft.com/msdnmag/issues/04/03/ExceptionsinCOM/default.aspx">Throwing Custom Exception Types from a Managed COM+ Server Application</a>. From what I understand, this talks about wrapping components fully in a proxy object that maps custom exceptions based upon HRESULT and that serialises exception state as XML. There are complexities around proxying in this sort of manner but the article is worth a read - the benefits are that the custom exceptions do not need to be derived from anything other than <strong>Exception</strong> and, once the proxies are created, you don't need to add extra try..catch blocks around COM component calls in order to map exceptions. The downsides include potential complications around deployment and debugging, which are described in the article.</p><p class="PostTime">Posted at 21:29</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li></ul></div>
-			<p class="Comments">
-				<a href="/throwing-exceptions-through-com#disqus_thread" data-disqus-identifier="86">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">29 October 2013</h3><h2><a id="Post64"></a><a href="/what-is-nothing">What is Nothing?</a></h2>
-
+<p>Finally, there was an old MSDN article about doing something similar in nature to what I've covered here - but it seems to have gone off-line now, the link I had to it is broken. Thankfully the <a href="http://archive.org/web/">WayBackMachine</a> can help us and make available <a href="http://web.archive.org/web/20080223185930/http://msdn.microsoft.com/msdnmag/issues/04/03/ExceptionsinCOM/default.aspx">Throwing Custom Exception Types from a Managed COM+ Server Application</a>. From what I understand, this talks about wrapping components fully in a proxy object that maps custom exceptions based upon HRESULT and that serialises exception state as XML. There are complexities around proxying in this sort of manner but the article is worth a read - the benefits are that the custom exceptions do not need to be derived from anything other than <strong>Exception</strong> and, once the proxies are created, you don't need to add extra try..catch blocks around COM component calls in order to map exceptions. The downsides include potential complications around deployment and debugging, which are described in the article.</p>
+<p class="PostTime">Posted at 21:29</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li></ul></div>
+            <p class="Comments">
+                <a href="/throwing-exceptions-through-com#disqus_thread" data-disqus-identifier="86">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">29 October 2013</h3><h2><a id="what-is-nothing" href="/what-is-nothing">What is Nothing?</a></h2>
 <p>What a deep existential question!</p>
-
 <p>Well.. maybe not in this context..</p>
-
 <p>Here I'm talking about good old VBScript; a technology at work that just refuses to completely go away. We still have software running on a combination of VBScript and .net. One of them makes use of <a href="http://windowsitpro.com/scripting/wsh-part-3-windows-script-components">Windows Scripting Components</a>; basically VBScript wrapped up to act like a COM component. The advantage is that we can look at replacing areas of legacy code with .net (on-going maintenance and testing concerns are important here but the performance gap between the two technologies is startling too*) without having to throw everything away all at once.</p>
-
 <p>* <em>(Not surprising since not only is VBScript interpreted - rather than compiled - but also since it hasn't benefited from optimisation or active development for over a decade).</em></p>
-
 <p>One of the downsides of this, however, is dealing with VBScript's oddities. A lot of this is handled very nicely by COM (and .net's COM integrations) at the boundaries - a lot of basic types can be passed from .net to these components (and vice versa). You pass in a .net string and it's happily translated into BSTR (see <a href="http://blogs.msdn.com/b/ericlippert/archive/2003/09/12/52976.aspx">Eric's Complete Guide To BSTR Semantics</a>, before Eric Lippert was a C# genius he was responsible for a lot of work on the VBScript interpreter). Likewise with ints and booleans.</p>
-
 <p>But one of the craziest areas of VBScript is its representations of null. It has three of them. <em>Three</em>. And this is where we can get unstuck.</p>
-
 <h3>Empty, Null, Nothing (why, oh why?)</h3>
-
-<p>This is a bit of history, if you've ended up at this page looking for the same thing I was (until recently) looking for (how "Nothing" can be represented by .net) then jump down to the next section.</p>
-
-<p>I'm going to draw a parallel to JavaScript here since that effectively has two representations of "null" and will be much more well known.</p>
-
-<p>In JavaScript, if a variable is declared but unintialised then it has type "undefined" - eg.</p>
-
+<p>This is a bit of history, if you've ended up at this page looking for the same thing I was (until recently) looking for (how &quot;Nothing&quot; can be represented by .net) then jump down to the next section.</p>
+<p>I'm going to draw a parallel to JavaScript here since that effectively has two representations of &quot;null&quot; and will be much more well known.</p>
+<p>In JavaScript, if a variable is declared but unintialised then it has type &quot;undefined&quot; - eg.</p>
 <pre><code>var a;
-alert(typeof(a)); // "undefined"
+alert(typeof(a)); // &quot;undefined&quot;
 </code></pre>
-
 <p>This means that this variable has no value, we have not given it a value, we don't care at this point what it's value may or may not be.</p>
-
 <p>This is different from explicitly setting a variable to null. This is an intentional application of a value to a variable - eg.</p>
-
 <pre><code>var a = null;
-alert(typeof(a)); // "object"
+alert(typeof(a)); // &quot;object&quot;
 </code></pre>
-
-<p>Why it decides to describe "null" as an "object" could be a discussion for another day, but it's sufficient to show that it has been given an actual value, it is not "undefined" any more.</p>
-
-<p>Now these are similar to VBScript's Empty and Null - in VBScript, Empty means that the variable has not been initialised while Null means that it has <em>explicitly</em> set to Null. There are occassions where it's useful to say "I have tried to access this item and have found it to be absent" - hence giving it a null value - as opposed to "I haven't even attempted to populate this value".</p>
-
-<p>But Nothing is a different beast. VBScript has different assignment semantics for what it considers to be object references versus primitive types. If you want to set a value to be an "object" type (a VBScript class instance, for example) then you have to use the "SET" keyword -</p>
-
+<p>Why it decides to describe &quot;null&quot; as an &quot;object&quot; could be a discussion for another day, but it's sufficient to show that it has been given an actual value, it is not &quot;undefined&quot; any more.</p>
+<p>Now these are similar to VBScript's Empty and Null - in VBScript, Empty means that the variable has not been initialised while Null means that it has <em>explicitly</em> set to Null. There are occassions where it's useful to say &quot;I have tried to access this item and have found it to be absent&quot; - hence giving it a null value - as opposed to &quot;I haven't even attempted to populate this value&quot;.</p>
+<p>But Nothing is a different beast. VBScript has different assignment semantics for what it considers to be object references versus primitive types. If you want to set a value to be an &quot;object&quot; type (a VBScript class instance, for example) then you have to use the &quot;SET&quot; keyword -</p>
 <pre><code>Set u = GetUser()
 </code></pre>
-
-<p>If you omitted the "SET" then it would try to set "u" to what VBScript considers a value type (a string, number, etc..). To do  this it would look for a default (parameter-less) property or function on the object. If it can't find one then it will throw a rather unhelpful "Type mismatch" error.</p>
-
+<p>If you omitted the &quot;SET&quot; then it would try to set &quot;u&quot; to what VBScript considers a value type (a string, number, etc..). To do  this it would look for a default (parameter-less) property or function on the object. If it can't find one then it will throw a rather unhelpful &quot;Type mismatch&quot; error.</p>
 <p>So far as I can tell, this is solely to try to make some tasks which are already easy even easier. For example, if the GetUser function returns an object reference with a default (and parameter-less) Name property then writing</p>
-
 <pre><code>WScript.Echo GetUser()
 </code></pre>
-
 <p>would print out the Name property. This is presumably because</p>
-
 <pre><code>WScript.Echo GetUser().Name
 </code></pre>
-
 <p>would be too hard??</p>
-
-<p>By supporting these default member options, a way to say "I don't want a default property, I want the object reference itself" is required. This is what the "SET" keyword is for.</p>
-
+<p>By supporting these default member options, a way to say &quot;I don't want a default property, I want the object reference itself&quot; is required. This is what the &quot;SET&quot; keyword is for.</p>
 <p>I'm thinking it's total madness. While possibly making some easy things a <em>tiny</em> bit easier, it makes some otherwise-not-too-difficult things <em>really</em> difficult and convoluted!</p>
-
-<p>The prime example is "Nothing". If you want a function that will return an object then you will call that method using "SET". But this will mean that you can't return Null to indicate no result since Null isn't an object and trying to do what amounts to</p>
-
+<p>The prime example is &quot;Nothing&quot;. If you want a function that will return an object then you will call that method using &quot;SET&quot;. But this will mean that you can't return Null to indicate no result since Null isn't an object and trying to do what amounts to</p>
 <pre><code>Set u = Null
 </code></pre>
-
 <p>will result in another unfriendly error</p>
-
 <blockquote>
-  <p>Object required: 'Null'</p>
+<p>Object required: 'Null'</p>
 </blockquote>
-
 <p><em>Fantastic.</em></p>
-
-<p>So VBScript needs a way to represent an object type that effectively means "no value", but that is different to Empty (since that means not initialised) and Null (since that isn't an object).</p>
-
+<p>So VBScript needs a way to represent an object type that effectively means &quot;no value&quot;, but that is different to Empty (since that means not initialised) and Null (since that isn't an object).</p>
 <h3>Nothing in .net</h3>
-
 <p>For a long time I'd thought that Nothing must somehow be an internal VBScript concept. There were three things that had me half-convinced of this:</p>
-
 <ol>
-<li>There was no carryover into VB.Net, there is "Nothing" there but it is equivalent to null in C# - there aren't two values that can be accessed (Null vs Nothing), not even for some sort of backward compability</li>
+<li>There was no carryover into VB.Net, there is &quot;Nothing&quot; there but it is equivalent to null in C# - there aren't two values that can be accessed (Null vs Nothing), not even for some sort of backward compability</li>
 <li>If you pass Nothing over the COM boundary to a .net COM component, you get a null reference (not some magic other object type)</li>
-<li>Multiple web searches failed; "How do I represent Nothing in a COM component to interact with VBScript?" <a href="http://www.youtube.com/watch?v=e2KVj2vVxUs">Crickets..</a></li>
+<li>Multiple web searches failed; &quot;How do I represent Nothing in a COM component to interact with VBScript?&quot; <a href="http://www.youtube.com/watch?v=e2KVj2vVxUs">Crickets..</a></li>
 </ol>
-
-<p>Point 2 is partly down to the cleverness of the .net / COM integration where it converts types into native CLR types where it can. VBScript's "Nothing" really could be said to equate to null in an environment where such a hard distinction between value and reference types is unrequired.</p>
-
+<p>Point 2 is partly down to the cleverness of the .net / COM integration where it converts types into native CLR types where it can. VBScript's &quot;Nothing&quot; really could be said to equate to null in an environment where such a hard distinction between value and reference types is unrequired.</p>
 <p>But there could be legacy WSC components that have methods that differentiate between an argument that represents Null and one that represents Nothing, so I didn't want to give up completely.</p>
-
 <p>At some point, I had two breakthroughs. I don't know what was different about this web search.. maybe the work I did earlier this year with <a href="/idispatch-iwastedtimeonthis-but-ilearntlots">COM and IDispatch</a> has helped me understand that way of thinking more or perhaps I was just more dogged in my refusing to accept defeat when looking for an answer. But I've finally struck gold! (Wow, such an exaggeration for something that may never be of use to anyone else, ever :)</p>
-
 <p>And as I write it out, it sounds frustratingly rudimentary. But, as I said, I found it incredibly hard to actually piece this together.</p>
-
 <p>In VBScript, all values are of type VARIANT. This can represent booleans, numbers, strings, a pointer to an IDispatch implementation, all sorts.</p>
-
 <p>A VARIANT has a type to indicate what it represents, as can be seen on MSDN: <a href="http://msdn.microsoft.com/en-us/library/cc237865.aspx">VARIANT Type Constants</a>.</p>
-
 <p>To VBScript, Empty means a null VARIANT. No reference to a variant at all.</p>
-
 <p>Null means a VARIANT of type VT_NULL (incidentally, <strong>System.DBNull.Value</strong> maps back and forth onto this over the COM boundary).</p>
-
-<p>Nothing means a VARIANT of type VT_EMPTY. (VBScript internally decides that this is an "object" type, as opposed to Null, which a value type).</p>
-
+<p>Nothing means a VARIANT of type VT_EMPTY. (VBScript internally decides that this is an &quot;object&quot; type, as opposed to Null, which a value type).</p>
 <p>So the final puzzle piece; how do we represent this arbitrary VARIANT type in .net?</p>
-
-<p>I found this article (well, chapter from the book ".NET and COM: The Complete Interoperability Guide"): <a href="http://www.informit.com/articles/article.aspx?p=27219&amp;seqNum=8">The Essentials for Using COM in Managed Code</a> - which contains this magic section</p>
-
+<p>I found this article (well, chapter from the book &quot;.NET and COM: The Complete Interoperability Guide&quot;): <a href="http://www.informit.com/articles/article.aspx?p=27219&amp;seqNum=8">The Essentials for Using COM in Managed Code</a> - which contains this magic section</p>
 <blockquote>
-  <p>Because null (Nothing) is mapped to an "empty object" (a VARIANT with type VT_EMPTY) when passed to COM via a System.Object parameter, you can pass new DispatchWrapper(null) or new UnknownWrapper(null) to represent a null object.</p>
+<p>Because null (Nothing) is mapped to an &quot;empty object&quot; (a VARIANT with type VT_EMPTY) when passed to COM via a System.Object parameter, you can pass new DispatchWrapper(null) or new UnknownWrapper(null) to represent a null object.</p>
 </blockquote>
-
 <p>And that's it! All you need is</p>
-
 <pre><code>var nothing = new DispatchWrapper(null);
 </code></pre>
-
-<p>and you've got a genuine "Nothing" reference that you can pass to VBScript and have it recognise! If you use the VBScript TypeName function then you get "Nothing" reported. That's all there is to to it, it <em>is</em> possible!</p>
-
+<p>and you've got a genuine &quot;Nothing&quot; reference that you can pass to VBScript and have it recognise! If you use the VBScript TypeName function then you get &quot;Nothing&quot; reported. That's all there is to to it, it <em>is</em> possible!</p>
 <h3>Follow-up: ComVisible return types  (28th Dec 2013)</h3>
-
 <p>I've done some more experimenting with this since I found some legacy code that I'd written a few years ago that infuriatingly seemed to manage to return Nothing from a method <em>without</em> explicitly specifying it with the <strong>DispatchWrapper</strong> as above.</p>
-
 <p>It turns out that if the return type of a method is a class that has the [ComVisible(true)] attribute then returning null from .net will result in VBScript interpreting the response as Nothing. However, if the return type is not a type with that attribute then it will <em>not</em> be translated into null.</p>
-
 <pre><code>public ComVisibleType Get(int id)
 {
   return null; // VBScript will interpet this as Nothing
@@ -530,16 +422,15 @@ public class ComVisibleType
 {
   public string Name { get; set; }
 }
-</code></pre><p class="PostTime">Posted at 22:34</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/what-is-nothing#disqus_thread" data-disqus-identifier="64">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">5 March 2013</h3><h2><a id="Post49"></a><a href="/supporting-idispatch-through-the-cominteraction-wrapper">Supporting IDispatch through the COMInteraction wrapper</a></h2>
-
+</code></pre>
+<p class="PostTime">Posted at 22:34</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/what-is-nothing#disqus_thread" data-disqus-identifier="64">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">5 March 2013</h3><h2><a id="supporting-idispatch-through-the-cominteraction-wrapper" href="/supporting-idispatch-through-the-cominteraction-wrapper">Supporting IDispatch through the COMInteraction wrapper</a></h2>
 <p>Some time ago, I wrote some code that would generate a wrapper to apply a given interface to any object using reflection. The target object would need to expose the properties and methods of the interface but may not implement the interface itself. This was intended to wrap some old WSC components that I was having to work with but is just as easy to demonstrate with .Net classes:</p>
-
 <pre><code>using System;
 using COMInteraction.InterfaceApplication;
 using COMInteraction.InterfaceApplication.ReadValueConverters;
@@ -552,18 +443,18 @@ namespace DemoApp
     {
       // Warning: This code will not compile against the current code since the interface has changed
       // since the example was written but read on to find out how it's changed!
-      // - Ok, ok, just replace "new InterfaceApplierFactory" with "new ReflectionInterfaceApplierFactory"
-      //   and "InterfaceApplierFactory.ComVisibilityOptions.Visible" with "ComVisibilityOptions.Visible"
+      // - Ok, ok, just replace &quot;new InterfaceApplierFactory&quot; with &quot;new ReflectionInterfaceApplierFactory&quot;
+      //   and &quot;InterfaceApplierFactory.ComVisibilityOptions.Visible&quot; with &quot;ComVisibilityOptions.Visible&quot;
       //   :)
       var interfaceApplierFactory = new InterfaceApplierFactory(
-        "DynamicAssembly",
+        &quot;DynamicAssembly&quot;,
         InterfaceApplierFactory.ComVisibilityOptions.Visible
       );
       var interfaceApplier = interfaceApplierFactory.GenerateInterfaceApplier&lt;IAmNamed&gt;(
         new CachedReadValueConverter(interfaceApplierFactory)
       );
 
-      var person = new Person() { Id = 1, Name = "Teddy" };
+      var person = new Person() { Id = 1, Name = &quot;Teddy&quot; };
       var namedEntity = interfaceApplier.Apply(person);
     }
   }
@@ -580,43 +471,25 @@ namespace DemoApp
   }
 }
 </code></pre>
-
-<p>The "namedEntity" reference implements IAmNamed and passes the calls through to the wrapped "Person" instance through reflection (noting  that Person does not implement IAmNamed). Of course, this will cause exceptions if an instance is wrapped that doesn't expose the properties or methods of the interface when those are called.</p>
-
+<p>The &quot;namedEntity&quot; reference implements IAmNamed and passes the calls through to the wrapped &quot;Person&quot; instance through reflection (noting  that Person does not implement IAmNamed). Of course, this will cause exceptions if an instance is wrapped that doesn't expose the properties or methods of the interface when those are called.</p>
 <p>I wrote about the development of this across a few posts: <a href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a>, <a href="/dynamically-applying-interfaces-to-objects-part-2">Part 2</a> and <a href="/dynamically-applying-interfaces-to-objects-part-3">Part 3</a> (with the code available at the <a href="https://bitbucket.org/DanRoberts/cominteraction">COMInteraction project on Bitbucket</a>).</p>
-
 <p>And this worked fine for the purpose at hand. To be completely frank, I'm not entirely sure <em>how</em> it worked when calling into the WSC components that expose a COM interface since I'm surprised the reflection calls are able to hook into the methods! It felt a bit hacky..</p>
-
 <p>But just recently I've gotten into some of the nitty gritty of IDispatch (see <a href="/idispatch-iwastedtimeonthis-but-ilearntlots">IDispatch (IWastedTimeOnThis but ILearntLots)</a>) and thought maybe I could bring this information to bear on this project.</p>
-
 <h3>Supporting Reflection <em>and</em> IDispatch</h3>
-
 <p>The existing InterfaceApplierFactory class has been renamed to the <strong>ReflectionInterfaceApplierFactory</strong> and a new implementation of <strong>IInterfaceApplierFactory</strong> has been added: the <strong>IDispatchInterfaceApplierFactory</strong>. (Where do I come up with these catchy names?! :).</p>
-
 <p>Where the existing (and now renamed) class generated IL to access the methods and properties through reflection, the new class generates IL to access the methods and properties using the code from my previous IDispatch post, handily wrapped up into a static <strong>IDispatchAccess</strong> class.</p>
-
 <p>The code to do this wasn't too difficult to write, starting with the reflection-approach code as a template and writing the odd bit of test code to disassemble with ildasm if I found myself getting a bit lost.</p>
-
-<p>While I was doing this, I changed the structure of the <strong>ReflectionInterfaceApplierFactory</strong> slightly - I had left a comment in the code explaining that properties would be defined for the type generated by the IL with getter and setter methods attached to it but that these methods would then be overwritten since the code that enumerates methods for the implemented interface(s) picks up "get_" and "set_" methods for each property. The comment goes on to say that this doesn't appear to have any negative effect and so hasn't been addressed. But with this revision I've gone a step further and removed the code the generates the properties entirely, relying solely on the "get_" and "set_" methods that are found in the interface methods as this seems to work without difficulty too! Even indexed properties continue to work as they get the methods "get_Item" and "set_Item" - if you have a class with an indexed property you may not also have a method named "Item" as you'll get a compilation error:</p>
-
+<p>While I was doing this, I changed the structure of the <strong>ReflectionInterfaceApplierFactory</strong> slightly - I had left a comment in the code explaining that properties would be defined for the type generated by the IL with getter and setter methods attached to it but that these methods would then be overwritten since the code that enumerates methods for the implemented interface(s) picks up &quot;get_&quot; and &quot;set_&quot; methods for each property. The comment goes on to say that this doesn't appear to have any negative effect and so hasn't been addressed. But with this revision I've gone a step further and removed the code the generates the properties entirely, relying solely on the &quot;get_&quot; and &quot;set_&quot; methods that are found in the interface methods as this seems to work without difficulty too! Even indexed properties continue to work as they get the methods &quot;get_Item&quot; and &quot;set_Item&quot; - if you have a class with an indexed property you may not also have a method named &quot;Item&quot; as you'll get a compilation error:</p>
 <blockquote>
-  <p>"The type 'Whatever' already contains a definition for 'Item'</p>
+<p>&quot;The type 'Whatever' already contains a definition for 'Item'</p>
 </blockquote>
-
-<p>I'm not 100% confident at this point that what I've done here is correct and whether or not I'm relying on some conventions that may not be guaranteed in the future. But I've just received a copy of "CLR via C#" in the post so maybe I'll get a better idea of what's going on and amend this in the future if required!</p>
-
+<p>I'm not 100% confident at this point that what I've done here is correct and whether or not I'm relying on some conventions that may not be guaranteed in the future. But I've just received a copy of &quot;CLR via C#&quot; in the post so maybe I'll get a better idea of what's going on and amend this in the future if required!</p>
 <p>The types generated by the <strong>IDispatchInterfaceApplierFactory</strong> will <em>not</em> work if properties are not explicitly defined (and so IL is emitted to do this properly in this case).</p>
-
 <h3>Choosing Reflection, IDispatch (or neither)</h3>
-
 <p>Another new class is the <strong>CombinedInterfaceApplierFactory</strong> which is intended to take the decision-making out of the use of reflection / IDispatch. It will generate an <strong>IInterfaceApplier</strong> whose Apply method will apply an IDispatch wrapper if the object-to-wrap's type's IsCOMObject property is true. Otherwise it will use reflection. Actually, it performs a check before this to ensure that the specified object-to-wrap doesn't already implement the required interface - in which case it returns it straight back! (This was useful in some scenarios I was testing out and also makes sense; if the type doesn't require any manipulation then don't perform any).</p>
-
 <h3>Not being Lazy</h3>
-
-<p>I realised, going back to this project, that I'd got over-excited when I discovered the Lazy&lt;T&gt; class in .Net 4 and used it when there was some work in the code that I wanted to defer until it was definitely required. But this, of course, meant that the code had a dependency on .Net 4! Since I imagine that this could be useful in place of the "dynamic" keyword in some cases, I figured it would make sense to try to remove this dependency. (My over-excitement is probably visible when I wrote about it at <a href="/check-check-it-out">Check, check it out</a>).</p>
-
-<p>I was using it with the "threadSafe" option set to true so that the work would only be executed once (at most). This is a fairly straight forward implemenation of the double-checked locking pattern (if there <em>is</em> such a thing! :) with a twist that if the work threw an exception then that exception should be thrown for not only the call on the thread that actually performed the work but also subsequent calls:</p>
-
+<p>I realised, going back to this project, that I'd got over-excited when I discovered the Lazy&lt;T&gt; class in .Net 4 and used it when there was some work in the code that I wanted to defer until it was definitely required. But this, of course, meant that the code had a dependency on .Net 4! Since I imagine that this could be useful in place of the &quot;dynamic&quot; keyword in some cases, I figured it would make sense to try to remove this dependency. (My over-excitement is probably visible when I wrote about it at <a href="/check-check-it-out">Check, check it out</a>).</p>
+<p>I was using it with the &quot;threadSafe&quot; option set to true so that the work would only be executed once (at most). This is a fairly straight forward implemenation of the double-checked locking pattern (if there <em>is</em> such a thing! :) with a twist that if the work threw an exception then that exception should be thrown for not only the call on the thread that actually performed the work but also subsequent calls:</p>
 <pre><code>using System;
 
 namespace COMInteraction.Misc
@@ -632,7 +505,7 @@ namespace COMInteraction.Misc
     public DelayedExecutor(Func&lt;T&gt; work)
     {
       if (work == null)
-        throw new ArgumentNullException("work");
+        throw new ArgumentNullException(&quot;work&quot;);
 
       _work = work;
       _lock = new object();
@@ -675,7 +548,7 @@ namespace COMInteraction.Misc
       public static Result Failure(Exception error)
       {
         if (error == null)
-          throw new ArgumentNullException("error");
+          throw new ArgumentNullException(&quot;error&quot;);
         return new Result(null, error);
       }
       private Result(T value, Exception error)
@@ -691,63 +564,48 @@ namespace COMInteraction.Misc
   }
 }
 </code></pre>
-
 <h3>Conclusion</h3>
-
 <p>So finally, the project works with .Net 3.5 and can be used with only the following lines:</p>
-
 <pre><code>var interfaceApplierFactory = new CombinedInterfaceApplierFactory(
-  new ReflectionInterfaceApplierFactory("DynamicAssembly", ComVisibilityOptions.Visible),
-  new IDispatchInterfaceApplierFactory("DynamicAssembly", ComVisibilityOptions.Visible)
+  new ReflectionInterfaceApplierFactory(&quot;DynamicAssembly&quot;, ComVisibilityOptions.Visible),
+  new IDispatchInterfaceApplierFactory(&quot;DynamicAssembly&quot;, ComVisibilityOptions.Visible)
 );
 var interfaceApplier = interfaceApplierFactory.GenerateInterfaceApplier&lt;IWhatever&gt;(
   new CachedReadValueConverter(interfaceApplierFactory)
 );
 var wrappedInstance = interfaceApplier.Apply(obj);
 </code></pre>
-
 <p>In real use, you would want to share generated Interface Appliers rather than creating them each time a new instance needs wrapping up in an interface but how you decide to handle that is down to you!*</p>
-
-<p>* (I've also added a <strong>CachingInterfaceApplierFactory</strong> class which can be handed to multiple places to easily enable the sharing of generated Interface Appliers - that may well be useful in preventing more dynamic types being generated than necessary).</p><p class="PostTime">Posted at 23:29</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/IDispatch" title="2 Posts">IDispatch</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
-			<p class="Comments">
-				<a href="/supporting-idispatch-through-the-cominteraction-wrapper#disqus_thread" data-disqus-identifier="49">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">18 February 2013</h3><h2><a id="Post44"></a><a href="/idispatch-iwastedtimeonthis-but-ilearntlots">IDispatch (IWastedTimeOnThis but ILearntLots)</a></h2>
-
+<p>* (I've also added a <strong>CachingInterfaceApplierFactory</strong> class which can be handed to multiple places to easily enable the sharing of generated Interface Appliers - that may well be useful in preventing more dynamic types being generated than necessary).</p>
+<p class="PostTime">Posted at 23:29</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/IDispatch" title="2 Posts">IDispatch</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+            <p class="Comments">
+                <a href="/supporting-idispatch-through-the-cominteraction-wrapper#disqus_thread" data-disqus-identifier="49">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">18 February 2013</h3><h2><a id="idispatch-iwastedtimeonthis-but-ilearntlots" href="/idispatch-iwastedtimeonthis-but-ilearntlots">IDispatch (IWastedTimeOnThis but ILearntLots)</a></h2>
 <p>For something I've been working on it looked like I was going to have to interact with COM objects from a legacy system without type libraries and where the internals were written in VBScript. Ouch. It seemed like a restriction of the environment meant that .Net 4 wouldn't be available and so the dynamic keyword wouldn't be available.</p>
-
 <p>It would seem that the <a href="https://bitbucket.org/DanRoberts/cominteraction">COMInteraction</a> code that I wrote in the past would be ideal for this since it should wrap access to generic COM objects but I encountered a problem with that (which I'll touch briefly on later in this post).</p>
-
 <p>So the next step was to find out about the mysterious IDispatch interface that I've heard whispered about in relation to dealings with generic COM objects! Unfortunately, I think in the end I found a way to get .Net 4 into play for my original problem so this might all have been a bit of a waste of time.. but not only was it really interesting but I also found nowhere else on the internet that was doing this with C#. And I read up <em>a lot</em>. (There's articles that touch on most of it, but not all - read on to find out more! :)</p>
-
 <h3>What is IDispatch</h3>
-
 <p>From <a href="http://en.wikipedia.org/wiki/IDispatch">IDispatch on Wikipedia</a>:</p>
-
 <blockquote>
-  <p>IDispatch is the interface that exposes the OLE Automation protocol. It is one of the standard interfaces that can be exposed by COM objects .. IDispatch derives from IUnknown and extends its set of three methods (AddRef, Release and QueryInterface) with four more methods - GetTypeInfoCount, GetTypeInfo, GetIDsOfNames and Invoke.</p>
-  
-  <p>Each property and method implemented by an object that supports the IDispatch interface has what is called a Dispatch ID, which is often abbreviated DISPID. The DISPID is the primary means of identifying a property or method and must be supplied to the Invoke function for a property or method to be invoked, along with an array of Variants containing the parameters. The <em>GetIDsOfNames</em> function can be used to get the appropriate DISPID from a property or method name that is in string format.</p>
+<p>IDispatch is the interface that exposes the OLE Automation protocol. It is one of the standard interfaces that can be exposed by COM objects .. IDispatch derives from IUnknown and extends its set of three methods (AddRef, Release and QueryInterface) with four more methods - GetTypeInfoCount, GetTypeInfo, GetIDsOfNames and Invoke.</p>
 </blockquote>
-
+<blockquote>
+<p>Each property and method implemented by an object that supports the IDispatch interface has what is called a Dispatch ID, which is often abbreviated DISPID. The DISPID is the primary means of identifying a property or method and must be supplied to the Invoke function for a property or method to be invoked, along with an array of Variants containing the parameters. The <em>GetIDsOfNames</em> function can be used to get the appropriate DISPID from a property or method name that is in string format.</p>
+</blockquote>
 <p>It's basically a way to determine what methods can be called on an object and how to call them.</p>
-
 <h3>How to use it</h3>
-
 <p>I got most of the useful information first from these links:</p>
-
 <ol>
 <li><a href="http://stackoverflow.com/questions/8068449/calling-a-member-of-idispatch-com-interface-from-c-sharp">Calling a member of IDispatch COM interface from C#</a> (Stack Overflow)</li>
 <li><a href="http://limbioliong.wordpress.com/2011/11/02/setting-a-property-by-idispatch-invoke/">Setting a Property by IDispatch Invoke</a> (particularly section 3.4)</li>
 <li><a href="http://limbioliong.wordpress.com/2011/09/06/using-variants-in-managed-code-part-3/">Using VARIANTs in Managed Code Part 3</a> (section 2.4)</li>
 </ol>
-
 <p>The first thing to do is to cast the object reference to the IDispatch interface (this will only work if the object implements IDispatch, for the COM components I was targetting this was the case). The interface isn't available in the framework but can be hooked up with</p>
-
 <pre><code>[ComImport()]
-[Guid("00020400-0000-0000-C000-000000000046")]
+[Guid(&quot;00020400-0000-0000-C000-000000000046&quot;)]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IDispatch
 {
@@ -787,36 +645,31 @@ interface IDispatch
   );
 }
 </code></pre>
-
 <p>Then the GetIDsofNames is called to determine whether a given method is present:</p>
-
 <pre><code>private const int LOCALE_SYSTEM_DEFAULT = 2048;
 
 // rgDispId will be populated with the DispId of the named member (if available)
 var rgDispId = new int[1] { 0 };
 
-// IID_NULL must always be specified for the "riid" argument
+// IID_NULL must always be specified for the &quot;riid&quot; argument
 // (see http://msdn.microsoft.com/en-gb/library/windows/desktop/ms221306(v=vs.85).aspx)
-var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+var IID_NULL = new Guid(&quot;00000000-0000-0000-0000-000000000000&quot;);
 
 var hrRet = ((IDispatch)source).GetIDsOfNames
 (
-  ref IID_NULL, // 
+  ref IID_NULL,
   new string[1] { name },
   1, // number of names to get ids for
   LOCALE_SYSTEM_DEFAULT,
   rgDispId
 );
 if (hrRet != 0)
-  throw new Exception("Uh-oh!");
+  throw new Exception(&quot;Uh-oh!&quot;);
 
 return rgDispId[0];
 </code></pre>
-
-<p>Then the Invoke method is called with the Disp Id, the type of call (eg. execute method, set property, etc..), a "local context" ("applications that do not support multiple national languages can ignore this parameter" - <a href="http://msdn.microsoft.com/en-gb/library/windows/desktop/ms221479(v=vs.85).aspx">IDispatch::Invoke method (Automation) at MSDN</a>) and the parameters.</p>
-
+<p>Then the Invoke method is called with the Disp Id, the type of call (eg. execute method, set property, etc..), a &quot;local context&quot; (&quot;applications that do not support multiple national languages can ignore this parameter&quot; - <a href="http://msdn.microsoft.com/en-gb/library/windows/desktop/ms221479(v=vs.85).aspx">IDispatch::Invoke method (Automation) at MSDN</a>) and the parameters.</p>
 <h3>Calling a argument-less method</h3>
-
 <pre><code>private const int LOCALE_SYSTEM_DEFAULT = 2048;
 private const ushort DISPATCH_METHOD = 1;
 
@@ -831,7 +684,7 @@ var dispParams = new System.Runtime.InteropServices.ComTypes.DISPPARAMS()
   rgvarg = IntPtr.Zero
 };
 
-var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+var IID_NULL = new Guid(&quot;00000000-0000-0000-0000-000000000000&quot;);
 UInt32 pArgErr = 0;
 object varResult;
 var excepInfo = new System.Runtime.InteropServices.ComTypes.EXCEPINFO();
@@ -847,17 +700,13 @@ var hrRet = ((IDispatch)source).Invoke
   out pArgErr
 );
 if (hrRet != 0)
-  throw new Exception("FAIL!");
+  throw new Exception(&quot;FAIL!&quot;);
 return varResult;
 </code></pre>
-
-<p>The DISPPARAMS structure (which <em>is</em> part of the framework) enables the specification of both "named" and "unnamed" arguments. When calling a method, unnamed arguments may be passed in but when setting a property, the value that the property is to be set to must be passed as a named argument with the special constant DISPID_PROPERTYPUT (-3).</p>
-
+<p>The DISPPARAMS structure (which <em>is</em> part of the framework) enables the specification of both &quot;named&quot; and &quot;unnamed&quot; arguments. When calling a method, unnamed arguments may be passed in but when setting a property, the value that the property is to be set to must be passed as a named argument with the special constant DISPID_PROPERTYPUT (-3).</p>
 <p>The above code could also be used to retrieve a property value (a non-indexed property) by replacing the DISPATCH_METHOD value with DISPATCH_PROPERTYGET (2).</p>
-
 <h3>Calling a single-argument method</h3>
-
-<pre><code>[DllImport(@"oleaut32.dll", SetLastError = true, CallingConvention = CallingConvention.StdCall)]
+<pre><code>[DllImport(@&quot;oleaut32.dll&quot;, SetLastError = true, CallingConvention = CallingConvention.StdCall)]
 static extern Int32 VariantClear(IntPtr pvarg);
 
 private const int LOCALE_SYSTEM_DEFAULT = 2048;
@@ -865,7 +714,7 @@ private const ushort DISPATCH_METHOD = 1;
 private const int SizeOfNativeVariant = 16;
 
 var dispId = 19; // Or whatever the above code reported
-var arg = "Value";
+var arg = &quot;Value&quot;;
 
 // This DISPPARAMS describes a single (unnamed) argument
 var pVariant = Marshal.AllocCoTaskMem(SizeOfNativeVariant);
@@ -880,7 +729,7 @@ var dispParams = new System.Runtime.InteropServices.ComTypes.DISPPARAMS()
 
 try
 {
-  var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+  var IID_NULL = new Guid(&quot;00000000-0000-0000-0000-000000000000&quot;);
   UInt32 pArgErr = 0;
   object varResult;
   var excepInfo = new System.Runtime.InteropServices.ComTypes.EXCEPINFO();
@@ -896,7 +745,7 @@ try
     out pArgErr
   );
   if (hrRet != 0)
-    throw new Exception("FAIL!");
+    throw new Exception(&quot;FAIL!&quot;);
   return varResult;
 }
 finally
@@ -905,18 +754,12 @@ finally
   Marshal.FreeCoTaskMem(pVariant);
 }
 </code></pre>
-
 <p>As mentioned above, when calling methods there is no need to named arguments so cNamedArgs is still 0 and rgdispidNamedArgs is still IntPtr.Zero (a managed version of a null pointer).</p>
-
 <p>From what I understand (and I'd never used Marshal.AllocCoTaskMem or Marshal.GetNativeVariantForObject before a couple of days ago!), the AllocCoTaskMem call allocates a chunk of unmanaged memory and then GetNativeVariantForObject copies a managed reference into that memory. A variant is always 16 bytes. This is the same variant type used for all VBScript calls, for example, and used for method arguments for IDispatch. More about the VARIANT structure can be found at this <a href="http://msdn.microsoft.com/en-gb/library/windows/desktop/ms221627(v=vs.85).aspx">MSDN article</a>.</p>
-
-<p>The framework does some sort of clever manipulation to copy the contents of the managed reference into unmanaged memory, the internals of which I'm not going to worry <em>too</em> much about. But there's a couple of things to note; this is a <em>copy</em> operation so if I was getting involved with unmanaged memory for performance reasons then I'd probably want to avoid this. But it does mean that this copied memory is "safe" from the garbage collector doing anything with it. When you peel it back a layer, managed memory can't be expected to work as predictably as unmanaged memory as the garbage collector is free to be doing all manner of clever things to stay on top of memory usage and references and, er.. stuff. Which is a good thing because (for the large part) <em>I</em> don't have to worry about it! But it would be no good if the garbage collector moved memory around that the COM component was in the middle of accessing. Bad things would happen. Bad <em>intermittent</em> things (the worst kind). But this does have one important consequence; since the GC is not in control of this memory, I need to explicitly release it myself when I'm done with it.</p>
-
-<p>Another side note on this: The system also needs to be sure that the GC doesn't do anything interesting with memory contents while it's performing to copy to the variant. The framework uses something called "automatic pinning" to ensure that the reference being considered by the Marshal.GetNativeVariantForObject doesn't move during this operation (ie. it is "pinned" in place in memory). There is also a way to manually pin data where a particular reference can be marked such that its memory not be touched by the GC until it's freed (using GCHandle.Alloc and the GCHandleType.Pinned option, and later calling .Free on the handle returned by Alloc) which may be used in the passing-by-reference approach I alluded to above, but I won't need it here.</p>
-
+<p>The framework does some sort of clever manipulation to copy the contents of the managed reference into unmanaged memory, the internals of which I'm not going to worry <em>too</em> much about. But there's a couple of things to note; this is a <em>copy</em> operation so if I was getting involved with unmanaged memory for performance reasons then I'd probably want to avoid this. But it does mean that this copied memory is &quot;safe&quot; from the garbage collector doing anything with it. When you peel it back a layer, managed memory can't be expected to work as predictably as unmanaged memory as the garbage collector is free to be doing all manner of clever things to stay on top of memory usage and references and, er.. stuff. Which is a good thing because (for the large part) <em>I</em> don't have to worry about it! But it would be no good if the garbage collector moved memory around that the COM component was in the middle of accessing. Bad things would happen. Bad <em>intermittent</em> things (the worst kind). But this does have one important consequence; since the GC is not in control of this memory, I need to explicitly release it myself when I'm done with it.</p>
+<p>Another side note on this: The system also needs to be sure that the GC doesn't do anything interesting with memory contents while it's performing to copy to the variant. The framework uses something called &quot;automatic pinning&quot; to ensure that the reference being considered by the Marshal.GetNativeVariantForObject doesn't move during this operation (ie. it is &quot;pinned&quot; in place in memory). There is also a way to manually pin data where a particular reference can be marked such that its memory not be touched by the GC until it's freed (using GCHandle.Alloc and the GCHandleType.Pinned option, and later calling .Free on the handle returned by Alloc) which may be used in the passing-by-reference approach I alluded to above, but I won't need it here.</p>
 <h3>Setting a (non-indexed) property</h3>
-
-<pre><code>[DllImport(@"oleaut32.dll", SetLastError = true, CallingConvention = CallingConvention.StdCall)]
+<pre><code>[DllImport(@&quot;oleaut32.dll&quot;, SetLastError = true, CallingConvention = CallingConvention.StdCall)]
 static extern Int32 VariantClear(IntPtr pvarg);
 
 private const int LOCALE_SYSTEM_DEFAULT = 2048;
@@ -925,7 +768,7 @@ private const int DISPID_PROPERTYPUT = -3;
 private const int SizeOfNativeVariant = 16;
 
 var dispId = 19; // Or whatever the above code reported
-var arg = "Value";
+var arg = &quot;Value&quot;;
 
 // This DISPPARAMS describes a single named (DISPID_PROPERTYPUT) argument
 var pNamedArg = Marshal.AllocCoTaskMem(sizeof(Int64));
@@ -942,7 +785,7 @@ var dispParams = new System.Runtime.InteropServices.ComTypes.DISPPARAMS()
 
 try
 {
-  var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+  var IID_NULL = new Guid(&quot;00000000-0000-0000-0000-000000000000&quot;);
   UInt32 pArgErr = 0;
   object varResult;
   var excepInfo = new System.Runtime.InteropServices.ComTypes.EXCEPINFO();
@@ -958,7 +801,7 @@ try
     out pArgErr
   );
   if (hrRet != 0)
-    throw new Exception("FAIL!");
+    throw new Exception(&quot;FAIL!&quot;);
 }
 finally
 {
@@ -968,17 +811,11 @@ finally
   Marshal.FreeCoTaskMem(pNamedArg);
 }
 </code></pre>
-
 <p>The example code in section 3.4 of the <a href="http://limbioliong.wordpress.com/2011/11/02/setting-a-property-by-idispatch-invoke/">Setting a Property by IDispatch Invoke</a> post I linked to earlier uses a manual pinning approach to specifying the named arguments data but as I understand it we can copy the DISPID_PROPERTYPUT value into unmanaged memory instead, in the same way as the property value is passed over the COM boundary.</p>
-
 <h3>Specifying multiple arguments</h3>
-
 <p>The final step is to support multiple arguments, whether this be for calling methods or for dealing with indexed properties. <em>This</em> is the step that I've been unable to find any examples for in C#.</p>
-
 <p>The problem is that there need to be multiple variant arguments passed to the Invoke call but no built-in way to allocate an array of variants to unmanaged memory. This Stack Overflow question on <a href="http://stackoverflow.com/questions/1318682/intptr-arithmetics">IntPtr arithmetics</a> looked promising but didn't quite cover it. And it revealed that I didn't know very much about the unsafe and fixed keywords :(</p>
-
 <p>The final code I've ended up with doesn't seem that complicated in and of itself, but I feel like I've gone through the wringer a bit trying to confirm that it's actually correct! The biggest question was how to go allocating a single variant</p>
-
 <pre><code>var rgvarg = Marshal.AllocCoTaskMem(SizeOfNativeVariant);
 Marshal.GetNativeVariantForObject(arg, rgvarg);
 
@@ -987,9 +824,7 @@ Marshal.GetNativeVariantForObject(arg, rgvarg);
 VariantClear(rgvarg);
 Marshal.FreeCoTaskMem(rgvarg);
 </code></pre>
-
 <p>to allocating multiple. I understood that the array of variants should be laid out sequentially in memory but the leap took me some time to get to</p>
-
 <pre><code>var rgvarg = Marshal.AllocCoTaskMem(SizeOfNativeVariant * args.Length);
 var variantsToClear = new List&lt;IntPtr&gt;();
 for (var index = 0; index &lt; args.Length; index++)
@@ -1008,46 +843,37 @@ foreach (var variantToClear in variantsToClear)
   VariantClear(variantToClear);
 Marshal.FreeCoTaskMem(rgvarg);
 </code></pre>
-
 <p>Particularly the concerns about the pointer arithmetic which I wasn't sure C# would like, especially after trying to digest all of the Stack Overflow question. But another <a href="http://stackoverflow.com/questions/1866236/add-offset-to-intptr">Add offset to IntPtr</a> <em>did</em> give me some hope thought it led me get thrown by this MSDN page for the .Net 4 <a href="http://msdn.microsoft.com/en-us/library/system.intptr.add%28VS.100%29.aspx">IntPtr.Add method</a>, with its usage of unsafe and fixed!</p>
-
 <pre><code>public static void Main()
 {
   int[] arr = { 2, 4, 6, 8, 10, 12, 14, 16, 18, 20 };
   unsafe {
     fixed(int* parr = arr) {
-      IntPtr ptr = new IntPtr(parr);   
+      IntPtr ptr = new IntPtr(parr);
       for (int ctr = 0; ctr &lt; arr.Length; ctr++)
       {
         IntPtr newPtr = IntPtr.Add(ptr, ctr * sizeof(Int32));
-        Console.Write("{0}   ", Marshal.ReadInt32(newPtr));
+        Console.Write(&quot;{0}   &quot;, Marshal.ReadInt32(newPtr));
       }
-    }      
+    }
   }
 }
 </code></pre>
-
 <p>So the good news; pointer arithmetic would, dealt with properly, not end the world. Ok, good. And apparently it's safe to always manipulate them using the ToInt64 method</p>
-
 <pre><code>IntPtr ptr = new IntPtr(oldptr.ToInt64() + 2);
 </code></pre>
-
 <p>whether on a 32 or 64 bit machine. With overhead on 32 bit systems, but I'm not looking for ultimate performance here, I'm looking for functionality! (This last part is one of the answers on Stack Overflow: <a href="http://stackoverflow.com/a/1866268">Add offset to IntPtr</a>.</p>
-
-<p>From what I've learnt about pinning and its effects on the garbage collector, the "fixed" call in the MSDN example is to lock the array in place while it's being iterated over. Since at each insertion into the unmanaged memory I've allocated I'm using Marshal.GetNativeVariantForObject then I don't need to worry about this as that method is copying the data and automatic pinning is holding the data in place while it does so. So I'm all good - I just need to keep track of the variants I've copied so they can be cleared when I'm done <em>and</em> keep tracking of the one area of unmanaged memory I allocated which will need freeing.</p>
-
+<p>From what I've learnt about pinning and its effects on the garbage collector, the &quot;fixed&quot; call in the MSDN example is to lock the array in place while it's being iterated over. Since at each insertion into the unmanaged memory I've allocated I'm using Marshal.GetNativeVariantForObject then I don't need to worry about this as that method is copying the data and automatic pinning is holding the data in place while it does so. So I'm all good - I just need to keep track of the variants I've copied so they can be cleared when I'm done <em>and</em> keep tracking of the one area of unmanaged memory I allocated which will need freeing.</p>
 <p>One more thing! And this took me a while to track down - I wasn't getting errors but I wasn't getting the results I was expecting. According to the MSDN <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms221479(v=vs.85).aspx">IDispatch::Invoke method (Automation)</a> page, arguments are stored in the DISPPARAMS structure in reverse order. <em>Reverse order!!</em> Why??! Ah, who cares, I'm over it.</p>
-
-<p>So, without further ado, here's an Invoke method that wraps up all of the above code so that any variety of call - method, indexed-or-not property get, indexed-or-not property set - can be made with all of the complications hidden away. If you don't want it to try to cast the return value then specify "object" as the type param. Anything that has a void return type will return null. This throws the named-argument requirement for property-setting into the mix but should be easy enough to follow if you're fine with everything up til now. (Where an indexed property is set, the last value in the args array should be the value to set it to and the preceeding args elements be the property indices).</p>
-
+<p>So, without further ado, here's an Invoke method that wraps up all of the above code so that any variety of call - method, indexed-or-not property get, indexed-or-not property set - can be made with all of the complications hidden away. If you don't want it to try to cast the return value then specify &quot;object&quot; as the type param. Anything that has a void return type will return null. This throws the named-argument requirement for property-setting into the mix but should be easy enough to follow if you're fine with everything up til now. (Where an indexed property is set, the last value in the args array should be the value to set it to and the preceeding args elements be the property indices).</p>
 <pre><code>public static T Invoke&lt;T&gt;(object source, InvokeFlags invokeFlags, int dispId, params object[] args)
 {
   if (source == null)
-    throw new ArgumentNullException("source");
+    throw new ArgumentNullException(&quot;source&quot;);
   if (!Enum.IsDefined(typeof(InvokeFlags), invokeFlags))
-    throw new ArgumentOutOfRangeException("invokeFlags");
+    throw new ArgumentOutOfRangeException(&quot;invokeFlags&quot;);
   if (args == null)
-    throw new ArgumentNullException("args");
+    throw new ArgumentNullException(&quot;args&quot;);
 
   var memoryAllocationsToFree = new List&lt;IntPtr&gt;();
   IntPtr rgdispidNamedArgs;
@@ -1057,7 +883,7 @@ Marshal.FreeCoTaskMem(rgvarg);
     // There must be at least one argument specified; only one if it is a non-indexed property and
     // multiple if there are index values as well as the value to set to
     if (args.Length &lt; 1)
-      throw new ArgumentException("At least one argument must be specified for DISPATCH_PROPERTYPUT");
+      throw new ArgumentException(&quot;At least one argument must be specified for DISPATCH_PROPERTYPUT&quot;);
 
     var pdPutID = Marshal.AllocCoTaskMem(sizeof(Int64));
     Marshal.WriteInt64(pdPutID, DISPID_PROPERTYPUT);
@@ -1084,9 +910,9 @@ Marshal.FreeCoTaskMem(rgvarg);
     memoryAllocationsToFree.Add(rgvarg);
     for (var index = 0; index &lt; args.Length; index++)
     {
-      // Note: The "IDispatch::Invoke method (Automation)" page
+      // Note: The &quot;IDispatch::Invoke method (Automation)&quot; page
       // (http://msdn.microsoft.com/en-us/library/windows/desktop/ms221479(v=vs.85).aspx) states that
-      // "Arguments are stored in pDispParams-&gt;rgvarg in reverse order" so we'll reverse them here
+      // &quot;Arguments are stored in pDispParams-&gt;rgvarg in reverse order&quot; so we'll reverse them here
       var arg = args[(args.Length - 1) - index];
 
       // According to http://stackoverflow.com/a/1866268 it seems like using ToInt64 here will be valid
@@ -1114,7 +940,7 @@ Marshal.FreeCoTaskMem(rgvarg);
 
   try
   {
-    var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+    var IID_NULL = new Guid(&quot;00000000-0000-0000-0000-000000000000&quot;);
     UInt32 pArgErr = 0;
     object varResult;
     var excepInfo = new ComTypes.EXCEPINFO();
@@ -1131,14 +957,14 @@ Marshal.FreeCoTaskMem(rgvarg);
     );
     if (hrRet != 0)
     {
-      var message = "Failing attempting to invoke method with DispId " + dispId + ": ";
-      if ((excepInfo.bstrDescription ?? "").Trim() == "")
-        message += "Unspecified error";
+      var message = &quot;Failing attempting to invoke method with DispId &quot; + dispId + &quot;: &quot;;
+      if ((excepInfo.bstrDescription ?? &quot;&quot;).Trim() == &quot;&quot;)
+        message += &quot;Unspecified error&quot;;
       else
         message += excepInfo.bstrDescription;
       var errorType = GetErrorMessageForHResult(hrRet);
       if (errorType != CommonErrors.Unknown)
-        message += " [" + errorType.ToString() + "]";
+        message += &quot; [&quot; + errorType.ToString() + &quot;]&quot;;
       throw new ArgumentException(message);
     }
     return (T)varResult;
@@ -1156,13 +982,13 @@ Marshal.FreeCoTaskMem(rgvarg);
 public static int GetDispId(object source, string name)
 {
   if (source == null)
-    throw new ArgumentNullException("source");
+    throw new ArgumentNullException(&quot;source&quot;);
   if (string.IsNullOrEmpty(name))
-    throw new ArgumentNullException("Null/blank name specified");
+    throw new ArgumentNullException(&quot;Null/blank name specified&quot;);
 
   // This will be populated with a the DispId of the named member (if available)
   var rgDispId = new int[1] { 0 };
-  var IID_NULL = new Guid("00000000-0000-0000-0000-000000000000");
+  var IID_NULL = new Guid(&quot;00000000-0000-0000-0000-000000000000&quot;);
   var hrRet = ((IDispatch)source).GetIDsOfNames
   (
     ref IID_NULL,
@@ -1173,10 +999,10 @@ public static int GetDispId(object source, string name)
   );
   if (hrRet != 0)
   {
-    var message = "Invalid member \"" + name + "\"";
+    var message = &quot;Invalid member \&quot;&quot; + name + &quot;\&quot;&quot;;
     var errorType = GetErrorMessageForHResult(hrRet);
     if (errorType != CommonErrors.Unknown)
-      message += " [" + errorType.ToString() + "]";
+      message += &quot; [&quot; + errorType.ToString() + &quot;]&quot;;
     throw new ArgumentException(message);
   }
   return rgDispId[0];
@@ -1204,40 +1030,28 @@ public enum CommonErrors
   // A load of values from http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx
 }
 </code></pre>
-
-<p>Included is a GetDispId method and an "InvokeFlags" enum to wrap up those values. If an error is encountered, it will try to look up the hresult value in an enum that I've trimmed out here but you can find the values at <a href="http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx">http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx</a>.</p>
-
+<p>Included is a GetDispId method and an &quot;InvokeFlags&quot; enum to wrap up those values. If an error is encountered, it will try to look up the hresult value in an enum that I've trimmed out here but you can find the values at <a href="http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx">http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx</a>.</p>
 <h3>A waste of my time?</h3>
-
-<p>It's looking like the environment restriction against using .Net 4 is going to go away (I think it was just me being a bit dense with configuration to be honest but I'm not quite convinced yet!) so I should be able to replace all of this code I was thinking of using with the "dynamic" keyword again.</p>
-
-<p>But it's certainly been interesting getting to the bottom of this, and it's given me a greater appreciation of the "dynamic" implementation! Until now I was under the impression that it did much of what it does with fairly straight forward reflection and some sort of caching for performance. But after looking into this I've looked into it more and realised that it does a lot more, varying its integration method depending upon what it's talking to (like if it's a .Net object, a IDispatch-implementing reference, an Iron Python object and whatever else). I have a much greater respect for it now! :)</p>
-
+<p>It's looking like the environment restriction against using .Net 4 is going to go away (I think it was just me being a bit dense with configuration to be honest but I'm not quite convinced yet!) so I should be able to replace all of this code I was thinking of using with the &quot;dynamic&quot; keyword again.</p>
+<p>But it's certainly been interesting getting to the bottom of this, and it's given me a greater appreciation of the &quot;dynamic&quot; implementation! Until now I was under the impression that it did much of what it does with fairly straight forward reflection and some sort of caching for performance. But after looking into this I've looked into it more and realised that it does a lot more, varying its integration method depending upon what it's talking to (like if it's a .Net object, a IDispatch-implementing reference, an Iron Python object and whatever else). I have a much greater respect for it now! :)</p>
 <h3>The COMInteraction Project</h3>
-
-<p>One thing it <em>has</em> got me thinking about, though, is the <a href="https://bitbucket.org/DanRoberts/cominteraction">COMInteraction</a> code I wrote. The current code uses reflection and IL generation to sort of force method and property calls onto COM objects, which worked great for the components I was targetting at the time (VBScript WSC components) but which failed when I tried to use it with a Classic ASP Server reference that got passed through the chain. It didn't like the possibly hacky approach I used <em>at all</em>. But it <em>is</em> happy with being called by the Invoke method above since it implements IDispatch. So I'm contemplating now whether I can extend the work to generate different IL depending upon the source type; leaving it using reflection where possible and alternately using IDispatch where reflection won't work but IDispatch may. Sort of like "dynamic" much on a more conservative scale :)</p>
-
+<p>One thing it <em>has</em> got me thinking about, though, is the <a href="https://bitbucket.org/DanRoberts/cominteraction">COMInteraction</a> code I wrote. The current code uses reflection and IL generation to sort of force method and property calls onto COM objects, which worked great for the components I was targetting at the time (VBScript WSC components) but which failed when I tried to use it with a Classic ASP Server reference that got passed through the chain. It didn't like the possibly hacky approach I used <em>at all</em>. But it <em>is</em> happy with being called by the Invoke method above since it implements IDispatch. So I'm contemplating now whether I can extend the work to generate different IL depending upon the source type; leaving it using reflection where possible and alternately using IDispatch where reflection won't work but IDispatch may. Sort of like &quot;dynamic&quot; much on a more conservative scale :)</p>
 <h3>A little bit more about dynamic's magic</h3>
-
 <p>Now that I understand more about how IDispatch enables the implementing type to be queried it answers a question I've wondered about before: how can the debugger show properties and data for a dynamic reference that's pointing at a COM object? The GetTypeInfo and GetIDsOfNames of the IDispatch interface can expose this information.</p>
-
-<p>There's some example code on this blog post (by the same guy who wrote some of the other posts I linked earlier): <a href="http://limbioliong.wordpress.com/2011/10/18/obtain-type-information-of-idispatch-based-com-objects-from-managed-code/">Obtain Type Information of IDispatch-Based COM Objects from Managed Code.</a>. I've played with it a bit and it looks interesting, but I've not gone any further than his method querying code (he retrieves a list of methods but doesn't examine the arguments that the methods take, for example).</p><p class="PostTime">Posted at 20:54</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/IDispatch" title="2 Posts">IDispatch</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/idispatch-iwastedtimeonthis-but-ilearntlots#disqus_thread" data-disqus-identifier="44">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">27 December 2011</h3><h2><a id="Post17"></a><a href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></h2>
-
+<p>There's some example code on this blog post (by the same guy who wrote some of the other posts I linked earlier): <a href="http://limbioliong.wordpress.com/2011/10/18/obtain-type-information-of-idispatch-based-com-objects-from-managed-code/">Obtain Type Information of IDispatch-Based COM Objects from Managed Code.</a>. I've played with it a bit and it looks interesting, but I've not gone any further than his method querying code (he retrieves a list of methods but doesn't examine the arguments that the methods take, for example).</p>
+<p class="PostTime">Posted at 20:54</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/IDispatch" title="2 Posts">IDispatch</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/idispatch-iwastedtimeonthis-but-ilearntlots#disqus_thread" data-disqus-identifier="44">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">27 December 2011</h3><h2><a id="dynamically-applying-interfaces-to-objects-part-3" href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></h2>
 <p>In this final part of this mini series there are two enhancements I want to add:</p>
-
 <ol>
 <li>For cases where the same interface may be applied to multiple objects, I want to replace the WrapObject method (which applies the interface to a single reference) with a GenerateInterfaceApplier method which returns an object that applies a specified interface to any given reference but only generating the IL once</li>
 <li>The ability to recursively wrap returned data</li>
 </ol>
-
 <p>eg. be able to apply ITest to the ExampleObject reference:</p>
-
 <pre><code>public interface ITest
 {
     IEmployee Get(int id);
@@ -1254,8 +1068,8 @@ public class ExampleObject
     public object Get(int id)
     {
         if (id != 1)
-            throw new ArgumentException("Only id value 1 is supported");
-        return new Person(1, "Ted");
+            throw new ArgumentException(&quot;Only id value 1 is supported&quot;);
+        return new Person(1, &quot;Ted&quot;);
     }
 
     public class Person
@@ -1263,7 +1077,7 @@ public class ExampleObject
         public Person(int id, string name)
         {
             if (string.IsNullOrEmpty(name))
-                throw new ArgumentException("Null/blank name specified");
+                throw new ArgumentException(&quot;Null/blank name specified&quot;);
             Id = id;
             Name = name.Trim();
         }
@@ -1272,11 +1086,8 @@ public class ExampleObject
     }
 }
 </code></pre>
-
 <h3>Task 1: The IInterfaceApplier class</h3>
-
 <p>The first part is fairly straight-forward so I'll jump straight in -</p>
-
 <pre><code>public class InterfaceApplierFactory : IInterfaceApplierFactory
 {
     private string _assemblyName;
@@ -1284,11 +1095,11 @@ public class ExampleObject
     private Lazy&lt;ModuleBuilder&gt; _moduleBuilder;
     public InterfaceApplierFactory(string assemblyName, ComVisibility comVisibilityOfClasses)
     {
-        assemblyName = (assemblyName ?? "").Trim();
-        if (assemblyName == "")
-            throw new ArgumentException("Null or empty assemblyName specified");
+        assemblyName = (assemblyName ?? &quot;&quot;).Trim();
+        if (assemblyName == &quot;&quot;)
+            throw new ArgumentException(&quot;Null or empty assemblyName specified&quot;);
         if (!Enum.IsDefined(typeof(ComVisibility), comVisibilityOfClasses))
-            throw new ArgumentOutOfRangeException("comVisibilityOfClasses");
+            throw new ArgumentOutOfRangeException(&quot;comVisibilityOfClasses&quot;);
 
         _assemblyName = assemblyName;
         _createComVisibleClasses = (comVisibilityOfClasses == ComVisibility.Visible);
@@ -1317,9 +1128,9 @@ public class ExampleObject
     public IInterfaceApplier&lt;T&gt; GenerateInterfaceApplier&lt;T&gt;()
     {
         if (!typeof(T).IsInterface)
-            throw new ArgumentException("typeparam must be an interface type");
+            throw new ArgumentException(&quot;typeparam must be an interface type&quot;);
 
-        var typeName = "InterfaceApplier" + Guid.NewGuid().ToString("N");
+        var typeName = &quot;InterfaceApplier&quot; + Guid.NewGuid().ToString(&quot;N&quot;);
         var typeBuilder = _moduleBuilder.Value.DefineType(
             typeName,
             TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.AutoClass |
@@ -1342,7 +1153,7 @@ public class ExampleObject
 
     public IInterfaceApplier GenerateInterfaceApplier(Type targetType)
     {
-        var generate = this.GetType().GetMethod("GenerateInterfaceApplier", Type.EmptyTypes);
+        var generate = this.GetType().GetMethod(&quot;GenerateInterfaceApplier&quot;, Type.EmptyTypes);
         var generateGeneric = generate.MakeGenericMethod(targetType);
         return (IInterfaceApplier)generateGeneric.Invoke(this, new object[0]);
     }
@@ -1353,9 +1164,9 @@ public class ExampleObject
         public InterfaceApplier(Func&lt;object, T&gt; conversion)
         {
             if (!typeof(T).IsInterface)
-                throw new ArgumentException("Invalid typeparam - must be an interface");
+                throw new ArgumentException(&quot;Invalid typeparam - must be an interface&quot;);
             if (conversion == null)
-                throw new ArgumentNullException("conversion");
+                throw new ArgumentNullException(&quot;conversion&quot;);
             _conversion = conversion;
         }
 
@@ -1393,35 +1204,25 @@ public interface IInterfaceApplier
     object Apply(object src);
 }
 </code></pre>
-
-<p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an "IInterfaceApplier" is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
-
+<p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an &quot;IInterfaceApplier&quot; is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
 <p>I've also supported an alternative method signature for GenerateInterfaceApplier such that the target interface can be specified as an argument rather than a typeparam to a generic method - this will become important in the next section and the only interesting things to note are how IInterfaceApplier&lt;T&gt; is returned from the generic method as opposed to the IInterfaceApplier returned from the typeparam-less signature and how the alternate method calls into the typeparam'd version using reflection.</p>
-
 <h3>Task 2: Recursively applying interfaces</h3>
-
 <p>The approach I'm going to use here is to introduce a new interface that will be used when generating the interface appliers -</p>
-
 <pre><code>public interface IReadValueConverter
 {
     object Convert(PropertyInfo property, object value);
     object Convert(MethodInfo method, object value);
 }
 </code></pre>
-
 <p>Values will be passed through this when returned by property getters or (non-void) methods and it wil be responsible for ensuring that the value returned from the Convert method matches the property.PropertyType / method.ReturnType.</p>
-
 <p>This will mean we'll change the method signature to:</p>
-
 <pre><code>public InterfaceApplier&lt;T&gt; GenerateInterfaceApplier&lt;T&gt;(IReadValueConverter readValueConverter)
 </code></pre>
-
 <p>That we'll change the constructor on the generated type:</p>
-
 <pre><code>// Declare private fields
-var srcField = typeBuilder.DefineField("_src", typeof(object), FieldAttributes.Private);
+var srcField = typeBuilder.DefineField(&quot;_src&quot;, typeof(object), FieldAttributes.Private);
 var readValueConverterField = typeBuilder.DefineField(
-    "_readValueConverter",
+    &quot;_readValueConverter&quot;,
     typeof(IReadValueConverter),
     FieldAttributes.Private
 );
@@ -1440,7 +1241,7 @@ ilCtor.Emit(OpCodes.Call, typeBuilder.BaseType.GetConstructor(Type.EmptyTypes));
 var nonNullSrcArgumentLabel = ilCtor.DefineLabel();
 ilCtor.Emit(OpCodes.Ldarg_1);
 ilCtor.Emit(OpCodes.Brtrue, nonNullSrcArgumentLabel);
-ilCtor.Emit(OpCodes.Ldstr, "src");
+ilCtor.Emit(OpCodes.Ldstr, &quot;src&quot;);
 ilCtor.Emit(
     OpCodes.Newobj,
     typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) })
@@ -1452,7 +1253,7 @@ ilCtor.MarkLabel(nonNullSrcArgumentLabel);
 var nonNullReadValueConverterArgumentLabel = ilCtor.DefineLabel();
 ilCtor.Emit(OpCodes.Ldarg_2);
 ilCtor.Emit(OpCodes.Brtrue, nonNullReadValueConverterArgumentLabel);
-ilCtor.Emit(OpCodes.Ldstr, "readValueConverter");
+ilCtor.Emit(OpCodes.Ldstr, &quot;readValueConverter&quot;);
 ilCtor.Emit(
     OpCodes.Newobj,
     typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) })
@@ -1473,14 +1274,12 @@ ilCtor.Emit(OpCodes.Stfld, readValueConverterField);
 // All done
 ilCtor.Emit(OpCodes.Ret);
 </code></pre>
-
 <p>That we'll change the reading of properties:</p>
-
 <pre><code>// Define get method, if required
 if (property.CanRead)
 {
     var getFuncBuilder = typeBuilder.DefineMethod(
-        "get_" + property.Name,
+        &quot;get_&quot; + property.Name,
         MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot |
         MethodAttributes.SpecialName | MethodAttributes.Virtual | MethodAttributes.Final,
         property.PropertyType,
@@ -1497,16 +1296,16 @@ if (property.CanRead)
     ilGetFunc.Emit(OpCodes.Ldtoken, property.DeclaringType);
     ilGetFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetTypeFromHandle", new[] { typeof(RuntimeTypeHandle) })
+        typeof(Type).GetMethod(&quot;GetTypeFromHandle&quot;, new[] { typeof(RuntimeTypeHandle) })
     );
     ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilGetFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetProperty", new[] { typeof(string) })
+        typeof(Type).GetMethod(&quot;GetProperty&quot;, new[] { typeof(string) })
     );
     ilGetFunc.Emit(OpCodes.Ldarg_0);
     ilGetFunc.Emit(OpCodes.Ldfld, srcField);
-    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
     ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilGetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.GetProperty);
     ilGetFunc.Emit(OpCodes.Ldnull);
@@ -1517,7 +1316,7 @@ if (property.CanRead)
     ilGetFunc.Emit(
         OpCodes.Callvirt,
         typeof(IReadValueConverter).GetMethod(
-            "Convert",
+            &quot;Convert&quot;,
             new[] { typeof(PropertyInfo), typeof(object) }
         )
     );
@@ -1527,9 +1326,7 @@ if (property.CanRead)
     propBuilder.SetGetMethod(getFuncBuilder);
 }
 </code></pre>
-
 <p>And that we'll change the calling of methods:</p>
-
 <pre><code>// .. skipped out the first half of the method-generating code
 // - see http://www.productiverage.com/Read/15
 
@@ -1573,18 +1370,18 @@ if (!method.ReturnType.Equals(typeof(void)))
     ilFunc.Emit(OpCodes.Ldtoken, method.DeclaringType);
     ilFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetTypeFromHandle", new[] { typeof(RuntimeTypeHandle) })
+        typeof(Type).GetMethod(&quot;GetTypeFromHandle&quot;, new[] { typeof(RuntimeTypeHandle) })
     );
     ilFunc.Emit(OpCodes.Ldstr, method.Name);
     ilFunc.Emit(OpCodes.Ldloc_1);
     ilFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetMethod", new[] { typeof(string), typeof(Type[]) })
+        typeof(Type).GetMethod(&quot;GetMethod&quot;, new[] { typeof(string), typeof(Type[]) })
     );
 }
 ilFunc.Emit(OpCodes.Ldarg_0);
 ilFunc.Emit(OpCodes.Ldfld, srcField);
-ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
 ilFunc.Emit(OpCodes.Ldstr, method.Name);
 ilFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.InvokeMethod);
 ilFunc.Emit(OpCodes.Ldnull);
@@ -1595,54 +1392,51 @@ ilFunc.Emit(OpCodes.Callvirt, methodInfoInvokeMember);
 
 if (method.ReturnType.Equals(typeof(void)))
     ilFunc.Emit(OpCodes.Pop);
-else 
+else
 {
     ilFunc.Emit(
         OpCodes.Callvirt,
         typeof(IReadValueConverter).GetMethod(
-            "Convert",
+            &quot;Convert&quot;,
             new[] { typeof(MethodInfo), typeof(object) }
         )
     );
-    if (method.ReturnType.IsValueType) 
+    if (method.ReturnType.IsValueType)
         ilFunc.Emit(OpCodes.Unbox_Any, method.ReturnType);
 }
 
 ilFunc.Emit(OpCodes.Ret);
 </code></pre>
-
 <h3>Task 2.1: Implementing IReadValueConverter</h3>
-
 <p>A naive implementation might be as follows:</p>
-
 <pre><code>public class SimpleReadValueConverter : IReadValueConverter
 {
     private IInterfaceApplierFactory _interfaceApplierFactory;
     public SimpleReadValueConverter(IInterfaceApplierFactory interfaceApplierFactory)
     {
         if (interfaceApplierFactory == null)
-            throw new ArgumentNullException("interfaceApplierFactory");
+            throw new ArgumentNullException(&quot;interfaceApplierFactory&quot;);
         _interfaceApplierFactory = interfaceApplierFactory;
     }
 
     public object Convert(PropertyInfo property, object value)
     {
         if (property == null)
-            throw new ArgumentNullException("property");
+            throw new ArgumentNullException(&quot;property&quot;);
         return tryToConvertValueIfRequired(property.PropertyType, value);
     }
 
     public object Convert(MethodInfo method, object value)
     {
         if (method == null)
-            throw new ArgumentNullException("method");
+            throw new ArgumentNullException(&quot;method&quot;);
         return tryToConvertValueIfRequired(method.ReturnType, value);
     }
 
     private object tryToConvertValueIfRequired(Type targetType, object value)
     {
         if (targetType == null)
-            throw new ArgumentNullException("targetType");
+            throw new ArgumentNullException(&quot;targetType&quot;);
 
         // If no conversion is required, no work to do
         // - Note: We can only deal with applying interfaces to objects so if a conversion
@@ -1659,9 +1453,7 @@ ilFunc.Emit(OpCodes.Ret);
     }
 }
 </code></pre>
-
 <p>This will do the job but it jumps out at me that if the same interface needs to be applied to multiple return values (ie. from different properties or methods) then the work done to generate that interface applier will be repeated for each request. It might be better (require less memory and cpu resources) to build up a list of interfaces that have already been handled and re-use the interface appliers where possible -</p>
-
 <pre><code>public class CachedReadValueConverter : IReadValueConverter
 {
     private IInterfaceApplierFactory _interfaceApplierFactory;
@@ -1671,7 +1463,7 @@ ilFunc.Emit(OpCodes.Ret);
     public CachedReadValueConverter(IInterfaceApplierFactory interfaceApplierFactory)
     {
         if (interfaceApplierFactory == null)
-            throw new ArgumentNullException("interfaceApplierFactory");
+            throw new ArgumentNullException(&quot;interfaceApplierFactory&quot;);
 
         _interfaceApplierFactory = interfaceApplierFactory;
         _interfaceAppliers = new NonNullImmutableList&lt;IInterfaceApplier&gt;();
@@ -1681,7 +1473,7 @@ ilFunc.Emit(OpCodes.Ret);
     public object Convert(PropertyInfo property, object value)
     {
         if (property == null)
-            throw new ArgumentNullException("property");
+            throw new ArgumentNullException(&quot;property&quot;);
 
         return tryToConvertValueIfRequired(property.PropertyType, value);
     }
@@ -1689,7 +1481,7 @@ ilFunc.Emit(OpCodes.Ret);
     public object Convert(MethodInfo method, object value)
     {
         if (method == null)
-            throw new ArgumentNullException("method");
+            throw new ArgumentNullException(&quot;method&quot;);
 
         return tryToConvertValueIfRequired(method.ReturnType, value);
     }
@@ -1697,7 +1489,7 @@ ilFunc.Emit(OpCodes.Ret);
     private object tryToConvertValueIfRequired(Type targetType, object value)
     {
         if (targetType == null)
-            throw new ArgumentNullException("targetType");
+            throw new ArgumentNullException(&quot;targetType&quot;);
 
         // If no conversion is required, no work to do
         // - Note: We can only deal with applying interfaces to objects so if a conversion
@@ -1730,9 +1522,7 @@ ilFunc.Emit(OpCodes.Ret);
     }
 }
 </code></pre>
-
 <p>There will still be cases where there have to be multiple interface appliers for a given interface if there are interrelated references but this should limit how many duplicates are generated. For example:</p>
-
 <pre><code>using COMInteraction.InterfaceApplication;
 using COMInteraction.InterfaceApplication.ReadValueConverters;
 
@@ -1742,16 +1532,16 @@ namespace Tester
     {
         static void Main(string[] args)
         {
-            var n1 = new Node() { Name = "Node1" };
-            var n2 = new Node() { Name = "Node2" };
-            var n3 = new Node() { Name = "Node3" };
+            var n1 = new Node() { Name = &quot;Node1&quot; };
+            var n2 = new Node() { Name = &quot;Node2&quot; };
+            var n3 = new Node() { Name = &quot;Node3&quot; };
             n1.Next = n2;
             n2.Previous = n1;
             n2.Next = n3;
             n3.Previous = n2;
 
             var interfaceApplierFactory = new InterfaceApplierFactory(
-                "DynamicAssembly",
+                &quot;DynamicAssembly&quot;,
                 InterfaceApplierFactory.ComVisibility.NotVisible
             );
             var interfaceApplier = interfaceApplierFactory.GenerateInterfaceApplier&lt;INode&gt;(
@@ -1777,19 +1567,13 @@ namespace Tester
     }
 }
 </code></pre>
-
-<p>Each unique interface applier has a specific class name (of the form "InterfaceApplier{0}" where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one "wasted" generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
-
-<h3>"Inaccessible Interface"</h3>
-
+<p>Each unique interface applier has a specific class name (of the form &quot;InterfaceApplier{0}&quot; where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one &quot;wasted&quot; generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
+<h3>&quot;Inaccessible Interface&quot;</h3>
 <p>In the above example, the INode interface has to be located outside of the Program class since it must be accessible by the InterfaceApplierFactory and the Program class is private. This isn't an issue for the Node class as the InterfaceApplierFactory doesn't need direct access to that, it just returns an IInterfaceApplier that we pass the n2 reference to as an argument. Alternatively, the Program class could be made public. This isn't exactly rocket science but if it slips your mind then you're presented with an error such as -</p>
-
 <blockquote>
-  <p>TypeLoadException: "Type 'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8' from assembly 'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' is attempting to implement an inaccessible interface."</p>
+<p>TypeLoadException: &quot;Type 'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8' from assembly 'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' is attempting to implement an inaccessible interface.&quot;</p>
 </blockquote>
-
 <p>at the line</p>
-
 <pre><code>return new InterfaceApplier&lt;T&gt;(
     src =&gt; (T)Activator.CreateInstance(
         typeBuilder.CreateType(),
@@ -1798,33 +1582,28 @@ namespace Tester
     )
 );
 </code></pre>
-
-<p>in InterfaceApplierFactory, which isn't the friendliest of warnings!</p><p class="PostTime">Posted at 18:38</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
-			<p class="Comments">
-				<a href="/dynamically-applying-interfaces-to-objects-part-3#disqus_thread" data-disqus-identifier="17">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">14 December 2011</h3><h2><a id="Post16"></a><a href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></h2>
-
-<p>Today, I'm going to address some of the "future developments" I left at the end of the last post. Specifically:</p>
-
+<p>in InterfaceApplierFactory, which isn't the friendliest of warnings!</p>
+<p class="PostTime">Posted at 18:38</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+            <p class="Comments">
+                <a href="/dynamically-applying-interfaces-to-objects-part-3#disqus_thread" data-disqus-identifier="17">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">14 December 2011</h3><h2><a id="dynamically-applying-interfaces-to-objects-part-2" href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></h2>
+<p>Today, I'm going to address some of the &quot;future developments&quot; I left at the end of the last post. Specifically:</p>
 <ol>
-<li>Wrapping up the "Interface Applier" into a generic method that specifies the target interface</li>
+<li>Wrapping up the &quot;Interface Applier&quot; into a generic method that specifies the target interface</li>
 <li>Handling interface hierarchies</li>
 <li>Marking the wrapper as being ComVisible</li>
 </ol>
-
 <h3>Wrapping up in a method</h3>
-
-<p>Part one is easy. Take the code from the last article and wrap in </p>
-
+<p>Part one is easy. Take the code from the last article and wrap in</p>
 <pre><code>public static T WrapObject&lt;T&gt;(object src)
 {
     if (src == null)
-        throw new ArgumentNullException("src");
+        throw new ArgumentNullException(&quot;src&quot;);
     if (!typeof(T).IsInterface)
-        throw new ArgumentException("Typeparam T must be an interface type");
+        throw new ArgumentException(&quot;Typeparam T must be an interface type&quot;);
 
     // Insert existing code that generates the new class with its constructor, properties
     // and methods here..
@@ -1835,13 +1614,9 @@ namespace Tester
     );
 }
 </code></pre>
-
 <p>Ta-da! Note that we ensure that the typeparam T really <em>is</em> an interface - we made assumptions about this in the last article, so we need to assert this fact here. (It means that we only ever have to deal with properties and methods, and that they will always be public).</p>
-
 <h3>Handling interface hierarchies</h3>
-
 <p>This part is not much more difficult. We'll introduce something to recursively trawl through any interfaces that the target interface implements and build a list of them all:</p>
-
 <pre><code>public class InterfaceHierarchyCombiner
 {
     private Type _targetInterface;
@@ -1849,9 +1624,9 @@ namespace Tester
     public InterfaceHierarchyCombiner(Type targetInterface)
     {
         if (targetInterface == null)
-            throw new ArgumentNullException("targetInterface");
+            throw new ArgumentNullException(&quot;targetInterface&quot;);
         if (!targetInterface.IsInterface)
-            throw new ArgumentException("targetInterface must be an interface type", "targetInterface");
+            throw new ArgumentException(&quot;targetInterface must be an interface type&quot;, &quot;targetInterface&quot;);
 
         _interfaces = new List&lt;Type&gt;();
         buildInterfaceInheritanceList(targetInterface, _interfaces);
@@ -1861,11 +1636,11 @@ namespace Tester
     private static void buildInterfaceInheritanceList(Type targetInterface, List&lt;Type&gt; types)
     {
         if (targetInterface == null)
-            throw new ArgumentNullException("targetInterface");
+            throw new ArgumentNullException(&quot;targetInterface&quot;);
         if (!targetInterface.IsInterface)
-            throw new ArgumentException("targetInterface must be an interface type", "targetInterface");
+            throw new ArgumentException(&quot;targetInterface must be an interface type&quot;, &quot;targetInterface&quot;);
         if (types == null)
-            throw new ArgumentNullException("types");
+            throw new ArgumentNullException(&quot;types&quot;);
 
         if (!types.Contains(targetInterface))
             types.Add(targetInterface);
@@ -1891,32 +1666,22 @@ namespace Tester
     }
 }
 </code></pre>
-
 <p>Then, in this new WrapObject method, we call instantiate a new InterfaceHierarchyCombiner for the typeparam T and use retrieve <em>all</em> the properties and methods from the Interfaces list, rather than just those on T.</p>
-
 <p>eg. Instead of</p>
-
 <pre><code>foreach (var property in typeof(ITest).GetProperties())
 {
     // Deal with the properties..
 </code></pre>
-
 <p>we consider</p>
-
 <pre><code>var interfaces = (new InterfaceHierarchyCombiner(typeof(T))).Interfaces;
 foreach (var property in interfaces.SelectMany(i =&gt; i.GetProperties()))
 {
     // Deal with the properties..
 </code></pre>
-
 <p>and likewise for the methods.</p>
-
 <p>It's worth noting that there may be multiple methods within the interface hierarchy with the same name and signature. It may be worth keeping track of which properties / methods have had corresponding IL generated but - other than generating more instructions in the loop than strictly necessary - it doesn't do any harm generating duplicate properties or methods (so I haven't worried about it for now).</p>
-
 <h3>Com Visibility</h3>
-
 <p>What I wanted to do for the wrappers I was implementing was to create classes with the <strong>[ComVisible(true)]</strong> and <strong>[ClassInterface(ClassInterface.None)]</strong> attributes. This is achieved by specifying these attributes on the typeBuilder (as seen in the code in the last article):</p>
-
 <pre><code>typeBuilder.SetCustomAttribute(
     new CustomAttributeBuilder(
         typeof(ComVisibleAttribute).GetConstructor(new[] { typeof(bool) }),
@@ -1930,15 +1695,10 @@ typeBuilder.SetCustomAttribute(
     )
 );
 </code></pre>
-
 <p>Again, easy! Once you know how :)</p>
-
 <h3>Example code / jumping to the end</h3>
-
 <p>I've not included a complete sample here since it would take up a fairly hefty chunk of space but also because I created a GitHub repository with the final code. This can be found at <a href="https://github.com/ProductiveRage/COMInteraction">https://github.com/ProductiveRage/COMInteraction</a></p>
-
 <p>This includes the work here but also the work I want to address next time; a way to automagically wrap return values where required and a way to change the WrapObject method so that if the same interface is to be applied to multiple objects, only a single call is required (and an object be returned that can wrap any given reference in that interface). The example I put out for this return-value-wrapping was that we want to wrap an object in ITest and have the return value from its Get method <em>also</em> be wrapped if it did not already implement IEmployee:</p>
-
 <pre><code>public interface ITest
 {
     IEmployee Get(int id);
@@ -1950,54 +1710,43 @@ public interface IEmployee
     string Name { get; }
 }
 </code></pre>
-
-<p>For more details of how exactly this will all work, I'll see you back here; same bat-time, same bat-channel! :)</p><p class="PostTime">Posted at 21:16</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
-			<p class="Comments">
-				<a href="/dynamically-applying-interfaces-to-objects-part-2#disqus_thread" data-disqus-identifier="16">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">13 December 2011</h3><h2><a id="Post15"></a><a href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a></h2>
-
+<p>For more details of how exactly this will all work, I'll see you back here; same bat-time, same bat-channel! :)</p>
+<p class="PostTime">Posted at 21:16</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+            <p class="Comments">
+                <a href="/dynamically-applying-interfaces-to-objects-part-2#disqus_thread" data-disqus-identifier="16">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">13 December 2011</h3><h2><a id="dynamically-applying-interfaces-to-objects" href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a></h2>
 <p>Another area of this migration proof-of-concept work I'm doing at the day job involves investigating the best way to swap out a load of COM components for C# versions over time. The plan initially is to define interfaces for them and code against those interfaces, write wrapper classes around the components that implement these interfaces and one day rewrite them one-by-one.</p>
-
 <p>Writing the interfaces is valuable since it enables some documentation-through-comments to be generated for each method and property and forces me to look into the idiosyncracies of the various components.</p>
-
-<p>However, writing endless wrappers for the components to "join" them to the interfaces sounded boring! Even if I used the .Net 4.0 "dynamic" keyword it seemed like there'd be a lot of repitition and opportunity for me to mistype a property name and not realise until debugging / writing tests. (Plus I found a problem that prevented me from using "dynamic" with the WSCs I was wrapping - see the bottom of this post for more details).</p>
-
+<p>However, writing endless wrappers for the components to &quot;join&quot; them to the interfaces sounded boring! Even if I used the .Net 4.0 &quot;dynamic&quot; keyword it seemed like there'd be a lot of repitition and opportunity for me to mistype a property name and not realise until debugging / writing tests. (Plus I found a problem that prevented me from using &quot;dynamic&quot; with the WSCs I was wrapping - see the bottom of this post for more details).</p>
 <p>I figured this is the sort of thing that should be dynamically generatable from the interfaces instead of writing them all by hand - something like how Moq can create generate Mock&lt;ITest&gt; implementations. I did most of this investigation back in Summer, not long after the AutoMapper work I was looking into, and had hoped I'd be able to leverage my sharpened Linq Expression dynamic code generation skills. Alas, it seems that new classes can not be defined in this manner so I had to go deeper..</p>
-
 <h3>Reflection.Emit</h3>
-
 <p>I was aware that IL could be generated by code at runtime and executed as any other other loaded assembly might be. I'd read (and chuckled at) this article in the past but never taken it any further: <a href="http://www.codeproject.com/Articles/19513/Dynamic-But-Fast-The-Tale-of-Three-Monkeys-A-Wolf">Dynamic... But Fast: The Tale of Three Monkeys, A Wolf and the DynamicMethod and ILGenerator Classes</a></p>
-
 <p>As I tried to find out more information, though, it seemed that a lot of articles would make the point that you could find out how to construct IL by using the IL Disassembler that's part of the .Net SDK: ildasm.exe (located in C:\Program Files\Microsoft SDKs\Windows\v7.0A\bin on my computer). This makes sense because once you start constructing simple classes and examining the generated code in ildasm you can start to get a reasonable idea for how to write the generation code yourself. But it <em>still</em> took me quite a while to get to the point where the following worked!</p>
-
 <p>What I really wanted was something to take, for example:</p>
-
 <pre><code>public interface ITest
 {
     int GetValue(string id);
     string Name { get; set; }
 }
 </code></pre>
-
 <p>and wrap an object that had that method and property such that the interface was exposed - eg.</p>
-
 <pre><code>public class TestWrapper : ITest
 {
   private object _src;
   public TestWrapper(object src)
   {
     if (src == null)
-      throw new ArgumentNullException("src");
+      throw new ArgumentNullException(&quot;src&quot;);
     _src = src;
   }
 
   public int GetValue(string id)
   {
     return _src.GetType().InvokeMember(
-      "GetValue",
+      &quot;GetValue&quot;,
       BindingFlags.InvokeMethod,
       null,
       _src,
@@ -2009,24 +1758,20 @@ public interface IEmployee
   {
     get
     {
-      return _src.GetType().InvokeMember("Name", BindingFlags.GetProperty, null, _src, null)
+      return _src.GetType().InvokeMember(&quot;Name&quot;, BindingFlags.GetProperty, null, _src, null)
     }
     set
     {
-      _src.GetType().InvokeMember("Name", BindingFlags.SetProperty, null, _src, new object[] { value });
+      _src.GetType().InvokeMember(&quot;Name&quot;, BindingFlags.SetProperty, null, _src, new object[] { value });
     }
   }
 }
 </code></pre>
-
 <p>It may seem like using reflection will result in there being overhead in the calls but the primary objective was to wrap a load of WSCs in C# interfaces so they could be rewritten later while doing the job for now - so performance wasn't really a massive concern at this point.</p>
-
 <h3>Somewhere to work in</h3>
-
 <p>The first thing to be aware of is that we can't create new classes in the current assembly, we'll have to create them in a new one. So we start off with</p>
-
 <pre><code>var assemblyBuilder = Thread.GetDomain().DefineDynamicAssembly(
-  new AssemblyName("DynamicAssembly"), // This is not a magic string, it can be called anything
+  new AssemblyName(&quot;DynamicAssembly&quot;), // This is not a magic string, it can be called anything
   AssemblyBuilderAccess.Run
 );
 var moduleBuilder = assemblyBuilder.DefineDynamicModule(
@@ -2035,7 +1780,7 @@ var moduleBuilder = assemblyBuilder.DefineDynamicModule(
 );
 
 // This NewGuid call is just to get a unique name for the new construct
-var typeName = "InterfaceApplier" + Guid.NewGuid().ToString();
+var typeName = &quot;InterfaceApplier&quot; + Guid.NewGuid().ToString();
 var typeBuilder = moduleBuilder.DefineType(
   typeName,
   TypeAttributes.Public
@@ -2048,17 +1793,12 @@ var typeBuilder = moduleBuilder.DefineType(
   new Type[] { typeof(ITest) }
 );
 </code></pre>
-
 <p>The TypeAttribute values I copied from the ildasm output I examined.</p>
-
-<p>Note that we're specifying ITest as the interface we're implementing by passing it as the "interfaces" parameter to the moduleBuilder's DefineType method.</p>
-
+<p>Note that we're specifying ITest as the interface we're implementing by passing it as the &quot;interfaces&quot; parameter to the moduleBuilder's DefineType method.</p>
 <h3>The Constructor</h3>
-
-<p>The constructor is fairly straight forward. The thing that took me longest to wrap my head around was how to form the "if (src == null) throw new ArgumentNullException()" construct. If seems that this is most easily done by declaring a label to jump to if src is <strong>not</strong> null which allows execution to leap over the point at which an ArgumentNullException will be raised.</p>
-
+<p>The constructor is fairly straight forward. The thing that took me longest to wrap my head around was how to form the &quot;if (src == null) throw new ArgumentNullException()&quot; construct. If seems that this is most easily done by declaring a label to jump to if src is <strong>not</strong> null which allows execution to leap over the point at which an ArgumentNullException will be raised.</p>
 <pre><code>// Declare private _src field
-var srcField = typeBuilder.DefineField("_src", typeof(object), FieldAttributes.Private);
+var srcField = typeBuilder.DefineField(&quot;_src&quot;, typeof(object), FieldAttributes.Private);
 var ctorBuilder = typeBuilder.DefineConstructor(
   MethodAttributes.Public,
   CallingConventions.Standard,
@@ -2070,11 +1810,11 @@ var ilCtor = ctorBuilder.GetILGenerator();
 ilCtor.Emit(OpCodes.Ldarg_0);
 ilCtor.Emit(OpCodes.Call, typeBuilder.BaseType.GetConstructor(Type.EmptyTypes));
 
-// Generate: if (src != null), don't throw new ArgumentException("src")
+// Generate: if (src != null), don't throw new ArgumentException(&quot;src&quot;)
 var nonNullSrcArgumentLabel = ilCtor.DefineLabel();
 ilCtor.Emit(OpCodes.Ldarg_1);
 ilCtor.Emit(OpCodes.Brtrue, nonNullSrcArgumentLabel);
-ilCtor.Emit(OpCodes.Ldstr, "src");
+ilCtor.Emit(OpCodes.Ldstr, &quot;src&quot;);
 ilCtor.Emit(OpCodes.Newobj, typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) }));
 ilCtor.Emit(OpCodes.Throw);
 ilCtor.MarkLabel(nonNullSrcArgumentLabel);
@@ -2087,15 +1827,12 @@ ilCtor.Emit(OpCodes.Stfld, srcField);
 // All done!
 ilCtor.Emit(OpCodes.Ret);
 </code></pre>
-
 <h3>Properties</h3>
-
 <p>Although there's only a single property in the ITest example we're looking at, we might as look ahead and loop over <em>all</em> properties the interface has so we can apply the same sort of code to other interfaces. Since we <em>are</em> dealing with interfaces, we only need to consider whether a property is gettable, settable or both - there's no public / internal / protected / private / etc.. to worry about. Likewise, we only have to worry about properties and methods - interfaces can't declare fields.</p>
-
 <pre><code>foreach (var property in typeof(ITest).GetProperties())
 {
   var methodInfoInvokeMember = typeof(Type).GetMethod(
-    "InvokeMember",
+    &quot;InvokeMember&quot;,
     new[]
     {
       typeof(string),
@@ -2118,7 +1855,7 @@ ilCtor.Emit(OpCodes.Ret);
   if (property.CanRead)
   {
     var getFuncBuilder = typeBuilder.DefineMethod(
-      "get_" + property.Name,
+      &quot;get_&quot; + property.Name,
       MethodAttributes.Public
         | MethodAttributes.HideBySig
         | MethodAttributes.NewSlot
@@ -2134,7 +1871,7 @@ ilCtor.Emit(OpCodes.Ret);
     var ilGetFunc = getFuncBuilder.GetILGenerator();
     ilGetFunc.Emit(OpCodes.Ldarg_0);
     ilGetFunc.Emit(OpCodes.Ldfld, srcField);
-    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
     ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilGetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.GetProperty);
     ilGetFunc.Emit(OpCodes.Ldnull);
@@ -2152,7 +1889,7 @@ ilCtor.Emit(OpCodes.Ret);
   if (property.CanWrite)
   {
     var setFuncBuilder = typeBuilder.DefineMethod(
-      "set_" + property.Name,
+      &quot;set_&quot; + property.Name,
       MethodAttributes.Public
         | MethodAttributes.HideBySig
         | MethodAttributes.SpecialName
@@ -2160,7 +1897,7 @@ ilCtor.Emit(OpCodes.Ret);
       null,
       new Type[] { property.PropertyType }
     );
-    var valueParameter = setFuncBuilder.DefineParameter(1, ParameterAttributes.None, "value");
+    var valueParameter = setFuncBuilder.DefineParameter(1, ParameterAttributes.None, &quot;value&quot;);
     var ilSetFunc = setFuncBuilder.GetILGenerator();
 
     // Generate:
@@ -2171,7 +1908,7 @@ ilCtor.Emit(OpCodes.Ret);
     var argValues = ilSetFunc.DeclareLocal(typeof(object[]));
     ilSetFunc.Emit(OpCodes.Ldarg_0);
     ilSetFunc.Emit(OpCodes.Ldfld, srcField);
-    ilSetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilSetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
     ilSetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilSetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.SetProperty);
     ilSetFunc.Emit(OpCodes.Ldnull);
@@ -2195,11 +1932,8 @@ ilCtor.Emit(OpCodes.Ret);
   }
 }
 </code></pre>
-
-<p>The gist is that for the getter and/or setter, we have to declare a method and then assign that method to be the GetMethod or SetMethod for the property. The method is named by prefixing the property name with either "get_" or "set_", as is consistent with how C# generates it class properties' IL.</p>
-
+<p>The gist is that for the getter and/or setter, we have to declare a method and then assign that method to be the GetMethod or SetMethod for the property. The method is named by prefixing the property name with either &quot;get_&quot; or &quot;set_&quot;, as is consistent with how C# generates it class properties' IL.</p>
 <p>The call to</p>
-
 <pre><code>_src.GetType().InvokeMember(
   property.Name,
   BindingFlags.SetProperty,
@@ -2208,17 +1942,11 @@ ilCtor.Emit(OpCodes.Ret);
   new object[] { value }
 );
 </code></pre>
-
-<p>is a bit painful as we have to declare an array with a single element to pass to the method, where that single element is the "value" reference available within the setter.</p>
-
-<p>Also worthy of note is that when returning a ValueType or setting a ValueType. As we're expecting to either return an object or set an object, the value has to be "boxed" otherwise bad things will happen!</p>
-
+<p>is a bit painful as we have to declare an array with a single element to pass to the method, where that single element is the &quot;value&quot; reference available within the setter.</p>
+<p>Also worthy of note is that when returning a ValueType or setting a ValueType. As we're expecting to either return an object or set an object, the value has to be &quot;boxed&quot; otherwise bad things will happen!</p>
 <p>Like the TypeAttributes in the Constructor, the MethodAttributes I've applied here were gleaned from looking at IL generated by Visual Studio.</p>
-
 <h3>Methods</h3>
-
 <p>We're on the home stretch now! Methods are very similar to the property setters except that we may have zero, one or multiple parameters to handle and we may or may not (if the return type is void) return a value from the method.</p>
-
 <pre><code>foreach (var method in typeof(ITest).GetMethods())
 {
   var parameters = method.GetParameters();
@@ -2226,11 +1954,11 @@ ilCtor.Emit(OpCodes.Ret);
   foreach (var parameter in parameters)
   {
     if (parameter.IsOut)
-      throw new ArgumentException("Output parameters are not supported");
+      throw new ArgumentException(&quot;Output parameters are not supported&quot;);
     if (parameter.IsOptional)
-      throw new ArgumentException("Optional parameters are not supported");
+      throw new ArgumentException(&quot;Optional parameters are not supported&quot;);
     if (parameter.ParameterType.IsByRef)
-      throw new ArgumentException("Ref parameters are not supported");
+      throw new ArgumentException(&quot;Ref parameters are not supported&quot;);
     parameterTypes.Add(parameter.ParameterType);
   }
   var funcBuilder = typeBuilder.DefineMethod(
@@ -2265,7 +1993,7 @@ ilCtor.Emit(OpCodes.Ret);
   }
 
   var methodInfoInvokeMember = typeof(Type).GetMethod(
-    "InvokeMember",
+    &quot;InvokeMember&quot;,
     new[]
     {
       typeof(string),
@@ -2280,7 +2008,7 @@ ilCtor.Emit(OpCodes.Ret);
   //   [return] _src.GetType().InvokeMember(method.Name, BindingFlags.InvokeMethod, null, _src, args);
   ilFunc.Emit(OpCodes.Ldarg_0);
   ilFunc.Emit(OpCodes.Ldfld, srcField);
-  ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+  ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
   ilFunc.Emit(OpCodes.Ldstr, method.Name);
   ilFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.InvokeMethod);
   ilFunc.Emit(OpCodes.Ldnull);
@@ -2297,29 +2025,19 @@ ilCtor.Emit(OpCodes.Ret);
   ilFunc.Emit(OpCodes.Ret);
 }
 </code></pre>
-
 <p>The boxing of ValueTypes when passed as parameters or returned from the method is required, just like the property accessors.</p>
-
 <p>The only real point of interest here is the array generation for the parameters - this also took me a little while to wrap my head around! You may note that I've been a bit lazy and not supported optional, out or ref parameters - I didn't need these for anything I was working on and didn't feel like diving into it at this point. I'm fairly sure that if they become important features then whipping out ildasm and looking at the generated code there will reveal the best way to proceed with these.</p>
-
 <h3>The payoff!</h3>
-
 <p>Now that we've defined everything about the class, we can instantiate it!</p>
-
 <pre><code>var wrapper = (ITest)Activator.CreateInstance(
   typeBuilder.CreateType(),
   src
 );
 </code></pre>
-
-<p>This gives us back an instance of a magic new class that wraps a specified "src" and passes through the ITest properties and methods! If it's applied to an object that doesn't have the required properties and methods then exceptions will be thrown when they are called - the standard exceptions that reflection calls to invalid properties/methods would result in.</p>
-
+<p>This gives us back an instance of a magic new class that wraps a specified &quot;src&quot; and passes through the ITest properties and methods! If it's applied to an object that doesn't have the required properties and methods then exceptions will be thrown when they are called - the standard exceptions that reflection calls to invalid properties/methods would result in.</p>
 <p>But I think that's pretty much enough for this installment - it's been a bit dry but I think it's been worthwhile!</p>
-
 <h3>And then..</h3>
-
 <p>There are a lot of extension points that naturally arise from this rough-from-the-edges code - the first things that spring to my mind are a way to wrap this up nicely into a generic class that could create wrappers for any given interface, a way to handle interface inheritance, a way to possibly wrap the returned values - eg. if we have</p>
-
 <pre><code>public interface ITest
 {
   IEmployee Get(int id);
@@ -2331,19 +2049,12 @@ public interface IEmployee
   string Name { get; }
 }
 </code></pre>
-
 <p>can the method that applies ITest to an object also apply IEmployee to the value returned from ITest.Get if that value itself doesn't already implement IEmployee??</p>
-
 <p>Finally, off the top of my head, if I'm using these generated classes to read interact with WSCs / COM components, am I going to need to pass references over <em>to</em> COM components? If so, I'm going to have to find a way to flag them as ComVisible.</p>
-
 <p>But these are issues to address another time :)</p>
-
-<h3>Footnote: WSC properties and "dynamic"</h3>
-
-<p>The code here doesn't use the .Net 4.0 "dynamic" keyword and so will compile under .Net 2.0. I had a bit of a poke around in the IL generated that makes use of dynamic since in some situations it should offer benefits - often performance is one such benefit! However, in the particularly niche scenario I'm working with it refuses to work :( Most of the components I'm wrapping are legacy VBScript WSCs and trying to set properties on these seems to fail when using dynamic. </p>
-
+<h3>Footnote: WSC properties and &quot;dynamic&quot;</h3>
+<p>The code here doesn't use the .Net 4.0 &quot;dynamic&quot; keyword and so will compile under .Net 2.0. I had a bit of a poke around in the IL generated that makes use of dynamic since in some situations it should offer benefits - often performance is one such benefit! However, in the particularly niche scenario I'm working with it refuses to work :( Most of the components I'm wrapping are legacy VBScript WSCs and trying to set properties on these seems to fail when using dynamic.</p>
 <p>I've pulled this example from a test (in xUnit) I wrote to illustrate that there were issues ..</p>
-
 <pre><code>[Fact]
 public void SettingCachePropertyThrowsRuntimeBinderException()
 {
@@ -2352,13 +2063,13 @@ public void SettingCachePropertyThrowsRuntimeBinderException()
   var src = Microsoft.VisualBasic.Interaction.GetObject(
     Path.Combine(
       new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
-      "TestSrc.wsc"
+      &quot;TestSrc.wsc&quot;
     )
   );
   var srcWithInterface = new ControlInterfaceApplierUsingDynamic(src);
 
-  // Expect a RuntimeBinderException with message "'System.__ComObject' does not contain a definition
-  // for 'Cache'"
+  // Expect a RuntimeBinderException with message &quot;'System.__ComObject' does not contain a definition
+  // for 'Cache'&quot;
   Assert.Throws&lt;RuntimeBinderException&gt;(() =&gt;
   {
     srcWithInterface.Cache = new NullCache();
@@ -2371,7 +2082,7 @@ public class ControlInterfaceApplierUsingDynamic : IControl
   public ControlInterfaceApplierUsingDynamic(object src)
   {
     if (src == null)
-      throw new ArgumentNullException("src");
+      throw new ArgumentNullException(&quot;src&quot;);
 
     _src = src;
   }
@@ -2394,18 +2105,16 @@ private class NullCache : ICache
   public void Remove(string key) { }
 }
 </code></pre>
-
 <p>The WSC content is as follows:</p>
-
-<pre><code>&lt;?xml version="1.0" ?&gt;
-&lt;?component error="false" debug="false" ?&gt;
+<pre><code>&lt;?xml version=&quot;1.0&quot; ?&gt;
+&lt;?component error=&quot;false&quot; debug=&quot;false&quot; ?&gt;
 &lt;package&gt;
-  &lt;component id="TestSrc"&gt;
-    &lt;registration progid="TestSrc" description="Test Control" version="1" /&gt;
+  &lt;component id=&quot;TestSrc&quot;&gt;
+    &lt;registration progid=&quot;TestSrc&quot; description=&quot;Test Control&quot; version=&quot;1&quot; /&gt;
     &lt;public&gt;
-      &lt;property name="Config" /&gt;
+      &lt;property name=&quot;Config&quot; /&gt;
     &lt;/public&gt;
-    &lt;script language="VBScript"&gt;
+    &lt;script language=&quot;VBScript&quot;&gt;
     &lt;![CDATA[
       Public Cache
     ]]&gt;
@@ -2413,43 +2122,35 @@ private class NullCache : ICache
   &lt;/component&gt;
 &lt;/package&gt;
 </code></pre>
-
-<p>I've not been able to get to the bottom of <em>why</em> this fails and it's not exactly a common problem - most people left WSCs back in the depths of time.. along with VBScript! But for the meantime we're stuck with them since the thought of trying to migrate the <em>entire</em> codebase fills me with dread, at least splitting it this way means we can move over piecemeal and re-write isolated components of the code at a time. And then one day the old cruft will have gone! And people will consider the earlier migration code the new "old cruft" and the great cycle can continue!</p>
-
+<p>I've not been able to get to the bottom of <em>why</em> this fails and it's not exactly a common problem - most people left WSCs back in the depths of time.. along with VBScript! But for the meantime we're stuck with them since the thought of trying to migrate the <em>entire</em> codebase fills me with dread, at least splitting it this way means we can move over piecemeal and re-write isolated components of the code at a time. And then one day the old cruft will have gone! And people will consider the earlier migration code the new &quot;old cruft&quot; and the great cycle can continue!</p>
 <p><strong>Update (2nd May 2014):</strong> It turns out that if</p>
-
 <pre><code>var src = Microsoft.VisualBasic.Interaction.GetObject(
   Path.Combine(
     new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
-    "TestSrc.wsc"
+    &quot;TestSrc.wsc&quot;
   )
 );
 </code></pre>
-
 <p>is altered to read</p>
-
 <pre><code>var src = Microsoft.VisualBasic.Interaction.GetObject(
-  "script:"
+  &quot;script:&quot;
   Path.Combine(
     new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
-    "TestSrc.wsc"
+    &quot;TestSrc.wsc&quot;
   )
 );
 </code></pre>
-
-<p>then this test will pass! I'll leave the content here for posterity but it struck me while flipping through this old post that I had seen and addressed this problem since writing this.</p><p class="PostTime">Posted at 22:01</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/dynamically-applying-interfaces-to-objects#disqus_thread" data-disqus-identifier="15">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">27 August 2011</h3><h2><a id="Post9"></a><a href="/impersonating-the-asp-request-object">Impersonating the ASP Request Object</a></h2>
-
-<p>I've got something coming up at work soon where we're hoping to migrate some internal web software from VBScript ASP to .Net, largely for performance reasons. The basic structure is that there's an ASP "Engine" running which instantiates and renders Controls that are VBScript WSC components. The initial task is going to be to try to replace the main Engine code and work with the existing Controls - this architecture give us the flexibility to migrate in this manner, rather than having to try to attack the entire codebase all at once. References are passed into the WSC Controls for various elements of the Engine but also for ASP objects such as Request and Response.</p>
-
+<p>then this test will pass! I'll leave the content here for posterity but it struck me while flipping through this old post that I had seen and addressed this problem since writing this.</p>
+<p class="PostTime">Posted at 22:01</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/dynamically-applying-interfaces-to-objects#disqus_thread" data-disqus-identifier="15">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">27 August 2011</h3><h2><a id="impersonating-the-asp-request-object" href="/impersonating-the-asp-request-object">Impersonating the ASP Request Object</a></h2>
+<p>I've got something coming up at work soon where we're hoping to migrate some internal web software from VBScript ASP to .Net, largely for performance reasons. The basic structure is that there's an ASP &quot;Engine&quot; running which instantiates and renders Controls that are VBScript WSC components. The initial task is going to be to try to replace the main Engine code and work with the existing Controls - this architecture give us the flexibility to migrate in this manner, rather than having to try to attack the entire codebase all at once. References are passed into the WSC Controls for various elements of the Engine but also for ASP objects such as Request and Response.</p>
 <p>The problem comes with the use of the Request object. I want to be able to swap it out for a .Net COM component since access to the ASP Request object won't be available when the Engine is running in .Net. But the Request collections (Form, QueryString and ServerVariables) have a variety of access methods that are not particular easy to replicate -</p>
-
-<pre><code>' Returns the full QueryString content (url-encoded), 
+<pre><code>' Returns the full QueryString content (url-encoded),
 Request.QueryString
 
 Request.QueryString.Count
@@ -2460,38 +2161,25 @@ For .. in Request.QueryString
 For .. in Request.QueryString.Keys
 
 ' Returns a string containing values for the specified key (comma-separated)
-Request.QueryString(key) 
-Request.QueryString.Item(key) 
+Request.QueryString(key)
+Request.QueryString.Item(key)
 
 ' Loops over the values for the specified key
 For Each .. In Request.QueryString(key)
 For Each .. In Request.QueryString.Item(key)
 </code></pre>
-
 <h3>Approaches</h3>
-
 <p>In the past I've made a few attempts at attacking this before -</p>
-
 <p>First trying a VBScript wrapper to take advantage of VBScript's Default properties and methods. But it doesn't seem possible to create a collection in VBScript that the For.. Each construct can work over.</p>
-
 <p>Another time I tried a Javascript wrapper - a returned array can be enumerate with For.. Each and I thought I might be able to add methods of properties to the returned array for the default properties, but these were returned in the keys when enumerated.</p>
-
 <p>I've previously tried to write a COM component but was unable to construct classes that would be accessible by all the above examples. This exact problem is described in a thread on StackOverflow and I thought that one of the answers would solve my problem by returning different data depending upon whether a key was supplied: <a href="http://stackoverflow.com/questions/317759/why-is-the-indexer-on-my-net-component-not-always-accessible-from-vbscript/1539519#1539519">here</a>.</p>
-
 <p>Hooray!</p>
-
 <p>Actually, no. I tried using that code and couldn't get it to work as advertised - getting a COM exception when trying to access QueryString without a key.</p>
-
 <p><em>However</em>, further down in that thread (<a href="http://stackoverflow.com/questions/317759/why-is-the-indexer-on-my-net-component-not-always-accessible-from-vbscript/4124031#4124031">here</a>) there's another suggestion - to implement IReflect. Not an interface I was familiar with..</p>
-
 <h3>IReflect</h3>
-
 <p>It turns out writing a class that implements IReflect and specifies ClassInterface(ClassInterfaceType.AutoDispatch) will enable us to handle all querying and invoking of the class interface from COM! The AutoDispatch value, as I understand it (and I'm far from an authority on this!), prevents the class from being used in any manner other than late binding as it doesn't publish any interface data in a type library - callers must always query the object for method, property, etc.. accessibility. And this will enable us to intercept this queries and invoke requests and handle as we see fit.</p>
-
 <p>It turns out that we don't even really have to do anything particularly fancy with the requests, and can pass them straight through to a .Net object that has method signatures with different number of parameters (which ordinarily we can't do through a COM interface).</p>
-
 <p>A cut down version of the code I've ended up with will demonstate:</p>
-
 <pre><code>// This doesn't need to be ComVisible since we're never returning an instance of it through COM, only
 // one wrapped in a LateBindingComWrapper
 public class RequestImpersonator
@@ -2517,7 +2205,7 @@ public class LateBindingComWrapper : IReflect
     public LateBindingComWrapper(object target)
     {
       if (target == null)
-        throw new ArgumentNullException("target");
+        throw new ArgumentNullException(&quot;target&quot;);
       _target = target;
     }
 
@@ -2572,15 +2260,10 @@ public class LateBindingComWrapper : IReflect
 
 }
 </code></pre>
-
 <p>If we pass a RequestImpersonator-wrapping LateBindingComWrapper reference that wraps one of the WSC Controls as its Request reference then we've got over the problem with the optional key parameter and we're well on our way to a solution!</p>
-
-<p>RequestDictionary is enumerable for VBScript and exposes a Keys property which is a self-reference so that "For Each .. In Request.QueryString" and "For Each .. In Request.QueryString.Keys" constructs are possible. It also has a default GetSummary method which returns the entire querystring content (url-encoded). The enumerated values are RequestStringList instances which are in turn enumerable so that "For Each .. In Request.QueryString(key)" is possible but <em>also</em> have a default property which combines the values into a single (comma-separated) string.</p>
-
+<p>RequestDictionary is enumerable for VBScript and exposes a Keys property which is a self-reference so that &quot;For Each .. In Request.QueryString&quot; and &quot;For Each .. In Request.QueryString.Keys&quot; constructs are possible. It also has a default GetSummary method which returns the entire querystring content (url-encoded). The enumerated values are RequestStringList instances which are in turn enumerable so that &quot;For Each .. In Request.QueryString(key)&quot; is possible but <em>also</em> have a default property which combines the values into a single (comma-separated) string.</p>
 <h3>VBScript Enumeration</h3>
-
-<p>I spent a lot of time trying to ascertain what exactly was required for a class to be enumerable by VBScript - implementing Generic.IEnumerable and/or IEnumerable didn't work, returning an ArrayList <em>did</em> work, implementing ICollection <em>did</em> work. Now I thought I was on to something! After looking into which methods and properties were actually being used by the COM interaction, it seemed that only "IEnumerator GetEnumerator()" and "int Count" were called. So I started off with:</p>
-
+<p>I spent a lot of time trying to ascertain what exactly was required for a class to be enumerable by VBScript - implementing Generic.IEnumerable and/or IEnumerable didn't work, returning an ArrayList <em>did</em> work, implementing ICollection <em>did</em> work. Now I thought I was on to something! After looking into which methods and properties were actually being used by the COM interaction, it seemed that only &quot;IEnumerator GetEnumerator()&quot; and &quot;int Count&quot; were called. So I started off with:</p>
 <pre><code>[ComVisible(true)]
 public class RequestStringList
 {
@@ -2599,45 +2282,35 @@ public class RequestStringList
     }
 }
 </code></pre>
-
 <p>which worked great.</p>
-
 <p>This concept of Dispatch Ids (DispId) was ringing a vague bell from some VB6 component work I'd done the best part of a decade ago but not really encountered much since. These Dispatch Ids identify particular functions in a COM interface with zero and below having secret special Microsoft meanings. Zero would be default and -4 was to do with enumeration, so I guess this explains why there is a [DispId(-4)] attribute on GetEnumerator in IEnumerable.</p>
-
 <p><em>However</em>, .. RequestStringList also works if we DON'T include the [DispId(-4)] and try to enumerate over it. To be completely honest, I'm not sure what's going on with that. I'm not sure if the VBScript approach to the enumeration is performing some special check to request the GetEnumerator method by name rather than specific Dispatch Id.</p>
-
-<p>On a side note, I optimistically wondered if I could create an enumerable class in VBScript by exposing a GetEnumerator method and Count property (implementing an Enumerator class matching .Net's IEnumerator interface).. but VBScript was having none of it, giving me the "object not a collection" error. Oh well; no harm, no foul.</p>
-
+<p>On a side note, I optimistically wondered if I could create an enumerable class in VBScript by exposing a GetEnumerator method and Count property (implementing an Enumerator class matching .Net's IEnumerator interface).. but VBScript was having none of it, giving me the &quot;object not a collection&quot; error. Oh well; no harm, no foul.</p>
 <h3>More Dispatch Id Confusion</h3>
-
-<p>As mentioned above, RequestDictionary and RequestStringList have default values on them. The would ordinarily be done with a method or property with Dispatch Id of zero. But again, VBScript seems to have its own special cases - if a method or property is named "Value" then this will be used as the default even if it doesn't have DispId(0) specified.</p>
-
+<p>As mentioned above, RequestDictionary and RequestStringList have default values on them. The would ordinarily be done with a method or property with Dispatch Id of zero. But again, VBScript seems to have its own special cases - if a method or property is named &quot;Value&quot; then this will be used as the default even if it doesn't have DispId(0) specified.</p>
 <h3>Limitations</h3>
-
-<p>I wrote this to try to solve a very specific problem, to create a COM component that could be passed to a VBScript WSC Control that would appear to mimic the ASP Request object's interface. And while I'm happy with the solution, it's not perfect - the RequestDictionary and RequestStringList classes are not enumerable from Javascript in a "for (var .. in ..)" construct. I've not looked into why this this or how easy (or not!) it would be to solve since it's not imporant for my purposes.</p>
-
+<p>I wrote this to try to solve a very specific problem, to create a COM component that could be passed to a VBScript WSC Control that would appear to mimic the ASP Request object's interface. And while I'm happy with the solution, it's not perfect - the RequestDictionary and RequestStringList classes are not enumerable from Javascript in a &quot;for (var .. in ..)&quot; construct. I've not looked into why this this or how easy (or not!) it would be to solve since it's not imporant for my purposes.</p>
 <p>One thing I did do after the bulk of the work was done, though, was to add some managed interfaces to RequestDictionary, RequestStringList and RequestImpersonatorCom which enabled managed code to access the data in a sensible manner. Adding classes to RequestImpersonatorCom has no effect on the COM side since all of the invoke calls are performed against the RequestImpersonator that's wrapped up in the LateBindingComWrapper.</p>
-
 <h3>Success!</h3>
+<p>After the various attempts I've made at looking into this over the years, I'm delighted that I've got a workable solution that integrates nicely with both VBScript <em>and</em> the managed side (though the latter was definitely a bonus more than an original requirement). The curent code can be found on GitHub at: <a href="https://github.com/ProductiveRage/ASPRequestImpersonator">https://github.com/ProductiveRage/ASPRequestImpersonator</a>.</p>
+<p class="PostTime">Posted at 10:20</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/impersonating-the-asp-request-object#disqus_thread" data-disqus-identifier="9">Comments</a>
+            </p>
+    </div>
 
-<p>After the various attempts I've made at looking into this over the years, I'm delighted that I've got a workable solution that integrates nicely with both VBScript <em>and</em> the managed side (though the latter was definitely a bonus more than an original requirement). The curent code can be found on GitHub at: <a href="https://github.com/ProductiveRage/ASPRequestImpersonator">https://github.com/ProductiveRage/ASPRequestImpersonator</a>.</p><p class="PostTime">Posted at 10:20</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/impersonating-the-asp-request-object#disqus_thread" data-disqus-identifier="9">Comments</a>
-			</p>
-	</div>
-
-	<script type="text/javascript">
-					(function () {
-						var s = document.createElement("script");
-						s.type = "text/javascript";
-						s.async = true;
-						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
-						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
-					} ());
-	</script>
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -2647,17 +2320,16 @@ public class RequestStringList
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

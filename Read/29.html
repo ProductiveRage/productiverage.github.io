@@ -1,9 +1,8 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<meta charset="utf-8" />
-	<title>Productive Rage - Compiled LINQ Expressions don&#39;t serialise :(</title>
+	<title>Productive Rage - Compiled LINQ Expressions don&#x27;t serialise :(</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<meta name="theme-color" content="#393939" />
 	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
@@ -28,9 +27,9 @@
 	</script>
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:site" content="productiverage" />
-    <meta name="twitter:title" content="Compiled LINQ Expressions don&#39;t serialise :(" />
+    <meta name="twitter:title" content="Compiled LINQ Expressions don&#x27;t serialise :(" />
     <meta name="twitter:image" content="http://www.productiverage.com/Content/Images/Grouch.jpg" />
-    <meta name="twitter:description" content="In the last post (Optimising the Plurality-Handling Normaliser) I got all excited about improving the performance of what is essentially a string comparer for use in a Full Text Indexer I&#39;m playing.." />
+    <meta name="twitter:description" content="In the last post (Optimising the Plurality-Handling Normaliser) I got all excited about improving the performance of what is essentially a string comparer for use in a Full Text Indexer I&#x27;m playing.." />
 </head>
 
 <body>
@@ -46,147 +45,129 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content SinglePost">
-		<h3 class="PostDate">24 June 2012</h3><h2><a id="Post29"></a><a href="/compiled-linq-expressions-dont-serialise">Compiled LINQ Expressions don't serialise :(</a></h2>
-
+    <div class="Content SinglePost">
+        <h3 class="PostDate">24 June 2012</h3><h2><a id="compiled-linq-expressions-dont-serialise" href="/compiled-linq-expressions-dont-serialise">Compiled LINQ Expressions don't serialise :(</a></h2>
 <p>In the last post (<a href="/optimising-the-pluralityhandling-normaliser">Optimising the Plurality-Handling Normaliser</a>) I got all excited about improving the performance of what is essentially a string comparer for use in a Full Text Indexer I'm playing around with (which is now handling the search facilities on this blog so it must be half way to working at least! :) but the use of compiled LINQ expressions brought about their own problems when I tried to write away a fully-generated index to a disk cache. The generated lambda expression is not serialisable!</p>
-
 <p>There was something in me that thought that since it had been formed through simple LINQ Expressions tied together that it would be easy to serialise and so not be a problem. But I suppose that once it becomes a generic lambda function then all bets are off since they can have references to all sort and so mightn't be easily serialisable anymore.</p>
-
-<p>As usual there's a Stack Overflow post showing I'm hardly the first person to have encountered this issue, and this particular one even has the authority Eric Lippert getting involved! :) Interesting to see him make the point that this was was work that was required with all of the "LINQ-to-whatever" integrations..</p>
-
+<p>As usual there's a Stack Overflow post showing I'm hardly the first person to have encountered this issue, and this particular one even has the authority Eric Lippert getting involved! :) Interesting to see him make the point that this was was work that was required with all of the &quot;LINQ-to-whatever&quot; integrations..</p>
 <p><a href="http://stackoverflow.com/questions/6443433/how-can-i-pass-a-lambda-expression-to-a-wcf-service">Stack Overflow: How can I pass a lambda expression to a WCF Service?</a></p>
-
 <h3>A solution.. for now</h3>
-
 <p>I essentially just want to write to disk a custom string-keyed dictionary object with a particular key comparer to act as another level of caching when it drops out of memory so I didn't have any issues so complicated as passing expressions to a query service so I went for a relatively simple approach; I record all of the data as class members that are required to generate the LINQ Expressions so that I can implement ISerializable and write away just this data when an instance is serialised. Then when it's de-serialised I use this data to regenerate the lambdas.</p>
-
 <pre><code>// This de-serialising constructor takes the values that are stored in the GetObjectData
 // method and passes them through to the standard public constructor
 protected EnglishPluralityStringNormaliser(SerializationInfo info, StreamingContext context)
     : this(
         (IEnumerable&lt;PluralEntry&gt;)info.GetValue(
-            "_plurals",
+            &quot;_plurals&quot;,
             typeof(IEnumerable&lt;PluralEntry&gt;)
         ),
         (IEnumerable&lt;string&gt;)info.GetValue(
-            "_fallbackSuffixes",
+            &quot;_fallbackSuffixes&quot;,
             typeof(IEnumerable&lt;string&gt;)
         ),
         (IStringNormaliser)info.GetValue(
-            "_optionalPreNormaliser",
+            &quot;_optionalPreNormaliser&quot;,
             typeof(IStringNormaliser)
         ),
         (PreNormaliserWorkOptions)info.GetValue(
-            "_preNormaliserWork",
+            &quot;_preNormaliserWork&quot;,
             typeof(PreNormaliserWorkOptions)
         )
     ) { }
 
 public void GetObjectData(SerializationInfo info, StreamingContext context)
 {
-    // Unfortunately we can't serialise the generated normaliser (we'll get a "Cannot
+    // Unfortunately we can't serialise the generated normaliser (we'll get a &quot;Cannot
     // serialize delegates over unmanaged function pointers, dynamic methods or methods
-    // outside the delegate creator's assembly" error) so if we have to serialise this
+    // outside the delegate creator's assembly&quot; error) so if we have to serialise this
     // instance we'll store all of the dat and then re-generate the normaliser on
     // de-serialisation. Not ideal from a performance point of view but at least
     // it will work.
-    info.AddValue("_plurals", _plurals);
-    info.AddValue("_fallbackSuffixes", _fallbackSuffixes);
-    info.AddValue("_optionalPreNormaliser", _optionalPreNormaliser);
-    info.AddValue("_preNormaliserWork", _preNormaliserWork);
+    info.AddValue(&quot;_plurals&quot;, _plurals);
+    info.AddValue(&quot;_fallbackSuffixes&quot;, _fallbackSuffixes);
+    info.AddValue(&quot;_optionalPreNormaliser&quot;, _optionalPreNormaliser);
+    info.AddValue(&quot;_preNormaliserWork&quot;, _preNormaliserWork);
 }
 </code></pre>
-
 <h3>However..</h3>
-
-<p>Then I tried integrating the project as a search facility into my blog which is running ASP.Net MVC 3 (.Net 4.0) and ran into another snag; "Inheritance security rules violated while overriding member: MyBusinessException.GetObjectData(System.Runtime.Serialization.SerializationInfo, System.Runtime.Serialization.StreamingContext)'. Security accessibility of the overriding method must match the security accessibility of the method being overriden."</p>
-
+<p>Then I tried integrating the project as a search facility into my blog which is running ASP.Net MVC 3 (.Net 4.0) and ran into another snag; &quot;Inheritance security rules violated while overriding member: MyBusinessException.GetObjectData(System.Runtime.Serialization.SerializationInfo, System.Runtime.Serialization.StreamingContext)'. Security accessibility of the overriding method must match the security accessibility of the method being overriden.&quot;</p>
 <p>Hmmm...</p>
-
-<p>Stack Overflow to the rescue again! <a href="http://stackoverflow.com/questions/3055792/inheritance-security-rules-violated-while-overriding-member-securityruleset-le">Inheritance security rules violated with overriding member</a>. Reading the post led me to click "Use Definition" on ISerializable and observice that the "SecurityCritical" attribute was marked on the GetObjectData method - and from what I understand from what I read, I should be able to fix this by marking that attribute on my GetObjectData method. Sortio!</p>
-
-<p>Not sortio.. :( And now I must admit to being a bit lazy in my eagerness to get the search functionality integrated on the site. One of the Stack Overflow answers was to specify "Full Trust" for the web application but I got the impression that this was cheating a bit and bypassing some of the new .Net 4.0 security mechanisms. However, for now I've gone with it by adding this to the web.config (as per one of the posted answers):</p>
-
+<p>Stack Overflow to the rescue again! <a href="http://stackoverflow.com/questions/3055792/inheritance-security-rules-violated-while-overriding-member-securityruleset-le">Inheritance security rules violated with overriding member</a>. Reading the post led me to click &quot;Use Definition&quot; on ISerializable and observice that the &quot;SecurityCritical&quot; attribute was marked on the GetObjectData method - and from what I understand from what I read, I should be able to fix this by marking that attribute on my GetObjectData method. Sortio!</p>
+<p>Not sortio.. :( And now I must admit to being a bit lazy in my eagerness to get the search functionality integrated on the site. One of the Stack Overflow answers was to specify &quot;Full Trust&quot; for the web application but I got the impression that this was cheating a bit and bypassing some of the new .Net 4.0 security mechanisms. However, for now I've gone with it by adding this to the web.config (as per one of the posted answers):</p>
 <pre><code>&lt;system.web&gt;
-    &lt;trust level="Full" /&gt;
+    &lt;trust level=&quot;Full&quot; /&gt;
 &lt;system.web&gt;
 </code></pre>
-
 <p>and now it <em>is</em> working! Still, something to look into further another day I think.</p>
-
 <h3>For the curious</h3>
-
 <p>The project I've been talking about is publicly accessible at BitBucket but I'm yet to sort out a decent Readme for it and I'm hoping to write some posts about its development, its use so far and a range of examples - watch this space! <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer BitBucket repo</a></p>
+<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="/the-full-text-indexer-post-roundup">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
+<p class="PostTime">Posted at 16:01</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/a-pluralityhandling-normaliser-correction">A Plurality-Handling Normaliser Correction</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-full-text-indexer">The Full Text Indexer</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/LINQ" title="12 Posts">LINQ</a></li></ul></div>
+                <div id="disqus_thread"></div>
+                <script type="text/javascript">
+					var disqus_identifier = "29";
+					var disqus_title = "Compiled LINQ Expressions don\u0027t serialise :(";
+					(function () {
+						whenjQueryIsAvailable(
+							function () {
+								$(function () {
+									loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+									$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+								});
+							}
+						);
 
-<p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="/the-full-text-indexer-post-roundup">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p><p class="PostTime">Posted at 16:01</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/a-pluralityhandling-normaliser-correction">A Plurality-Handling Normaliser Correction</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-full-text-indexer">The Full Text Indexer</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/LINQ" title="12 Posts">LINQ</a></li></ul></div>
-			<div id="disqus_thread"></div>
-						<script type="text/javascript">
-							var disqus_identifier = "29";
-							var disqus_title = "Compiled LINQ Expressions don\u0027t serialise :(";
-							(function () {
-							    whenjQueryIsAvailable(
-									function () {
-									    $(function () {
-											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
-											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
-										});
-									}
-								);
+						var bStartedLoadingComments = false;
+						function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+							if (bStartedLoadingComments) {
+								return;
+							}
+							var $post = $("div.Content.SinglePost");
+							var bottomOfPost = $post.position().top + $post.height();
+							var $window = $(window);
+							if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+								bStartedLoadingComments = true;
+								loadComments();
+							}
+						}
 
-								var bStartedLoadingComments = false;
-								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
-								    if (bStartedLoadingComments) {
-								        return;
-								    }
-								    var $post = $("div.Content.SinglePost");
-								    var bottomOfPost = $post.position().top + $post.height();
-								    var $window = $(window);
-								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
-										bStartedLoadingComments = true;
-										loadComments();
-									}
-								}
-
-								function loadComments() {
-								    var dsq = document.createElement("script");
-									dsq.type = "text/javascript";
-									dsq.async = true;
-									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-								}
-							}());
-						</script>
-	</div>
+						function loadComments() {
+							var dsq = document.createElement("script");
+							dsq.type = "text/javascript";
+							dsq.async = true;
+							dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+							(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+						}
+					}());
+                </script>
+    </div>
 
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -196,17 +177,16 @@ public void GetObjectData(SerializationInfo info, StreamingContext context)
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

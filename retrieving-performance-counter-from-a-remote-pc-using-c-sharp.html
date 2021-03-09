@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -46,50 +45,42 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content SinglePost">
-		<h3 class="PostDate">10 August 2016</h3><h2><a id="Post104"></a><a href="/retrieving-performance-counter-from-a-remote-pc-using-c-sharp">Retrieving Performance Counter from a remote PC using C#</a></h2>
-
+    <div class="Content SinglePost">
+        <h3 class="PostDate">10 August 2016</h3><h2><a id="retrieving-performance-counter-from-a-remote-pc-using-c-sharp" href="/retrieving-performance-counter-from-a-remote-pc-using-c-sharp">Retrieving Performance Counter from a remote PC using C#</a></h2>
 <p><a href="/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days">PerfMon</a> can be an invaluable tool for monitoring performance counters on the local or remote computer. It allows you to graph the information live and it allows you to write the data away to disk for future analysis.</p>
-
 <p>However, for some performance investigation that I was doing, I wanted something slightly different to what PerfMon offers. I was testing a service under load, a service that was being hosted on a dedicated box for the performance investigation - and I was testing it by generating the load from another dedicated server. Since nothing else would be hitting the service host box, what I wanted to do for each test run was to restart the service on the host, hit it with the sample load and record the processor time, % time in GC, number of garbage collections at each generation and some other metrics until the work was fully processed - at that point, there would be no more information to gather for that particular run. The experiment could be repeated a few times and the results filed away, brought back out to compare to the same load being run after some performance tweaks had been made to the code.</p>
-
 <p>It wouldn't be the end of the world if I had to do this manually - configure PerfMon to write the counter data to disk somewhere, restart the service before each run and then extract the data from the PerfMon logs that relate to the time period that just passed.. but it's tedious work that I don't want to bother with; I want to deploy a change then run-test-and-gather-data with a single button press. Better than that, I want to be able to perform multiple runs without any manual intervention - I want to deploy the new code then have the test harness restart the service, replay the test load, record the counter data in a file and then repeat as many times as desired.</p>
-
 <h3>Restarting the service</h3>
-
 <p>This part is easy, we can use a method such as this -</p>
-
 <pre><code>private static void Restart(string server, string serviceName)
 {
   if (string.IsNullOrWhiteSpace(server))
-    throw new ArgumentException($"Null/blank {nameof(server)} specified");
+    throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
   if (string.IsNullOrWhiteSpace(serviceName))
-    throw new ArgumentException($"Null/blank {nameof(serviceName)} specified");
+    throw new ArgumentException($&quot;Null/blank {nameof(serviceName)} specified&quot;);
 
   // Add a reference to System.ServiceProcess to make ServiceController available
   using (var serviceController = new ServiceController(serviceName, server))
@@ -101,51 +92,40 @@
   }
 }
 </code></pre>
-
 <h3>Querying a performance counter remotely</h3>
-
 <p>This bit is a little trickier.. I started with code from an article <a href="http://haishibai.blogspot.co.uk/2010/02/tiy-collect-remote-performance-counters.html">TIY – Collect remote performance counters using C#</a> which sounded <em>exactly</em> like what I wanted. Unfortunately, I was getting an error with the lines</p>
-
 <pre><code>IntPtr userHandle = new IntPtr(0);
 LogonUser(
-  "UserA",
-  "DomainA",
-  "PasswordA",
+  &quot;UserA&quot;,
+  &quot;DomainA&quot;,
+  &quot;PasswordA&quot;,
   LOGON32_LOGON_INTERACTIVE,
   LOGON32_PROVIDER_DEFAULT,
   ref userHandle
 );
 WindowsIdentity identity = new WindowsIdentity(userHandle);
 </code></pre>
-
 <blockquote>
-  <p>Token can not be zero</p>
+<p>Token can not be zero</p>
 </blockquote>
-
-<p>This essentially meant that LogonUser had failed and so the "userHandle" reference had not been set (and left as a zero pointer). The code should really have checked the LogonUser return value -</p>
-
+<p>This essentially meant that LogonUser had failed and so the &quot;userHandle&quot; reference had not been set (and left as a zero pointer). The code should really have checked the LogonUser return value -</p>
 <pre><code>var logonSuccess = LogonUser(
-  "UserA",
-  "DomainA",
-  "PasswordA",
+  &quot;UserA&quot;,
+  &quot;DomainA&quot;,
+  &quot;PasswordA&quot;,
   LOGON32_LOGON_INTERACTIVE,
   LOGON32_PROVIDER_DEFAULT,
   ref userHandle
 );
 if (!logonSuccess)
-  throw new Exception("LogonUser failed");
+  throw new Exception(&quot;LogonUser failed&quot;);
 </code></pre>
-
 <p>.. but that wouldn't actually fix the failure.</p>
-
 <p>The underlying problem was explained by another article <a href="https://platinumdogs.me/2008/10/30/net-c-impersonation-with-network-credentials/">.NET (C#) Impersonation with Network Credentials</a> that explains that</p>
-
 <blockquote>
-  <p>If you require the impersonated logon to have network credentials, you must select LOGON32_LOGON_NEW_CREDENTIALS as your logon type, which requires that you select LOGON32_PROVIDER_WINNT50 as the logon provider type</p>
+<p>If you require the impersonated logon to have network credentials, you must select LOGON32_LOGON_NEW_CREDENTIALS as your logon type, which requires that you select LOGON32_PROVIDER_WINNT50 as the logon provider type</p>
 </blockquote>
-
 <p>Once I got the proof-of-concept working from these two articles, I fleshed things out into the following:</p>
-
 <pre><code>using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -160,7 +140,7 @@ namespace PerformanceCounterCapture
     private const int LOGON32_LOGON_NEW_CREDENTIALS = 9;
     private const int LOGON32_PROVIDER_WINNT50 = 3;
 
-    [DllImport("advapi32.dll", CharSet = CharSet.Auto)]
+    [DllImport(&quot;advapi32.dll&quot;, CharSet = CharSet.Auto)]
     private static extern bool LogonUser(
       string lpszUserName,
       string lpszDomain,
@@ -176,11 +156,11 @@ namespace PerformanceCounterCapture
     public PerformanceCounterRetriever(string server, string domain, string user, string password)
     {
       if (string.IsNullOrWhiteSpace(server))
-        throw new ArgumentException($"Null/blank {nameof(server)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
       if (string.IsNullOrWhiteSpace(domain))
-        throw new ArgumentException($"Null/blank {nameof(domain)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(domain)} specified&quot;);
       if (string.IsNullOrWhiteSpace(user))
-        throw new ArgumentException($"Null/blank {nameof(user)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(user)} specified&quot;);
       if (password == null)
         throw new ArgumentNullException(nameof(password));
 
@@ -196,7 +176,7 @@ namespace PerformanceCounterCapture
           ref userHandle
         );
         if (!logonSuccess)
-          throw new Exception("LogonUser failed");
+          throw new Exception(&quot;LogonUser failed&quot;);
         _identity = new WindowsIdentity(userHandle);
         _context = _identity.Impersonate();
         _server = server;
@@ -218,9 +198,9 @@ namespace PerformanceCounterCapture
       string optionalInstanceName = null)
     {
       if (string.IsNullOrWhiteSpace(categoryName))
-        throw new ArgumentException($"Null/blank {nameof(categoryName)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(categoryName)} specified&quot;);
       if (string.IsNullOrWhiteSpace(counterName))
-        throw new ArgumentException($"Null/blank {nameof(counterName)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(counterName)} specified&quot;);
 
       var counters = new List&lt;PerformanceCounter&gt;();
       var category = new PerformanceCounterCategory(categoryName, _server);
@@ -268,72 +248,57 @@ namespace PerformanceCounterCapture
   }
 }
 </code></pre>
-
 <p>This class may be used in the following way:</p>
-
-<pre><code>using (var counterRetriever = new PerformanceCounterRetriever("TestBox", "Home", "Dan", "password"))
+<pre><code>using (var counterRetriever = new PerformanceCounterRetriever(&quot;TestBox&quot;, &quot;Home&quot;, &quot;Dan&quot;, &quot;password&quot;))
 {
-  foreach (var value in counterRetriever.Get("Process", "% Processor Time", "TestService"))
+  foreach (var value in counterRetriever.Get(&quot;Process&quot;, &quot;% Processor Time&quot;, &quot;TestService&quot;))
   {
     Console.WriteLine(
-      "[{0}] TestService: % Processor Time = {1}",
-      DateTime.Now.ToString("HH:mm:ss.fff"),
+      &quot;[{0}] TestService: % Processor Time = {1}&quot;,
+      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
       value
     );
     Thread.Sleep(1000);
   }
 }
 </code></pre>
-
-<p>The "counterRetriever.Get" call returns an <strong>IEnumerable&lt;float&gt;</strong> which retrieves a new value every time that a new value is requested from the enumerable reference. The code above (very roughly) imitates PerfMon in that it reads a new "% Processor Time" value every second.</p>
-
+<p>The &quot;counterRetriever.Get&quot; call returns an <strong>IEnumerable&lt;float&gt;</strong> which retrieves a new value every time that a new value is requested from the enumerable reference. The code above (very roughly) imitates PerfMon in that it reads a new &quot;% Processor Time&quot; value every second.</p>
 <p><em>(Note: The code above never terminates since nothing breaks it out of the loop, which is not useful in many scenarios.. but I'll talk about dealing with that shortly)</em></p>
-
 <p>This is a good first step. However, when I'm analysing the results of my test runs, I want to know more than just how much processor time is being used by the service.</p>
-
 <h3>Querying multiple performance counters remotely</h3>
-
-<p>If I want to collect the data from multiple performance counters then I need to get multiple <strong>IEnumerable&lt;float&gt;</strong> instances from multiple "counterRetriever.Get" calls and then retrieve a value from each before pausing and repeating.</p>
-
-<pre><code>using (var counterRetriever = new PerformanceCounterRetriever("TestBox", "Home", "Dan", "password"))
+<p>If I want to collect the data from multiple performance counters then I need to get multiple <strong>IEnumerable&lt;float&gt;</strong> instances from multiple &quot;counterRetriever.Get&quot; calls and then retrieve a value from each before pausing and repeating.</p>
+<pre><code>using (var counterRetriever = new PerformanceCounterRetriever(&quot;TestBox&quot;, &quot;Home&quot;, &quot;Dan&quot;, &quot;password&quot;))
 {
   var processorTime = counterRetriever
-    .Get("Process", "% Processor Time", "TestService")
+    .Get(&quot;Process&quot;, &quot;% Processor Time&quot;, &quot;TestService&quot;)
     .GetEnumerator();
   var percentageTimeInGC = counterRetriever
-    .Get(".NET CLR Memory", "% Time in GC", "TestService")
+    .Get(&quot;.NET CLR Memory&quot;, &quot;% Time in GC&quot;, &quot;TestService&quot;)
     .GetEnumerator();
   while (true)
   {
     processorTime.MoveNext();
     Console.WriteLine(
-      "[{0}] TestService: % Processor Time = {1}",
-      DateTime.Now.ToString("HH:mm:ss.fff"),
+      &quot;[{0}] TestService: % Processor Time = {1}&quot;,
+      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
       processorTime.Current
     );
     percentageTimeInGC.MoveNext();
     Console.WriteLine(
-      "[{0}] TestService: % Time in GC = {1}",
-      DateTime.Now.ToString("HH:mm:ss.fff"),
+      &quot;[{0}] TestService: % Time in GC = {1}&quot;,
+      DateTime.Now.ToString(&quot;HH:mm:ss.fff&quot;),
       percentageTimeInGC.Current
     );
     Thread.Sleep(1000);
   }
 }
 </code></pre>
-
-<p>This could be extended to do the job (in my case, there are seven counters that I'm interested in so the above could be chopped and changed to record them all) but the code will get a bit verbose and "noisy" quite quickly.</p>
-
+<p>This could be extended to do the job (in my case, there are seven counters that I'm interested in so the above could be chopped and changed to record them all) but the code will get a bit verbose and &quot;noisy&quot; quite quickly.</p>
 <h3>Troublesome counters</h3>
-
 <p>There is also a problem with writing code like the above and presuming that you can track all performance counters in the same way. For example, I also want to track the number of garbage collections that have occurred at generations 0, 1 and 2 since the service was restarted. It probably doesn't make much sense to record the values of these every second; I don't really care if there had been a single gen 0 garbage collection after 1s and after 2s and after 3s and after 4s, I'd much rather see that at 1s there had been a single gen 0 collection and then, at 4s, there had been a second. I want to know when these kinds of values change and I'm not interested in the repeated values between the changes.</p>
-
-<p>As another example, I'm also interested in capturing information about the rate at which bytes are allocated by the service, for which I can consult the "Allocated Bytes/sec" counter. However, this counter is only updated after a GC event and will report zero the result of the time. This doesn't mean that zero bytes per second really were being allocated each time that the counter reports zero, it's just that there is nothing that can accurately report a value for this counter <em>except</em> immediately following a collection. For this counter, it's probably best for me to exclude zero values - particularly while a performance test is underway, since it is basically impossible that the service will ever be allocating <em>zero</em> bytes per second while it's deserialising requests and processing them. As with the "number of collections at gen {x}" counters, it will be worth ignoring some of the counter values but it will be important to know <em>when</em> the values that we do pay attention to were recorded (since, for the "Allocated Bytes/sec" counter, it should be possible to use this information to approximate the allocation rate at any given time).</p>
-
+<p>As another example, I'm also interested in capturing information about the rate at which bytes are allocated by the service, for which I can consult the &quot;Allocated Bytes/sec&quot; counter. However, this counter is only updated after a GC event and will report zero the result of the time. This doesn't mean that zero bytes per second really were being allocated each time that the counter reports zero, it's just that there is nothing that can accurately report a value for this counter <em>except</em> immediately following a collection. For this counter, it's probably best for me to exclude zero values - particularly while a performance test is underway, since it is basically impossible that the service will ever be allocating <em>zero</em> bytes per second while it's deserialising requests and processing them. As with the &quot;number of collections at gen {x}&quot; counters, it will be worth ignoring some of the counter values but it will be important to know <em>when</em> the values that we do pay attention to were recorded (since, for the &quot;Allocated Bytes/sec&quot; counter, it should be possible to use this information to approximate the allocation rate at any given time).</p>
 <h3>A complete solution</h3>
-
 <p>To try to address all of these problems, I've come up with the following. It's not the smallest code sample in the world but it should be easy to follow and understand if you need to extend it for your own purposes -</p>
-
 <pre><code>using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -358,19 +323,19 @@ namespace PerformanceCounterCapture
       TimeSpan timeBetweenCaptures)
     {
       if (string.IsNullOrWhiteSpace(server))
-        throw new ArgumentException($"Null/blank {nameof(server)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(server)} specified&quot;);
       if (string.IsNullOrWhiteSpace(domain))
-        throw new ArgumentException($"Null/blank {nameof(domain)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(domain)} specified&quot;);
       if (string.IsNullOrWhiteSpace(user))
-        throw new ArgumentException($"Null/blank {nameof(user)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(user)} specified&quot;);
       if (password == null)
         throw new ArgumentNullException(nameof(password));
       if (string.IsNullOrWhiteSpace(serviceName))
-        throw new ArgumentException($"Null/blank {nameof(serviceName)} specified");
+        throw new ArgumentException($&quot;Null/blank {nameof(serviceName)} specified&quot;);
       if (cancellationToken == null)
         throw new ArgumentNullException(nameof(cancellationToken));
       if (timeBetweenCaptures.Ticks &lt; 0)
-        throw new ArgumentOutOfRangeException($"{timeBetweenCaptures} must be a non-negative duration");
+        throw new ArgumentOutOfRangeException($&quot;{timeBetweenCaptures} must be a non-negative duration&quot;);
 
       // These lists will be populated periodically (according to timeBetweenCaptures) and, when the
       // cancellation token is set, they will all be included in the returned data for analysis
@@ -387,44 +352,44 @@ namespace PerformanceCounterCapture
         var performanceCountersToRecord = new[]
         {
           new PerformanceCounterDetails(
-            "Process",
-            "% Processor Time",
+            &quot;Process&quot;,
+            &quot;% Processor Time&quot;,
             serviceName,
             value =&gt; processorTimes.Add(Tuple.Create(DateTime.Now, value))
           ),
           new PerformanceCounterDetails(
-            ".NET CLR Memory",
-            "% Time in GC",
+            &quot;.NET CLR Memory&quot;,
+            &quot;% Time in GC&quot;,
             serviceName,
             value =&gt; percentageGarbageCollectorTimes.Add(Tuple.Create(DateTime.Now, value))
           ),
           new PerformanceCounterDetails(
-            ".NET CLR Memory",
-            "# Gen 0 Collections",
+            &quot;.NET CLR Memory&quot;,
+            &quot;# Gen 0 Collections&quot;,
             serviceName,
             value =&gt; AddValueToListIfNew(numberOfGen0Collections, value)
           ),
           new PerformanceCounterDetails(
-            ".NET CLR Memory",
-            "# Gen 1 Collections",
+            &quot;.NET CLR Memory&quot;,
+            &quot;# Gen 1 Collections&quot;,
             serviceName,
             value =&gt; AddValueToListIfNew(numberOfGen1Collections, value)
           ),
           new PerformanceCounterDetails(
-            ".NET CLR Memory",
-            "# Gen 2 Collections",
+            &quot;.NET CLR Memory&quot;,
+            &quot;# Gen 2 Collections&quot;,
             serviceName,
             value =&gt; AddValueToListIfNew(numberOfGen2Collections, value)
           ),
           new PerformanceCounterDetails(
-            ".NET CLR Memory",
-            "Large Object Heap size",
+            &quot;.NET CLR Memory&quot;,
+            &quot;Large Object Heap size&quot;,
             serviceName,
             value =&gt; AddValueToListIfNew(largeObjectHeapSize, value)
           ),
           new PerformanceCounterDetails(
-            ".NET CLR Memory",
-            "Allocated Bytes/sec",
+            &quot;.NET CLR Memory&quot;,
+            &quot;Allocated Bytes/sec&quot;,
             serviceName,
             value =&gt;
             {
@@ -489,9 +454,7 @@ namespace PerformanceCounterCapture
   }
 }
 </code></pre>
-
 <p>It also needs the following two classes for its internal initialisation and for returning results -</p>
-
 <pre><code>public sealed class PerformanceCounterDetails
 {
   public PerformanceCounterDetails(
@@ -501,9 +464,9 @@ namespace PerformanceCounterCapture
     Action&lt;float&gt; valueLogger)
   {
     if (string.IsNullOrWhiteSpace(categoryName))
-      throw new ArgumentException($"Null/blank {nameof(categoryName)} specified");
+      throw new ArgumentException($&quot;Null/blank {nameof(categoryName)} specified&quot;);
     if (string.IsNullOrWhiteSpace(counterName))
-      throw new ArgumentException($"Null/blank {nameof(counterName)} specified");
+      throw new ArgumentException($&quot;Null/blank {nameof(counterName)} specified&quot;);
     if (valueLogger == null)
       throw new ArgumentNullException(nameof(valueLogger));
 
@@ -563,13 +526,10 @@ public sealed class Results
   public IEnumerable&lt;Tuple&lt;DateTime, float&gt;&gt; AllocatedBytesPerSeconds { get; }
 }
 </code></pre>
-
 <p>I don't think that there's a great deal that requires explaining in depth - the <strong>PerformanceCounterLogger</strong> will periodically capture values from all of the counters that I'm interested in, dealing with the special cases described earlier (garbage collection frequency, allocated bytes / sec, etc..) in a blocking manner. It continues to capture counter data until the cancellation token passed to it is set.</p>
-
 <p>That means that it makes sense to capture the performance counter data on a seperate thread. Something like the following (which is basically what I'm using in my test runs) -</p>
-
 <pre><code>// Restart the service on the test server
-Restart("TestBox", "TestService");
+Restart(&quot;TestBox&quot;, &quot;TestService&quot;);
 
 // Start recording performance counters on a separate thread
 Results performanceCounterResults = null;
@@ -578,11 +538,11 @@ var resultsReadyIndicator = new ManualResetEvent(initialState: false);
 ThreadPool.QueueUserWorkItem(state =&gt;
 {
   performanceCounterResults = PerformanceCounterLogger.Log(
-    "TestBox",
-    "Home",
-    "Dan",
-    "password",
-    "TestService",
+    &quot;TestBox&quot;,
+    &quot;Home&quot;,
+    &quot;Dan&quot;,
+    &quot;password&quot;,
+    &quot;TestService&quot;,
     cancellationTokenSource.Token,
     TimeSpan.FromSeconds(1)
   );
@@ -595,70 +555,61 @@ ThreadPool.QueueUserWorkItem(state =&gt;
 cancellationTokenSource.Cancel();
 resultsReadyIndicator.WaitOne();
 
-// TODO: Write the "performanceCounterResults" data away to analyse later...........
+// TODO: Write the &quot;performanceCounterResults&quot; data away to analyse later...........
 </code></pre>
-
 <p>There are two big TODOs in the above code - somehow the request payload needs to be fired at the remote server that is being measured and somehow the performance counter results need to be compared between one run and the next. Obviously, these will vary from one project to the next and so they will be very dependent upon what kind of service that you're testing (and what performance counters you're interested in). In my case, I already had a decent system available for replaying old requests so that changes to the system could be examined, all I needed on top of that was a way to capture some performance counters to bring some <em>cold hard numbers</em> into proceedings - if you're in a similar position then hopefully this post will be helpful!</p>
-
 <h3>Shameless plug</h3>
-
 <p>Although I had a system in place to replay historical requests in order to simulate load, there was a slight problem with this in that the service would read from a database and it was totally feasible that the data persisted there could vary from hour to hour (if not more frequently). This could mean that one performance run would not be directly comparable to the next - one run may return more or less results for a particular query, for example, or have to process some of those results in a different (ie. more or less expensive) manner.</p>
-
 <p>This would make meaningful comparisons difficult - really, each run should return precisely the same data as the next.</p>
-
 <p>For this particular service, a few things were in my favour on this front; the service was read only, its job is only to deliver data for rendering on various web sites and it does not have to perform any write operations. It also only specifies a database connection in a fairly limited number of places. This allowed me to add a config option to the service that would (when in a particular test mode) create database connections that get their data from a proxy service instead of going directly to the SQL database.</p>
-
-<p>The proxy service can be run in either "record" or "replay" mode. First, the service that is under test should have the batch of requests that the processing performance is being measured for replayed while the database proxy service is in "record" mode - this allows the proxy service to populate a cache on disk that contains all of the result sets for all of the database queries performed. After this, all subsequent performance runs are made with the proxy service in "replay" mode - in this configuration, the service will never hit the database and will always return data from its cache. This ensures that the data retrieved during each performance run is consistent, which makes it much easier to reach useful conclusions and make meaningful comparisons.</p>
-
+<p>The proxy service can be run in either &quot;record&quot; or &quot;replay&quot; mode. First, the service that is under test should have the batch of requests that the processing performance is being measured for replayed while the database proxy service is in &quot;record&quot; mode - this allows the proxy service to populate a cache on disk that contains all of the result sets for all of the database queries performed. After this, all subsequent performance runs are made with the proxy service in &quot;replay&quot; mode - in this configuration, the service will never hit the database and will always return data from its cache. This ensures that the data retrieved during each performance run is consistent, which makes it much easier to reach useful conclusions and make meaningful comparisons.</p>
 <p>The library that I wrote for this database proxy service is called <a href="https://github.com/ProductiveRage/SqlProxyAndReplay">SqlProxyAndReplay</a> and is available on GitHub and via NuGet (the client needs <a href="https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Client">ProductiveRage.SqlProxyAndReplay.Client</a> and the server needs <a href="https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Service">ProductiveRage.SqlProxyAndReplay.Service</a> and <a href="https://www.nuget.org/packages/ProductiveRage.SqlProxyAndReplay.Service.Example">ProductiveRage.SqlProxyAndReplay.Service.Example</a>).</p>
-
 <p>There are some caveats - under the hood, this uses a WCF (binary endpoint) service and it won't be as fast as hitting a database directly. And, as a .net library, there will be some garbage collection overhead since it will result in additional allocations. However, for testing how the <em>internals</em> of a service (and not, say, tweaking individual SQL queries to try to eke out more performance) then this shouldn't be a huge problem since the overhead should be consistent from one run to the next. So long as you are measuring changes in performance runs <em>before</em> you deploy an update and performance runs <em>after</em> an update (hopefully improvements!) then the overhead of the database proxy shouldn't matter.</p>
-
 <p>Sometimes, of course, the database <em>is</em> your bottle neck and so you want to capture real queries as they hit it so that you can performance tune them. There are already lot of good tools for this (you can get a long way by attaching SQL Profiler and looking for the most expensive or most frequent quite-expensive queries) but I hadn't found something useful for my use case, where I wanted to optimise what happened <em>after</em> any database access and just wanted the database access layer to magically return consistent data time after time. At least, I couldn't find one that didn't entail significant work in writing some sort of mock / cached database access layer.</p>
+<p>While the <a href="https://github.com/ProductiveRage/SqlProxyAndReplay">SqlProxyAndReplay</a> service / library may not be as useful if you have to test a service or application that needs to persist changes made to the backing store, I imagine that it's common for a lot of large scale applications to want to cache and optimise read operations and so this may well be useful for other people. The <a href="https://github.com/ProductiveRage/SqlProxyAndReplay">linked GitHub</a> repo has more information in its README and there's a &quot;Tester&quot; console application to demonstrate it in action.</p>
+<p class="PostTime">Posted at 21:01</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days">Why is saving Performance Monitor (PerfMon) settings so difficult these days?!</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></div></div>
+                <div id="disqus_thread"></div>
+                <script type="text/javascript">
+					var disqus_identifier = "104";
+					var disqus_title = "Retrieving Performance Counter from a remote PC using C#";
+					(function () {
+						whenjQueryIsAvailable(
+							function () {
+								$(function () {
+									loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+									$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+								});
+							}
+						);
 
-<p>While the <a href="https://github.com/ProductiveRage/SqlProxyAndReplay">SqlProxyAndReplay</a> service / library may not be as useful if you have to test a service or application that needs to persist changes made to the backing store, I imagine that it's common for a lot of large scale applications to want to cache and optimise read operations and so this may well be useful for other people. The <a href="https://github.com/ProductiveRage/SqlProxyAndReplay">linked GitHub</a> repo has more information in its README and there's a "Tester" console application to demonstrate it in action.</p><p class="PostTime">Posted at 21:01</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days">Why is saving Performance Monitor (PerfMon) settings so difficult these days?!</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></div></div>
-			<div id="disqus_thread"></div>
-						<script type="text/javascript">
-							var disqus_identifier = "104";
-							var disqus_title = "Retrieving Performance Counter from a remote PC using C#";
-							(function () {
-							    whenjQueryIsAvailable(
-									function () {
-									    $(function () {
-											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
-											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
-										});
-									}
-								);
+						var bStartedLoadingComments = false;
+						function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+							if (bStartedLoadingComments) {
+								return;
+							}
+							var $post = $("div.Content.SinglePost");
+							var bottomOfPost = $post.position().top + $post.height();
+							var $window = $(window);
+							if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+								bStartedLoadingComments = true;
+								loadComments();
+							}
+						}
 
-								var bStartedLoadingComments = false;
-								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
-								    if (bStartedLoadingComments) {
-								        return;
-								    }
-								    var $post = $("div.Content.SinglePost");
-								    var bottomOfPost = $post.position().top + $post.height();
-								    var $window = $(window);
-								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
-										bStartedLoadingComments = true;
-										loadComments();
-									}
-								}
-
-								function loadComments() {
-								    var dsq = document.createElement("script");
-									dsq.type = "text/javascript";
-									dsq.async = true;
-									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-								}
-							}());
-						</script>
-	</div>
+						function loadComments() {
+							var dsq = document.createElement("script");
+							dsq.type = "text/javascript";
+							dsq.async = true;
+							dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+							(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+						}
+					}());
+                </script>
+    </div>
 
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -668,17 +619,16 @@ resultsReadyIndicator.WaitOne();
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

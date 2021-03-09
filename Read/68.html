@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -46,42 +45,35 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content SinglePost">
-		<h3 class="PostDate">27 February 2014</h3><h2><a id="Post68"></a><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></h2>
-
+    <div class="Content SinglePost">
+        <h3 class="PostDate">27 February 2014</h3><h2><a id="entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable" href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></h2>
 <p>Last month I was looking back into one of my old projects that was inspired by AutoMapper but for mapping to immutable types, rather than mapping to mutable types (that typically have a parameterless constructor and are initialised by setting individual properties)* - see <a href="/reflection-and-c-sharp-optional-constructor-arguments">Bonus provocative headline: Like AutoMapper, but 100x faster</a>.</p>
-
 <p>When I was working on it, I had a fairly good idea of what scenarios I wanted to use it in and  had no intention of trying to replicate the entire range of functionality that AutoMapper supports. However,  something I <em>was</em> particularly taken with was the recently(ish) added support to AutoMapper for LINQ auto-projections.</p>
-
 <p>* <em>Note from the future: There was a time when AutoMapper didn't have good support for mapping to immutable types, it wouldn't apply automatic its name / type matching logic to the case where property values are read from the source type and used to provide constructor arguments on the destination type (and it was to fill that feature gap that I started writing the <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">Compilable Type Converter</a>). However, that situation changed at some point and now AutoMapper does have good support for mapping to immutable types - though I wasn't able to track down from the release notes when precisely that was.</em></p>
-
 <p>Projections are when data is retrieved from an <strong>IQueryable</strong> source and mapped onto either a named class or an anonymous type - eg.</p>
-
 <pre><code>using (var context = new AlbumDataEntities())
 {
   var albums = context.Albums.Select(album =&gt; new {
@@ -89,40 +81,26 @@
     Name = album.Name
   });
 </code></pre>
-
 <p>The clever thing about <strong>IQueryable</strong> and these projections is that the data source (Entity Framework, for example) can construct a query to retrieve only the data required. Without projections, the database querying and the mapping are completely separate steps and so it is very common for the ORM to have to retrieve much more data than is strictly necessary (and often to introduce the dreaded N+1 SELECT problem). Projections allows the mapping to directly affect how the database query is constructed so that precisely the right amount of data may be requested (and all in one query, <em>not</em> in N+1).</p>
-
-<p>The code shown above could be referred to as a manual projection (where the the properties - "Key" and "Name" in that example - are explicitly mapped). <em>Auto-projection</em> is the utilisation of a mapping library to automatically create this projection / mapping. This means that you don't have to write the boring "Key = album.AlbumKey, Name = album.Name" code for each property in a mapping. In essence, something like:</p>
-
+<p>The code shown above could be referred to as a manual projection (where the the properties - &quot;Key&quot; and &quot;Name&quot; in that example - are explicitly mapped). <em>Auto-projection</em> is the utilisation of a mapping library to automatically create this projection / mapping. This means that you don't have to write the boring &quot;Key = album.AlbumKey, Name = album.Name&quot; code for each property in a mapping. In essence, something like:</p>
 <pre><code>using (var context = new AlbumDataEntities())
 {
   var albums = context.Albums.MapTo&lt;ImmutableAlbum&gt;();
 </code></pre>
-
 <p>When you've only got a couple of properties (like Key and Name in the earlier code), it's not too bad but it's still the sort of manual work that gets boring (and error prone) very quickly.</p>
-
 <h3>IQueryable vs IEnumerable</h3>
-
 <p>Allow me to briefly go off on a tangent..</p>
-
-<p>The <strong>IEnumerable</strong> type in .net allows for lazy initialisation such that data is only processed as it is requested. For a really simple example, the following code starts off with a data "source" that will generate up to ten million objects, returned as an enumerable set. On this we call Take(5), which returns another enumerable set that will only enumerate the first five items. Until ToArray is called, none of the data is actually delivered and none of the objects are created. Even when ToArray <em>is</em> called, only five of the source objects are actually initialised as that is how many are actually required - the remaining 9,999,995 objects that <em>could</em> have been created are not since they are not required (this is lazy evaluation in action).</p>
-
+<p>The <strong>IEnumerable</strong> type in .net allows for lazy initialisation such that data is only processed as it is requested. For a really simple example, the following code starts off with a data &quot;source&quot; that will generate up to ten million objects, returned as an enumerable set. On this we call Take(5), which returns another enumerable set that will only enumerate the first five items. Until ToArray is called, none of the data is actually delivered and none of the objects are created. Even when ToArray <em>is</em> called, only five of the source objects are actually initialised as that is how many are actually required - the remaining 9,999,995 objects that <em>could</em> have been created are not since they are not required (this is lazy evaluation in action).</p>
 <pre><code>var fiveItemsFromLargeEnumerableRange =
-  Enumerable.Range(1, 10000000).Select(i =&gt; new { Name = "Item" + i })
+  Enumerable.Range(1, 10000000).Select(i =&gt; new { Name = &quot;Item&quot; + i })
     .Take(5)
     .ToArray();
 </code></pre>
-
-<p><strong>IEnumerable</strong> can be thought to operate on in-memory data sets. The data <em>itself</em> may not originate from an in-memory source. Above it does, but the source could also be something delivering lines from a log file or rows from a database. Each entry in the data, though, is fully loaded when required and then processed in memory. Although each entity is only loaded when required, if the loading of each entity is expensive and only a subset of its data is required for the operation at hand, then even this form of lazy evaluation can become a burden. <strong>IEnumerable</strong> sets do not inherently expose a way to "partially load" the entities.</p>
-
-<p>It's worth noting at this point that many ORMs (including Entity Framework) support "lazy loading" of data for child properties to try to address this very point; the data for the properties of the returned objects is not loaded until the properties are accessed. At this point the database (or whatever data source is being used) is hit <em>again</em> to retrieve this information. The downside to this is that the data that <em>is</em> accessed may require multiple database hits for each entity when only a single query may have been required if "eagerly" loading all of the data for the entity. But if "eager loading" is used and only a subset of the data is required then <em>too much</em> data was being pulled down!</p>
-
+<p><strong>IEnumerable</strong> can be thought to operate on in-memory data sets. The data <em>itself</em> may not originate from an in-memory source. Above it does, but the source could also be something delivering lines from a log file or rows from a database. Each entry in the data, though, is fully loaded when required and then processed in memory. Although each entity is only loaded when required, if the loading of each entity is expensive and only a subset of its data is required for the operation at hand, then even this form of lazy evaluation can become a burden. <strong>IEnumerable</strong> sets do not inherently expose a way to &quot;partially load&quot; the entities.</p>
+<p>It's worth noting at this point that many ORMs (including Entity Framework) support &quot;lazy loading&quot; of data for child properties to try to address this very point; the data for the properties of the returned objects is not loaded until the properties are accessed. At this point the database (or whatever data source is being used) is hit <em>again</em> to retrieve this information. The downside to this is that the data that <em>is</em> accessed may require multiple database hits for each entity when only a single query may have been required if &quot;eagerly&quot; loading all of the data for the entity. But if &quot;eager loading&quot; is used and only a subset of the data is required then <em>too much</em> data was being pulled down!</p>
 <p><strong>IQueryable</strong> sets have similar intentions to <strong>IEnumerable</strong> but a different approach, they are more tightly tied to the data source. Where <strong>IEnumerable</strong> sets may be considered to be in-memory (for each entity), <strong>IQueryable</strong> sets are all prepared in the data source and filtering may be applied there to prevent too much data from being sent.</p>
-
 <p>To illustrate with an example, say we have data about albums. There's an Albums table with AlbumKey, Name, Year and ArtistKey fields. There's a Tracks table with TrackKey, AlbumKey, TrackNumber and Name fields. And there's an Artists table with fields ArtistKey and Name.</p>
-
 <p>If I point Entity Framework at this then it will generate a model to dip into all this data. The simplest retrieval is probably for all Album names -</p>
-
 <pre><code>using (var context = new AlbumDataEntities())
 {
   var allAlbumNames = context.Albums
@@ -134,27 +112,22 @@
   var allAlbumNamesQuery = allAlbumNames.ToString();
   var allAlbumNamesResults = allAlbumNames.ToArray();
 
-  Console.WriteLine("Query:");
+  Console.WriteLine(&quot;Query:&quot;);
   Console.WriteLine(allAlbumNamesQuery);
   Console.WriteLine();
 
-  Console.WriteLine("Results:");
+  Console.WriteLine(&quot;Results:&quot;);
   Console.WriteLine(string.Join(Environment.NewLine, allAlbumNamesResults));
 }
 </code></pre>
-
 <p>This shows that the SQL executed was</p>
-
-<pre><code>SELECT 
+<pre><code>SELECT
   [Extent1].[Name] AS [Name]
   FROM [dbo].[Albums] AS [Extent1]
   ORDER BY [Extent1].[Name] ASC
 </code></pre>
-
 <p>Which is pretty much what you would hope for.. but clever when you think about it. It's done some analysis of the request we've described and realised that it only needs to consider one particular column from that one table, even though it's all configured to potentially do so much more.</p>
-
-<p>If instead we request </p>
-
+<p>If instead we request</p>
 <pre><code>var allCombinedAlbumAndTrackNames = context.Albums
   .SelectMany(album =&gt; album.Tracks.Select(track =&gt; new {
     AlbumName = album.Name,
@@ -163,16 +136,14 @@
   }))
   .OrderBy(combinedEntry =&gt; combinedEntry.AlbumName)
   .ThenBy(combinedEntry =&gt; combinedEntry.TrackNumber)
-  .Select(combinedEntry =&gt; combinedEntry.AlbumName + "/" + combinedEntry.TrackName);
+  .Select(combinedEntry =&gt; combinedEntry.AlbumName + &quot;/&quot; + combinedEntry.TrackName);
 </code></pre>
-
 <p>then the following SQL is executed:</p>
-
-<pre><code>SELECT 
+<pre><code>SELECT
   [Project1].[C1] AS [C1]
-  FROM ( SELECT 
-    [Extent1].[Name] + N'/' + [Extent2].[Name] AS [C1], 
-    [Extent1].[Name] AS [Name], 
+  FROM ( SELECT
+    [Extent1].[Name] + N'/' + [Extent2].[Name] AS [C1],
+    [Extent1].[Name] AS [Name],
     [Extent2].[TrackNumber] AS [TrackNumber]
     FROM  [dbo].[Albums] AS [Extent1]
     INNER JOIN [dbo].[Tracks] AS [Extent2]
@@ -180,24 +151,19 @@
   )  AS [Project1]
   ORDER BY [Project1].[Name] ASC, [Project1].[TrackNumber] ASC
 </code></pre>
-
 <p>This was not such a simple translation to make - this query got mapped into an interim anonymous type, there are multiple sorts and the final values are constructucted by concatenating two of the fields in the interim type. Nonetheless, the SQL that was generated was very efficient and a good reflection of the data that was requested.</p>
-
 <p>One more, for fun..</p>
-
 <pre><code>var namesOfTheFiveAlbumsWithTheGreatestNumberOfTracks = context.Albums
   .OrderByDescending(album =&gt; album.Tracks.Count())
   .Select(album =&gt; album.Name)
   .Take(5);
 </code></pre>
-
 <p>results in:</p>
-
 <pre><code>SELECT TOP (5)
   [Project1].[Name] AS [Name]
-  FROM ( SELECT 
-    [Extent1].[Name] AS [Name], 
-    (SELECT 
+  FROM ( SELECT
+    [Extent1].[Name] AS [Name],
+    (SELECT
       COUNT(1) AS [A1]
       FROM [dbo].[Tracks] AS [Extent2]
       WHERE [Extent1].[AlbumKey] = [Extent2].[AlbumKey]) AS [C1]
@@ -205,133 +171,93 @@
   )  AS [Project1]
   ORDER BY [Project1].[C1] DESC
 </code></pre>
-
-<p>This not only performed an aggregate operation (by considering the number of Tracks per Album) but also incorporated the "Take(5)" into the query. This is an example of how a request may be translated into something handled by the data source that ensures that it can deliver the bare minimum data; if the "Take(5)" call had not been translated into part of the query then more rows might have been returned than we cared about. (If the "Take(5)" call could not have been translated into part of the database query then the first five results could have been isolated by a similar "in-memory" operation to that illustrated by the 1,000,000 item <strong>IEnumerable</strong> example earlier, but it wouldn't be as efficient to do so since the additional rows would have had to have been delivered from the database and then filtered out.. which would have been wasteful).</p>
-
+<p>This not only performed an aggregate operation (by considering the number of Tracks per Album) but also incorporated the &quot;Take(5)&quot; into the query. This is an example of how a request may be translated into something handled by the data source that ensures that it can deliver the bare minimum data; if the &quot;Take(5)&quot; call had not been translated into part of the query then more rows might have been returned than we cared about. (If the &quot;Take(5)&quot; call could not have been translated into part of the database query then the first five results could have been isolated by a similar &quot;in-memory&quot; operation to that illustrated by the 1,000,000 item <strong>IEnumerable</strong> example earlier, but it wouldn't be as efficient to do so since the additional rows would have had to have been delivered from the database and then filtered out.. which would have been wasteful).</p>
 <p>These examples demonstrate some of the ways in which use of <strong>IQueryable</strong> can ensure that the minimum amount of data required is transmitted from the data source. None of them even touch the Artists table since none of the requests asked for Artist data! The <strong>IQueryable</strong> implementation is what performs this magic, whether that be provided by Entity Framework, NHibernate, SubSonic or whatever - <em>it</em> is responsible for translating expressions into SQL (or whatever language the backing data source uses; it could be another SQL-like database or it could be a document database such as <a href="http://www.mongodb.org/">MongoDB</a>).</p>
-
 <h3>Applying this to mappings</h3>
-
 <p>In the above examples, ToArray() was used to force the retrieval / evaluation of the information. This could just as easily have been a call to ToList() or been a loop that enumerated through the data.</p>
-
-<p>With <strong>IEnumerable</strong> sets, the source data is not run through until it is explicitly enumerated. With <strong>IQueryable</strong>, the data is not retrieved from the source until the <strong>IQueryable</strong> reference is treated as an <strong>IEnumerable</strong>. This is possible since <strong>IQueryable</strong> implements <strong>IEnumerable</strong> and so any method that can operate on <strong>IEnumerable</strong> may also operate on <strong>IQueryable</strong>. But what's important here is that as soon as this is done, the <strong>IQueryable</strong> reference will then "become" an <strong>IEnumerable</strong> reference and the underlying data request will have been made in order for this to happen.</p>
-
-<p>The clever thing above, where the "Take(5)" method resulted in "SELECT TOP (5)" becoming part of the SQL query, comes about as LINQ has a load of extension methods for operating against <strong>IQueryable</strong> as well <strong>IEnumerable</strong> - so as well as</p>
-
+<p>With <strong>IEnumerable</strong> sets, the source data is not run through until it is explicitly enumerated. With <strong>IQueryable</strong>, the data is not retrieved from the source until the <strong>IQueryable</strong> reference is treated as an <strong>IEnumerable</strong>. This is possible since <strong>IQueryable</strong> implements <strong>IEnumerable</strong> and so any method that can operate on <strong>IEnumerable</strong> may also operate on <strong>IQueryable</strong>. But what's important here is that as soon as this is done, the <strong>IQueryable</strong> reference will then &quot;become&quot; an <strong>IEnumerable</strong> reference and the underlying data request will have been made in order for this to happen.</p>
+<p>The clever thing above, where the &quot;Take(5)&quot; method resulted in &quot;SELECT TOP (5)&quot; becoming part of the SQL query, comes about as LINQ has a load of extension methods for operating against <strong>IQueryable</strong> as well <strong>IEnumerable</strong> - so as well as</p>
 <pre><code>public static IEnumerable&lt;TSource&gt; Take&lt;TSource&gt;(
   this IEnumerable&lt;TSource&gt; source,
   int count
 );
 </code></pre>
-
 <p>there is also</p>
-
 <pre><code>public static IQueryable&lt;TSource&gt; Take&lt;TSource&gt;(
   this IQueryable&lt;TSource&gt; source,
   int count
 );
 </code></pre>
-
 <p>The latter ensures that an <strong>IQueryable</strong> <em>remains</em> as an IQueryable and so postpones its evaluation.</p>
-
 <p>By the way, I <em>am</em> finally approaching the point of this post now, so bear with me! :)</p>
-
-<p>The LINQ "Select" extension method similarly has alternative method signatures. The more common version is</p>
-
+<p>The LINQ &quot;Select&quot; extension method similarly has alternative method signatures. The more common version is</p>
 <pre><code>public static IEnumerable&lt;TResult&gt; Select&lt;TSource, TResult&gt;(
   this IEnumerable&lt;TSource&gt; source,
   Func&lt;TSource, TResult&gt; selector
 );
 </code></pre>
-
 <p>where a particular transformation is performed upon each item in a <strong>IEnumerable</strong> set.</p>
-
 <p>But there is a corresponding signature</p>
-
 <pre><code>public static IQueryable&lt;TResult&gt; Select&lt;TSource, TResult&gt;(
   this IQueryable&lt;TSource&gt; source,
   Expression&lt;Func&lt;TSource, TResult&gt;&gt; selector
 );
 </code></pre>
-
 <p>where an <strong>Expression</strong> will be translated by the <strong>IQueryable</strong> provider into the language of the underlying data source (but since the <strong>IQueryable</strong> reference remains as an <strong>IQueryable</strong> this translation won't happen <em>yet</em>).</p>
-
 <p>The difference between <strong>Expression&lt;Func&lt;TSource, TResult&gt;&gt;</strong> and <strong>Func&lt;TSource, TResult&gt;</strong> is subtle but important. The compiler is clever enough that often you needn't even be aware that you're passing an <strong>Expression</strong>. Above we were performing various manipulations (such as wrapping data up in anonymous types and combining fields with string concatenation) without having to think about it. But if we tried to do something like</p>
-
 <pre><code>var nextId = 0;
 var allAlbumNamesWithExternallGeneratedIds = context.Albums
   .Select(album =&gt; new { Name = album.Name, Id = ++nextId })
   .OrderBy(name =&gt; name);
 </code></pre>
-
 <p>we'd get a compiler error</p>
-
 <blockquote>
-  <p>An expression tree may not contain an assignment operator</p>
+<p>An expression tree may not contain an assignment operator</p>
 </blockquote>
-
 <p>So, unfortunately, it's not just any old lambda (aka anonymous function) that can be translated into an <strong>Expression</strong>. A different problem is encountered if we attempt to use AutoMapper to process the data - eg.</p>
-
 <pre><code>Mapper.CreateMap&lt;Album, AlbumStub&gt;();
 var allAlbumKeyAndNames = context.Albums
   .Select(album =&gt; Mapper.Map&lt;Album, AlbumStub&gt;(album))
   .OrderBy(name =&gt; name);
 </code></pre>
-
 <p>where the target class is</p>
-
 <pre><code>public class AlbumStub
 {
   public int AlbumKey { get; set; }
   public string Name { get; set; }
 }
 </code></pre>
-
 <p>This will result in a <strong>NotSupportedException</strong> being raised by Entity Framework with the following message:</p>
-
 <blockquote>
-  <p>LINQ to Entities does not recognize the method 'AlbumStub Map[Album,AlbumStub](ProjectionExamples.AlbumStub)' method, and this method cannot be translated into a store expression.</p>
+<p>LINQ to Entities does not recognize the method 'AlbumStub Map[Album,AlbumStub](ProjectionExamples.AlbumStub)' method, and this method cannot be translated into a store expression.</p>
 </blockquote>
-
 <p>What has happened here is that the compiler has recognised</p>
-
 <pre><code>album =&gt; Mapper.Map&lt;Album, AlbumStub&gt;(album)
 </code></pre>
-
 <p>as a valid <strong>Expression</strong> but when the query provider has tried to work its magic and translate it into SQL, it doesn't know what to do.</p>
-
 <p>We could try a different approach and call:</p>
-
 <pre><code>Mapper.CreateMap&lt;Album, AlbumStub&gt;();
 var allAlbumKeyAndNames = context.Albums
   .Select(Mapper.Map&lt;Album, AlbumStub&gt;)
   .OrderBy(name =&gt; name);
 </code></pre>
-
 <p>But here the Select method that has been called is the Select method that works against <strong>IEnumerable</strong> and so all of the data in the <em>context.Albums</em> object graph has been evaluated. Even though we only want the Album Keys and Names, <em>all</em> of the Album, Track and Artist data has been retrieved. At the point at which the <strong>IQueryable</strong> was forced into operating as an <strong>IEnumerable</strong> it had to be evaluated, and the provider is given no way way of knowing that only the Album Keys and Names are required. What a waste!</p>
-
-<p>(Incidentally, exactly the same problem was being exhibited by my "<a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">Compiler Type Converter</a>" code, this isn't something particular to AutoMapper).</p>
-
+<p>(Incidentally, exactly the same problem was being exhibited by my &quot;<a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">Compiler Type Converter</a>&quot; code, this isn't something particular to AutoMapper).</p>
 <p>But back in February 2011, the author of AutoMapper wrote an article talking about this and how he'd been doing some work to improve the situation (<a href="http://lostechies.com/jimmybogard/2011/02/09/autoprojecting-linq-queries/">Autoprojecting LINQ queries</a>). I believe that it became a standard part of the library in the August 2013 3.0 release (according to the <a href="https://github.com/AutoMapper/AutoMapper/releases/tag/v3.0.0">GitHub Release Notes</a>).</p>
-
 <p>The way it works is by adding some extension methods for <strong>IQueryable</strong> that work with AutoMapper. The above example now becomes:</p>
-
 <pre><code>Mapper.CreateMap&lt;Album, AlbumStub&gt;();
 var allAlbumKeyAndNames = context.Albums
   .OrderBy(name =&gt; name);
   .Project().To&lt;AlbumStub&gt;();
 </code></pre>
-
-<p>The ".Project().To&lt;AlbumStub&gt;()" converts the <strong>IQueryable</strong> set into an <strong>IEnumerable</strong> but it does so in such a manner that only the minimum data is requested from the data source. So in this example, there will be no joins to the Tracks or Artists tables, nor will the ArtistKey field of the Album table even be mentioned in the underlying query! The "OrderBy" call is moved up so that it operates against the <strong>IQueryable</strong> and can be performed by SQL rather than retrieving the data from the db and having to sort it in-memory (which is what would happen if OrderBy was called after Project..To since it would be operating against an <strong>IEnumerable</strong> reference rather than an <strong>IQueryable</strong>).</p>
-
+<p>The &quot;.Project().To&lt;AlbumStub&gt;()&quot; converts the <strong>IQueryable</strong> set into an <strong>IEnumerable</strong> but it does so in such a manner that only the minimum data is requested from the data source. So in this example, there will be no joins to the Tracks or Artists tables, nor will the ArtistKey field of the Album table even be mentioned in the underlying query! The &quot;OrderBy&quot; call is moved up so that it operates against the <strong>IQueryable</strong> and can be performed by SQL rather than retrieving the data from the db and having to sort it in-memory (which is what would happen if OrderBy was called after Project..To since it would be operating against an <strong>IEnumerable</strong> reference rather than an <strong>IQueryable</strong>).</p>
 <p>There are some limitations to the projections that can be performed (which are documented in the AutoMapper GitHub wiki page <a href="https://github.com/AutoMapper/AutoMapper/wiki/Queryable-Extensions">Queryable Extensions</a>). One problem that I found early on is that, while with <strong>IEnumerable</strong> mappings you could map to an immutable type such as</p>
-
 <pre><code>public class ImmutableAlbumStub
 {
   public ImmutableAlbumStub(int albumKey, string name)
   {
     if (string.IsNullOrWhiteSpace(name))
-      throw new ArgumentException("Null/blank name specified");
+      throw new ArgumentException(&quot;Null/blank name specified&quot;);
     AlbumKey = albumKey;
     Name = name;
   }
@@ -339,100 +265,68 @@ var allAlbumKeyAndNames = context.Albums
   public string Name { get; private set; }
 }
 </code></pre>
-
 <p>by using</p>
-
 <pre><code>Mapper.CreateMap&lt;Album, ImmutableAlbumStub&gt;()
   .ConstructUsing(a =&gt; new ImmutableAlbumStub(a.AlbumKey, a.Name));
 </code></pre>
-
 <p>if you attempt this using this mapping with Project..To results you'll receive an <strong>ArgumentException</strong> with the message</p>
-
 <blockquote>
-  <p>'ProjectionExamples.ImmutableAlbumStub' does not have a default constructor</p>
+<p>'ProjectionExamples.ImmutableAlbumStub' does not have a default constructor</p>
 </blockquote>
-
 <p>Hmm. Bummer.</p>
-
-<p>But, on the whole, I thought that this general "autoprojecting" thing was an awesome idea! And one that I wanted to steal (er.. I mean incorporate into my own code :)</p>
-
+<p>But, on the whole, I thought that this general &quot;autoprojecting&quot; thing was an awesome idea! And one that I wanted to steal (er.. I mean incorporate into my own code :)</p>
 <h3>Auto-Projecting to Immutable Types (with the Compilable Type Converter)</h3>
-
 <p>At its core, the problem is that we need to be able to provide <strong>Expression</strong>-based type converters that we can use with the <strong>IQueryable</strong>-based extension methods. Being able to do this will allow the <strong>IQueryable</strong> provider to analyse the <strong>Expressions</strong> and retrieve the bare minimum data required to satisfy the operation. I figured that this would be a walk in the park since the <strong>ICompilableTypeConverter</strong> is all about this - that's what enables its conversions to be compiled and be so fast!</p>
-
 <p>Unfortunately, the very idea of analysing arbitrary expressions and translating them into SQL (or whatever) is a complex matter and, since this translation is handled by the query provider, it may vary from one provider to another. So far I've only tested this with Entity Framework and it's Entity Framework's limitations that I've encountered and worked with / around.</p>
-
 <p>The first problem is to do with the handling of null values. If we continue with the album data model and imagine that it's actually optional to assign an artist to an album, then in such a case there would be a null ArtistKey on the Album database record. This would mean that the Artist property on the corresponding instance of the Entity-Framework-generated class would also be null. But if I try to map this onto another type structure such as with</p>
-
 <pre><code>var albumsWithArtists = context.Albums
   .Select(a =&gt; new {
     Name = a.Name,
     Artist = (a.Artist == null) ? null : new { Name = a.Artist.Name }
   });
 </code></pre>
-
 <p>then we get another <strong>NotSupportedException</strong> as soon as the data is evaluated, this time with the message</p>
-
 <blockquote>
-  <p>Unable to create a null constant value of type 'Anonymous type'. Only entity types, enumeration types or primitive types are supported in this context.</p>
+<p>Unable to create a null constant value of type 'Anonymous type'. Only entity types, enumeration types or primitive types are supported in this context.</p>
 </blockquote>
-
 <p>Unfortunately, this is - broadly speaking - what happens in the type converters that my code generates. And something similar happens with properties that are enumerable. The Tracks property, for example:</p>
-
 <pre><code>var albumsWithTrackNames = context.Albums
   .Select(a =&gt; new {
     Name = a.Name,
     TrackNames = (a.Tracks == null) ? null : a.Tracks.Select(t =&gt; t.Name)
   });
 </code></pre>
-
 <blockquote>
-  <p>Cannot compare elements of type 'System.Collections.Generic.ICollection`1[[ProjectionExamples.Album, ProjectionExamples, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'. Only primitive types, enumeration types and entity types are supported.</p>
+<p>Cannot compare elements of type 'System.Collections.Generic.ICollection`1[[ProjectionExamples.Album, ProjectionExamples, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'. Only primitive types, enumeration types and entity types are supported.</p>
 </blockquote>
-
 <p>This second one doesn't seem all that unreasonable from Entity Framework's side; if there are no tracks associated with an album then an empty Tracks list would be recorded against an <strong>Album</strong> instance, not a null Tracks reference. Unfortunately my conversion methods <em>don't</em> assume this and just performing this null checking makes Entity Framework throw its toys out of the pram. We can't even check for nulls and then resort to a default empty array -</p>
-
 <pre><code>var albumsWithTrackNames = context.Albums
   .Select(a =&gt; new {
     Name = a.Name,
     TrackNames = (a.Tracks == null) ? new string[0] : a.Tracks.Select(t =&gt; t.Name)
   });
 </code></pre>
-
 <p>as that will result in the same error.</p>
-
 <p>And then, the killer:</p>
-
 <pre><code>var albumsAsImmutableTypes = context.Albums
   .Select(a =&gt; new ImmutableAlbum(a.AlbumKey, a.Name));
 </code></pre>
-
 <p>This results in a <strong>NotSupportedException</strong> with the message</p>
-
 <blockquote>
-  <p>Only parameterless constructors and initializers are supported in LINQ to Entities.</p>
+<p>Only parameterless constructors and initializers are supported in LINQ to Entities.</p>
 </blockquote>
-
 <p>Oh dear.</p>
-
 <p>Soooooo...</p>
-
-<p>The approach I took to address this was two-fold. First, assume that all lists will be empty if there is no data for them and so assume that lists will never be null. Second, perform two mappings for each translation. Firstly to interim objects that have only the required properties, this is done while dealing with <strong>IQueryable</strong> data. And <em>then</em> map these interim types to the real destination objects, this is done after pushing the interim results into an <strong>IEnumerable</strong> set so that the limitations of the query provider no longer apply. The interim objects all have an "is-initialised" property on them so that if the source object is null then it can be mapped to an interim object with its "is-initialised" flag set to false, otherwise the flag will be set to true. When the interim types are mapped to the destination types, instances with "is-initialised" set to false will be mapped to null references.</p>
-
+<p>The approach I took to address this was two-fold. First, assume that all lists will be empty if there is no data for them and so assume that lists will never be null. Second, perform two mappings for each translation. Firstly to interim objects that have only the required properties, this is done while dealing with <strong>IQueryable</strong> data. And <em>then</em> map these interim types to the real destination objects, this is done after pushing the interim results into an <strong>IEnumerable</strong> set so that the limitations of the query provider no longer apply. The interim objects all have an &quot;is-initialised&quot; property on them so that if the source object is null then it can be mapped to an interim object with its &quot;is-initialised&quot; flag set to false, otherwise the flag will be set to true. When the interim types are mapped to the destination types, instances with &quot;is-initialised&quot; set to false will be mapped to null references.</p>
 <p>This means that only the minimum required data will be retrieved but that the data may be mapped to immutable objects <em>and</em> that Entity Framework's awkward behaviour around nulls can be side-stepped. It's a bit like an automated version of</p>
-
 <pre><code>var albumsAsImmutableTypes = context.Albums
   .Select(a =&gt; (a == null) ? new { AlbumKey = a.AlbumKey, Name = a.Name })
   .AsEnumerable()
   .Select(a =&gt; new ImmutableAlbumStub(a.AlbumKey, a.Name));
 </code></pre>
-
 <p>but without having to write that interim mapping by hand.</p>
-
-<p>When building the mappings, first an "ideal mapping" is generated from the source types (the Entity Framework types) to the destination types (the <strong>ImmutableAlbumStub</strong>). This will never be used directly but performing this work reveals what property mappings are required and allows the interim types to be constructed to expose only the minimum required data.</p>
-
-<p>Since there is an overhead to performing this work (when not dealing with <strong>IQueryable</strong> data the "ideal mapping" is fine to use and none of this extra work is required) and since there are some tweaks to behaviour (such as the assumption that enumerable sets will never be null), I created a separate static class to use, the <strong>ProjectionConverter</strong>. It works as follows (this example includes a mapping of nested types so that it's not as simple as the album "stub" example above):</p>
-
+<p>When building the mappings, first an &quot;ideal mapping&quot; is generated from the source types (the Entity Framework types) to the destination types (the <strong>ImmutableAlbumStub</strong>). This will never be used directly but performing this work reveals what property mappings are required and allows the interim types to be constructed to expose only the minimum required data.</p>
+<p>Since there is an overhead to performing this work (when not dealing with <strong>IQueryable</strong> data the &quot;ideal mapping&quot; is fine to use and none of this extra work is required) and since there are some tweaks to behaviour (such as the assumption that enumerable sets will never be null), I created a separate static class to use, the <strong>ProjectionConverter</strong>. It works as follows (this example includes a mapping of nested types so that it's not as simple as the album &quot;stub&quot; example above):</p>
 <pre><code>ProjectionConverter.CreateMap&lt;Track, ImmutableTrack&gt;();
 ProjectionConverter.CreateMap&lt;Album, ImmutableAlbum&gt;();
 using (var context = new ProjectionTestEntities1())
@@ -440,22 +334,20 @@ using (var context = new ProjectionTestEntities1())
   var albumsWithTrackListings = context.Albums
     .Project().To&lt;ImmutableAlbum&gt;();
 </code></pre>
-
 <p>The target classes are:</p>
-
 <pre><code>public class ImmutableAlbum
 {
   public ImmutableAlbum(string name, IEnumerable&lt;ImmutableTrack&gt; tracks)
   {
     if (string.IsNullOrWhiteSpace(name))
-      throw new ArgumentException("Null/blank name specified");
+      throw new ArgumentException(&quot;Null/blank name specified&quot;);
     if (tracks == null)
-      throw new ArgumentNullException("tracks");
+      throw new ArgumentNullException(&quot;tracks&quot;);
 
     Name = name;
     Tracks = tracks.ToList().AsReadOnly();
     if (Tracks.Any(t =&gt; t == null))
-      throw new ArgumentException("Null reference encountered in tracks set");
+      throw new ArgumentException(&quot;Null reference encountered in tracks set&quot;);
   }
 
   /// &lt;summary&gt;
@@ -474,9 +366,9 @@ public class ImmutableTrack
   public ImmutableTrack(int number, string name)
   {
     if (string.IsNullOrWhiteSpace(name))
-      throw new ArgumentException("Null/blank name specified");
+      throw new ArgumentException(&quot;Null/blank name specified&quot;);
     if (number &lt; 1)
-      throw new ArgumentOutOfRangeException("number must be greater than zero");
+      throw new ArgumentOutOfRangeException(&quot;number must be greater than zero&quot;);
 
     Number = number;
     Name = name;
@@ -493,19 +385,12 @@ public class ImmutableTrack
   public string Name { get; private set; }
 }
 </code></pre>
-
-<p>The <em>Project</em> and <em>To</em> methods are <strong>IQueryable</strong> extensions in my "<a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">Compilable Type Converter</a>" project, not the ones in AutoMapper. All of the same options that I talked about <a href="/reflection-and-c-sharp-optional-constructor-arguments">last time</a> are available for the projections (so some or all of the target types may be initialised by-property-setter instead of by-constructor), the big difference is that the <strong>ProjectionConverter</strong> must be used instead of the regular <strong>Converter</strong>.</p>
-
+<p>The <em>Project</em> and <em>To</em> methods are <strong>IQueryable</strong> extensions in my &quot;<a href="/reflection-and-c-sharp-optional-constructor-arguments">Compilable Type Converter](https://bitbucket.org/DanRoberts/compilabletypeconverter)&quot; project, not the ones in AutoMapper. All of the same options that I talked about [last time</a> are available for the projections (so some or all of the target types may be initialised by-property-setter instead of by-constructor), the big difference is that the <strong>ProjectionConverter</strong> must be used instead of the regular <strong>Converter</strong>.</p>
 <p>And with that, I'm done! <strong>IQueryable</strong>-based mappings to immutable types are now possible in a simple and efficient manner!</p>
-
-<h3>Bonus material: Dynamic "anonymous" types</h3>
-
+<h3>Bonus material: Dynamic &quot;anonymous&quot; types</h3>
 <p>The interim types that are generated by the code are created dynamically. The <strong>ProjectionConverter</strong> maintains a dictionary of generated types so if a mapping is required that requires an iterim type with the exact same set of properties as an interim type that has been used before, then a new instance of that type will be created, rather than having to build an entirely new type and then creating an instance of that. Obviously, the first time that any mapping is generated, some new types will have to be built.</p>
-
 <p>Since the C# compiler uses anonymous types, I'd wondered if there was some .net mechanism to generate these types on-the-fly. But after doing some testing (by compiling some code and investigating the output using <a href="http://msdn.microsoft.com/en-us/library/f7dy01k1(v=vs.110).aspx">ildasm</a>), it would seem that the compiler analyses the source code at compile time and bakes in classes to the IL that may be used for all of the required anonymous types. So that was a no-go.</p>
-
 <p>But a few years ago I'd been experimenting with a similar topic, so I was able to dust off and repurpose some old code. Which was convenient! All that I required was for a new type to be created with a particular set of non-indexed read-and-write properties. It doesn't need any methods, fields or events, it doesn't need any static properties, it doesn't need any read-only or write-only fields. It just requires a simple set of gettable/settable instance properties with particular names and types. I used the following to achieve this:</p>
-
 <pre><code>using System;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -516,13 +401,13 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
   public class AnonymousTypeCreator
   {
     public static AnonymousTypeCreator DefaultInstance
-      = new AnonymousTypeCreator("DefaultAnonymousTypeCreatorAssembly");
+      = new AnonymousTypeCreator(&quot;DefaultAnonymousTypeCreatorAssembly&quot;);
 
     private readonly ModuleBuilder _moduleBuilder;
     public AnonymousTypeCreator(string assemblyName)
     {
       if (string.IsNullOrWhiteSpace(assemblyName))
-        throw new ArgumentException("Null/blank assemblyName specified");
+        throw new ArgumentException(&quot;Null/blank assemblyName specified&quot;);
 
       var assemblyBuilder = Thread.GetDomain().DefineDynamicAssembly(
         new AssemblyName(assemblyName),
@@ -537,9 +422,9 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
     public Type Get(AnonymousTypePropertyInfoSet properties)
     {
       if (properties == null)
-        throw new ArgumentNullException("properties");
+        throw new ArgumentNullException(&quot;properties&quot;);
 
-      var typeName = "&lt;&gt;AnonymousType-" + Guid.NewGuid().ToString("N");
+      var typeName = &quot;&lt;&gt;AnonymousType-&quot; + Guid.NewGuid().ToString(&quot;N&quot;);
       var typeBuilder = _moduleBuilder.DefineType(
         typeName,
         TypeAttributes.Public
@@ -577,7 +462,7 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
 
         // Define get method
         var getFuncBuilder = typeBuilder.DefineMethod(
-          "get_" + property.Name,
+          &quot;get_&quot; + property.Name,
           MethodAttributes.Public
            | MethodAttributes.HideBySig
            | MethodAttributes.NewSlot
@@ -595,7 +480,7 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
 
         // Define set method
         var setFuncBuilder = typeBuilder.DefineMethod(
-          "set_" + property.Name,
+          &quot;set_&quot; + property.Name,
           MethodAttributes.Public
            | MethodAttributes.HideBySig
            | MethodAttributes.SpecialName
@@ -615,7 +500,7 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
     }
 
     private static MethodInfo MethodInfoInvokeMember = typeof(Type).GetMethod(
-      "InvokeMember",
+      &quot;InvokeMember&quot;,
       new[] {
         typeof(string),
         typeof(BindingFlags),
@@ -627,54 +512,52 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
   }
 }
 </code></pre>
-
 <p>The <strong>AnonymousTypePropertyInfoSet</strong> data that is used to generate new classes is just a set of <strong>PropertyInfo</strong> instances that don't have the same property name used for multiple different property types and that ensures that none of the properties are indexed. It also overrides the Equals and GetHashCode method so that it can be used as a key in a dictionary of interim types to prevent creating more types that necessary. In essence, really it's an <strong>IEnumerable&lt;PropertyInfo&gt;</strong> with a few bells and whistles.</p>
-
 <p>(These files can be found in the Bitbucket project at <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter/src/f6d122508b580f70b95eb4520dd35d7fb354f42f/CompilableTypeConverterQueryableExtensions/ProjectionConverterHelpers/AnonymousTypeCreator.cs?at=default">AnonymousTypeCreator.cs</a> and <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter/src/f6d122508b580f70b95eb4520dd35d7fb354f42f/CompilableTypeConverterQueryableExtensions/ProjectionConverterHelpers/AnonymousTypePropertyInfoSet.cs?at=default">AnonymousTypePropertyInfoSet.cs</a> while the dynamic type creation is required by the <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter/src/f6d122508b580f70b95eb4520dd35d7fb354f42f/CompilableTypeConverterQueryableExtensions/ProjectionConverter.cs?at=default">PropertyConverter.cs</a>).</p>
+<p>And on that note, I really am done!</p>
+<p class="PostTime">Posted at 23:12</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/reflection-and-c-sharp-optional-constructor-arguments">Reflection and C# optional constructor arguments</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/vbscript-is-dim">VBScript is DIM</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/AutoMapper" title="8 Posts">AutoMapper</a></li><li><a href="/Archive/Tag/LINQ" title="12 Posts">LINQ</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+                <div id="disqus_thread"></div>
+                <script type="text/javascript">
+					var disqus_identifier = "68";
+					var disqus_title = "Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)";
+					(function () {
+						whenjQueryIsAvailable(
+							function () {
+								$(function () {
+									loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+									$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+								});
+							}
+						);
 
-<p>And on that note, I really am done!</p><p class="PostTime">Posted at 23:12</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/reflection-and-c-sharp-optional-constructor-arguments">Reflection and C# optional constructor arguments</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/vbscript-is-dim">VBScript is DIM</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/AutoMapper" title="8 Posts">AutoMapper</a></li><li><a href="/Archive/Tag/LINQ" title="12 Posts">LINQ</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
-			<div id="disqus_thread"></div>
-						<script type="text/javascript">
-							var disqus_identifier = "68";
-							var disqus_title = "Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)";
-							(function () {
-							    whenjQueryIsAvailable(
-									function () {
-									    $(function () {
-											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
-											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
-										});
-									}
-								);
+						var bStartedLoadingComments = false;
+						function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+							if (bStartedLoadingComments) {
+								return;
+							}
+							var $post = $("div.Content.SinglePost");
+							var bottomOfPost = $post.position().top + $post.height();
+							var $window = $(window);
+							if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+								bStartedLoadingComments = true;
+								loadComments();
+							}
+						}
 
-								var bStartedLoadingComments = false;
-								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
-								    if (bStartedLoadingComments) {
-								        return;
-								    }
-								    var $post = $("div.Content.SinglePost");
-								    var bottomOfPost = $post.position().top + $post.height();
-								    var $window = $(window);
-								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
-										bStartedLoadingComments = true;
-										loadComments();
-									}
-								}
-
-								function loadComments() {
-								    var dsq = document.createElement("script");
-									dsq.type = "text/javascript";
-									dsq.async = true;
-									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-								}
-							}());
-						</script>
-	</div>
+						function loadComments() {
+							var dsq = document.createElement("script");
+							dsq.type = "text/javascript";
+							dsq.async = true;
+							dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+							(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+						}
+					}());
+                </script>
+    </div>
 
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -684,17 +567,16 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

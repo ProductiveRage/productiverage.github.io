@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -41,180 +40,114 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">30 July 2013</h3><h2><a id="Post60"></a><a href="/javascript-compression-putting-my-json-search-indexes-on-a-diet">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></h2>
-
-<p>When I wrote a couple of weeks ago about writing a way to consume <a href="/the-full-text-indexer-post-roundup">Full Text Indexer</a> data entirely on the client (so that I could recreate my blog's search functionality at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a> - see <a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The Full Text Indexer goes client-side!</a>), I said that</p>
-
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">30 July 2013</h3><h2><a id="javascript-compression-putting-my-json-search-indexes-on-a-diet" href="/javascript-compression-putting-my-json-search-indexes-on-a-diet">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></h2>
+<p>When I wrote a couple of weeks ago about writing a way to consume <a href="/the-full-text-indexer-post-roundup">Full Text Indexer</a> data entirely on the client (so that I could recreate my blog's search functionality at <a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">productiverage.neocities.org](http://productiverage.neocities.org) - see [The Full Text Indexer goes client-side!</a>), I said that</p>
 <blockquote>
-  <p>Yes, the search index files are bigger than I would have liked..</p>
+<p>Yes, the search index files are bigger than I would have liked..</p>
 </blockquote>
-
 <p>This may have been somewhat of an understatement.</p>
-
-<p>As a little refresher; there is one JSON file responsible for matching posts to search terms (<em>"oh, I see you seached for '<a href="/Search?term=cats">cats</a>'! The posts that you want are, in descending order of match quality: 26, 28, 58, 36, 27, 53, 24"</em>). Then there is a JSON file <em>per-post</em> for all of the source location mappings. These describe precisely <em>where</em> in the posts that tokens may be matched. There's quite a lot of data to consider and it's in a fairly naive JSON structure (I used single letter property names but that was the only real attempt at size-constraining*). On top of this, there's a plain-text representation of each post so that the source location mappings can be used to generate a best match "content excerpt" for each result (à la Google's results, which highlight matched terms). And finally a JSON file for all of the titles of the posts so that the titles can be displayed when the search logic knows which posts match the query but the content exceprts generation is still being worked on in the background.</p>
-
+<p>As a little refresher; there is one JSON file responsible for matching posts to search terms (<em>&quot;oh, I see you seached for '<a href="/Search?term=cats">cats</a>'! The posts that you want are, in descending order of match quality: 26, 28, 58, 36, 27, 53, 24&quot;</em>). Then there is a JSON file <em>per-post</em> for all of the source location mappings. These describe precisely <em>where</em> in the posts that tokens may be matched. There's quite a lot of data to consider and it's in a fairly naive JSON structure (I used single letter property names but that was the only real attempt at size-constraining*). On top of this, there's a plain-text representation of each post so that the source location mappings can be used to generate a best match &quot;content excerpt&quot; for each result (à la Google's results, which highlight matched terms). And finally a JSON file for all of the titles of the posts so that the titles can be displayed when the search logic knows which posts match the query but the content exceprts generation is still being worked on in the background.</p>
 <p>This results in 5.8MB of JSON and plain text data.</p>
-
 <p>Now, in fairness, this is all gzip'd when it comes down the wire and this sort of data compresses really well. And the detail files for the posts are only requested when the corresponding posts are identified as being results for the current search. So in terms of what the user has to download, it's no big deal.</p>
-
 <p>However, the hosting at <a href="http://neocities.org">neocities.org</a> only offers 10MB at the moment so 5.8MB solely for searching seems a little excessive. To put it into perspective, this is several times more than the html required to render all of the actual posts!</p>
-
 <p>I hadn't actually realised just how much of a problem it was until I published my last post. When I came to re-generate the flattened content to upload to NeoCities, that last post (being <a href="/autoreleasing-event-listeners">something of a beast</a>) pushed the storage requirements past the magic 10MB mark!</p>
-
 <p>* <em>(Very minor diversion: There was actually one potential optimisation that I did consider when first serialising the index data for use on the client. Instead of a simple associative array, I wondered if using a Ternary Search Tree would reduce the space requirements if a lot of the keys had similarities. I used a TST internally in the C# project for performance reasons and talked about it in <a href="/the-net-dictionary-is-fast">The .Net Dictionary is FAST!</a>. Alas, when I tried it as a structure for my data, it resulted in slightly larger files).</em></p>
-
 <h3>So. Compression, yeah? In JavaScript??</h3>
-
-<p>The biggest contributors to size are the per-post search index files that contain the source locations data. Each is JSON data describing an associative array matching a "normalised" search term (to take into account plurality, case-insensitivity, etc) to a post key, weight and array of source locations. Each source location has the fields FieldIndex, TokenIndex, ContentIndex and ContentLength (read all about it at <a href="/the-full-text-indexer-source-locations">The Full Text Indexer: Source Locations</a>).</p>
-
+<p>The biggest contributors to size are the per-post search index files that contain the source locations data. Each is JSON data describing an associative array matching a &quot;normalised&quot; search term (to take into account plurality, case-insensitivity, etc) to a post key, weight and array of source locations. Each source location has the fields FieldIndex, TokenIndex, ContentIndex and ContentLength (read all about it at <a href="/the-full-text-indexer-source-locations">The Full Text Indexer: Source Locations</a>).</p>
 <p>I know that this data <em>can</em> be compressed since, not only does textual or JSON data frequently lend itself to being effectively compressed, but I can <em>see</em> the compression that gzip achieves when the data is delivered to the browser.</p>
-
-<p>My first thought when it comes to compression is that we're dealing with binary data. Certainly, when I see gzip'd responses in <a href="http://fiddler2.com/">Fiddler</a> (before using the <em>"Response is encoded.. Click here to transform"</em> link) it looks like gobbledygook, not like any text I know!</p>
-
-<p>This reminded me of something I read some time ago about a guy creating a PNG file where the pixels are generated from bytes extracted from textual content. This PNG can be read by javascript and the pixels extracted again, and from the pixel values the textual source content can be recreated. The real benefit with PNG here is that it incorporates a lossless compression scheme. Lossless compression is really important here, it means that the decompressed content will be <em>identical</em> to the source content. JPEG is a <em>lossy</em> scheme and can achieve higher compression rates if the quality is reduced sufficiently. But it loses information when it does this. The idea is that the resulting image is either acceptably close visually to the source image or that the discrepancy is evident but thought to be a worthwhile trade-off considering the file size benefits. If we're trying to extract text data that represents javascript than "close-ish, maybe" is not going to cut it!</p>
-
+<p>My first thought when it comes to compression is that we're dealing with binary data. Certainly, when I see gzip'd responses in <a href="http://fiddler2.com/">Fiddler</a> (before using the <em>&quot;Response is encoded.. Click here to transform&quot;</em> link) it looks like gobbledygook, not like any text I know!</p>
+<p>This reminded me of something I read some time ago about a guy creating a PNG file where the pixels are generated from bytes extracted from textual content. This PNG can be read by javascript and the pixels extracted again, and from the pixel values the textual source content can be recreated. The real benefit with PNG here is that it incorporates a lossless compression scheme. Lossless compression is really important here, it means that the decompressed content will be <em>identical</em> to the source content. JPEG is a <em>lossy</em> scheme and can achieve higher compression rates if the quality is reduced sufficiently. But it loses information when it does this. The idea is that the resulting image is either acceptably close visually to the source image or that the discrepancy is evident but thought to be a worthwhile trade-off considering the file size benefits. If we're trying to extract text data that represents javascript than &quot;close-ish, maybe&quot; is not going to cut it!</p>
 <p>The original article that I'd remembered was this: <a href="http://blog.nihilogic.dk/2008/05/compression-using-canvas-and-png.html">Compression using Canvas and PNG-embedded data</a>. The results sound impressive, he got an older version of jQuery (1.2.3) compressed down from 53kb to 17kb. Bear in mind that this is already the minified version of the code! It's quite a short article and interesting, so give it a visit (and while you're there notice that the Mario background is interactive and can be played using the cursor keys! :)</p>
-
-<p>The summary of the article, though, is that it's not suitable for mainstream use. Browser support is restricted (all modern browsers now would work, I'm sure, but I don't know how many versions of IE it would work in). And it concludes with <em>"this is meant only as thing of interest and is not something you should use in most any real life applications, where something like gzip will outperform this"</em>.</p>
-
+<p>The summary of the article, though, is that it's not suitable for mainstream use. Browser support is restricted (all modern browsers now would work, I'm sure, but I don't know how many versions of IE it would work in). And it concludes with <em>&quot;this is meant only as thing of interest and is not something you should use in most any real life applications, where something like gzip will outperform this&quot;</em>.</p>
 <p>Ok.</p>
-
 <p>Glad I looked it up again, though, since it was interesting stuff.</p>
-
 <p>On the same blog, there's also an article <a href="http://blog.nihilogic.dk/2008/05/reading-exif-data-with-javascript.html">Read EXIF data with Javascript</a>, which talks about retrieving binary data from a file and extracting the data from it. In this case, the content would have to be compressed when written and then decompressed by the javascript loading it. Unlike, the PNG approach, compression doesn't come for free. From the article, he's written the file <a href="http://www.nihilogic.dk/labs/binaryajax/binaryajax.js">binaryajax.js</a>. Unfortunately, browser support apparently is still incomplete. The original plan outlined works for Chrome and Firefox but then some dirty hacks (including rendering VBScript script tags and executing those functions) are required for IE and, at the time at least, Opera wouldn't work at all.</p>
-
 <p>Again, interesting stuff! But not quite what I want.</p>
-
 <h3>Help, Google!</h3>
-
 <p>So I had to fall back to asking google about javascript compression and trying not to end up in article after article about how to minify scripts.</p>
-
 <p>In fairness, it didn't take too long at all until a pattern was emerging where a lot of people were talking about LZ compression (info available at the <a href="http://en.wikipedia.org/wiki/LZ77_and_LZ78">Wikipedia</a> page). And I finally ended up here <a href="http://pieroxy.net/blog/pages/lz-string/index.html">lz-string: JavaScript compression, fast!</a></p>
-
 <p>From that page -</p>
-
 <blockquote>
-  <p>lz-string was designed to fulfill the need of storing large amounts of data in localStorage, specifically on mobile devices. localStorage being usually limited to 5MB, all you can compress is that much more data you can store.</p>
-  
-  <p>What about other libraries?</p>
-  
-  <p>All I could find was:</p>
-  
-  <p>- some LZW implementations which gives you back arrays of numbers (terribly inefficient to store as tokens take 64bits) and don't support any character above 255.</p>
-  
-  <p>- some other LZW implementations which gives you back a string (less terribly inefficient to store but still, all tokens take 16 bits) and don't support any character above 255.</p>
-  
-  <p>- an LZMA implementation that is asynchronous and very slow - but hey, it's LZMA, not the implementation that is slow.</p>
-  
-  <p>- a GZip implementation not really meant for browsers but meant for node.js, which weighted 70kb (with deflate.js and crc32.js on which it depends).</p>
+<p>lz-string was designed to fulfill the need of storing large amounts of data in localStorage, specifically on mobile devices. localStorage being usually limited to 5MB, all you can compress is that much more data you can store.</p>
+<p>What about other libraries?</p>
+<p>All I could find was:</p>
+<p>- some LZW implementations which gives you back arrays of numbers (terribly inefficient to store as tokens take 64bits) and don't support any character above 255.</p>
+<p>- some other LZW implementations which gives you back a string (less terribly inefficient to store but still, all tokens take 16 bits) and don't support any character above 255.</p>
+<p>- an LZMA implementation that is asynchronous and very slow - but hey, it's LZMA, not the implementation that is slow.</p>
+<p>- a GZip implementation not really meant for browsers but meant for node.js, which weighted 70kb (with deflate.js and crc32.js on which it depends).</p>
 </blockquote>
-
 <p>This is sounding really good (and his view of the state of the other libraries available reflects my own experiences when Googling around). And he goes on to say</p>
-
 <blockquote>
-  <p>localStorage can only contain JavaScript strings. Strings in JavaScript are stored internally in UTF-16, meaning every character weight 16 bits. I modified the implementation to work with a 16bit-wide token space.</p>
+<p>localStorage can only contain JavaScript strings. Strings in JavaScript are stored internally in UTF-16, meaning every character weight 16 bits. I modified the implementation to work with a 16bit-wide token space.</p>
 </blockquote>
-
 <p>Now, I'm not going to be using it with localStorage but it's gratifying to see that this guy has really understood the environment in which it's going to be used and how best to use that to his advantage.</p>
-
-<p>Preliminary tests went well; I was compressing this, decompressing that, testing this, testing that. It was all going swimmingly! The only problem now was that this was a clearly a custom (and clever) implementation of the algorithm so I wouldn't be able to use anything standard on the C# side to compress the data if I wanted the javascript to be able to decompress it again. And the whole point of all of this is to "flatten" my primary blog and serialise the search index in one process, such that it can be hosted on <a href="http://necities.org">NeoCities</a>.</p>
-
+<p>Preliminary tests went well; I was compressing this, decompressing that, testing this, testing that. It was all going swimmingly! The only problem now was that this was a clearly a custom (and clever) implementation of the algorithm so I wouldn't be able to use anything standard on the C# side to compress the data if I wanted the javascript to be able to decompress it again. And the whole point of all of this is to &quot;flatten&quot; my primary blog and serialise the search index in one process, such that it can be hosted on <a href="http://necities.org">NeoCities</a>.</p>
 <p>The javscript code is fairly concise, so I translated it into C#. When I'd translated C# classes from my Full Text Indexer into javascript equivalents, it had gone surprisingly painlessly. I'd basically just copied the C# code into an empty file and then removed types and tweaked things to work as javascript. So I thought I'd take a punt and try the opposite - just copy the javascript into an empty C# class and then try to fix it up. Adding appropriate types and replacing javascript methods with C# equivalents. This too seemed to go well, I was compressing some strings to text files, pulling them with ajax requests in javascript, decompressing them and viewing them. Success!</p>
-
 <p>Until..</p>
-
 <p>I gave it a string that didn't work. The decompress method returned null. Fail.</p>
-
 <h3>Troubleshooting</h3>
-
 <p>I figured that there's only so much that could be going wrong. If I compressed the same string with the javascript code then the javascript code could <em>decompress</em> it just fine. The data compressed with the C# version refused to be decompressed by the javascript, though. Chance are I made a mistake in the translation.</p>
-
 <p>I got the shortest reproduce string I could (it's from the titles-of-all-posts JSON that the search facility uses) -</p>
-
 <blockquote>
-  <p>{"1":"I lo</p>
+<p>{&quot;1&quot;:&quot;I lo</p>
 </blockquote>
-
 <p>and got both the C# and javascript code to print out a list of character codes that were generated when that string was compressed.</p>
-
 <p>These were identical. So maybe my translation <em>wasn't</em> at fault.</p>
-
 <p>Well something must be getting lost somewhere!</p>
-
 <p>This led me on to wondering if it was somehow the encoding. The compressed content is being served up as UTF8 (basically the standard on the web) but the compression algorithm is intended to compress to UTF16. Now, surely this won't make a difference? It means that the bits sent over the wire (in UTF8) will not be the exact same bits as the javascript string (UTF16) is represented by when it's received, but these encoded bits should be describing the same character codes.</p>
-
 <p>So the next step was to intercept the ajax request that the javascript client was making for the data (compressed by C# code, delivered over the wire with UTF8 encoding) and to write out the character codes at that point.</p>
-
 <p>And there was a discrepancy! The character codes received were not the same that I'd generated by the C# code and that I thought I was transmitting!</p>
-
-<p>Thinking still that this must <em>somehow</em> be encoding-related, I started playing around with the encoding options when writing the data to disk. And noticed, innocently hidden away in an alternate constructor signature, the <strong>System.Text.UTF8Encoding</strong> class has an option to "throwOnInvalidBytes". What <em>is</em> this?</p>
-
+<p>Thinking still that this must <em>somehow</em> be encoding-related, I started playing around with the encoding options when writing the data to disk. And noticed, innocently hidden away in an alternate constructor signature, the <strong>System.Text.UTF8Encoding</strong> class has an option to &quot;throwOnInvalidBytes&quot;. What <em>is</em> this?</p>
 <p>I knew how UTF8 worked, that it uses a variable number of bytes and uses the most-signicant-bits to describe how many bytes are required for the current character (the <a href="http://en.wikipedia.org/wiki/Utf8">Wikipedia</a> article explains it nicely) and thought that that was pretty much all there was to it. So how could a byte be invalid?? Well, with this constructor argument set to true, I was getting the error</p>
-
 <blockquote>
-  <p>Unable to translate Unicode character \uD900 at index 6 to specified code page.</p>
+<p>Unable to translate Unicode character \uD900 at index 6 to specified code page.</p>
 </blockquote>
-
 <p>so clearly particular bytes <em>can</em> be invalid somehow..</p>
-
 <h3>UTF Limitations</h3>
-
 <p>With this error, it didn't actually take much searching. There's a link on www.unicode.com; <a href="http://www.unicode.org/faq/utf_bom.html#utf16-7">Are there any 16-bit valuese that are invalid?</a> that states that</p>
-
 <blockquote>
-  <p>Unpaired surrogates are invalid in UTFs. These include any value in the range D80016 to DBFF16 not followed by a value in the range DC0016 to DFFF16, or any value in the range DC0016 to DFFF16 not preceded by a value in the range D80016 to DBFF16</p>
+<p>Unpaired surrogates are invalid in UTFs. These include any value in the range D80016 to DBFF16 not followed by a value in the range DC0016 to DFFF16, or any value in the range DC0016 to DFFF16 not preceded by a value in the range D80016 to DBFF16</p>
 </blockquote>
-
 <p>I spent a little while wandering through various searches on the internet trying to decide what the best way would be to try to address this. I didn't want to have to try to find another compressor for all of the reasons that the author of the one I'm using outlined! Which made me think, maybe there's more information about this on his site.</p>
-
-<p>Lo and behold, in the <a href="http://pieroxy.net/blog/pages/lz-string/index.html">changelog</a> (at the bottom of that page), there's mention that there's a v1.3.0 available that has additional methods <em>compressToUTF16</em> and <em>decompressToUTF16</em> (<em>"version 1.3.0 now stable"</em>) that <em>"allow lz-string to produce something that you can store in localStorage on IE and Firefox"</em>.</p>
-
-<p>These new methods wrap the methods "compress" and "decompress". But the "compress" and "decompress" methods in this new version of the code look different to those in the code that I had been using (and had translated). But it's no big deal to translate the newer version (and the new methods).</p>
-
-<p>And now it works! I wish that this version had been the file you see when you go to the main <a href="https://github.com/pieroxy/lz-string">lz-string GitHub page</a> rather than being hidden in the "libs" folder. But considering how happy I am that the solution to my problem has been provided to me with little-to-no-effort, I'm really not going to complain! :)</p>
-
+<p>Lo and behold, in the <a href="http://pieroxy.net/blog/pages/lz-string/index.html">changelog</a> (at the bottom of that page), there's mention that there's a v1.3.0 available that has additional methods <em>compressToUTF16</em> and <em>decompressToUTF16</em> (<em>&quot;version 1.3.0 now stable&quot;</em>) that <em>&quot;allow lz-string to produce something that you can store in localStorage on IE and Firefox&quot;</em>.</p>
+<p>These new methods wrap the methods &quot;compress&quot; and &quot;decompress&quot;. But the &quot;compress&quot; and &quot;decompress&quot; methods in this new version of the code look different to those in the code that I had been using (and had translated). But it's no big deal to translate the newer version (and the new methods).</p>
+<p>And now it works! I wish that this version had been the file you see when you go to the main <a href="https://github.com/pieroxy/lz-string">lz-string GitHub page</a> rather than being hidden in the &quot;libs&quot; folder. But considering how happy I am that the solution to my problem has been provided to me with little-to-no-effort, I'm really not going to complain! :)</p>
 <h3>Incorporating it into the solution</h3>
-
 <p>Step 1 was to alter my <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer">Blog-to-NeoCities Transformer</a> to write compressed versions of the per-post source location mappings data, along with compressed versions of the plain text post data and the JSON that has the titles for each post.</p>
-
 <p>The C# translation of the LZString code can be seen at: <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer/src/84be5b0af68305a912b4184ae579f03a548292a4/NeoCitiesTransformer/Misc/LZStringCompress.cs?at=default">LZStringCompress.cs</a>.</p>
-
 <p>Step 2 was to alter the javascript search code to handle the compressed content. Having included the 1.3.0 version of LZString.js, I needed to replace some of the $.ajax requests with calls to one of</p>
-
 <pre><code>function LoadCompressedData(strUrl, fncSuccess, fncFailure) {
-  // Note: I've seen this fail when requesting files with extension ".js" but work when the exact
-  // same file is renamed to ".txt", I'm not sure if this is in IIS that it's failing or if jQuery
+  // Note: I've seen this fail when requesting files with extension &quot;.js&quot; but work when the exact
+  // same file is renamed to &quot;.txt&quot;, I'm not sure if this is in IIS that it's failing or if jQuery
   // is requesting the data in a slightly different manner (despite the explicit dataType option),
-  // so best just ensuring that all LZ-compressed data is stored in a file with a ".txt" extension.
+  // so best just ensuring that all LZ-compressed data is stored in a file with a &quot;.txt&quot; extension.
   $.ajax({
     url: strUrl,
-    dataType: "text",
+    dataType: &quot;text&quot;,
     success: function(strCompressedContent) {
       var strContent;
       try {
@@ -237,7 +170,7 @@ function LoadCompressedJsonData(strUrl, fncSuccess, fncFailure) {
     function(strContent) {
       var objData;
       try {
-        eval("objData = " + strContent);
+        eval(&quot;objData = &quot; + strContent);
       }
       catch(e) {
         if (fncFailure) {
@@ -255,111 +188,72 @@ function LoadCompressedJsonData(strUrl, fncSuccess, fncFailure) {
   );
 }
 </code></pre>
-
 <p>Step 3 is.. there <em>is</em> no step 3! Everything was now working but taking up less space on the hosting.</p>
-
 <p>When compressed, the detailed source location mappings data is reduced from a combined 4.7MB to 1.5MB. The plain text content was reduced from 664kb to 490kb (not as much of a saving as I'd expected, to be honest). The titles JSON shrank marginally from 2.58kb to 2.36kb. The summary data JSON wasn't compressed so that the first stage of the search could be performed as quickly as possible and <em>one</em> non-compressed file on the server was no problem (it's still gzip'd when passed to the client, though, so there's no bandwidth cost). In total, 5.3MB of data was condensed into requiring less than 2MB on the server. Which I am happily marking down as a win :)</p>
-
-<p>So here's to me hopefully fitting <em>many</em> more posts (along with all of the related javascript searching data) into the NeoCities hosting limitations! I'm sure that if I ever start pushing that 10MB point again, by then the 10MB limit will have been raised - 20MB is already on the way!</p><p class="PostTime">Posted at 23:22</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/NeoCities" title="2 Posts">NeoCities</a></li></ul></div>
-			<p class="Comments">
-				<a href="/javascript-compression-putting-my-json-search-indexes-on-a-diet#disqus_thread" data-disqus-identifier="60">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">25 July 2013</h3><h2><a id="Post59"></a><a href="/autoreleasing-event-listeners">Auto-releasing Event Listeners</a></h2>
-
-<p>Last month, in <a href="/parsing-css">Parsing CSS</a>, I talked about a way to parse CSS and identify character-by-character what "type" it was (eg. "SelectorOrStyleProperty", "Value", "Whitespace", etc..). The interesting things, I think, are more what I intend to do with the work (trying to validate the rules from <a href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a>) and <em>how</em> the processing was performed. The input content is traversed through this interface:</p>
-
+<p>So here's to me hopefully fitting <em>many</em> more posts (along with all of the related javascript searching data) into the NeoCities hosting limitations! I'm sure that if I ever start pushing that 10MB point again, by then the 10MB limit will have been raised - 20MB is already on the way!</p>
+<p class="PostTime">Posted at 23:22</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/NeoCities" title="2 Posts">NeoCities</a></li></ul></div>
+            <p class="Comments">
+                <a href="/javascript-compression-putting-my-json-search-indexes-on-a-diet#disqus_thread" data-disqus-identifier="60">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">25 July 2013</h3><h2><a id="autoreleasing-event-listeners" href="/autoreleasing-event-listeners">Auto-releasing Event Listeners</a></h2>
+<p>Last month, in <a href="/parsing-css">Parsing CSS</a>, I talked about a way to parse CSS and identify character-by-character what &quot;type&quot; it was (eg. &quot;SelectorOrStyleProperty&quot;, &quot;Value&quot;, &quot;Whitespace&quot;, etc..). The interesting things, I think, are more what I intend to do with the work (trying to validate the rules from <a href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a>) and <em>how</em> the processing was performed. The input content is traversed through this interface:</p>
 <pre><code>public interface IWalkThroughStrings
 {
   char? CurrentCharacter { get; }
   IWalkThroughStrings Next { get; }
 }
 </code></pre>
-
-<p>The first implementation of this took a string of CSS (or the <a href="http://www.dotlesscss.org">LESS</a> variant) and internally maintained an index for each new <strong>IWalkThroughStrings</strong> returned when the "Next" property is accessed on an instance (so each time Next is accessed, a new instance of the class is returned with an index value one greater than the instance whose Next property was requested).</p>
-
-<p>But I'd suggested that an alternate implementation could wrap a <strong>TextReader</strong> and read through potentially huge amounts of content using relatively few resources since very little "reading ahead" is required and so only a small segment of the complete data need be in memory at any one time.</p>
-
+<p>The first implementation of this took a string of CSS (or the <a href="http://www.dotlesscss.org">LESS</a> variant) and internally maintained an index for each new <strong>IWalkThroughStrings</strong> returned when the &quot;Next&quot; property is accessed on an instance (so each time Next is accessed, a new instance of the class is returned with an index value one greater than the instance whose Next property was requested).</p>
+<p>But I'd suggested that an alternate implementation could wrap a <strong>TextReader</strong> and read through potentially huge amounts of content using relatively few resources since very little &quot;reading ahead&quot; is required and so only a small segment of the complete data need be in memory at any one time.</p>
 <p>(The returned data is an enumerable set that delivers the results through <a href="http://msdn.microsoft.com/en-us/library/vstudio/9k7k7cf0.aspx">yield return</a> and so there is no internal list built that has to describe the entirety of the content, further limiting the resource requirements).</p>
-
-<p>Actually writing an implementation of <strong>IWalkThroughStrings</strong> that used the <strong>TextReader</strong>, however, turned out to be an interesting adventure and introduced me (in great detail) to one of the few not-too-difficult-to-encounter "memory leaks" of the .net framework.</p>
-
+<p>Actually writing an implementation of <strong>IWalkThroughStrings</strong> that used the <strong>TextReader</strong>, however, turned out to be an interesting adventure and introduced me (in great detail) to one of the few not-too-difficult-to-encounter &quot;memory leaks&quot; of the .net framework.</p>
 <h3>Memory leaks in .net?!</h3>
-
 <p>I'll quickly try to describe what I was doing; the problem with wrapping a <strong>TextReader</strong> in an interface that is supposed to represent immutable data is that a <strong>TextReader</strong> instance is <em>not</em> immutable. It has a Read method that can retrieve zero, one or multiple bytes and will then move past the read content (if there was any). So subsequent calls to Read with the same arguments will (much of the time) return different data.</p>
-
 <p>If I want to parse the content</p>
-
 <pre><code>a:hover { color: blue; }
 </code></pre>
-
-<p>by walking it through it with a hypothetical <strong>TextReaderStringWalker</strong> "c0" then I would expect the CurrentCharacter of this <em>c0</em> instance to return "a" no matter how many times I request it. To get the next character, I could set a new instance <em>c1</em> to be the reference that <em>c0</em> declares as its Next property and get the CurrentCharacter from <em>c1</em>. Each time I query the CurrentCharacter property of <em>c1</em> I should get back ":". Each instance should consistently report data specific to the location in the content that it represents. Requesting the CurrentCharacter should have no side effects.</p>
-
+<p>by walking it through it with a hypothetical <strong>TextReaderStringWalker</strong> &quot;c0&quot; then I would expect the CurrentCharacter of this <em>c0</em> instance to return &quot;a&quot; no matter how many times I request it. To get the next character, I could set a new instance <em>c1</em> to be the reference that <em>c0</em> declares as its Next property and get the CurrentCharacter from <em>c1</em>. Each time I query the CurrentCharacter property of <em>c1</em> I should get back &quot;:&quot;. Each instance should consistently report data specific to the location in the content that it represents. Requesting the CurrentCharacter should have no side effects.</p>
 <p>Likewise, requesting the Next property value should have no side effects. It should always return a reader for the next point in the stream compared to where the current reader is.</p>
-
 <p>If all read operations could be limited to being a single character long then this wouldn't be too complicated, each <strong>TextReaderStringWalker</strong> could generate a new instance on-the-fly when the Next property is requested and then consistently return this reference for all subsequent requests to the Next property. This isn't true immutability, Eric Lippert refers to it as <a href="http://blogs.msdn.com/b/ericlippert/archive/2007/11/13/immutability-in-c-part-one-kinds-of-immutability.aspx">Observational Immutability</a>, meaning that to anything referencing it it appears to be immutable but under the surface some mutation occurs. Some sort of thread-safety handling code would have to be included in case the Next property is requested by multiple threads before the first request can set the internal reference can be set.</p>
-
-<p>But to make things even more awkward, there are some scenarios in which the parser has to read ahead in the content a little. In the above example, it has to look ahead to see that the ":" in "a:hover" represents the start of a pseudo class and not the separator between a property name and its value.</p>
-
+<p>But to make things even more awkward, there are some scenarios in which the parser has to read ahead in the content a little. In the above example, it has to look ahead to see that the &quot;:&quot; in &quot;a:hover&quot; represents the start of a pseudo class and not the separator between a property name and its value.</p>
 <p>But if some read-ahead is required to correctly identify the type of that second character, when we want to access the third character, the <strong>TextReader</strong> will be further ahead than we might have expected!</p>
-
-<p>The way I'll address this is to wrap the <strong>TextReader</strong> in an intermediary layer which will only move it a single character for any given request, will track the position of the reader and will raise an event for each move. The <strong>TextReaderStringWalker</strong> instances (the immutable facade over the reader) may then subscribe to this event and maintain a buffer of characters that the wrapped reader has progressed through beyond the current position of the <strong>TextReaderStringWalker</strong>. Since these "string walkers" are only expected to have a very short lifespan as the content is traversed, having a few character buffers built up when read aheads occur should be no big deal.</p>
-
-<p>So now when the work of <em>c1</em> is done and the ":" character identified as being type "SelectorOrStyleProperty", when the Next property of <em>c1</em> is accessed and a new <strong>TextReaderStringWalker</strong> returned, the character that that instance will return comes from the buffer that <em>c1</em> maintained and which it shared with the new instance. The <strong>TextReader</strong> doesn't have to be moved on since it's already read past the end of "hover".</p>
-
+<p>The way I'll address this is to wrap the <strong>TextReader</strong> in an intermediary layer which will only move it a single character for any given request, will track the position of the reader and will raise an event for each move. The <strong>TextReaderStringWalker</strong> instances (the immutable facade over the reader) may then subscribe to this event and maintain a buffer of characters that the wrapped reader has progressed through beyond the current position of the <strong>TextReaderStringWalker</strong>. Since these &quot;string walkers&quot; are only expected to have a very short lifespan as the content is traversed, having a few character buffers built up when read aheads occur should be no big deal.</p>
+<p>So now when the work of <em>c1</em> is done and the &quot;:&quot; character identified as being type &quot;SelectorOrStyleProperty&quot;, when the Next property of <em>c1</em> is accessed and a new <strong>TextReaderStringWalker</strong> returned, the character that that instance will return comes from the buffer that <em>c1</em> maintained and which it shared with the new instance. The <strong>TextReader</strong> doesn't have to be moved on since it's already read past the end of &quot;hover&quot;.</p>
 <p>And this approach seemed to work a treat!</p>
-
-<p><em>(If the explanation above is hard to follow due to its long windedness, it might be easier to see the code which is in the <a href="https://bitbucket.org/DanRoberts/cssparser/">CSSParser</a> project - see <a href="https://bitbucket.org/DanRoberts/cssparser/src/21dd704d85c471adbcea5b32530d58870af8c38e/CSSParser/TextReaderNavigators/TextReaderStringNavigator.cs">TextReaderStringNavigator.cs</a>, without comments it's only 145 lines including the "intermediary layer" class around the reader).</em></p>
-
+<p><em>(If the explanation above is hard to follow due to its long windedness, it might be easier to see the code which is in the <a href="https://bitbucket.org/DanRoberts/cssparser/">CSSParser</a> project - see <a href="https://bitbucket.org/DanRoberts/cssparser/src/21dd704d85c471adbcea5b32530d58870af8c38e/CSSParser/TextReaderNavigators/TextReaderStringNavigator.cs">TextReaderStringNavigator.cs</a>, without comments it's only 145 lines including the &quot;intermediary layer&quot; class around the reader).</em></p>
 <p>Until I did some investigation..</p>
-
 <p>I added a finaliser to the <strong>TextReaderStringWalker</strong> class which would write to the console when instances were garbage collected so that I could see them being tidied up as the content was traversed. At least that was the plan. The finalisers didn't get called until my little console app terminated, despite a liberal smattering of <a href="http://msdn.microsoft.com/en-us/library/xe0c2357.aspx">GC.Collect</a> calls (for the purposes of testing only, of course!).</p>
-
 <p>Head-scratching ensued.. I'd expected to encounter problems when I was learning about memory pinning in <a href="/idispatch-iwastedtimeonthis-but-ilearntlots">IDispatch (IWastedTimeOnThis but ILearntLots)</a> but not when doing something as apparently simple as this!</p>
-
 <h3>Events use EventHandlers, EventHandlers are delegates, delegates are..</h3>
-
 <p>Bear with me while we go briefly back to basics. A typical way to subscribe to an event is</p>
-
 <pre><code>button.Click += (sender, e) =&gt;
 {
 };
 </code></pre>
-
-<p>which defines an anoymous method that becomes somehow registered with the Click event and called when the Click event is raised (I'll be less vague about the "somehow" shortly). The anonymous method is passed as a delegate which matches the <strong>EventHandler</strong> signature. A delegate is essentially a <strong>MethodInfo</strong> and optionally a target object. If a named method had been used - eg</p>
-
+<p>which defines an anoymous method that becomes somehow registered with the Click event and called when the Click event is raised (I'll be less vague about the &quot;somehow&quot; shortly). The anonymous method is passed as a delegate which matches the <strong>EventHandler</strong> signature. A delegate is essentially a <strong>MethodInfo</strong> and optionally a target object. If a named method had been used - eg</p>
 <pre><code>button.Click += ButtonClicked;
 </code></pre>
-
 <p>with</p>
-
 <pre><code>void ButtonClicked(object sender, EventArgs e)
 {
 }
 </code></pre>
-
 <p>then the target reference would be the instance of the class the contained that method or would be null if it was a static method. With the anonymous method it's potentially a bit more complicated since Visual Studio does clever things with closures to ensure that anything that exists outside of the closure that is referenced <em>inside</em> the closure is still available when the event callback is made. It's outside the scope of this post to go into too much detail on this so for now we'll just approximate by assuming that the target reference that gets passed is a reference to the instance of the class that contains the event-subscribing code.</p>
-
-<p>And in there lies the key! The event publisher keeps hold of these callback delegates and these callback delegates have (internally) a reference to the event subscriber. So the publisher has a possibly-less-than-obvious reference to the subscriber and so the subscriber can't be elligible for garbage collection while the publisher is still "alive" since the publisher has a reference to it!</p>
-
-<p>Many times this isn't a problem. If a button's Click event triggers some code in a Windows Form, for example, the Button and the Form will probably be disposed of at approximately the same time. The Form being referenced by the Button due to the event subscription is unlikely to be an issue since the Button is unlikely to exist after the Form has been closed and so this link won't be "keeping alive" the Form (ie. it won't be preventing it from being garbage collected).</p>
-
+<p>And in there lies the key! The event publisher keeps hold of these callback delegates and these callback delegates have (internally) a reference to the event subscriber. So the publisher has a possibly-less-than-obvious reference to the subscriber and so the subscriber can't be elligible for garbage collection while the publisher is still &quot;alive&quot; since the publisher has a reference to it!</p>
+<p>Many times this isn't a problem. If a button's Click event triggers some code in a Windows Form, for example, the Button and the Form will probably be disposed of at approximately the same time. The Form being referenced by the Button due to the event subscription is unlikely to be an issue since the Button is unlikely to exist after the Form has been closed and so this link won't be &quot;keeping alive&quot; the Form (ie. it won't be preventing it from being garbage collected).</p>
 <p>But when the lifespan of the event publisher is expected to be longer than that of the subscriber then it <em>can</em> become an issue. This is what was happening with my <strong>TextReaderStringWalker</strong> and the wrapper around the <strong>TextReader</strong> that was raising the events; so long as a reference to that wrapper existed, there would also be references to the string walkers through the subscribed events. So as long as we were still parsing the content, none of those <strong>TextReaderStringWalker</strong> instances that we had used and then finished with (and to which we no longer even had any direct references) could be collected!</p>
-
 <p>My tester app did all of the work in the Main method and so the reference to the <strong>TextReader</strong> wasn't dropped until the program terminated and so, by extension, the references to the string walkers weren't dropped until that point either. This explains why it seemed like none of them were collected until the program ended.</p>
-
 <h3>Another example of what not to do in the finaliser</h3>
-
 <p>A pattern I'm sure I've seen in some code in the past is to try to unhook event handlers in class finalisers - eg.</p>
-
 <pre><code>public class SillyExample
 {
   private ClassWithEvent _target;
   public SillyExample(ClassWithEvent target)
   {
     if (target == null)
-      throw new ArgumentNullException("target");
+      throw new ArgumentNullException(&quot;target&quot;);
 
     _target = target;
     _target.Event += Target_MyEvent;
@@ -380,89 +274,53 @@ function LoadCompressedJsonData(strUrl, fncSuccess, fncFailure) {
   }
 }
 </code></pre>
-
-<p>The idea being that the event will be "tidied up" in the finaliser. It should be clear from what I've written above that this won't work. It's not going to be possible for <strong>SillyExample</strong> to "tidy up" by unhooking from the event in its finaliser, because so long as it is still registered with that event its finaliser can never be called!</p>
-
-<p><em>(I say "another" thing not to do in the finaliser since there are so many other things to bear in mind about what you should and should not access in there - and then you read something like <a href="http://ericlippert.com/2013/06/10/construction-destruction/">"Construction deconstruction"</a> which explains that technically it "is possible for an object to be destructed while its constructor is running on another thread". Yes, it's Lippert again. I can't help it that he writes a lot of interesting things that tie into what I'm interested in! :)</em></p>
-
-<h3>The WeakReference and "Weak Event Handlers"</h3>
-
+<p>The idea being that the event will be &quot;tidied up&quot; in the finaliser. It should be clear from what I've written above that this won't work. It's not going to be possible for <strong>SillyExample</strong> to &quot;tidy up&quot; by unhooking from the event in its finaliser, because so long as it is still registered with that event its finaliser can never be called!</p>
+<p><em>(I say &quot;another&quot; thing not to do in the finaliser since there are so many other things to bear in mind about what you should and should not access in there - and then you read something like <a href="http://ericlippert.com/2013/06/10/construction-destruction/">&quot;Construction deconstruction&quot;</a> which explains that technically it &quot;is possible for an object to be destructed while its constructor is running on another thread&quot;. Yes, it's Lippert again. I can't help it that he writes a lot of interesting things that tie into what I'm interested in! :)</em></p>
+<h3>The WeakReference and &quot;Weak Event Handlers&quot;</h3>
 <p>So... What would be ideal would be if there was a way for the event source to have a reference to the listener but somehow not prevent the listener from being garbage-collected if nothing else is keeping it alive.</p>
-
 <p>Well, conveniently, the framework provides just that: the <strong>WeakReference</strong>!</p>
-
-<p>The <strong>WeakReference</strong> wraps a reference and provides access to it through the "Target" property without preventing it from being garbage collected. If the reference <em>has</em> been garbage collected then the <strong>WeakReference</strong> whose Target property previously referred to it will now report a null Target.</p>
-
+<p>The <strong>WeakReference</strong> wraps a reference and provides access to it through the &quot;Target&quot; property without preventing it from being garbage collected. If the reference <em>has</em> been garbage collected then the <strong>WeakReference</strong> whose Target property previously referred to it will now report a null Target.</p>
 <p>So if a class is written where it is expected that listeners for a given event will be shorter-lived than the event publisher then whenever someone subscribes to an event, the EventHandler can be manipulated such that the reference to the subscriber is replaced with a WeakReference. This is the case with the class that will wrap the <strong>TextReader</strong> and which will raise the read-ahead events (this will be long-lived) and the <strong>TextReaderStringWalker</strong>, whose instances will be short-lived.</p>
-
 <p>(It's also possible to turn this round such that listeners that expect to be shorter-lived than the event source can make sure that they provide <strong>EventHandler</strong> delegates which already use weak references - there's an excellent article about doing it this way round that I'll link to later on).</p>
-
 <p>But first a quick segue into more detail about what an event is and what it means to attach to one or detach from it.</p>
-
 <h3>More specifics about delegates and events</h3>
-
 <p>I said above that delegates are essentially a pairing of a target and a method. That's not the whole truth. When a delegate is defined, such as</p>
-
 <pre><code>public delegate void EventHandler&lt;TEventArgs&gt;(object sender, TEventArgs e);
 </code></pre>
-
 <p>this is compiled into a class that inherits <strong>MulticastDelegate</strong> which itelf inherits <strong>Delegate</strong>. These are both abstract classes. The latter is as I described above whereas the former expresses the intent to potentially have multiple targets and methods. Each method will have the same signature but a single call to the delegate -</p>
-
 <pre><code>EventHandler&lt;EventArgs&gt; handler = GetExampleEventHandler();
 handler(this, EventArgs.Empty);
 </code></pre>
-
 <p>could be calling one target / method pair or it could be calling many.</p>
-
 <p>Delegates may be combined by calling Delegate.Combine or Delegate.Remove, so in the above example we could add another delegate call to the handler reference with</p>
-
 <pre><code>handler = (EventHandler&lt;EventArgs&gt;)Delegate.Combine(GetAnotherExampleEventHandler());
 </code></pre>
-
 <p>for which there is operator overload support -</p>
-
 <pre><code>handler = handler + GetAnotherExampleEventHandler();
 </code></pre>
-
 <p>or, even more concisely:</p>
-
 <pre><code>handler += GetAnotherExampleEventHandler();
 </code></pre>
-
 <p><em>(Each operation here is resulting in a new instance, delegates are immutable - something I approve of! :)</em></p>
-
-<p>So it might seem that we almost don't need the "event" keyword in C#</p>
-
+<p>So it might seem that we almost don't need the &quot;event&quot; keyword in C#</p>
 <pre><code>public event EventHandler&lt;EventArgs&gt; MyEvent;  // Why do we need this?
 public EventHandler&lt;EventArgs&gt; MyEvent;        // What's wrong with just using this?
 </code></pre>
-
 <p>If a class exposed events in the second, shorter manner then subscribers could indeed sign up for updates with</p>
-
 <pre><code>target.MyEvent += (sender, e) =&gt; { /* Do whatever */ };
 </code></pre>
-
 <p>However, this would not be thread-safe.</p>
-
-<p>If MyEvent starts off as null and someone tries to attach "callback1" to the event with</p>
-
+<p>If MyEvent starts off as null and someone tries to attach &quot;callback1&quot; to the event with</p>
 <pre><code>target.MyEvent += callback1;
 </code></pre>
-
-<p>then Delegate.Combine MyEvent will become a delegate with a single target. If someone else tries to attach "callback2"</p>
-
+<p>then Delegate.Combine MyEvent will become a delegate with a single target. If someone else tries to attach &quot;callback2&quot;</p>
 <pre><code>target.MyEvent += callback2;
 </code></pre>
-
-<p>then MyEvent will have two targets. But if both registrations happen simultaneously then it's quite possible that one change would override the other - both requests would start with the null MyEvent reference and try to combine either callback1 or callback2 and whichever finished last would "win".</p>
-
-<p>So the C# compiler enables the "event" keyword which will do a little rewriting.</p>
-
+<p>then MyEvent will have two targets. But if both registrations happen simultaneously then it's quite possible that one change would override the other - both requests would start with the null MyEvent reference and try to combine either callback1 or callback2 and whichever finished last would &quot;win&quot;.</p>
+<p>So the C# compiler enables the &quot;event&quot; keyword which will do a little rewriting.</p>
 <pre><code>public event EventHandler&lt;EventArgs&gt; MyEvent;
 </code></pre>
-
 <p>actually becomes something approximating</p>
-
 <pre><code>private event EventHandler&lt;EventArgs&gt; _myEvent;
 public event EventHandler&lt;EventArgs&gt; MyEvent
 {
@@ -482,19 +340,13 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
   }
 }
 </code></pre>
-
-<p>The only operations allowed are add and remove, so a caller to the class containing the event couldn't set the reference to null to empty the registration list, for example. And these add and remove requests have to go through the add / remove methods (defined in a similar way to the get and set methods of a property, note how there is an implicit "value" reference in both add and remove, like the "value" reference in a property setter) so that their behaviour can be controlled.</p>
-
+<p>The only operations allowed are add and remove, so a caller to the class containing the event couldn't set the reference to null to empty the registration list, for example. And these add and remove requests have to go through the add / remove methods (defined in a similar way to the get and set methods of a property, note how there is an implicit &quot;value&quot; reference in both add and remove, like the &quot;value&quot; reference in a property setter) so that their behaviour can be controlled.</p>
 <p>If you try to perform an action other than adding or removing you will get a compile error</p>
-
 <blockquote>
-  <p>The event '{MyType.MyEvent}' can only appear on the left hand side of += or -= (except when used from within the type '{MyType}')</p>
+<p>The event '{MyType.MyEvent}' can only appear on the left hand side of += or -= (except when used from within the type '{MyType}')</p>
 </blockquote>
-
 <p>The compiler will include a default implementation of the add and remove methods but they can be overridden using the above syntax if required. It is recommended that you don't override without good reason since this leaves Microsoft free to improve the default implementations behind the scenes and you may benefit from this with no effort of your part.</p>
-
 <p>For example (and we're really going into the details now!), from .Net 4 onwards they have changed the default implementation so that it is still thread-safe (for callers to add and remove event handlers without stepping on each others' toes) but in a way that sacrifices less performance when there is no contention. I've used <a href="http://www.jetbrains.com/decompiler/">DotPeek</a> to look at what's generated and I've renamed the variables and rearranged it very slightly to explain how it works -</p>
-
 <pre><code>add
 {
   EventHandler&lt;TEventArgs&gt; valueBeforeChangeAttempt, valueAtChangePoint;
@@ -518,41 +370,26 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
   while (valueAtChangePoint != valueBeforeChangeAttempt);
 }
 </code></pre>
-
-<p>(The remove method is the same except the "+" is replaced with a "-" when newValue is generated).</p>
-
-<p>Using CompareExchange is much faster than having to acquire a lock (which I touched on very briefly in <a href="/caching-mechanisms">Caching Mechanisms</a>) but at least as important is that locks should always be taken on private references to avoid deadlocks. Locking on the instance of the class that contains the event is a bad idea (as explained at <a href="http://msdn.microsoft.com/en-us/magazine/cc188793.aspx">Safe Thread Synchronization</a> - written by Jeffrey Richter, who wrote "CLR via C#" which I'm reading on-and-off and thoroughly enjoying).</p>
-
+<p>(The remove method is the same except the &quot;+&quot; is replaced with a &quot;-&quot; when newValue is generated).</p>
+<p>Using CompareExchange is much faster than having to acquire a lock (which I touched on very briefly in <a href="/caching-mechanisms">Caching Mechanisms</a>) but at least as important is that locks should always be taken on private references to avoid deadlocks. Locking on the instance of the class that contains the event is a bad idea (as explained at <a href="http://msdn.microsoft.com/en-us/magazine/cc188793.aspx">Safe Thread Synchronization</a> - written by Jeffrey Richter, who wrote &quot;CLR via C#&quot; which I'm reading on-and-off and thoroughly enjoying).</p>
 <h3>Reining it back in</h3>
-
 <p>Ok, that was quite a tangent, so let's try to get back on track.</p>
-
 <p>What we want to do is take a delegate and break the target reference away from the method, wrapping the target in a <strong>WeakReference</strong>. Then each time the delegate should be invoked (ie. when the subscribed-to event is raised), the <strong>WeakReference</strong> is checked for null and - if it is not null - the method should be called with the <strong>WeakReference</strong> target as the method's target. If it <em>is</em> null, then the target has been GC'd and so the record of the delegate should be removed from the event's callback set. (We'll not worry about whether we're dealing with a <strong>MulticastDelegate</strong> that has more than one target / method right now, let's crack one part of the problem at a time!).</p>
-
-<p>Conveniently, .net offers a mechanism that enables this delegate-breaking; the "Open Delegate".</p>
-
-<p>When a method is called with a target instance, there is implicitly a "this" reference being passed along with the arguments. The open delegate allows us to create an alternate signature for the delegate where the "this" reference is explicitly passed as the first argument, the remaining arguments follow the same pattern as they did before. For example, if a delegate has a target of type <strong>Listener</strong> and matches the signature of the <strong>EventHandler</strong> -</p>
-
+<p>Conveniently, .net offers a mechanism that enables this delegate-breaking; the &quot;Open Delegate&quot;.</p>
+<p>When a method is called with a target instance, there is implicitly a &quot;this&quot; reference being passed along with the arguments. The open delegate allows us to create an alternate signature for the delegate where the &quot;this&quot; reference is explicitly passed as the first argument, the remaining arguments follow the same pattern as they did before. For example, if a delegate has a target of type <strong>Listener</strong> and matches the signature of the <strong>EventHandler</strong> -</p>
 <pre><code>void MyEvent(object sender, EventArgs e);
 </code></pre>
-
 <p>then an open delegate can be created with the effective signature</p>
-
 <pre><code>void MyEvent(Listener target, object sender, EventArgs e);
 </code></pre>
-
 <p>by doing the following</p>
-
 <pre><code>var openDelegate = (Action&lt;Listener, object, TEventArgs&gt;)Delegate.CreateDelegate(
   typeof(Action&lt;Listener, object, TEventArgs&gt;),
   callback.Method
 );
 </code></pre>
-
-<p>It <em>has</em> to be an "Action&lt;Listener, object, TEventArgs&gt;" that it is cast to and not an "Action&lt;object, object, TEventArgs&gt;" since the type of the target is part of the signature and trying to use the latter Action type will result in a binding failure.</p>
-
+<p>It <em>has</em> to be an &quot;Action&lt;Listener, object, TEventArgs&gt;&quot; that it is cast to and not an &quot;Action&lt;object, object, TEventArgs&gt;&quot; since the type of the target is part of the signature and trying to use the latter Action type will result in a binding failure.</p>
 <p>This may be used to construct a class such as</p>
-
 <pre><code>private class InstanceCallbackData&lt;TEventArgs, TListener&gt; : IMakeEventCallbacks
   where TEventsArgs : EventArgs
 {
@@ -561,12 +398,12 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
   public InstanceCallbackData(EventHandler&lt;TEventArgs&gt; callback)
   {
     if (callback == null)
-      throw new ArgumentNullException("callback");
+      throw new ArgumentNullException(&quot;callback&quot;);
     var target = callback.Target;
     if (target == null)
-      throw new ArgumentException("The specified callback must have a Target");
+      throw new ArgumentException(&quot;The specified callback must have a Target&quot;);
     if (target.GetType() != typeof(TListener))
-      throw new ArgumentException("The callback's Target must match TListener");
+      throw new ArgumentException(&quot;The callback's Target must match TListener&quot;);
 
     _callback = (Action&lt;TListener, object, TEventArgs&gt;)Delegate.CreateDelegate(
       typeof(Action&lt;TListener, object, TEventArgs&gt;),
@@ -586,47 +423,37 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
   }
 }
 </code></pre>
-
-<p>which can be used to wrap delegates in such a manner that no strong reference is maintained to the target. With this, we can construct an alternative type of event that allows any subscribers to be collected if the only references to the subscribers left are these <em>"Weak Event Sources"</em>.</p>
-
+<p>which can be used to wrap delegates in such a manner that no strong reference is maintained to the target. With this, we can construct an alternative type of event that allows any subscribers to be collected if the only references to the subscribers left are these <em>&quot;Weak Event Sources&quot;</em>.</p>
 <p>I'm going to further refine the interface for this below, but there are some issues to address first. So let's assume that the way to register for a particular event would be to call (on the class the publishes the event)</p>
-
 <pre><code>public void RegisterForMyEvent(EventHandler&lt;MyEventArgs&gt; handler)
 </code></pre>
-
 <p>where MyEventArgs is</p>
-
 <pre><code>public class MyEventArgs : EventArgs
 {
   public MyEventArgs(string name)
   {
     if (string.IsNullOrWhiteSpace(name))
-      throw new ArgumentException("Null/blank value specified");
+      throw new ArgumentException(&quot;Null/blank value specified&quot;);
     Name = name;
   }
   public string Name { get; private set; }
 }
 </code></pre>
-
-<p>At this point, the type <strong>TEventArgs</strong> is known for <strong>InstanceCallbackData</strong> (as it's part of the signature of "RegisterForMyEvent" method) but <strong>TListener</strong> is not. It could be anything at this point, we need to look at the delegate target and use reflection to instantiate an <strong>InstanceCallbackData</strong> with the appropriate typeparams.</p>
-
+<p>At this point, the type <strong>TEventArgs</strong> is known for <strong>InstanceCallbackData</strong> (as it's part of the signature of &quot;RegisterForMyEvent&quot; method) but <strong>TListener</strong> is not. It could be anything at this point, we need to look at the delegate target and use reflection to instantiate an <strong>InstanceCallbackData</strong> with the appropriate typeparams.</p>
 <p>It would be possible to write an alternate version that does not have a typeparam for the listener / target but then reflection would be required every time that the callback was made. The way it's written here is more efficient if it is expected that the event will be raised more often than registrations for the event are made. This magic around the typeparam is part of the reason that the interface <strong>IMakeEventCallbacks</strong> is used; once an instance is created with the dynamic typeparam, it can then be cast to <strong>IMakeEventCallbacks</strong> and that magical typeparam forgotten -</p>
-
 <pre><code>private interface IMakeEventCallbacks
 {
   bool ExecuteCallbackIfTargetStillAlive(object sender, TEventArgs e);
 }
 </code></pre>
-
-<p>An <strong>InstanceCallbackData</strong> can now be created for any given <strong>EventHandler&lt;MyEventArgs&gt;</strong> with </p>
-
+<p>An <strong>InstanceCallbackData</strong> can now be created for any given <strong>EventHandler&lt;MyEventArgs&gt;</strong> with</p>
 <pre><code>private static IMakeEventCallbacks GetWeakCallback&lt;TEventArgs&gt;(EventHandler&lt;TEventArgs&gt; handler)
   where TEventArgs : EventArgs
 {
   if (handler == null)
-    throw new ArgumentNullException("handler");
+    throw new ArgumentNullException(&quot;handler&quot;);
   if (handler.Target == null)
-    throw new ArgumentException("The specified handler must have a Target");
+    throw new ArgumentException(&quot;The specified handler must have a Target&quot;);
 
   var instanceCallbackType = typeof(InstanceCallbackData&lt;&gt;).MakeGenericType(new[]
   {
@@ -638,42 +465,28 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
     .Invoke(new[] { handler });
 }
 </code></pre>
-
 <p><em>(There are variations on the way that reflection can be used to instantiate types - eg. using Activator.CreateObject - but I did some performance testing and this way was quickest. Since this post is already going to be mammoth, I'll spare you a segment about all of the possibilities and how the timings compare.. maybe another day! :)</em></p>
-
-<p>Now, we're at the point where a class could feasibly be written which implements a "RegisterForMyEvent" method by maintaining an internal <strong>IMakeEventCallback</strong> set that is added to every time that the method is called. A corresponding method would be required internally to raise the event</p>
-
+<p>Now, we're at the point where a class could feasibly be written which implements a &quot;RegisterForMyEvent&quot; method by maintaining an internal <strong>IMakeEventCallback</strong> set that is added to every time that the method is called. A corresponding method would be required internally to raise the event</p>
 <pre><code>private void RaiseMyEvent(object sender, MyEventArgs e)
 </code></pre>
-
-<p>which would run through the set of "weak callbacks" and call "ExecuteCallbackIfTargetStillAlive" on them all. Any that return false (to indicate that their target is no longer alive) would be removed from the set.</p>
-
+<p>which would run through the set of &quot;weak callbacks&quot; and call &quot;ExecuteCallbackIfTargetStillAlive&quot; on them all. Any that return false (to indicate that their target is no longer alive) would be removed from the set.</p>
 <h3>But what about those MulticastDelegates??</h3>
-
 <p>One of the corners that I cut above was choosing to ignore the fact that a single <strong>EventHandler&lt;MyEventArgs&gt;</strong> could actually have several target / method pairs.</p>
-
-<p>Fortunately, this is not too difficult to deal with since the <strong>Delegate</strong> type (and so the <strong>MulticastDelegate</strong> type which inherits from it) has the method "GetInvocationList" which returns an array of <strong>Delegate</strong> instances, all of which may be cast to same type as the "containing" delegate but which all represent only a single target / method pair.</p>
-
+<p>Fortunately, this is not too difficult to deal with since the <strong>Delegate</strong> type (and so the <strong>MulticastDelegate</strong> type which inherits from it) has the method &quot;GetInvocationList&quot; which returns an array of <strong>Delegate</strong> instances, all of which may be cast to same type as the &quot;containing&quot; delegate but which all represent only a single target / method pair.</p>
 <p>So all we need to do is ensure that the RegisterForMyEvent method does something like</p>
-
 <pre><code>public void RegisterForMyEvent(EventHandler&lt;MyEventArgs&gt; handler)
 {
   if (handler == null)
-    throw new ArgumentNullException("handler");
+    throw new ArgumentNullException(&quot;handler&quot;);
 
   foreach (var individualHandler in handler.GetInvocationList().Cast&lt;EventHandler&lt;MyEventArgs&gt;&gt;())
     _myEventCallbacks.Add(GetWeakCallback&lt;MyEventArgs&gt;(individualHandler));
 }
 </code></pre>
-
 <p>(The above method is not thread-safe but this isn't the final form I have in mind, so we'll not worry about that for now).</p>
-
 <h3>Wrapping it up to look like an event</h3>
-
-<p>The RegisterForMyEvent approach above isn't that bad, I think it's a viable way to go if this "Weak Event Source" is something that is required for one event on one class. But I want to tidy it up so that the callback set need not be maintained by the event publisher and I want to make it match the pattern of standard .net events more closely.</p>
-
-<p>So the first thing to do is create a <strong>WeakEventSource&lt;TEventsArgs&gt;</strong> class that wraps up the functionality. </p>
-
+<p>The RegisterForMyEvent approach above isn't that bad, I think it's a viable way to go if this &quot;Weak Event Source&quot; is something that is required for one event on one class. But I want to tidy it up so that the callback set need not be maintained by the event publisher and I want to make it match the pattern of standard .net events more closely.</p>
+<p>So the first thing to do is create a <strong>WeakEventSource&lt;TEventsArgs&gt;</strong> class that wraps up the functionality.</p>
 <pre><code>public class WeakEventSource&lt;TEventArgs&gt; where TEventArgs : EventArgs
 {
   private IEnumerable&lt;IMakeEventCallbacks&gt; _callbacks;
@@ -746,25 +559,16 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
   // all go in here..
 }
 </code></pre>
-
-<p>This would allow the publisher of this Weak Event to replace its "RegisterForMyEvent" method with a public field</p>
-
+<p>This would allow the publisher of this Weak Event to replace its &quot;RegisterForMyEvent&quot; method with a public field</p>
 <pre><code>public WeakEventSource&lt;MyEventArgs&gt; MyEvent;
 </code></pre>
-
 <p>which subscribers could register for with</p>
-
 <pre><code>publisher.MyEvent += (sender, e) =&gt; { /* Do whatever */ };
 </code></pre>
-
 <p>and unregister in a similar manner.</p>
-
 <h3>So all good, eh?</h3>
-
-<p>Well no. Firstly, I cheated a bit in the code above by calling the method "CorrespondsTo" on <strong>IMakeEventCallbacks</strong> when I hadn't got round to mentioning it!</p>
-
+<p>Well no. Firstly, I cheated a bit in the code above by calling the method &quot;CorrespondsTo&quot; on <strong>IMakeEventCallbacks</strong> when I hadn't got round to mentioning it!</p>
 <p>It's not complicated, though. To work out whether an <strong>InstanceCallbackData</strong> should be removed from the internal list that the <strong>WeakEventSource</strong> maintains, we need only compare the target and method of each. Unfortunately, in the earlier code, the EventHandler's method was thrown away after it was used to create an open delegate alternative. So the interface and class need changing slightly..</p>
-
 <pre><code>private interface IMakeEventCallbacks
 {
   bool ExecuteCallbackIfTargetStillAlive(object sender, TEventArgs e);
@@ -789,7 +593,7 @@ private class InstanceCallbackData&lt;TEventArgs, TListener&gt; : IMakeEventCall
   public bool CorrespondsTo(EventHandler&lt;TEventArgs&gt; eventHandler)
   {
     if (eventHandler == null)
-      throw new ArgumentNullException("eventHandler");
+      throw new ArgumentNullException(&quot;eventHandler&quot;);
 
     // If the target is no longer accessible then we can't confirm whether there's a match or not
     // (and this instance should be removed from the event callback list next time it is raised)
@@ -801,11 +605,8 @@ private class InstanceCallbackData&lt;TEventArgs, TListener&gt; : IMakeEventCall
   }
 }
 </code></pre>
-
 <p>Ok. Better. But there's still more to do.</p>
-
-<p>To make this more like a "real" event, it shouldn't be a public field since that opens it up to potential subscribers to set it to null or set it to <em>anything</em> when really they should only be able to register or unregister. We can do this by using the "event" keyword</p>
-
+<p>To make this more like a &quot;real&quot; event, it shouldn't be a public field since that opens it up to potential subscribers to set it to null or set it to <em>anything</em> when really they should only be able to register or unregister. We can do this by using the &quot;event&quot; keyword</p>
 <pre><code>private WeakEventSource&lt;MyEventArgs&gt; _myEvent;
 public event EventHandler&lt;MyEventArgs&gt; MyEvent
 {
@@ -818,11 +619,8 @@ private void RaiseMyEvent(MyEventArgs e)
   _myEvent.Fire(this, e);
 }
 </code></pre>
-
-<p>But, as I went into detail about earlier, this approach isn't thread-safe. We could be lazy and leave it as-is and decide we don't care about thread safety (or, potentially, there <em>may</em> be some cases where thread safety really isn't of any benefit and we want to avoid any performance / mental overhead). Or we could do what "old school" .net used to do (before the .net 4 compiler) and lock against "this". Or we could do the sensible thing and replicate the newer .net approach.</p>
-
+<p>But, as I went into detail about earlier, this approach isn't thread-safe. We could be lazy and leave it as-is and decide we don't care about thread safety (or, potentially, there <em>may</em> be some cases where thread safety really isn't of any benefit and we want to avoid any performance / mental overhead). Or we could do what &quot;old school&quot; .net used to do (before the .net 4 compiler) and lock against &quot;this&quot;. Or we could do the sensible thing and replicate the newer .net approach.</p>
 <p>To do this I've got a separate helper class (I've ripped out the comments for brevity but since I've already talked about how this works, that shouldn't be a problem :)</p>
-
 <pre><code>public static class WeakEventSourceThreadSafeOperations
 {
   public static void Add&lt;TEventArgs&gt;(
@@ -871,9 +669,7 @@ private void RaiseMyEvent(MyEventArgs e)
   }
 }
 </code></pre>
-
 <p>So now we can add a weak event to a class with</p>
-
 <pre><code>private WeakEventSource&lt;MyEventArgs&gt; _myEvent;
 public event EventHandler&lt;MyEventArgs&gt; MyEvent
 {
@@ -886,26 +682,18 @@ private void RaiseMyEvent(MyEventArgs e)
   WeakEventSourceThreadSafeOperations.Fire(_myEvent, this, e);
 }
 </code></pre>
-
-<p>Something I snuck in at the end there was thread-safety for the "Fire" method. A lot of people recommend for normal events that something like the following is used to raise events -</p>
-
+<p>Something I snuck in at the end there was thread-safety for the &quot;Fire&quot; method. A lot of people recommend for normal events that something like the following is used to raise events -</p>
 <pre><code>private void RaiseMyEvent(MyEventArgs e)
 {
   if (MyEvent != null)
     MyEvent(this, e);
 }
 </code></pre>
-
-<p>since MyEvent may be null (if nothing has subscribed to the event or everything has unsubscribed again). But this doesn't address multi-threaded scenarios where it isn't null when the code compares it to null, but <em>is</em> set to null by work on another thread before it is actually called on the subsequent line. There's a lot of discussion about the best way to deal with this, a good place to start is this answer to the <a href="http://stackoverflow.com/a/672666">StackOverflow question "Use of null check in event handler"</a>. The response is by Jon Skeet so it's going to be worth reading.</p>
-
-<p>Since I needed this helper class for multi-threading, I took the easy way out and had an event reference passed to a Fire method. The <strong>WeakEventSource</strong> reference in the publisher class may change while the helper class' Fire method is being called, but that won't affect the "eventSource" reference that Fire is dealing with; either that is null and should be ignored or it is non-null and can not change to become null before the Fire method can call it.</p>
-
+<p>since MyEvent may be null (if nothing has subscribed to the event or everything has unsubscribed again). But this doesn't address multi-threaded scenarios where it isn't null when the code compares it to null, but <em>is</em> set to null by work on another thread before it is actually called on the subsequent line. There's a lot of discussion about the best way to deal with this, a good place to start is this answer to the <a href="http://stackoverflow.com/a/672666">StackOverflow question &quot;Use of null check in event handler&quot;</a>. The response is by Jon Skeet so it's going to be worth reading.</p>
+<p>Since I needed this helper class for multi-threading, I took the easy way out and had an event reference passed to a Fire method. The <strong>WeakEventSource</strong> reference in the publisher class may change while the helper class' Fire method is being called, but that won't affect the &quot;eventSource&quot; reference that Fire is dealing with; either that is null and should be ignored or it is non-null and can not change to become null before the Fire method can call it.</p>
 <h3>Do EventHandlers really have to have non-null Targets?</h3>
-
 <p>All of the work so far assumes that we have a delegate with a target which we want to avoid maintaining a strong reference to. To the extent that the <strong>InstanceCallbackData</strong> will throw an ArgumentException if the specified EventHandler's Target is null. This was to solve the original problem that I had which was caused by the event keeping a strong Target reference. But now that that is largely solved then it would be nice if the <strong>WeakEventSource</strong> implementation could also work with static EventHandlers, just like regular events.</p>
-
 <p>A static EventHandler may be a method that is explicitly marked as static -</p>
-
 <pre><code>  // More code here..
   publisher.MyEvent += Subscriber_MyEvent;
 }
@@ -915,32 +703,26 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
   // Do whatever..
 }
 </code></pre>
-
 <p>or an anoymous method that doesn't access any instance references -</p>
-
 <pre><code>publisher.MyEvent += (sender, e) =&gt;
 {
   // This only accesses the Console class which is static and so this EventHandler will be identified
   // as being static / having a null Target
-  Console.WriteLine("MyEvent raised");
+  Console.WriteLine(&quot;MyEvent raised&quot;);
 };
 </code></pre>
-
 <p>If either of these forms are used then the GetWeakCallback method defined above will throw an exception.</p>
-
-<p>Changing this will not be too difficult but we need to bear in mind that if a static EventHandler is added to a the callback set of a <strong>WeakEventSource</strong> then there will be no way for it to be "automatically" unhooked since there is no target to fall out of scope. There will be no <strong>IMakeEventCallbacks</strong> implementation that realises that it has expired. It will have to be explicitly unregistered or it will live as long as the event source's lifetime.</p>
-
+<p>Changing this will not be too difficult but we need to bear in mind that if a static EventHandler is added to a the callback set of a <strong>WeakEventSource</strong> then there will be no way for it to be &quot;automatically&quot; unhooked since there is no target to fall out of scope. There will be no <strong>IMakeEventCallbacks</strong> implementation that realises that it has expired. It will have to be explicitly unregistered or it will live as long as the event source's lifetime.</p>
 <p>That said, all we need to do is add the following class -</p>
-
 <pre><code>private class StaticCallbackData&lt;TEventArgs&gt; : IMakeEventCallbacks where TEventsArgs : EventArgs
 {
   private readonly EventHandler&lt;TEventArgs&gt; _callback;
   public StaticCallbackData(EventHandler&lt;TEventArgs&gt; callback)
   {
     if (callback == null)
-      throw new ArgumentNullException("callback");
+      throw new ArgumentNullException(&quot;callback&quot;);
     if (callback.Target != null)
-      throw new ArgumentException("The specified callback may not have a Target, it must be static");
+      throw new ArgumentException(&quot;The specified callback may not have a Target, it must be static&quot;);
 
     _callback = callback;
   }
@@ -956,7 +738,7 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
   public bool CorrespondsTo(EventHandler&lt;TEventArgs&gt; eventHandler)
   {
     if (eventHandler == null)
-      throw new ArgumentNullException("eventHandler");
+      throw new ArgumentNullException(&quot;eventHandler&quot;);
 
     // If it's not a static callback then it can't apply to this class since it only deal with
     // static methods
@@ -967,14 +749,12 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
   }
 }
 </code></pre>
-
 <p>and add support for the <strong>StaticCallbackData</strong> to GetWeakCallback -</p>
-
 <pre><code>private static IMakeEventCallbacks GetWeakCallback&lt;TEventArgs&gt;(EventHandler&lt;TEventArgs&gt; handler)
   where TEventArgs : EventArgs
 {
   if (handler == null)
-    throw new ArgumentNullException("handler");
+    throw new ArgumentNullException(&quot;handler&quot;);
 
   if (handler.Target == null)
     return new StaticCallbackData&lt;TEventArgs&gt;(handler);
@@ -989,27 +769,16 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
     .Invoke(new[] { handler });
 }
 </code></pre>
-
 <p>There is no generics / reflection madness required since that was all to deal with making a <strong>WeakReference</strong> for the target and for static EventHandlers there <em>is</em> no target.</p>
-
 <h3>Concluding the TextReaderStringWalker saga</h3>
-
 <p>Since this post has gone on longer than I'd originally envisaged, I figure I might as well go whole hog and include the solution to my original problem. I wanted an <strong>IWalkThroughStrings</strong> implementation that would wrap a <strong>TextReader</strong> so that I could parse CSS (or LESS) content without having to load it all into memory at once.</p>
-
 <p>I described how each instance of this <strong>TextReaderStringNavigator</strong> would potentially require an internal character buffer for cases where the position of the wrapped reader is ahead of the <strong>TextReaderStringNavigator</strong>. Each <strong>TextReaderStringNavigator</strong> instance will also require an internal property indicating the position in the content that it describes.</p>
-
 <p>Let's pick up the use case example one more time..</p>
-
-<p>Say I've kept around a reference <em>c0</em> that is a <strong>TextReaderStringNavigator</strong> associated with the first character of the content. And say that some processing has occured that has meant that the reader is now ten characters into the content. Not only must <em>c0</em> consistently return the first character from it's "CurrentCharacter" property but the <strong>TextReaderStringNavigator</strong> returned from its "Next" property must also consistently return the second character.</p>
-
+<p>Say I've kept around a reference <em>c0</em> that is a <strong>TextReaderStringNavigator</strong> associated with the first character of the content. And say that some processing has occured that has meant that the reader is now ten characters into the content. Not only must <em>c0</em> consistently return the first character from it's &quot;CurrentCharacter&quot; property but the <strong>TextReaderStringNavigator</strong> returned from its &quot;Next&quot; property must also consistently return the second character.</p>
 <p>This is achieved by wrapping the <strong>TextReader</strong> in a <strong>TextReaderWithReadAheadEvent</strong> class that may only be advanced a single character at a time and that will raise an event each time this happens. This allows <em>c0</em> to maintain a buffer of content between its position and the current position of the reader by subscribing to this event. (This event uses the <strong>WeakEventSource</strong> so that any <strong>TextReaderStringNavigator</strong> instance that subscribes to it, that is otherwise no-longer-referenced, can be freed by the garbage collector).</p>
-
-<p>When the "Next" property is requested, the last n-1 characters of this buffer are used to initialise a new <strong>TextReaderStringNavigator</strong>, sharing the same <strong>TextReaderWithReadAheadEvent</strong>. Every time the CurrentCharacter property is requested, the buffer is consulted and, if it is not empty, the first character is returned. If it <em>is</em> empty, then the Read method of the <strong>TextReaderWithReadAheadEvent</strong> is called until the reader has caught up to the position of the <strong>TextReaderStringNavigator</strong> or until the Read method returns null, indicating no more content. As I already said, each time that Read is called, an event is raised so that any other <strong>TextReaderStringNavigator</strong> instances are informed that the reader's position has been advanced.</p>
-
+<p>When the &quot;Next&quot; property is requested, the last n-1 characters of this buffer are used to initialise a new <strong>TextReaderStringNavigator</strong>, sharing the same <strong>TextReaderWithReadAheadEvent</strong>. Every time the CurrentCharacter property is requested, the buffer is consulted and, if it is not empty, the first character is returned. If it <em>is</em> empty, then the Read method of the <strong>TextReaderWithReadAheadEvent</strong> is called until the reader has caught up to the position of the <strong>TextReaderStringNavigator</strong> or until the Read method returns null, indicating no more content. As I already said, each time that Read is called, an event is raised so that any other <strong>TextReaderStringNavigator</strong> instances are informed that the reader's position has been advanced.</p>
 <p>(A <strong>TextReaderStringNavigator</strong> can potentially be <em>ahead</em> of the <strong>TextReaderWithReadAheadEvent</strong>, since no content is read until the CurrentCharacter property is requested. So if .Next.Next.Next.Next is requested before any CurrentCharacter requests, then the reader may have to be advanced several characters to catch up. It's no problem if this is towards the end of the content stream and there is no more content to return, since it is fine for <strong>IWalkThroughStrings</strong> implementations to continuously return references from the Next property even if the end of the content has been passed, so long as each instance reports null for its CurrentCharacter).</p>
-
 <p>So here's the code, followed by a couple of points of interest about it. First the <strong>TextReaderWithReadAheadEvent</strong>:</p>
-
 <pre><code>public class TextReaderWithReadAheadEvent
 {
   private readonly TextReader _reader;
@@ -1017,7 +786,7 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
   public TextReaderWithReadAheadEvent(TextReader reader)
   {
     if (reader == null)
-      throw new ArgumentNullException("reader");
+      throw new ArgumentNullException(&quot;reader&quot;);
 
     _reader = reader;
     _readAheadLock = new object();
@@ -1033,7 +802,7 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
   private void OnReadAhead(ReadAheadEventArgs e)
   {
     if (e == null)
-      throw new ArgumentNullException("e");
+      throw new ArgumentNullException(&quot;e&quot;);
 
     WeakEventSourceThreadSafeOperations.Fire(_readAhead, this, e);
   }
@@ -1058,7 +827,7 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
     public ReadAheadEventArgs(char character, int fromPosition)
     {
       if (fromPosition &lt; 0)
-        throw new ArgumentOutOfRangeException("fromPosition", "must be zero or greater");
+        throw new ArgumentOutOfRangeException(&quot;fromPosition&quot;, &quot;must be zero or greater&quot;);
 
       FromPosition = fromPosition;
       Character = character;
@@ -1069,9 +838,7 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
   }
 }
 </code></pre>
-
 <p>That's fairly straight-forward, the only thing really of note is the use of the <strong>WeakEventSource</strong>. Now, the <strong>TextReaderStringNavigator</strong> which has thread-safety to contend with:</p>
-
 <pre><code>public class TextReaderStringNavigator : IWalkThroughStrings
 {
   private readonly TextReaderWithReadAheadEvent _reader;
@@ -1082,7 +849,7 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
     : this(new TextReaderWithReadAheadEvent(reader), 0, new List&lt;char&gt;()) { }
 
   /// &lt;summary&gt;
-  /// All instances returned from requests to the Next property will share the same 
+  /// All instances returned from requests to the Next property will share the same
   /// TextReaderWithReadAheadEvent instance and use this as the synchronisation object when any
   /// operations that must be thread-safe will occur. This includes any calls to Read since it must be
   /// guaranteed that each Read call can transmit the character(s) it has read to any
@@ -1100,14 +867,14 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
     List&lt;char&gt; catchUpQueue)
   {
     if (reader == null)
-      throw new ArgumentNullException("reader");
+      throw new ArgumentNullException(&quot;reader&quot;);
     if (catchUpQueue == null)
-      throw new ArgumentNullException("catchUpQueue");
+      throw new ArgumentNullException(&quot;catchUpQueue&quot;);
     if (position &lt; (reader.Position - catchUpQueue.Count))
     {
       throw new ArgumentOutOfRangeException(
-        "position",
-        "may not be less than the reader's Position minus the catchUpQueue's length"
+        &quot;position&quot;,
+        &quot;may not be less than the reader's Position minus the catchUpQueue's length&quot;
       );
     }
 
@@ -1154,142 +921,93 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
 
 }
 </code></pre>
-
 <p>There is locking required whenever the internal character buffers are consulted (in CurrentCharacter or Next) or altered (eg. in the ReadAhead event callback) if this class is to be thread-safe. Likewise, locking is required when the <strong>TextReaderWithReadAheadEvent</strong>'s Read method is called or its Position property is accessed. This is because these all relate to mutable data that may (potentially) be accessed concurrently by multiple threads and which interact with each other. In the <strong>TextReaderStringNavigator</strong>'s CurrentCharacter property, the <strong>TextReaderWithReadAheadEvent</strong>'s Read method is called until its Position property reports that it has reached the correct position. If another thread is also doing the same work at the same time then it could potentially be moved too far if they <em>both</em> see its Position as being one character too early in the content and then <em>both</em> advance it one character.</p>
-
-<p>The locking solution I finished up with appears fairly straight forward (since locks are explicitly required in only two places) but is slightly unusual in that I had to consider the effects of the locks across multiple methods and multiple instances at any one time to ensure that the reasoning was sound. (I say "unusual" because often you'll hear people say "just slap locks around the access and you'll be fine").</p>
-
+<p>The locking solution I finished up with appears fairly straight forward (since locks are explicitly required in only two places) but is slightly unusual in that I had to consider the effects of the locks across multiple methods and multiple instances at any one time to ensure that the reasoning was sound. (I say &quot;unusual&quot; because often you'll hear people say &quot;just slap locks around the access and you'll be fine&quot;).</p>
 <ol>
-<li>All locks are taken on the <em>_reader</em> reference (which is of type <strong>TextReaderWithReadAheadEvent</strong>), which is shared across all "related" <strong>TextReaderStringNavigator</strong> instances. This ensures that if any of the instances that share a reader need to perform an action that may mutate that reader's state, that this action will be completed before any other thread is able to perform a reader-mutating action on that <strong>TextReaderStringNavigator</strong> <em>or</em> on any instance related to it. Instances are considered to be related if they share a <strong>TextReaderWithReadAheadEvent</strong> instance. This can only happen if they share a common <strong>TextReaderStringNavigator</strong> ancestor. The public constructor takes a <strong>TextReader</strong> (which is then wrapped in a <strong>TextReaderWithReadAheadEvent</strong>) whereas instances returned from the Next property use the private constructor which takes the <strong>TextReaderWithReadAheadEvent</strong> instance as an argument. Instances spawned from a "Next" call share the <strong>TextReaderWithReadAheadEvent</strong> instance and so are considered descendents of the <strong>TextReaderStringNavigator</strong> whose Next property was accessed.</li>
+<li>All locks are taken on the <em>_reader</em> reference (which is of type <strong>TextReaderWithReadAheadEvent</strong>), which is shared across all &quot;related&quot; <strong>TextReaderStringNavigator</strong> instances. This ensures that if any of the instances that share a reader need to perform an action that may mutate that reader's state, that this action will be completed before any other thread is able to perform a reader-mutating action on that <strong>TextReaderStringNavigator</strong> <em>or</em> on any instance related to it. Instances are considered to be related if they share a <strong>TextReaderWithReadAheadEvent</strong> instance. This can only happen if they share a common <strong>TextReaderStringNavigator</strong> ancestor. The public constructor takes a <strong>TextReader</strong> (which is then wrapped in a <strong>TextReaderWithReadAheadEvent</strong>) whereas instances returned from the Next property use the private constructor which takes the <strong>TextReaderWithReadAheadEvent</strong> instance as an argument. Instances spawned from a &quot;Next&quot; call share the <strong>TextReaderWithReadAheadEvent</strong> instance and so are considered descendents of the <strong>TextReaderStringNavigator</strong> whose Next property was accessed.</li>
 <li>There is no explicit locking when the catchUpQueue is mutated in the ReadAhead event callbacks. This is because this event is only raised when the <strong>TextReaderWithReadAheadEvent</strong>'s Read method is called, which is only called from within the <strong>TextReaderStringNavigator</strong>'s CurrentCharacter property, at which point a lock has already been acquired on the reader. This means access to that event callback is already restricted to being single-threaded and so no lock need be taken.</li>
 <li>A lock is taken when the Next property is requested for two reasons; the first is that the catchUpQueue is being accessed (and so mutation of it must be disallowed) but the less obvious reason is that a new instance of the <strong>TextReaderStringNavigator</strong> is about to be created which will, at the end of the constructor call, subscribe to the ReadAhead event. This lock is required to ensure that it is not possible for any ReadAhead event to be fired until the new instance has been completely initialised.</li>
 </ol>
-
 <p>All of this reminds me of one of the reasons that I like truly-immutable classes so much - there is so much less messing about with locking required for thread-safety. In many places it's not required at all!.</p>
-
 <p>One final point to address with this locking mechanism: There is nothing to stop whoever provided the <strong>TextReader</strong> to the initial <strong>TextReaderStringNavigator</strong> instance from advancing the reader independently. This would interfere with the operation of the <strong>TextReaderStringNavigator</strong> as it would have no way of knowing that the reader had been advanced. The character data that was read externally will essentially be lost, so far as the <strong>TextReaderStringNavigator</strong> is concerned. The locking ensures that the data will always be internally consistent across a <strong>TextReaderStringNavigator</strong> and its related instances, but there is no way to prevent that form of external meddling.</p>
-
 <h3>That's all, folks!</h3>
-
 <p>This really has been one of the most difficult posts I've written since there were so many things that I wanted to (somewhat obsessively-compulsively) get right. Both in terms of testing out numerous different approaches first, then deciding on which I thought was best and finally taking multiple passes at writing this <a href="http://www.youtube.com/watch?v=E3fmPZkg1zk">behemoth</a>.</p>
-
-<p>The final (honest!) thing I have to add is that I said I'd link to a post where an alternate approach is described; the "Weak Event Handler", as opposed to the Weak Event Source. The burden here being on the subscriber to handle access in such a way that the event publisher has no strong reference to it. I've read quite a few articles on this subject now and I think that this one is the best: <a href="http://diditwith.net/2007/03/23/SolvingTheProblemWithEventsWeakEventHandlers.aspx">Solving the Problem with Events: Weak Event Handlers</a>.</p>
-
-<p>The thing I most dislike about this alternative is that an "UnregisterCallback" delegate is required so that the event can be unhooked when it is found that the subscriber is no longer "alive" (ie. there are no strong references to it remaining). Not only is that an extra argument that must be specified in order for the tidying-up to be completed, but passing another delegate means that there is a risk that it might be written such that it encapsulates a strong reference to the publisher which means that the reference still won't be released properly. Granted, this won't be a problem if the standard form of "provider.MyEvent -= eh;" is stuck to for the UnregisterCallback, but it's unfortunate that it's not possible to automate that away and prevent it from even potentially being a problem.</p>
-
-<p>The other issue I have with the solution there is that it doesn't support static event handlers. In fairness, that might be by design since static handlers will never have a target that can get GC'd. It will not be possible to "tidy it up" automatically. I recognised this when I talked about static event handlers earlier. Even if it <em>is</em> by design, it still would have been nice to have had the option (or at least throw a more descriptive exception, explaining why it is not supported).</p>
-
+<p>The final (honest!) thing I have to add is that I said I'd link to a post where an alternate approach is described; the &quot;Weak Event Handler&quot;, as opposed to the Weak Event Source. The burden here being on the subscriber to handle access in such a way that the event publisher has no strong reference to it. I've read quite a few articles on this subject now and I think that this one is the best: <a href="http://diditwith.net/2007/03/23/SolvingTheProblemWithEventsWeakEventHandlers.aspx">Solving the Problem with Events: Weak Event Handlers</a>.</p>
+<p>The thing I most dislike about this alternative is that an &quot;UnregisterCallback&quot; delegate is required so that the event can be unhooked when it is found that the subscriber is no longer &quot;alive&quot; (ie. there are no strong references to it remaining). Not only is that an extra argument that must be specified in order for the tidying-up to be completed, but passing another delegate means that there is a risk that it might be written such that it encapsulates a strong reference to the publisher which means that the reference still won't be released properly. Granted, this won't be a problem if the standard form of &quot;provider.MyEvent -= eh;&quot; is stuck to for the UnregisterCallback, but it's unfortunate that it's not possible to automate that away and prevent it from even potentially being a problem.</p>
+<p>The other issue I have with the solution there is that it doesn't support static event handlers. In fairness, that might be by design since static handlers will never have a target that can get GC'd. It will not be possible to &quot;tidy it up&quot; automatically. I recognised this when I talked about static event handlers earlier. Even if it <em>is</em> by design, it still would have been nice to have had the option (or at least throw a more descriptive exception, explaining why it is not supported).</p>
 <p>I'm just nitpicking, though, it's an excellent article and well worth a read. I actually skim-read it when I was first trying to get my head around all this, it was only when I'd got closer to the solution I've outlined above that I ended up reading it again, properly. And then realised just how thorough and informative an article it is.</p>
-
-<p>And that really is all. I can't hack this post going on <em>any</em> longer! :D</p><p class="PostTime">Posted at 22:17</p>
-			<p class="Comments">
-				<a href="/autoreleasing-event-listeners#disqus_thread" data-disqus-identifier="59">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">10 July 2013</h3><h2><a id="Post58"></a><a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The NeoCities Challenge! aka The Full Text Indexer goes client-side!</a></h2>
-
+<p>And that really is all. I can't hack this post going on <em>any</em> longer! :D</p>
+<p class="PostTime">Posted at 22:17</p>
+            <p class="Comments">
+                <a href="/autoreleasing-event-listeners#disqus_thread" data-disqus-identifier="59">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">10 July 2013</h3><h2><a id="the-neocities-challenge-aka-the-full-text-indexer-goes-clientside" href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The NeoCities Challenge! aka The Full Text Indexer goes client-side!</a></h2>
 <p>When I heard about <a href="http://neocities.org/">NeoCities</a> last week, I thought it was a cool idea - offering some back-to-basics hosting for an outlay of absolutely zero. Yeah, the first thing that came to mind was those geocities sites that seemed to want to combine pink text, lime green backgrounds and javascript star effects that chase the cursor.. but that's just nostalgia! :)</p>
-
 <p>The more I thought about it, the more I sort of wondered whether I couldn't host this blog there. I'm happy with my hosting, it's cheap and fast, but I just liked the idea of creating something simple with the raw ingredients of html, css and javascript alone. I mean, it should be easy enough to flatten the site so that all of the pages are single html files, with a different file per month, per Post, per tag.. the biggest stumbling blog was the site search which is powered by my <a href="/the-full-text-indexer-post-roundup">Full Text Indexer</a> project. Obviously that won't work when everything is on the client, when there <em>is</em> no server backend to power it. Unless..</p>
-
 <p>.. a <em>client-side</em> Full Text Indexer Search Service.. ??</p>
-
 <p><strong>Challenge accepted!!</strong> :D</p>
-
 <h3>NeoCities Hosting</h3>
-
 <p>Before I get carried away, I'll breeze through the NeoCities basics and how I got most of my site running atNeoCities. I initially thought about changing the code that runs my site server-side to emit a flattened version for upload. But that started to seem more and more complicated the more I thought about it, and seemed like maintaining it could be a headache if I changed the blog over time.</p>
-
 <p>So instead, I figured why not treat the published blog (published at <a href="http://www.productiverage.com">www.productiverage.com</a>) as a generic site and crawl it, grab content, generate new urls for a flattened structure, replace urls in the existing content with the new urls and publish it like that. How hard could it be??</p>
-
-<p>Since my site is almost entirely html and css (well, <a href="/noncascading-css-a-revolution">LESS with some rules and structure</a>, but it compiles down to css so why be fussy) with only a smattering of javascript, this should be easy. I can use the <a href="http://htmlagilitypack.codeplex.com/">Html Agility Pack</a> to parse and alter html and I very conveniently have a <a href="/parsing-css">CSS Parser</a> that can be used to update urls (like backgrounds) in the stylesheets.</p>
-
+<p>Since my site is almost entirely html and css (well, <a href="/noncascading-css-a-revolution">LESS with some rules and structure</a>, but it compiles down to css so why be fussy) with only a smattering of javascript, this should be easy. I can use the <a href="/parsing-css">Html Agility Pack](http://htmlagilitypack.codeplex.com/) to parse and alter html and I very conveniently have a [CSS Parser</a> that can be used to update urls (like backgrounds) in the stylesheets.</p>
 <p>And, in a nutshell, that's what I've done. The first version of this NeoCities-hosted blog hid the site search functionality and ran from pure html and css. I had all of the files ready to go in a local IIS site as a proof of concept. Then I went to upload them.. With the Posts and the Archive and Tags pages, there were 120-something files. I'd only used the uploader on the NeoCities page to upload a single test file up to this point and so hadn't realised that that's all it would let you do; upload a single file at a time. Even if I was willing to upload all of the files individually now (which, I must admit, I did; I was feeling overexcitable about getting the first version public! :) this wouldn't scale, I couldn't (wouldn't) do it every time I changed something - a single new Post could invalidate many Pages, considering the links between Posts, the Montly Archive pages, the Tags pages, etc..</p>
-
 <p>I spent a few minutes googling to see if anyone else could offer a sensible solution and came up empty.</p>
-
-<p>So Plan B was to have a look with <a href="http://fiddler2.com/">Fiddler</a> to see what the upload traffic looked like. It seemed fairly straight-forward, an authorisation cookie (to identify who I was logged in as) and a "csrf_token" form value, along with the uploaded file's content. I was familiar with the phrase "Cross Site Request Forgery" (from "csrf_token") but didn't really know what it meant in this context. I thought I'd take a punt and try manipulating the request to see if that token had to vary between uploads and it didn't seem to (Fiddler lets you take a request, edit it and broadcast it - so uploading a text file provided an easy to mess-with request, I could change one character of the file and leave everything else, content-length included, the same and refresh the browser to see if the new content had arrived).</p>
-
+<p>So Plan B was to have a look with <a href="http://fiddler2.com/">Fiddler</a> to see what the upload traffic looked like. It seemed fairly straight-forward, an authorisation cookie (to identify who I was logged in as) and a &quot;csrf_token&quot; form value, along with the uploaded file's content. I was familiar with the phrase &quot;Cross Site Request Forgery&quot; (from &quot;csrf_token&quot;) but didn't really know what it meant in this context. I thought I'd take a punt and try manipulating the request to see if that token had to vary between uploads and it didn't seem to (Fiddler lets you take a request, edit it and broadcast it - so uploading a text file provided an easy to mess-with request, I could change one character of the file and leave everything else, content-length included, the same and refresh the browser to see if the new content had arrived).</p>
 <p>This was enough to use the .net <strong>WebRequest</strong> class and upload files individually. I wrote something to loop over the files in my local version of the site and upload them all.. and it worked! There were some stumbling blocks with getting the cookie sent and specifying the form value <em>and</em> the file to upload but StackOverflow came to the rescue each time. There is one outstanding issue that each upload requests received a 500 Server Error response even though it was successful, but I chose to ignore that for now - yes, this approach is rough around the edges but it's functional for now!</p>
-
 <p>In case this is useful to anyone else, I've made the code available at Bitbucket: <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer">The BlogToNeocitiesTransformer</a>.</p>
-
 <p>If you plug in the auth cookie and csrf token values into the (C#) console application (obtaining those values by looking at a manual upload request in Fiddler still seems like the only way right now) then you can use it yourself, should you have need to. That app actually does the whole thing; downloads a site's content, generates a flattened version (rewriting the html and css, ensuring the urls follow NeoCities' filename restrictions) and then uploads it all to a NeoCities account.</p>
-
 <h3>Temporary Measures</h3>
-
-<p>Thankfully, this file upload situation looks to only be temporary. <a href="https://twitter.com/kyledrake">Kyle Drake</a> (NeoCities' proud father) has updated the blog today with <a href="http://neocities.org/blog/neocities-can-now-handle-two-million-web-sites">NeoCities can now handle two million web sites. Here's what we're working on next.</a> In there he says that the file upload process is going to be improved with "things like drag-and-drop file uploading, and then with an API to allow developers to write tools to upload files", which is excellent news! He also addresses the limits on file types that may be uploaded. At the moment "ico" is not in the white list of allowed extensions and so I can't have a favicon for my blog at NeoCities. But this is soon to be replaced with a "black list" (to block executables and the like) so my favicon should soon be possible* :)</p>
-
+<p>Thankfully, this file upload situation looks to only be temporary. <a href="https://twitter.com/kyledrake">Kyle Drake</a> (NeoCities' proud father) has updated the blog today with <a href="http://neocities.org/blog/neocities-can-now-handle-two-million-web-sites">NeoCities can now handle two million web sites. Here's what we're working on next.</a> In there he says that the file upload process is going to be improved with &quot;things like drag-and-drop file uploading, and then with an API to allow developers to write tools to upload files&quot;, which is excellent news! He also addresses the limits on file types that may be uploaded. At the moment &quot;ico&quot; is not in the white list of allowed extensions and so I can't have a favicon for my blog at NeoCities. But this is soon to be replaced with a &quot;black list&quot; (to block executables and the like) so my favicon should soon be possible* :)</p>
 <p>* <em>(I half-contemplated, before this announcement, a favicon in another format - such as gif or png - but it seems that this counts out IE and I wanted a solution for all browsers).</em></p>
-
-<p>Hopefully this black listing approach will allow me to have an RSS feed here as well - essentially that's just an xml file with an xslt to transform the content into a nice-to-view format. And since xslt is just xml I thought that it might work to have an xslt reference in the xml file that has an xml extension itself. But alas, I couldn't get it working, I just kept getting a blank screen in Chrome although "view source" showed the content was present. I'll revisit this when the file restrictions have been changed.</p>
-
+<p>Hopefully this black listing approach will allow me to have an RSS feed here as well - essentially that's just an xml file with an xslt to transform the content into a nice-to-view format. And since xslt is just xml I thought that it might work to have an xslt reference in the xml file that has an xml extension itself. But alas, I couldn't get it working, I just kept getting a blank screen in Chrome although &quot;view source&quot; showed the content was present. I'll revisit this when the file restrictions have been changed.</p>
 <p><strong>Update (25th July 2013):</strong> The NeoCities interface has been updated so that multiple files can be uploaded by dragging-and-dropping! I still can't upload my favicon yet though..</p>
-
 <p><strong>Update (12th August 2014):</strong> I'm not sure when, exactly, but favicons <em>are</em> now support (any .ico file is, in fact). It's a little thing but I do think it adds something to the identity of a site so I'm glad they changed this policy.</p>
-
 <h3>Site Search!</h3>
-
-<p>This was all well and good, but at this point the site search was missing from the site. This functionality is enabled by server-side code that takes a search string, tries to find matching Posts and then shows the results with Post titles and content excerpts with the matching term(s) highlighted. The matching is done against an index of tokens (possible words) so that the results retrieval can be very fast. The index records <em>where</em> in the source content it matches the token, which enables the except-highlighting. It has support for plurality matching (so it knows that "cat" and "cats" can be considered to be the same word) and has some other flexibility with ignoring letter case, ignoring accents on characters, ignoring certain characters (so "book's" is considered the same as "books") and search term splitting (so "cat posts" matches Posts with "cat" <em>and</em> "posts" in, rather than requiring that a Post contain the exact phrase "cat posts").</p>
-
+<p>This was all well and good, but at this point the site search was missing from the site. This functionality is enabled by server-side code that takes a search string, tries to find matching Posts and then shows the results with Post titles and content excerpts with the matching term(s) highlighted. The matching is done against an index of tokens (possible words) so that the results retrieval can be very fast. The index records <em>where</em> in the source content it matches the token, which enables the except-highlighting. It has support for plurality matching (so it knows that &quot;cat&quot; and &quot;cats&quot; can be considered to be the same word) and has some other flexibility with ignoring letter case, ignoring accents on characters, ignoring certain characters (so &quot;book's&quot; is considered the same as &quot;books&quot;) and search term splitting (so &quot;cat posts&quot; matches Posts with &quot;cat&quot; <em>and</em> &quot;posts&quot; in, rather than requiring that a Post contain the exact phrase &quot;cat posts&quot;).</p>
 <p>But the index is essentially a string-key dictionary onto the match data (the C# code stores it as a <a href="http://en.wikipedia.org/wiki/Ternary_search_tree">ternary search tree</a> for performance but it's still basically just a dictionary). Javascript loves itself some associative arrays (all objects are associated arrays, basically bags of string-named properties) and associative arrays are basically string-key dictionaries. It seemed like the start of an idea!</p>
-
-<p>If the index was still generated server-side (as it has to be for my "primary" blog hosting) then I should be able to represent this data as something that javascript could interpret and then perform the searching itself on the client..</p>
-
+<p>If the index was still generated server-side (as it has to be for my &quot;primary&quot; blog hosting) then I should be able to represent this data as something that javascript could interpret and then perform the searching itself on the client..</p>
 <p>The plan:</p>
-
 <ol>
-<li>Get the generated <a href="https://bitbucket.org/DanRoberts/full-text-indexer/src/1839c7c61ab41fc0aad93fc5ea10f7f5e43b869d/Core/Indexes/IIndexData.cs?at=default">IIndexData&lt;int&gt;</a> from my server-side blog (it's an int since the Posts all have a unique int "Id" property)</li>
+<li>Get the generated <a href="https://bitbucket.org/DanRoberts/full-text-indexer/src/1839c7c61ab41fc0aad93fc5ea10f7f5e43b869d/Core/Indexes/IIndexData.cs?at=default">IIndexData&lt;int&gt;</a> from my server-side blog (it's an int since the Posts all have a unique int &quot;Id&quot; property)</li>
 <li>Use the <strong>GetAllTokens</strong> and <strong>GetMatches</strong> methods to loop through each token in the data and generate JSON to represent the index, storing at this point only the Post Keys and their match Weight so that searching is possible</li>
 <li>Do something similar to get tokens, Keys, Weights <em>and</em> Source Locations (<em>where</em> in the source content the matches were identified) for each Post, resulting in detailed match data for each individual Post</li>
 <li>Get plain text content for each Post from the server-side data (the Posts are stored as <a href="http://daringfireball.net/projects/markdown/">Markdown</a> in my source and translated into html for rendering and plain text for searching)</li>
 <li>Write javascript classes that can use this data to perform a search and then render the results with matched terms highlighted, just like the server-side code can do</li>
 <li>Profit!</li>
 </ol>
-
 <p>(This is actually a slightly amended plan from the original, I tried first to generate a single JSON file with the detailed content for <em>all</em> Posts but it was over 4 meg uncompressed and still bigger than I wanted when delivered from NeoCities gzip'd. So I went for the file-with-summary-data-for-all-Posts and then separate files for detailed data for individual Posts).</p>
-
 <p>I used <a href="http://james.newtonking.com/pages/json-net.aspx">JSON.Net</a> for the serialisation (it's just the go-to for this sort of thing!) and used intermediary C# classes where each property was only a single character long to try to keep the size of the serialised data down. (There's nothing complicated about this, if more detail is of interest then the code can be found in the <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer/src/c00e31be4b34e1f3587df3815643b6565dbc1a4a/NeoCitiesTransformer/SearchIndexDataStorage/JsonSearchIndexDataRecorder.cs?at=default">JsonSearchIndexDataRecorder</a> class available on Bitbucket).</p>
-
-<h3>C# -> Javascript</h3>
-
-<p>So now I had a single JSON file for performing a search across all Posts, multiple JSON files for term-highlighting individual Posts and text files containing the content that the source locations mapped onto (also for term-highlighting). I needed to write a javascript <strong>ITokenBreaker</strong> (to use the parlance of the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer</a> project) to reduce a search term into individual words (eg. "Cat posts" into "Cat" and "posts"), then an <strong>IStringNormaliser</strong> that will deal with letter casing, pluralisation and all that guff (eg. "Cat" and "posts" into "cat~" and "post~"). Then a way to take each of these words and identify Posts which contain <em>all</em> of the words. And finally a way to use ajax to pull in the detailed match data and plain text content to display the Post excerpts with highlighted search term matches.</p>
-
+<h3>C# -&gt; Javascript</h3>
+<p>So now I had a single JSON file for performing a search across all Posts, multiple JSON files for term-highlighting individual Posts and text files containing the content that the source locations mapped onto (also for term-highlighting). I needed to write a javascript <strong>ITokenBreaker</strong> (to use the parlance of the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer</a> project) to reduce a search term into individual words (eg. &quot;Cat posts&quot; into &quot;Cat&quot; and &quot;posts&quot;), then an <strong>IStringNormaliser</strong> that will deal with letter casing, pluralisation and all that guff (eg. &quot;Cat&quot; and &quot;posts&quot; into &quot;cat~&quot; and &quot;post~&quot;). Then a way to take each of these words and identify Posts which contain <em>all</em> of the words. And finally a way to use ajax to pull in the detailed match data and plain text content to display the Post excerpts with highlighted search term matches.</p>
 <p>To make things as snappy-feeling as possible, I wanted to display the title of matched Posts first while waiting for the ajax requests to deliver the match highlighting information - and for the content excerpts to be added in later.</p>
-
-<p>The file <a href="http://productiverage.neocities.org/IndexSearchGenerator.js">IndexSearchGenerator.js</a> takes a JSON index file and a search term, breaks the search term into words, "normalises" those words, identifies Posts that contain all of the normalised words and returns an array of Key, Weight and (if it was present in the data) Source Locations. It's only 264 lines of non-minified javascript and a lot of that is the mapping of accented characters to non-accented representations. (The Source Locations will not be present in the all-Posts summary JSON but <em>will</em> be in the per-Post detail JSON).</p>
-
-<p><a href="http://productiverage.neocities.org/SearchTermHighlighter.js">SearchTermHighlighter.js</a> takes the plain text content of a Post, a maximum length for a content-excerpt to show and a set of Source Locations for matched terms and returns a string of html that shows the excerpt that best matches the terms, with those terms highlighted. And that's only 232 lines of non-minified, commented code. What I found particularly interesting with this file was that I was largely able to copy-and-paste the C# code and fudge it into javascript. There were some issues with LINQ's absence. At the start of the <strong>GetPlainTextContentAsHighlightedHtml</strong> method, for example, I need to get the max "EndIndex" of any of the highlighted terms - I did this by sorting the Source Locations data by the EndIndex property and then taking the EndIndex value of the last element of the array. Easy! The algorithm for highlighting (determining the best excerpt to take and then highlighting any terms, taking care that any overlapped terms don't cause problems) wasn't particularly complicated but it was fairly pleasant to translate it "by rote" and have it work at the end.</p>
-
+<p>The file <a href="http://productiverage.neocities.org/IndexSearchGenerator.js">IndexSearchGenerator.js</a> takes a JSON index file and a search term, breaks the search term into words, &quot;normalises&quot; those words, identifies Posts that contain all of the normalised words and returns an array of Key, Weight and (if it was present in the data) Source Locations. It's only 264 lines of non-minified javascript and a lot of that is the mapping of accented characters to non-accented representations. (The Source Locations will not be present in the all-Posts summary JSON but <em>will</em> be in the per-Post detail JSON).</p>
+<p><a href="http://productiverage.neocities.org/SearchTermHighlighter.js">SearchTermHighlighter.js</a> takes the plain text content of a Post, a maximum length for a content-excerpt to show and a set of Source Locations for matched terms and returns a string of html that shows the excerpt that best matches the terms, with those terms highlighted. And that's only 232 lines of non-minified, commented code. What I found particularly interesting with this file was that I was largely able to copy-and-paste the C# code and fudge it into javascript. There were some issues with LINQ's absence. At the start of the <strong>GetPlainTextContentAsHighlightedHtml</strong> method, for example, I need to get the max &quot;EndIndex&quot; of any of the highlighted terms - I did this by sorting the Source Locations data by the EndIndex property and then taking the EndIndex value of the last element of the array. Easy! The algorithm for highlighting (determining the best excerpt to take and then highlighting any terms, taking care that any overlapped terms don't cause problems) wasn't particularly complicated but it was fairly pleasant to translate it &quot;by rote&quot; and have it work at the end.</p>
 <p>Finally, <a href="http://productiverage.neocities.org/SearchPage.js">SearchPage.js</a> fills in the gaps by determining whether you're on the search page and extracting (and url-decoding) the terms from the Query String if so, performing the initial search against the summary data (displaying the matched titles) and then making the ajax requests for the detailed data and rendering the match excerpts as they become available. Looping through the results, making ajax requests for detail data and handling the results for each Post when it is delivered is a bit like using a complicated asynchronous model in .net but in javascript this sort of async callback madness is parr for the course :) If this script decides that you're not on the search page then it makes an ajax request for the the summary regardless so that it can be browser-cached and improve the performance of the first search you make (the entirety of the summary data is only 77k gzip'd so it's no big deal if you don't end up actually performing a search).</p>
-
 <p>This last file is only 165 lines of commented, white-spaced javascript so the entire client-side implementation of the search facility is still fairly approachable and maintainable. It's effective (so long as you have javascript enabled!) and - now, bear with me if I'm just being overly impressed with my own creation - it looks cool performing the complicated search mechanics so quickly and fading in the matched excerpts! :)</p>
-
 <h3>Signing off</h3>
-
-<p>I'm really proud of this and had a lot of fun within the "NeoCities boundaries"! Yes, the source-site-grabbing-and-rewriting could be tidied up a bit. Yes, the file upload is currently a bit of a dodgy workaround. Yes, I still have a handful of TODOs about handling ajax failures in SearchPage.js. Yes, the search index files are bigger than I would have liked (significantly larger than not only the plain text content but also their full page html representations), which I may address by trying out a more complicated format rather than naive JSON (which was very easy). But it all works! And it works well. And the bits that are a bit untidy are only a <em>bit</em> untidy, on the whole they're robust and I'm sufficiently unashamed of them all that the code is all public!</p>
-
+<p>I'm really proud of this and had a lot of fun within the &quot;NeoCities boundaries&quot;! Yes, the source-site-grabbing-and-rewriting could be tidied up a bit. Yes, the file upload is currently a bit of a dodgy workaround. Yes, I still have a handful of TODOs about handling ajax failures in SearchPage.js. Yes, the search index files are bigger than I would have liked (significantly larger than not only the plain text content but also their full page html representations), which I may address by trying out a more complicated format rather than naive JSON (which was very easy). But it all works! And it works well. And the bits that are a bit untidy are only a <em>bit</em> untidy, on the whole they're robust and I'm sufficiently unashamed of them all that the code is all public!</p>
 <p>Speaking of which, my blog is primarily hosted at <a href="http://www.productiverage.com">www.productiverage.com</a>*  and I write about various projects which are hosted on my <a href="https://bitbucket.org/DanRoberts">Bitbucket account</a>. Among them, the source code for the <a href="https://bitbucket.org/DanRoberts/blog">Blog</a> itself, for the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer</a> which powers the server-hosted blog and which generates the source index data which I've JSON-ified, the <a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser</a> which I use in the rewriting / site-flattening process, the <a href="https://bitbucket.org/DanRoberts/blogtoneocitiestransformer">BlogToNeocitiesTransformer</a> which performs the site-flattening and a few other things that I've blogged about at various times. Ok, self-promotion over! :)</p>
+<p>* <em>(If you're reading this at my primary blog address, the NeoCities version with the client-side search can be found at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a>).</em></p>
+<p class="PostTime">Posted at 20:21</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/NeoCities" title="2 Posts">NeoCities</a></li></ul></div>
+            <p class="Comments">
+                <a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside#disqus_thread" data-disqus-identifier="58">Comments</a>
+            </p>
+    </div>
 
-<p>* <em>(If you're reading this at my primary blog address, the NeoCities version with the client-side search can be found at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a>).</em></p><p class="PostTime">Posted at 20:21</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/NeoCities" title="2 Posts">NeoCities</a></li></ul></div>
-			<p class="Comments">
-				<a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside#disqus_thread" data-disqus-identifier="58">Comments</a>
-			</p>
-	</div>
-
-	<script type="text/javascript">
-					(function () {
-						var s = document.createElement("script");
-						s.type = "text/javascript";
-						s.async = true;
-						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
-						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
-					} ());
-	</script>
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -1299,17 +1017,16 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

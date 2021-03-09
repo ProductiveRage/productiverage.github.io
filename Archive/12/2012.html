@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -41,38 +40,33 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">27 December 2012</h3><h2><a id="Post41"></a><a href="/wcf-with-json-and-nullable-types">WCF with JSON (and nullable types)</a></h2>
-
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">27 December 2012</h3><h2><a id="wcf-with-json-and-nullable-types" href="/wcf-with-json-and-nullable-types">WCF with JSON (and nullable types)</a></h2>
 <p>I wanted to try putting together a WCF Service that would return JSON. With its configurable nature, I've heard before that it's not that big of a deal to do this.. and truth be told, it's not <em>that</em> awkward to do but it took me a while to find all the right hoops to jump through! (Another time, I might consider trying to put together a RESTful API using MVC and the JsonResult type unless there was some need to support multiple response types, such as XML <em>and</em> JSON).</p>
-
-<p>The best way to go through it is probably with an example, so here's a simple Service Contract interface, note the "WebGet" attribute and the BodyStyle and ResponseFormat values.</p>
-
+<p>The best way to go through it is probably with an example, so here's a simple Service Contract interface, note the &quot;WebGet&quot; attribute and the BodyStyle and ResponseFormat values.</p>
 <pre><code>using System;
 using System.ServiceModel;
 using System.ServiceModel.Web;
@@ -88,9 +82,7 @@ namespace WCFJSONExample
     }
 }
 </code></pre>
-
 <p>When communicating through SOAP, the standard request method is to POST the data but for the purposes here I want to enable GET requests that return JSON. I also want the search parameters to be simple types, rather than having to support a complex SearchRequestDetails type, for example, that could specify the various criteria. There's nothing special about the PostResponseDetails type, though:</p>
-
 <pre><code>using System;
 using System.Runtime.Serialization;
 
@@ -133,60 +125,42 @@ namespace WCFJSONExample
     }
 }
 </code></pre>
-
 <p>We're going to get the framework to serialise the response data for us, so nothing unusual was required there.</p>
-
-<p>Where things <em>do</em> need changing from the defaults, though, are some of the settings in the web.config. Within system.serviceModel / services, we need to add the following (the "services" node won't exist if you're working with a clean web.config file - ie. a web.config as Visual Studio will generate for a new "WCF Service Application" project):</p>
-
-<pre><code>&lt;service name="WCFJSONExample.PostService"&gt;
+<p>Where things <em>do</em> need changing from the defaults, though, are some of the settings in the web.config. Within system.serviceModel / services, we need to add the following (the &quot;services&quot; node won't exist if you're working with a clean web.config file - ie. a web.config as Visual Studio will generate for a new &quot;WCF Service Application&quot; project):</p>
+<pre><code>&lt;service name=&quot;WCFJSONExample.PostService&quot;&gt;
     &lt;endpoint
-        name="jsonEndPoint"
-        address=""
-        binding="webHttpBinding"
-        behaviorConfiguration="json"
-        contract="WCFJSONExample.IPostService"
+        name=&quot;jsonEndPoint&quot;
+        address=&quot;&quot;
+        binding=&quot;webHttpBinding&quot;
+        behaviorConfiguration=&quot;json&quot;
+        contract=&quot;WCFJSONExample.IPostService&quot;
     /&gt;
 &lt;/service&gt;
 </code></pre>
-
-<p>And within system.serviceModel / behaviours / endpointBehaviors we need to add (again, the "behaviours" node won't exist in the clean / default web.config, just add it and the child "endpointBehaviors" node in, if required):</p>
-
-<pre><code>&lt;behavior name="json"&gt;
+<p>And within system.serviceModel / behaviours / endpointBehaviors we need to add (again, the &quot;behaviours&quot; node won't exist in the clean / default web.config, just add it and the child &quot;endpointBehaviors&quot; node in, if required):</p>
+<pre><code>&lt;behavior name=&quot;json&quot;&gt;
     &lt;webHttp /&gt;
 &lt;/behavior&gt;
 </code></pre>
-
 <p>And that's it! Web Service calls can be made by specifying the method name as part of the url - eg.</p>
-
 <pre><code>http://localhost:62277/PostService.svc/Search?id=1
 </code></pre>
-
 <h3>Well..</h3>
-
 <p>When making requests, if any of the parameters are not included then they will be given default values - eg.</p>
-
 <pre><code>http://localhost:62277/PostService.svc/Search?id=1
 </code></pre>
-
 <p>will result in a method call with id specified as 1 and both postedAfter and postedBefore with the value default(DateTime). I wanted to be able to specify nullable types for the method arguments so that if I needed a method where I could differentiate between integer values being specified as zero and not being specified (and so appearing to be zero as that is default(int)).</p>
-
 <p>But changing the Operation Contract to</p>
-
 <pre><code>[OperationContract]
 [WebGet(BodyStyle = WebMessageBodyStyle.Bare, ResponseFormat = WebMessageFormat.Json)]
 PostResponseDetails Search(int? id, DateTime? postedAfter, DateTime? postedBefore);
 </code></pre>
-
 <p>results in the unfriendly error:</p>
-
 <blockquote>
-  <p>Operation 'GetLogData' in contract 'IPostService' has a query variable named 'fromDate' of type 'System.Nullable<code>1[System.DateTime]', but type 'System.Nullable</code>1[System.DateTime]' is not convertible by 'QueryStringConverter'.  Variables for UriTemplate query values must have types that can be converted by 'QueryStringConverter'.</p>
+<p>Operation 'GetLogData' in contract 'IPostService' has a query variable named 'fromDate' of type 'System.Nullable<code>1[System.DateTime]', but type 'System.Nullable</code>1[System.DateTime]' is not convertible by 'QueryStringConverter'.  Variables for UriTemplate query values must have types that can be converted by 'QueryStringConverter'.</p>
 </blockquote>
-
-<p>It turns out that the WebHttp behaviour uses an internal class "QueryStringConverter" that will only translate particular types. But we can use a different end point behaviour that uses a different query string converter. Most of the behaviour of the webHttp behaviour (which corresponds to the System.ServiceModel.Description.WebHttpBehavior class) is correct and we just want to extend it, so we'll create a new class that inherits from it and tweak it slightly in that manner.</p>
-
+<p>It turns out that the WebHttp behaviour uses an internal class &quot;QueryStringConverter&quot; that will only translate particular types. But we can use a different end point behaviour that uses a different query string converter. Most of the behaviour of the webHttp behaviour (which corresponds to the System.ServiceModel.Description.WebHttpBehavior class) is correct and we just want to extend it, so we'll create a new class that inherits from it and tweak it slightly in that manner.</p>
 <p>The new class looks like this:</p>
-
 <pre><code>using System;
 using System.ServiceModel.Configuration;
 using System.ServiceModel.Description;
@@ -262,7 +236,7 @@ namespace WCFJSONExample
                 private bool TryToGetNullableTypeInformation(Type type, out Type innerType)
                 {
                     if (type == null)
-                        throw new ArgumentNullException("type");
+                        throw new ArgumentNullException(&quot;type&quot;);
 
                     if (!type.IsGenericType
                     || (type.GetGenericTypeDefinition() != typeof(Nullable&lt;&gt;)))
@@ -279,36 +253,28 @@ namespace WCFJSONExample
     }
 }
 </code></pre>
-
-<p>And we plumb it in by adding this to system.serviceModel / extensions / behaviorExtensions (again, the "extensions" node and its "behaviorExtensions" child node need adding in to a vanila web.config):</p>
-
+<p>And we plumb it in by adding this to system.serviceModel / extensions / behaviorExtensions (again, the &quot;extensions&quot; node and its &quot;behaviorExtensions&quot; child node need adding in to a vanila web.config):</p>
 <pre><code>&lt;add
-    name="postServiceWebHttp"
-    type="WCFJSONExample.NullableSupportingWebHttpBehaviourExtension, WCFJSONExample"
+    name=&quot;postServiceWebHttp&quot;
+    type=&quot;WCFJSONExample.NullableSupportingWebHttpBehaviourExtension, WCFJSONExample&quot;
 /&gt;
 </code></pre>
-
-<p>And then replace the "webHttp" node of the behaviour we added above with a "postServiceWebHttp" node, thus:</p>
-
-<pre><code>&lt;behavior name="json"&gt;
+<p>And then replace the &quot;webHttp&quot; node of the behaviour we added above with a &quot;postServiceWebHttp&quot; node, thus:</p>
+<pre><code>&lt;behavior name=&quot;json&quot;&gt;
     &lt;postServiceWebHttp /&gt;
 &lt;/behavior&gt;
 </code></pre>
-
 <p>The QueryStringConverter's CanConvert, ConvertStringToValue and ConvertValueToString methods are overridden so that we can pick up on parameters that are of the type Nullable&lt;T&amp;gt&amp;; and deal with them appropriately - returning null if a null value is stored in the type and dealing with the wrapped value if not.</p>
-
-<p>This could easily be changed to perform different translation actions, if required (it could feasibly be integrated with a JSON serialiser to deal with complex data types, for example).</p><p class="PostTime">Posted at 22:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li></ul></div>
-			<p class="Comments">
-				<a href="/wcf-with-json-and-nullable-types#disqus_thread" data-disqus-identifier="41">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">17 December 2012</h3><h2><a id="Post40"></a><a href="/the-full-text-indexer-post-roundup">The Full Text Indexer Post Round-up</a></h2>
-
+<p>This could easily be changed to perform different translation actions, if required (it could feasibly be integrated with a JSON serialiser to deal with complex data types, for example).</p>
+<p class="PostTime">Posted at 22:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li></ul></div>
+            <p class="Comments">
+                <a href="/wcf-with-json-and-nullable-types#disqus_thread" data-disqus-identifier="41">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">17 December 2012</h3><h2><a id="the-full-text-indexer-post-roundup" href="/the-full-text-indexer-post-roundup">The Full Text Indexer Post Round-up</a></h2>
 <p>This is a compilation of links to articles outlining some of the details of the Full Text Indexer project I put together, just so I could point a link to everything all in one place (like from the BitBucket ReadMe!)</p>
-
 <p>I wrote about the basic building blocks of the Index Generator, went off on a few tangents about how using different key types could allow for searches over data with multi-lingual content (or support Product data that has different descriptions for different web sites, for example) and then came back round to illustrate how I've used the code for this blog's search functionality.</p>
-
 <ul>
 <li><a href="/the-full-text-indexer">The Full Text Indexer</a></li>
 <li><a href="/the-full-text-indexer-adding-and-subtracting">The Full Text Indexer - Adding and Subtracting</a></li>
@@ -320,9 +286,7 @@ namespace WCFJSONExample
 <li><a href="/the-full-text-indexer-search-term-highlighting-with-source-locations">Search Term Highlighting with Source Locations</a></li>
 <li><a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The Full Text Indexer goes Client-side!</a></li>
 </ul>
-
 <p>Along the journey, I got to learn a few new things, take advantage of other's research and have fun trying to improve the performance of some of the bottlenecks in the index generation process.</p>
-
 <ul>
 <li><a href="/the-net-dictionary-is-fast">The .Net Dictionary is FAST!</a></li>
 <li><a href="/an-englishlanguage-pluralityhandling-string-normaliser">An English-language Plurality-handling String Normaliser</a></li>
@@ -331,34 +295,25 @@ namespace WCFJSONExample
 <li><a href="/compiled-linq-expressions-dont-serialise">Compiled LINQ Expressions don't serialise :(</a></li>
 <li><a href="/javascript-compression-putting-my-json-search-indexes-on-a-diet">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a></li>
 </ul>
-
 <p>I also had a chance to revisit the basic immutable list structure that I used from the get-go in this project and improve its performance characteristics as well (again, taking a lot of inspiration from cleverer people who've tackled the same problems before me! :)</p>
-
 <ul>
 <li><a href="/persistent-immutable-lists">Persistent Immutable Lists</a></li>
 <li><a href="/persistent-immutable-lists-extended">Persistent Immutable Lists - Extended</a></li>
 </ul>
-
 <p>The code can be found in the <a href="https://bitbucket.org/DanRoberts/full-text-indexer/">Full Text Indexer BitBucket Repository</a>. I've still got a few ideas I'm contemplating toying with - but I've also got other projects I want to investigate! So we'll just have to see what happens with this next..</p>
-
 <p><strong>Update (5th March 2013):</strong> I just can't seem to let this lie! :) I've added another post <a href="/the-full-text-indexer-automating-index-generation">The Full Text Indexer - Automating Index Generation</a> which demonstrates some new code that will examine your source data type and generate an index for you, all on its own! Easy! (Added to the list above).</p>
-
 <p><strong>Update (14th March 2013):</strong> And another! This time about support for structured querying, a way to combine terms with AND, OR, NOT operators. See <a href="/the-full-text-indexer-structured-queries">The Full Text Indexer - Structured Queries</a>.  (Added to the list above).</p>
-
 <p><strong>Update (28th March 2013):</strong> Documenting an extension to the index data that allow for more performant consecutive term matching: <a href="/the-full-text-indexer-source-locations">The Full Text Indexer: Source Locations</a>. Followed by a way to utilise this information for <a href="/the-full-text-indexer-search-term-highlighting-with-source-locations">Search Term Highlighting with Source Locations</a>. (Added to the list above).</p>
-
-<p><strong>Update (25th July 2013):</strong> Inspired by the "<a href="http://10mbmanifesto.neocities.org">The 10 Megabyte Manifesto</a>" and <a href="http://neocities.org">NeoCities</a>, I've developed a way to consume search index data with JavaScript to enable a copy of this blog to be hosted where the searching is done entirely client-side. Read about it at <a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The Full Text Indexer goes client-side!</a> and see it in action live at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a>! (Added to the list above).</p>
-
-<p><strong>Update (30th July 2013):</strong> A follow-up to the "The Full Text Indexer goes client-side" describing how the search index data can be compressed to take up less space on the host: <a href="/javascript-compression-putting-my-json-search-indexes-on-a-diet">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a>. (Added to the list above).</p><p class="PostTime">Posted at 18:06</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li><li><a href="/Archive/Tag/LINQ" title="12 Posts">LINQ</a></li><li><a href="/Archive/Tag/Optimisation" title="8 Posts">Optimisation</a></li></ul></div>
-			<p class="Comments">
-				<a href="/the-full-text-indexer-post-roundup#disqus_thread" data-disqus-identifier="40">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">6 December 2012</h3><h2><a id="Post39"></a><a href="/persistent-immutable-lists-extended">Persistent Immutable Lists - Extended</a></h2>
-
-<p>In my last post (<a href="/persistent-immutable-lists">Persistent Immutable Lists</a>) I offered some code as an alternate (and more performant) way to write an immutable list to that I suggested right back in my first post (<a href="/i-love-immutable-data">I love Immutable Data</a>). Well now I'd like to present a minor follow-up to the follow-up! I've incorporated the new list implementation into a few projects and have filled out a few more methods such as a "Remove" method (to remove a particular value, rather than removing from a given index with "RemoveAt" or "RemoveRange"), alternate "Sort" signatures and a "To" method that allows for derived types to be written that return their the derived type from the manipulation methods (see examples below):</p>
-
+<p><strong>Update (25th July 2013):</strong> Inspired by the &quot;<a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">The 10 Megabyte Manifesto](http://10mbmanifesto.neocities.org)&quot; and <a href="http://neocities.org">NeoCities</a>, I've developed a way to consume search index data with JavaScript to enable a copy of this blog to be hosted where the searching is done entirely client-side. Read about it at [The Full Text Indexer goes client-side! and see it in action live at <a href="http://productiverage.neocities.org">productiverage.neocities.org</a>! (Added to the list above).</p>
+<p><strong>Update (30th July 2013):</strong> A follow-up to the &quot;The Full Text Indexer goes client-side&quot; describing how the search index data can be compressed to take up less space on the host: <a href="/javascript-compression-putting-my-json-search-indexes-on-a-diet">JavaScript Compression (Putting my JSON Search Indexes on a diet)</a>. (Added to the list above).</p>
+<p class="PostTime">Posted at 18:06</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li><li><a href="/Archive/Tag/LINQ" title="12 Posts">LINQ</a></li><li><a href="/Archive/Tag/Optimisation" title="8 Posts">Optimisation</a></li></ul></div>
+            <p class="Comments">
+                <a href="/the-full-text-indexer-post-roundup#disqus_thread" data-disqus-identifier="40">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">6 December 2012</h3><h2><a id="persistent-immutable-lists-extended" href="/persistent-immutable-lists-extended">Persistent Immutable Lists - Extended</a></h2>
+<p>In my last post (<a href="/persistent-immutable-lists">Persistent Immutable Lists</a>) I offered some code as an alternate (and more performant) way to write an immutable list to that I suggested right back in my first post (<a href="/i-love-immutable-data">I love Immutable Data</a>). Well now I'd like to present a minor follow-up to the follow-up! I've incorporated the new list implementation into a few projects and have filled out a few more methods such as a &quot;Remove&quot; method (to remove a particular value, rather than removing from a given index with &quot;RemoveAt&quot; or &quot;RemoveRange&quot;), alternate &quot;Sort&quot; signatures and a &quot;To&quot; method that allows for derived types to be written that return their the derived type from the manipulation methods (see examples below):</p>
 <pre><code>[Serializable]
 public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
 {
@@ -373,7 +328,7 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
     public ImmutableList(IEnumerable&lt;T&gt; values, IValueValidator&lt;T&gt; optionalValueValidator)
     {
         if (values == null)
-            throw new ArgumentNullException("values");
+            throw new ArgumentNullException(&quot;values&quot;);
 
         Node node = null;
         foreach (var value in values)
@@ -401,7 +356,7 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
         get
         {
             if ((index &lt; 0) || (index &gt;= Count))
-                throw new ArgumentOutOfRangeException("index");
+                throw new ArgumentOutOfRangeException(&quot;index&quot;);
 
             EnsureAllValuesDataIsPopulated();
             return _allValues[index];
@@ -447,7 +402,7 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
     public ImmutableList&lt;T&gt; AddRange(IEnumerable&lt;T&gt; values)
     {
         if (values == null)
-            throw new ArgumentNullException("values");
+            throw new ArgumentNullException(&quot;values&quot;);
         if (!values.Any())
             return this;
 
@@ -465,7 +420,7 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
     public ImmutableList&lt;T&gt; Insert(IEnumerable&lt;T&gt; values, int insertAtIndex)
     {
         if (values == null)
-            throw new ArgumentNullException("values");
+            throw new ArgumentNullException(&quot;values&quot;);
 
         return Insert(values, default(T), insertAtIndex);
     }
@@ -481,7 +436,7 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
         int insertAtIndex)
     {
         if ((insertAtIndex &lt; 0) || (insertAtIndex &gt; Count))
-            throw new ArgumentOutOfRangeException("insertAtIndex");
+            throw new ArgumentOutOfRangeException(&quot;insertAtIndex&quot;);
         if ((multipleValuesToAdd != null) &amp;&amp; !multipleValuesToAdd.Any())
             return this;
 
@@ -597,13 +552,13 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
     {
         if (removeAtIndex &lt; 0)
             throw new ArgumentOutOfRangeException(
-                "removeAtIndex",
-                "must be greater than or equal zero"
+                &quot;removeAtIndex&quot;,
+                &quot;must be greater than or equal zero&quot;
             );
         if (count &lt;= 0)
-            throw new ArgumentOutOfRangeException("count", "must be greater than zero");
+            throw new ArgumentOutOfRangeException(&quot;count&quot;, &quot;must be greater than zero&quot;);
         if ((removeAtIndex + count) &gt; Count)
-            throw new ArgumentException("removeAtIndex + count must not exceed Count");
+            throw new ArgumentException(&quot;removeAtIndex + count must not exceed Count&quot;);
 
         // Starting with the tail, walk back to the end of the removal range, recording
         // the values we pass over
@@ -682,9 +637,9 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
     protected static U To&lt;U&gt;(ImmutableList&lt;T&gt; list, Func&lt;Node, U&gt; generator)
     {
         if (list == null)
-            throw new ArgumentNullException("list");
+            throw new ArgumentNullException(&quot;list&quot;);
         if (generator == null)
-            throw new ArgumentNullException("generator");
+            throw new ArgumentNullException(&quot;generator&quot;);
 
         return generator(list._tail);
     }
@@ -692,7 +647,7 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
     /// &lt;summary&gt;
     /// For enumerating the values we need to walk through all of the nodes and then reverse
     /// the set (since we start with the tail and work backwards). This can be relatively
-    /// expensive so the list is cached in the "_allValues" member array so that subsequent
+    /// expensive so the list is cached in the &quot;_allValues&quot; member array so that subsequent
     /// requests are fast (wouldn't be a big deal for a single enumeration of the contents
     /// but it could be for multiple calls to the indexed property).
     /// &lt;/summary&gt;
@@ -723,7 +678,7 @@ public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
         public SortComparisonWrapper(Comparison&lt;T&gt; comparison)
         {
             if (comparison == null)
-                throw new ArgumentNullException("comparison");
+                throw new ArgumentNullException(&quot;comparison&quot;);
 
             _comparison = comparison;
         }
@@ -763,9 +718,7 @@ public interface IValueValidator&lt;T&gt;
     void EnsureValid(T value);
 }
 </code></pre>
-
-<p>To implement a NonNullImmutableList we want to inherit from the ImmutableList and introduce a compulsory IValueValidator that ensures that no item in the list is null. Each of the methods are then "overridden" using the "new" keyword so that if they are called on an instance of the NonNullImmutableList then an instance of the NonNullImmutableList will be returned but if it is used anywhere as an ImmutableList then the ImmutableList's methods will be called directly and an ImmutableList (rather than a NonNullImmutableList) reference will be returned. This approach does have a minor overhead as described in the comment on the "To" method seen above but it does offer a straight-forward way to write derived classes that maintain their type (and so their implicit validation rules and assurances) when manipulations are performed.</p>
-
+<p>To implement a NonNullImmutableList we want to inherit from the ImmutableList and introduce a compulsory IValueValidator that ensures that no item in the list is null. Each of the methods are then &quot;overridden&quot; using the &quot;new&quot; keyword so that if they are called on an instance of the NonNullImmutableList then an instance of the NonNullImmutableList will be returned but if it is used anywhere as an ImmutableList then the ImmutableList's methods will be called directly and an ImmutableList (rather than a NonNullImmutableList) reference will be returned. This approach does have a minor overhead as described in the comment on the &quot;To&quot; method seen above but it does offer a straight-forward way to write derived classes that maintain their type (and so their implicit validation rules and assurances) when manipulations are performed.</p>
 <pre><code>[Serializable]
 public class NonNullImmutableList&lt;T&gt; : ImmutableList&lt;T&gt; where T : class
 {
@@ -846,7 +799,7 @@ public class NonNullImmutableList&lt;T&gt; : ImmutableList&lt;T&gt; where T : cl
     private NonNullImmutableList&lt;T&gt; ToNonNullOrEmptyStringList(ImmutableList&lt;T&gt; list)
     {
         if (list == null)
-            throw new ArgumentNullException("list");
+            throw new ArgumentNullException(&quot;list&quot;);
 
         return To&lt;NonNullImmutableList&lt;T&gt;&gt;(
             list,
@@ -868,18 +821,15 @@ public class NonNullImmutableList&lt;T&gt; : ImmutableList&lt;T&gt; where T : cl
         public void EnsureValid(T value)
         {
             if (value == null)
-                throw new ArgumentNullException("value");
+                throw new ArgumentNullException(&quot;value&quot;);
             if (_optionalInnerValidator != null)
                 _optionalInnerValidator.EnsureValid(value);
         }
     }
 }
 </code></pre>
-
-<p>A very similar approach could be taken to implement a "NonNullOrEmptyStringList" class (referred to in previous posts as a "DefinedStringList") but dropping the type param and inheriting from ImmutableList&lt;string&gt; and swapping out the validator to check for null or blank strings.</p>
-
+<p>A very similar approach could be taken to implement a &quot;NonNullOrEmptyStringList&quot; class (referred to in previous posts as a &quot;DefinedStringList&quot;) but dropping the type param and inheriting from ImmutableList&lt;string&gt; and swapping out the validator to check for null or blank strings.</p>
 <p>The final piece of the puzzle I've used in my code is to throw in some extension methods:</p>
-
 <pre><code>public static class IEnumerable_Extensions
 {
     public static ImmutableList&lt;T&gt; ToImmutableList&lt;T&gt;(this IEnumerable&lt;T&gt; data)
@@ -918,25 +868,25 @@ public class NonNullImmutableList&lt;T&gt; : ImmutableList&lt;T&gt; where T : cl
     }
 }
 </code></pre>
+<p>And that's it! I'm happy with these updated lists for now and, as I already mentioned, have been using them in a few projects and consider them ready for use!</p>
+<p class="PostTime">Posted at 20:02</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
+            <p class="Comments">
+                <a href="/persistent-immutable-lists-extended#disqus_thread" data-disqus-identifier="39">Comments</a>
+            </p>
+    </div>
 
-<p>And that's it! I'm happy with these updated lists for now and, as I already mentioned, have been using them in a few projects and consider them ready for use!</p><p class="PostTime">Posted at 20:02</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
-			<p class="Comments">
-				<a href="/persistent-immutable-lists-extended#disqus_thread" data-disqus-identifier="39">Comments</a>
-			</p>
-	</div>
-
-	<script type="text/javascript">
-					(function () {
-						var s = document.createElement("script");
-						s.type = "text/javascript";
-						s.async = true;
-						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
-						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
-					} ());
-	</script>
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -946,17 +896,16 @@ public class NonNullImmutableList&lt;T&gt; : ImmutableList&lt;T&gt; where T : cl
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -41,239 +40,146 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">21 September 2016</h3><h2><a id="Post106"></a><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></h2>
-
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">21 September 2016</h3><h2><a id="when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc" href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></h2>
 <h3>TL;DR (especially for Bud Goode)</h3>
-
 <p>The .NET garbage collector is a complex beast. Occasionally it might infuriate but remember that it's keeping you from the misery of manual memory management and that you're better to consider it an ally than a foe.</p>
-
-<p>Sometimes, ways to improve its performance seem counter-intuitive, such as intentionally keeping objects around that will have to be considered by each of the already-expensive gen 2 collections, even when we have no intention of letting those objects go (aka. object pooling) and such as using disk caching instead of in-memory caching, despite an in-memory cache "obviously" being more performant than having to hit the file system.</p>
-
+<p>Sometimes, ways to improve its performance seem counter-intuitive, such as intentionally keeping objects around that will have to be considered by each of the already-expensive gen 2 collections, even when we have no intention of letting those objects go (aka. object pooling) and such as using disk caching instead of in-memory caching, despite an in-memory cache &quot;obviously&quot; being more performant than having to hit the file system.</p>
 <h3>The deep dive</h3>
-
 <p>At work we have a service that handles queries from our hundreds of tourism websites and talks to the backend databases when, say, someone searches for Concerts in a particular location or wants to book a Hotel on a particular date. It caches many of the results of these queries for ten or fifteen minutes, which takes a lot of load away from the database servers and greatly reduces the average response times for users of the web sites. It handles a few million requests a day - so it's hardly Google but it's also doing enough work to be interesting from a performance point of view.</p>
-
 <p>The load has been spread over a pair of servers for a few years now, initially for redundancy. However, there was a point at which it became clear that a single server could no longer handle the load. When there were too many concurrent requests, individual requests would take longer to be processed, which resulted in the number of concurrent requests going up and up and the individual request times following suit until requests started timing out. Over time, two servers became four servers and there is concern now that two servers could not reliably handle all of the load.</p>
-
-<p>On top of this, the memory usage of the service on each of the servers appears to slowly-but-surely increase over time until it gets high enough and, for want of a more technical term, freaks out. The thread count in the service builds and builds as more request are backing up, waiting to be processed. The requests times get longer and longer. Using PerfMon, it looks like several CPU cores are tied up entirely on garbage collection (since we're using the "server mode" GC configuration, there is a separate managed heap - and a separate collection thread - for each processor). Strangely, at this point, the cores don't appear to be max'ing out, the average CPU usage for the server is reliatively low, though the "% time in GC" is high. Every few weeks, it seems like one of the servers would need the service restarting on it due to a "memory blow up".</p>
-
-<p>The time finally came that we could no longer continue to brush this under the rug - this problem was not going to go away and the occasional "uh-oh, someone is going to have to restart the service again" was no longer acceptable; not only was there a minute or two downtime for the actual service restart, there was also half an hour or so leading up to it during which response times were getting unacceptably long.</p>
-
+<p>On top of this, the memory usage of the service on each of the servers appears to slowly-but-surely increase over time until it gets high enough and, for want of a more technical term, freaks out. The thread count in the service builds and builds as more request are backing up, waiting to be processed. The requests times get longer and longer. Using PerfMon, it looks like several CPU cores are tied up entirely on garbage collection (since we're using the &quot;server mode&quot; GC configuration, there is a separate managed heap - and a separate collection thread - for each processor). Strangely, at this point, the cores don't appear to be max'ing out, the average CPU usage for the server is reliatively low, though the &quot;% time in GC&quot; is high. Every few weeks, it seems like one of the servers would need the service restarting on it due to a &quot;memory blow up&quot;.</p>
+<p>The time finally came that we could no longer continue to brush this under the rug - this problem was not going to go away and the occasional &quot;uh-oh, someone is going to have to restart the service again&quot; was no longer acceptable; not only was there a minute or two downtime for the actual service restart, there was also half an hour or so leading up to it during which response times were getting unacceptably long.</p>
 <h3>Blaming the GC</h3>
-
 <p>It would seem all too easy to blame things on the garbage collector, say that the fault lies there and that there's nothing we can do about it other than avoiding giving it more load than it can deal with (in other words, throw more servers at the problem). But I recently read <a href="https://twitter.com/ben_a_adams/status/767174657048993792">a tweet</a> that said</p>
-
 <blockquote>
-  <p>Blaming perf issues on Garbage Collection is like blaming your hangover on your liver... Its the thing that's saving you from your code</p>
+<p>Blaming perf issues on Garbage Collection is like blaming your hangover on your liver... Its the thing that's saving you from your code</p>
 </blockquote>
-
 <p>(Courtesy of <a href="https://twitter.com/ben_a_adams/status/767174657048993792">Ben Adams</a>).</p>
-
 <p>.. which helped motivate me into trying to find a better solution. On the whole, I'm very grateful that the .NET garbage collector works as well as it does. In the majority of cases, you just don't have to worry about it. But sometimes you do. Clearly, the data service that I'm talking about is one of those cases.</p>
-
-<p>The garbage collector uses a range of factors to decide when to collect - some are simple, such as the amount of free memory available in the system (if there's a lot then there's less pressure to collect) and the available processor time (if the system is busy doing other work then it would ideal to wait until it's quieter before throwing GC work on top of the "real work"). Some factors are more complex - for example, if gen 2 collections occur that release zero (or very little) memory then the GC will take this into account and try to collect it less often (since gen 2 collections are the most expensive, it makes sense for the GC to avoid them if possible; if it finds that few references are being released from gen 2 each collections then there's little point doing the collection work).</p>
-
+<p>The garbage collector uses a range of factors to decide when to collect - some are simple, such as the amount of free memory available in the system (if there's a lot then there's less pressure to collect) and the available processor time (if the system is busy doing other work then it would ideal to wait until it's quieter before throwing GC work on top of the &quot;real work&quot;). Some factors are more complex - for example, if gen 2 collections occur that release zero (or very little) memory then the GC will take this into account and try to collect it less often (since gen 2 collections are the most expensive, it makes sense for the GC to avoid them if possible; if it finds that few references are being released from gen 2 each collections then there's little point doing the collection work).</p>
 <p>However, there is a limit to how much the GC can deal with things with <a href="https://en.wikipedia.org/wiki/Clarke%27s_three_laws#Clarke.27s_third_law">by magic</a>. Sometimes you need to work <em>with</em> the garbage collector, rather than just presuming that it will be able to deal with anything you throw at it.</p>
-
 <p>One way to help is to simply make fewer allocations. The less allocations that are made, the less work that there is for the garbage collector to do.</p>
-
-<p>Another approach is take on board one of Ben Watson's key principles for enabling "<a href="http://www.philosophicalgeek.com/2012/06/04/4-essential-tips-for-high-performance-garbage-collection-on-servers/">high-performance garbage collection on servers</a>", which is:</p>
-
+<p>Another approach is take on board one of Ben Watson's key principles for enabling &quot;<a href="http://www.philosophicalgeek.com/2012/06/04/4-essential-tips-for-high-performance-garbage-collection-on-servers/">high-performance garbage collection on servers</a>&quot;, which is:</p>
 <blockquote>
-  <p>Objects Live Briefly or Forever</p>
+<p>Objects Live Briefly or Forever</p>
 </blockquote>
-
 <p>In order to think about how I can make the GC's life easier, it's worth taking a step back and describing a little bit more about what this troublesome service has to do.</p>
-
 <h3>What the service deals with (and why this might not be GC-friendly)</h3>
-
-<p>At its core, this service receives requests from websites, gets the required data for that request from an external source or from cache (if from an external source, such as a database, then the results will be cached for subsequent requests), massages the data into the desired form and sends it back to the client. For the majority of the time, the results include only "stubs" of the real data - a unique identifier, the name and its location (latitude, longitude). When the results of a query are cached, such as "get me all of the hotels in Liverpool that are in the city centre and have at least a three star rating, ordered by rating (descending)", the query and the resulting stubs are cached. The response to the client will include all of those stubs but it will also include full product details for one page of data - if the client says that it wants to show the first page of results to the user and each page shows ten items, then the first ten entries in the result set will be full products and the remaining "n - 10" entries will be stubs. There is a separate service that is responsible for retrieving full product details for given stubs.</p>
-
+<p>At its core, this service receives requests from websites, gets the required data for that request from an external source or from cache (if from an external source, such as a database, then the results will be cached for subsequent requests), massages the data into the desired form and sends it back to the client. For the majority of the time, the results include only &quot;stubs&quot; of the real data - a unique identifier, the name and its location (latitude, longitude). When the results of a query are cached, such as &quot;get me all of the hotels in Liverpool that are in the city centre and have at least a three star rating, ordered by rating (descending)&quot;, the query and the resulting stubs are cached. The response to the client will include all of those stubs but it will also include full product details for one page of data - if the client says that it wants to show the first page of results to the user and each page shows ten items, then the first ten entries in the result set will be full products and the remaining &quot;n - 10&quot; entries will be stubs. There is a separate service that is responsible for retrieving full product details for given stubs.</p>
 <p>The quickest way that the service may deliver these results is if the query results are stored in cache. In which case, the requests will be dealt with using the following steps:</p>
-
 <ol>
 <li>The request is deserialised</li>
-<li>Ordered stubs corresponding to the query are retrieved from the "Query Cache"</li>
+<li>Ordered stubs corresponding to the query are retrieved from the &quot;Query Cache&quot;</li>
 <li>Full product details are retrieved for the first page (as specified by the request) of results  - this involves serialising a request for ten unique identifiers, sending it to the external product service and then receiving the details for those products back (which means that there's a step that involves deserialisation of full product records when the data comes over from the external service)</li>
-<li>The response (which consists of 10 full products and "n - 10" stubs) is serialised to be sent over the wire back to the client</li>
+<li>The response (which consists of 10 full products and &quot;n - 10&quot; stubs) is serialised to be sent over the wire back to the client</li>
 </ol>
-
-<p>The core of the service was written in (and has been in use since) 2009, which has a spread of advantages and disadvantages. On the less-good side, it uses .NET remoting (at the time, our servers only had .NET 2.0 installed and so newer technologies such as WCF were out of reach) and much of the serialisation uses the <strong>BinaryFormatter</strong> (which is unlikely to be anyone's go-to these days if they are interested in performance). On the other hand, over the years it's been proven to be largely reliable and it's been through a few optimisiation drives since the business is so reliant on it. So the places where serialisation performance is most important have had the <strong>BinaryFormatter</strong> replaced; anywhere that the stubs are serialised/deserialised, for example, uses custom methods to read/write the fixed fields in the stub type. Similarly, the "full product" records are serialised using custom routines (which is a double win when responding to a request since the full product instances must be deserialised when they are received from the external product service and then <em>re-</em>serialised to be included in the final response to the client, so that's twice that use of the slow <strong>BinaryFormatter</strong> is avoided).</p>
-
-<p>What I'm trying to say here is that any "low hanging fruit" in terms of performance hotspots within the service code had been improved in the past. It genuinely did seem like it was the garbage collector that was responsible for much of the performance problem. (I did use the <a href="http://www.red-gate.com/products/dotnet-development/ants-performance-profiler/">ANTS Performance Profiler</a> on a local installation of the service under load to confirm this but it didn't reveal anything exciting). So it was firmly in the direction of the garbage collector that I faced.</p>
-
+<p>The core of the service was written in (and has been in use since) 2009, which has a spread of advantages and disadvantages. On the less-good side, it uses .NET remoting (at the time, our servers only had .NET 2.0 installed and so newer technologies such as WCF were out of reach) and much of the serialisation uses the <strong>BinaryFormatter</strong> (which is unlikely to be anyone's go-to these days if they are interested in performance). On the other hand, over the years it's been proven to be largely reliable and it's been through a few optimisiation drives since the business is so reliant on it. So the places where serialisation performance is most important have had the <strong>BinaryFormatter</strong> replaced; anywhere that the stubs are serialised/deserialised, for example, uses custom methods to read/write the fixed fields in the stub type. Similarly, the &quot;full product&quot; records are serialised using custom routines (which is a double win when responding to a request since the full product instances must be deserialised when they are received from the external product service and then <em>re-</em>serialised to be included in the final response to the client, so that's twice that use of the slow <strong>BinaryFormatter</strong> is avoided).</p>
+<p>What I'm trying to say here is that any &quot;low hanging fruit&quot; in terms of performance hotspots within the service code had been improved in the past. It genuinely did seem like it was the garbage collector that was responsible for much of the performance problem. (I did use the <a href="http://www.red-gate.com/products/dotnet-development/ants-performance-profiler/">ANTS Performance Profiler</a> on a local installation of the service under load to confirm this but it didn't reveal anything exciting). So it was firmly in the direction of the garbage collector that I faced.</p>
 <p>I've written much of this service's code, so I'm familiar with its general structure as well as many of the finer details. With this knowledge, I captured a batch* of sample requests and set up a test environment that I could replay these requests against (using <a href="https://github.com/ProductiveRage/SqlProxyAndReplay">SqlProxyAndReplay</a> to remove the database from the equation).</p>
-
 <p>* <em>(The test queries were taken from real web site logs and replayed at the same rate and level of concurrency - so they should be a reasonable approximation of real life load)</em></p>
-
 <p>The plan being to try to tweak the code that was likely to offend the GC the most and measure after each change to see how it affected the work that the collector had to do. The first candidates were:</p>
-
 <ol>
-<li>The "Query Cache" needs to retrieve from, add to and remove from a structure that will be accessed concurrently be multiple threads. The very first implementation was a dictionary that required a lock for every read or write access. This was changed so that a lock was only required for write actions, which would clone the dictionary and overwrite the internal reference. Read actions wouldn't require a lock since no dictionary would ever change. However, this clone-for-every-write could mean a lot of churn.</li>
+<li>The &quot;Query Cache&quot; needs to retrieve from, add to and remove from a structure that will be accessed concurrently be multiple threads. The very first implementation was a dictionary that required a lock for every read or write access. This was changed so that a lock was only required for write actions, which would clone the dictionary and overwrite the internal reference. Read actions wouldn't require a lock since no dictionary would ever change. However, this clone-for-every-write could mean a lot of churn.</li>
 <li>The custom serialisation uses binary data reader and writer classes. Each individual property value is serialised into a byte array (the <strong>BitConverter</strong> is used for many types of values and the <strong>UTF8Encoder</strong> is used for strings) and then these bytes are added to a <strong>List&lt;byte&gt;</strong> (and the reverse is done to deserialise; sections of the list are extracted into arrays and then translated back into property values). This means that there are a lot of arrays being allocated when serialising or deserialising.</li>
-<li>When serialising/deserialising the full product records, it seems very possible that these records could be over 85,000 bytes of serialised data, which would mean that there would be lots of byte arrays created on the Large Object Heap (where "lots" depends upon how many requests a second are being handled, how many full product records need to be retrieved for the requests and how many of those records were more than 85,000 bytes when serialised). Allocations to the Large Object Heap can be a source of headaches, which I'll go into in a little more detail later on.</li>
+<li>When serialising/deserialising the full product records, it seems very possible that these records could be over 85,000 bytes of serialised data, which would mean that there would be lots of byte arrays created on the Large Object Heap (where &quot;lots&quot; depends upon how many requests a second are being handled, how many full product records need to be retrieved for the requests and how many of those records were more than 85,000 bytes when serialised). Allocations to the Large Object Heap can be a source of headaches, which I'll go into in a little more detail later on.</li>
 </ol>
-
-<h3>Step 1: Bin the custom "free-reading dictionary"</h3>
-
+<h3>Step 1: Bin the custom &quot;free-reading dictionary&quot;</h3>
 <p>There's a <a href="https://msdn.microsoft.com/en-us/library/dd287191(v=vs.110).aspx">ConcurrentDictionary</a> in .NET these days, which should improve things when compared to the custom structure we were using. Using it means that read and write actions both lock again but the locks are much more granular (they only affect subsets of the data, rather than there being a single huge lock around the entire reference) and so there is less likely to be contention between operations.</p>
-
 <p>The batch of test queries were run against this change and the garbage collection frequency performance counters were captured. A few runs were performed and the results averaged and.. er.. annoyingly, I've lost my notes relating to this change! There were less collections required for each generation, which was promising. Thankfully I <em>do</em> have some useful information for the next changes :)</p>
-
 <h3>Step 2: Bin the custom binary reader and writer classes</h3>
-
 <p>The .NET library has <a href="https://msdn.microsoft.com/en-us/library/system.io.binaryreader(v=vs.110).aspx">BinaryReader</a> and <a href="https://msdn.microsoft.com/en-us/library/system.io.binarywriter(v=vs.110).aspx">BinaryWriter</a> classes that take a stream and read/write to it in a more efficient manner than the custom reader/writer classes used before (which allocated at least one array for every single property read or write). These aren't new classes, I just wasn't aware of them when I wrote the custom versions all that time ago.</p>
-
 <p>The tests were repeated with this change and, compared to only the Query Cache change, there were on average <strong>56% as many gen 0 collections, 60% as many gen 1 collections and 59% as many gen 2 collections</strong>.</p>
-
 <h3>Step 3: Pooling large byte arrays used in serialisation/deserialisation</h3>
-
-<p>Time to talk about the Large Object Heap. The garbage collector is much happier dealing with "small objects" (which are decided to be those less than 85000 bytes, based upon "a bunch of benchmarks" according to this <a href="http://stackoverflow.com/a/8953503/3813189">excellent Stack Overflow answer by Hans Passant</a>). With small objects, it will allocate them freely and then, after collections, compact the heap for objects that survive the collection. If the heaps are not compacted, then any gaps in between "live" objects (live objects are those that the GC finds to still be in use) could only be used to slot in newly allocated objects if they fit in the gaps. As objects are allocated and then tidied up, it can become more and more difficult to find somewhere to fit new allocations - it might be necessary to look at <em>many</em> small gaps before finding one that a new object will fit in (this problem is referred to as being caused by fragmentation of the heap). Compacting the heap moves all of the objects so that they're pushed up together, with no gaps, and is relatively cheap when dealing with small objects since each individual memory operation is cheap. However, copying big chunks of memory around (such as the live objects in the Large Object Heap), which is what would be required to compact the Large Object Heap, is much harder work. Following the same sort of logic (that large objects are more expensive to deal with), the Large Object Heap is only collected during a gen 2 collection.</p>
-
+<p>Time to talk about the Large Object Heap. The garbage collector is much happier dealing with &quot;small objects&quot; (which are decided to be those less than 85000 bytes, based upon &quot;a bunch of benchmarks&quot; according to this <a href="http://stackoverflow.com/a/8953503/3813189">excellent Stack Overflow answer by Hans Passant</a>). With small objects, it will allocate them freely and then, after collections, compact the heap for objects that survive the collection. If the heaps are not compacted, then any gaps in between &quot;live&quot; objects (live objects are those that the GC finds to still be in use) could only be used to slot in newly allocated objects if they fit in the gaps. As objects are allocated and then tidied up, it can become more and more difficult to find somewhere to fit new allocations - it might be necessary to look at <em>many</em> small gaps before finding one that a new object will fit in (this problem is referred to as being caused by fragmentation of the heap). Compacting the heap moves all of the objects so that they're pushed up together, with no gaps, and is relatively cheap when dealing with small objects since each individual memory operation is cheap. However, copying big chunks of memory around (such as the live objects in the Large Object Heap), which is what would be required to compact the Large Object Heap, is much harder work. Following the same sort of logic (that large objects are more expensive to deal with), the Large Object Heap is only collected during a gen 2 collection.</p>
 <p>If a lot of allocations are made to the Large Object Heap then memory can appear to spiral out of control (because the Large Object Heap is only collected in gen 2 and because it's not compacted) and the pressure on the GC will increase. Unfortunately, this can be done quite easily when frequently serialising/deserialising to arrays that break the 85,000 byte limit.</p>
-
-<p>One solution is to "pool" those byte arrays. In other words, to maintain a set of arrays and to reuse them, rather than creating new ones each time (which the GC will have to work hard to tidy up after). It's not difficult to imagine that this could easily become a very complicated task - whatever is responsible for pooling those arrays would need be thread safe and it would have to apply some sensible logic to when and how to reuse arrays; Should <em>all</em> arrays be reused? Should only large arrays be reused? Should <em>all</em> large arrays be reused? Will there be any limits to the pool? What if the limits are exceeded and more arrays are required?</p>
-
+<p>One solution is to &quot;pool&quot; those byte arrays. In other words, to maintain a set of arrays and to reuse them, rather than creating new ones each time (which the GC will have to work hard to tidy up after). It's not difficult to imagine that this could easily become a very complicated task - whatever is responsible for pooling those arrays would need be thread safe and it would have to apply some sensible logic to when and how to reuse arrays; Should <em>all</em> arrays be reused? Should only large arrays be reused? Should <em>all</em> large arrays be reused? Will there be any limits to the pool? What if the limits are exceeded and more arrays are required?</p>
 <p>Interestingly, I read last year about something that might be ideal for the job in the book <a href="http://www.writinghighperf.net/">Writing High-Performance .NET Code</a> (written by Ben Watson, who I quoted earlier - it's a book I highly recommend, btw). I'm going to lift the overview completely from the blog post <a href="http://www.philosophicalgeek.com/2015/02/06/announcing-microsoft-io-recycablememorystream/">Announcing Microsoft.IO.RecycableMemoryStream</a> (which is a quote lifted from the book) -</p>
-
 <blockquote>
-  <p>In one application that suffered from too many LOH allocations, we discovered that if we pooled a single type of object, we could eliminate 99% of all problems with the LOH. This was MemoryStream, which we used for serialization and transmitting bits over the network. The actual implementation is more complex than just keeping a queue of MemoryStream objects because of the need to avoid fragmentation, but conceptually, that is exactly what it is. Every time a MemoryStream object was disposed, it was put back in the pool for reuse.</p>
+<p>In one application that suffered from too many LOH allocations, we discovered that if we pooled a single type of object, we could eliminate 99% of all problems with the LOH. This was MemoryStream, which we used for serialization and transmitting bits over the network. The actual implementation is more complex than just keeping a queue of MemoryStream objects because of the need to avoid fragmentation, but conceptually, that is exactly what it is. Every time a MemoryStream object was disposed, it was put back in the pool for reuse.</p>
 </blockquote>
-
 <p>That sounds like a very similar use case to what I have. Lots of serialisation/deserialisation for transmitting and receiving data from other servers, with byte arrays large enough to be allocated on the Large Object Heap. All of them being wrapped in <strong>MemoryStream</strong>s (at least, <strong>MemoryStream</strong>s were used for serialisation of these large objects after Step 2, above, was implemented).</p>
-
 <p>So this definitely seemed worth looking into.</p>
-
 <p>Just to recap precisely why pooling large objects might help; pooling them means keeping hold of them in memory, which seems like the opposite of what we want to do if we want to relieve memory pressure. However, the big benefit is that the Large Object Heap fragmentation will be less of a problem because we're no longer allocating large objects and then throwing them away and then trying to allocate <em>further</em> large objects somewhere (such as in a gap that the GC has removed dead objects from or possibly resorting to tacking them on the end of the heap); instead, a <strong>MemoryStream</strong> (and its large backing array) may be reused after it's been created once and returned to the pool, so the work to try to find a place to allocate a new large object is not required. This still feels somewhat counterintuitive because it means that there will be more objects that the garbage collector has to consider when it does a gen 2 collection and we're trying to give the GC as little work as possible - <em>particularly</em> in gen 2, since collections there are most expensive. This is where the GC's self-tuning comes in, though. If we're trying to get towards a position where not many objects make it into gen 2 unless then are going to live forever (as pooled objects do) then the GC will be in a position where it has to evaluate the gen 2 heap but - ideally - find very little to remove. If it consistently finds very little to do then it will reduce the frequency of the gen 2 collections. So, even though it might feel like we're making the collectors life more difficult by keeping these objects alive on the gen 2 heap, we're actually making it easier.</p>
-
 <p>With this change, after running the tests again, there were 61% as many gen 0 collections as after only Step 2, 53% as many gen 1 collections and 45% as many gen 2 collections. This means that Step 2 and Step 3 combined resulted in <strong>34% as many gen 0 collections than after only the changes in Step 1, 32% as many gen 1 collections and 27% as many gen 2</strong>. This seemed very promising.</p>
-
 <h3>Testing under increased load</h3>
-
-<p>The sample data that I'd been using so far wasn't particularly large, it was around 10k requests that would complete in around ten minutes. This is comparable to the request/sec that the production servers deal with during the day. While each run took place, after the changes made above, the CPU usage averaged around 40% and  the "% time in GC" averaged 2.5%. I had a feeling, though, that it would be while the server was having a really hard time that the original issues would occur. 40% average CPU usage is nowhere near running flat out and that remaining 60% provides a lot of head room for the garbage collector to come and do what it wants whenever it wants.</p>
-
+<p>The sample data that I'd been using so far wasn't particularly large, it was around 10k requests that would complete in around ten minutes. This is comparable to the request/sec that the production servers deal with during the day. While each run took place, after the changes made above, the CPU usage averaged around 40% and  the &quot;% time in GC&quot; averaged 2.5%. I had a feeling, though, that it would be while the server was having a really hard time that the original issues would occur. 40% average CPU usage is nowhere near running flat out and that remaining 60% provides a lot of head room for the garbage collector to come and do what it wants whenever it wants.</p>
 <p>So I increased the load and duration. Not massively, but enough that the previous code started to get a little hot under the collar - 100k requests over an hour or so.</p>
-
 <p>This sample load was run against both the new and the old versions of the service  (where the old version was the code as it was before Steps 1, 2 and 3 from above were applied to it) and the performance metrics compared between the two. On average, the new version required only <strong>84% as much CPU to be used, spent only 30% as much time in the GC, performed 62% as many gen 0 collections, 36% as many gen 1 collections and 22% as many gen 2 collection</strong>. Things were still looking promising.</p>
-
 <h3>Testing for the breaking point</h3>
-
 <p>At this point, it was feeling like a success.</p>
-
 <p>To stretch things further, though, I thought that I'd see how it responded if I played the requests as fast as I could. In normal operation throughout the day, each server doesn't have to deal with much more than an average of 12 requests per second. There will be the odd peak of double that, but they tend to be short-lived. There will be busier times of day where the average rate may be more like 16 requests per second, but not usually for more than a few hours. I was only using a single computer to generate load in this case but that was sufficient to create a sustained load of 35-40 requests per second. I figured that if the service would deal with this then we'd be doing great.</p>
-
 <p>And for about forty minutes, things <em>do</em> go great. The server is busy, it's serving a lot (relative to a normal load) of requests, the gen 0 heap peaks and troughs the most, the gen 1 heap blips up and down with less drama, the gen 2 heap makes slower steps up then drops back down then very gently climbs then steps up then is steady then steps up slightly then drops down, carrying on merrily enough.</p>
-
-<p><img alt="Gen 2 heap 'blow up'" src="/Content/Images/Posts/Memory Blow Up - Gen 2 Heap.jpg" class="HalfWidth" /></p>
-
+<img alt="Gen 2 heap 'blow up'" src="/Content/Images/Posts/Memory Blow Up - Gen 2 Heap.jpg" class="HalfWidth" />
 <p>Until, at some point, the gen 2 heap starts curving up dramatically, followed by many steep steps upward, then a slightly pathetic dip immediately followed by steep steps upward. Having barely hit a gigabyte in size while gently building up and dropping earlier, it's now got to around 4 gig in a very short space of time. Here, it flatlines. During this steep climb, requests have gotten slower and slower and, at this flatline, they are no longer processed. This state continues for a couple of minutes, after which some work appears to attempt to continue, though the gen 2 heap doesn't drop in size at all. Some unusual errors are seen in the logs, such as:</p>
-
 <blockquote>
-  <p>Timeout expired.  The timeout period elapsed prior to obtaining a connection from the pool.</p>
+<p>Timeout expired.  The timeout period elapsed prior to obtaining a connection from the pool.</p>
 </blockquote>
-
 <p>It's as if, during this time, <em>everything</em> within the service stopped. This isn't a query timeout that occurred because the database server was taking too long, this error suggests that a SqlConnection was requested (with .NET pools internally) and then the world stopped for some time.. after which, the request-for-a-connection gave up since it had been so long since it asked for it.</p>
-
 <p>I had thought that the point of the GC server mode was to avoid this sort of thing; even if a collection for one heap was taking a long time, each core has its own separate heap (and this server has four cores - it's not a real server, they're all virtualised, but that shouldn't make a huge difference). Could all of the heaps really have got jammed up simultaneously? Hopefully from everything I've written above, it's clear that there are a lot of subtleties to the intricate nature of the garbage collector and so it wouldn't surprise me if I'd not quite got the whole picture with server mode (or if I was maybe expecting a little too much!).</p>
-
-<p>Incidentally, after this "flatline period", as requests appear to (slowly) begin being served again, the gen 2 heap grows to over 5 gig and then another flatline period is entered. This one much longer. So long, in fact, that I gave up waiting for it. Maybe my attention span is a bit short but I think that after more than five minutes of being completely stuck it's probably not much use even if the service <em>does</em> start going again.</p>
-
-<p>The symptoms of this condition sound identical to the occasional "memory blow up" that was seen with the old version of the code on the live servers. It would seem that the changes so far had not provided a magic bullet.</p>
-
+<p>Incidentally, after this &quot;flatline period&quot;, as requests appear to (slowly) begin being served again, the gen 2 heap grows to over 5 gig and then another flatline period is entered. This one much longer. So long, in fact, that I gave up waiting for it. Maybe my attention span is a bit short but I think that after more than five minutes of being completely stuck it's probably not much use even if the service <em>does</em> start going again.</p>
+<p>The symptoms of this condition sound identical to the occasional &quot;memory blow up&quot; that was seen with the old version of the code on the live servers. It would seem that the changes so far had not provided a magic bullet.</p>
 <h3>Looking for clues</h3>
-
-<p><img alt="GC CPU time during the 'blow up'" src="/Content/Images/Posts/Memory Blow Up - GC CPU.jpg" class="HalfWidth" /></p>
-
-<p>I wanted some insight into what was going on during these periods of apparent inactivity - well, it seemed like <em>my</em> code was inactive, though it appeared that the GC was being very busy. The "% time in GC" would spike around during work but seem to get more frenzied in its peaking in the lead up to the gen 2 heap size flat line, then it too would flat line in sympathy. After the first flat line period, it would remain higher but spike up and down, then it would flatline again when the gen 2 heap size flatlined, at a higher level than the time before.</p>
-
+<img alt="GC CPU time during the 'blow up'" src="/Content/Images/Posts/Memory Blow Up - GC CPU.jpg" class="HalfWidth" />
+<p>I wanted some insight into what was going on during these periods of apparent inactivity - well, it seemed like <em>my</em> code was inactive, though it appeared that the GC was being very busy. The &quot;% time in GC&quot; would spike around during work but seem to get more frenzied in its peaking in the lead up to the gen 2 heap size flat line, then it too would flat line in sympathy. After the first flat line period, it would remain higher but spike up and down, then it would flatline again when the gen 2 heap size flatlined, at a higher level than the time before.</p>
 <p>I initially presumed that there must be something in the requests that caused this behaviour. So, if I skipped the first {whatever} thousand requests then I should be able to get this to happen sooner. Not so - skipping 10k requests still meant that I had to wait the same period of time for the behaviour to present itself. Skipping 20k, the same. If I skipped too many then the requests would complete without blowing up at all.</p>
-
-<p>My next step was to try to use <a href="http://www.red-gate.com/products/dotnet-development/ants-memory-profiler/">ANTS Memory Profiler</a> and to take a couple of snapshots as the blowout started occurring. Unfortunately, by the time that the gen 2 heap size started climbing sharply, it would quickly get too big for the profiler to snapshot. There's a hard limit in the software as to how big of a memory dump it will try to process ("for performance reasons"). There's an option to take less information about each object so that larger dumps may be taken but even enabling that didn't work. In retrospect, it might have been worth reducing the memory in the virtual box and trying to reproduce the issue then - hopefully ANTS would have been able to deal with it then (everything got stuck when the gen 2 heap reached around four gig out of a total six gig of RAM, if the server only had four gig total then the available memory would be exhausted and the GC would presumably throw a tantrum much earlier, with a much smaller gen 2 heap).</p>
-
-<p>After that I tried using <a href="https://blogs.msdn.microsoft.com/dotnet/2012/10/09/improving-your-apps-performance-with-perfview/">PerfView</a> since it's discussed and recommended in the "Writing High-Performance .NET Code" book. I managed to take a snapshot using that, freezing the process while doing so in order to prevent the heaps growing even more (taking the snapshot took almost two hours). When I loaded the dump file into PerfView to analyse, it appeared to show very little information about what types were in use (certainly it didn't appear to show the long list of types seen in all of the screenshots and tutorial videos about PerfView). There is a small row of information at the top of the heap alloc stack window that shows a summary. This showed 99% unreachable memory. This means that most of the memory is actually ready to be reclaimed by the collector (ie. that its roots are unreachable) and so I presumed that I wouldn't be able to find out much information about it. I tried finding confirmation for this online but didn't come up with much when searching for "99% unreachable memory PerfView". Another regret, looking back, is that I didn't try a bit harder to unearth information through PerfView. To be completely honest, though, I was losing patience.</p>
-
+<p>My next step was to try to use <a href="http://www.red-gate.com/products/dotnet-development/ants-memory-profiler/">ANTS Memory Profiler</a> and to take a couple of snapshots as the blowout started occurring. Unfortunately, by the time that the gen 2 heap size started climbing sharply, it would quickly get too big for the profiler to snapshot. There's a hard limit in the software as to how big of a memory dump it will try to process (&quot;for performance reasons&quot;). There's an option to take less information about each object so that larger dumps may be taken but even enabling that didn't work. In retrospect, it might have been worth reducing the memory in the virtual box and trying to reproduce the issue then - hopefully ANTS would have been able to deal with it then (everything got stuck when the gen 2 heap reached around four gig out of a total six gig of RAM, if the server only had four gig total then the available memory would be exhausted and the GC would presumably throw a tantrum much earlier, with a much smaller gen 2 heap).</p>
+<p>After that I tried using <a href="https://blogs.msdn.microsoft.com/dotnet/2012/10/09/improving-your-apps-performance-with-perfview/">PerfView</a> since it's discussed and recommended in the &quot;Writing High-Performance .NET Code&quot; book. I managed to take a snapshot using that, freezing the process while doing so in order to prevent the heaps growing even more (taking the snapshot took almost two hours). When I loaded the dump file into PerfView to analyse, it appeared to show very little information about what types were in use (certainly it didn't appear to show the long list of types seen in all of the screenshots and tutorial videos about PerfView). There is a small row of information at the top of the heap alloc stack window that shows a summary. This showed 99% unreachable memory. This means that most of the memory is actually ready to be reclaimed by the collector (ie. that its roots are unreachable) and so I presumed that I wouldn't be able to find out much information about it. I tried finding confirmation for this online but didn't come up with much when searching for &quot;99% unreachable memory PerfView&quot;. Another regret, looking back, is that I didn't try a bit harder to unearth information through PerfView. To be completely honest, though, I was losing patience.</p>
 <h3>Giving up and guessing (I prefer to call it intuition)</h3>
-
 <p>I was frustrated now. I was frustrated with what I was seeing, I was frustrated because I didn't understand precisely what triggered it and I was frustrated that I couldn't get any tools to tell me what was going awry. So I thought I'd just take a stab in the dark and see what happened.</p>
-
 <p>In my defence, it was more sort of an educated guess. It seemed like what the service was asking of the garbage collector was something that the collector would (given enough time) decide it didn't like. I didn't feel like it was just allocation churn, my gut* told me that references that were very short lived were not the problem, even if there were a lot of them coming into existence and then disappearing again while the request rate was high. It felt like it was all going to lie with those ten / fifteen minute caches. If the GC likes references to live for very short periods of time or to live <em>forever</em> then this is the worst case for it. It's particularly bad since there may be many (ie. 1000s of) sets of cached results in memory at any time and each result set could potentially hold many stubs (again, 1000s).</p>
-
-<p>* <em>(I say "my gut told me" but I think that what that really means is that my sub-conscious, having been stuffed full with a million articles about garbage collection, was just regurgitating information I'd read..)</em></p>
-
+<p>* <em>(I say &quot;my gut told me&quot; but I think that what that really means is that my sub-conscious, having been stuffed full with a million articles about garbage collection, was just regurgitating information I'd read..)</em></p>
 <p>The logical step, then, would be to move that cache out of process. Maybe Redis, Memcached.. something like that. This would mean that any Query Cache lookup would involve a leap out to another process. Some sort of cache key would have to be generated, any results from the other process would have to be deserialised and then compared against the original search criteria (unless the cache was just a serialised representation of the entire search criteria then there would always be a change of cache key collision, so a single cache key might actually correspond to results from multiple different searches). This seemed like a lot of extra work, compared to just accessing cached references in memory.. <em>but it's this just-get-bang-it-in-memory approach that has gotten me into trouble in the first place!</em></p>
-
 <p>At this point, I was in no way certain that this would solve my problems and so thinking about setting up an external cache service was starting to feel like an exercise in <a href="http://sethgodin.typepad.com/seths_blog/2005/03/dont_shave_that.html">yak shaving</a>. So I went for the simplest alternative, I implemented a disk cache layer. If I was going to use an external cache then I'd still need a way to serialise the data that would need caching (so that I could send and receive it over the wire) and I'd still need a way to generate cache keys from the search criteria (by hashing the options, basically). I would also have to do that if I was going to just stash the cache values on disk. There would be a few minor complications with a disk cache rather than an off-the-shelf external cache (such as ensuring that old cache files are deleted if they're not accessed again within a reasonable amount of time) but most of the work to implement a disk cache would come in handy if the hypothesis was proved and a general purpose out-of-process cache for these ten-to-fifteen-minute cache items seemed to help.</p>
-
 <p><em>(Just in case it's not completely obvious why a disk cache might work here, it's because the data isn't stored in memory for long periods of time any more - any time that the cached data is read from disk into memory, the in-memory representation only lives for the live of the request that the cached data is helping with - it then is free to be collected, meaning that it should never get out of gen 0).</em></p>
-
-<p>So I changed the Query Cache so that it didn't maintain a <strong>ConcurrentDictionary</strong> of data (meaning, unfortunately, that the work I did for "Step 1" earlier was a waste of time) and, instead, had a simple <strong>ICache</strong> dependency injected into it. Simple in that it would only have options to read or write serialised data (as byte arrays) for particular keys - the deserialisation and subsequent checking of an "ExpiresAt" time would be handled within the Query Cache class. The <strong>ICache</strong> implementation read and wrote files on disk, mapping the cache keys onto file names and running a single background thread to tidy up old files that hadn't been touched for a while. Writing an alternative <strong>ICache</strong> implementation to talk to Redis would be very easy.</p>
-
+<p>So I changed the Query Cache so that it didn't maintain a <strong>ConcurrentDictionary</strong> of data (meaning, unfortunately, that the work I did for &quot;Step 1&quot; earlier was a waste of time) and, instead, had a simple <strong>ICache</strong> dependency injected into it. Simple in that it would only have options to read or write serialised data (as byte arrays) for particular keys - the deserialisation and subsequent checking of an &quot;ExpiresAt&quot; time would be handled within the Query Cache class. The <strong>ICache</strong> implementation read and wrote files on disk, mapping the cache keys onto file names and running a single background thread to tidy up old files that hadn't been touched for a while. Writing an alternative <strong>ICache</strong> implementation to talk to Redis would be very easy.</p>
 <p>With this change, I was able to run the entire 100k request sample without issue. In fact, the service has been updated in production using this disk cache. While there are some challenges and compromises with a disk cache*, it's working <em>well enough</em> for now that we're going to leave it be. If it seems like, in the future, that the overhead of persisting to disk is a bottleneck and that a dedicated external cache could significantly improve the performance of individual requests or the overall throughput of the system, then we may change to using one. However, right now, that would just be one more moving part. The advantage of the disk cache is that it's very simple.</p>
-
 <p>* <em>(File IO of this type will suffer contention issues but this is a read-only service and so the worst case is  that some database hits that could theoretically have been avoided are processed; if a request comes in whose results are not available in cache then it will get the data live and then try to write to a cache file - if another request comes in whose search criteria gets hashed to the same key then it won't be possible to read the data for that key while the writing from the first request is taking place)</em></p>
-
 <h3>In conclusion</h3>
-
 <p>It has now been a couple of weeks that this code has been in production. Over that time, all of the gen 0, 1 and 2 Small Object Heaps have appeared to breathe in and out in a healthy fashion, as has the Large Object Heap. There has been no indication of the slow-memory-usage-climb-to-oblivion that would be seen before.</p>
-
-<p><img alt="GC Memory Graph" src="/Content/Images/Posts/GC Memory Graph.png" class="HalfWidth" /></p>
-
-<p>The experience has been very interesting for me, it's given me a chance to expand my understanding of the garbage collector and to apply what I already knew about it. It would have been the icing on the cake to find out more about just what was happening in the process when it was having one of its "blow ups", but I'm more glad that it doesn't look likely to happen again than I am curious as to what was in its mind at the time! It's given me a fresh appreciation of the garbage collector and it's served as a reminder that it really is my buddy and not my enemy.</p>
-
-<p>It's also gratifying that this service continues to get the love it needs to grow and develop. It doesn't seem to be particularly uncommon for code to be written that doesn't expect to be in use more than two years in the future (sometimes simply because a project is released and "handed off" to a client, never to be maintained or updated again - necessitating its replacement in the not-too-distant-future as the real world moves further and further away from what the original solution is able to do).</p>
-
-<p>I wrote such a large portion of the service code myself that I have to bear the blame for the bad bits as well as the glory for the successes. Those custom non-locking-for-read-but-fully-cloning-for-write dictionaries (replaced in "Step 1" with the more modern <strong>ConcurrentDictionary</strong>) were my idea and implementation and seemed fanstastic at the time - but I'm not upset in the slightest to have seen the back of them now! It's a great opoortunity to look back over the years and see not only how technology has moved on since then but also my own knowledge. I very much intend to see it continuing!</p><p class="PostTime">Posted at 20:12</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Performance" title="2 Posts">Performance</a></li></ul></div>
-			<p class="Comments">
-				<a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc#disqus_thread" data-disqus-identifier="106">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">6 September 2016</h3><h2><a id="Post105"></a><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></h2>
-
+<img alt="GC Memory Graph" src="/Content/Images/Posts/GC Memory Graph.png" class="HalfWidth" />
+<p>The experience has been very interesting for me, it's given me a chance to expand my understanding of the garbage collector and to apply what I already knew about it. It would have been the icing on the cake to find out more about just what was happening in the process when it was having one of its &quot;blow ups&quot;, but I'm more glad that it doesn't look likely to happen again than I am curious as to what was in its mind at the time! It's given me a fresh appreciation of the garbage collector and it's served as a reminder that it really is my buddy and not my enemy.</p>
+<p>It's also gratifying that this service continues to get the love it needs to grow and develop. It doesn't seem to be particularly uncommon for code to be written that doesn't expect to be in use more than two years in the future (sometimes simply because a project is released and &quot;handed off&quot; to a client, never to be maintained or updated again - necessitating its replacement in the not-too-distant-future as the real world moves further and further away from what the original solution is able to do).</p>
+<p>I wrote such a large portion of the service code myself that I have to bear the blame for the bad bits as well as the glory for the successes. Those custom non-locking-for-read-but-fully-cloning-for-write dictionaries (replaced in &quot;Step 1&quot; with the more modern <strong>ConcurrentDictionary</strong>) were my idea and implementation and seemed fantastic at the time - but I'm not upset in the slightest to have seen the back of them now! It's a great opoortunity to look back over the years and see not only how technology has moved on since then but also my own knowledge. I very much intend to see it continuing!</p>
+<p class="PostTime">Posted at 20:12</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Performance" title="2 Posts">Performance</a></li></ul></div>
+            <p class="Comments">
+                <a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc#disqus_thread" data-disqus-identifier="106">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">6 September 2016</h3><h2><a id="performance-tuning-a-bridgenet-react-app" href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></h2>
 <p>On the whole, React is fast. And, on the whole, writing a web application's code in C# using <a href="http://bridge.net/">Bridge.NET</a> has little overhead compared to writing it directly in JavaScript since Bridge generates sensible JavaScript.</p>
-
 <p>However, I recently wanted to convince myself that performance would not be an issue with the sort of projects that we'll be writing at work. We have some applications that are key to the business and yet have unfortunately been left to wither into a barely-maintinable state. The plan is to, over time, rewrite sections of the application using Bridge and React so that the application continues to work at all times but the old code is pruned away. This means that we need to be sure that any crazy forms that existed in the old codebase will work fine in the new architecture. In particular, there is a configuration page that allows a user to select options from a list of almost 1,000 checkboxes. Is this good UI? Most probably not. Do we need to be able to support such configurations in the future? Unfortunately, most probably yes. With a classic server-based MVC application, this would involve 1,000 checkboxes being rendered on the page and then a ginormous form post to send the changes back when the user clicks Save. In a React app, this sort of form will require virtual re-renders each time that a checkbox is clicked on.</p>
-
 <p>I thought I'd actually go with something slightly more demanding - 5,000 rows on a form where each row has two text boxes and a checkbox. If this can be handled easily then the worst case scenario that we have in mind for our rewrites (1,000 checkboxes) will be a walk in the park.</p>
-
 <p>So I whipped up a sample app and started using the Chrome profiler.. and the news was not good.</p>
-
-<p>The total time recorded by the profiler was 838ms to deal with the changing of a single checkbox. It's said that <a href="https://www.nngroup.com/articles/response-times-3-important-limits/">100ms is "the limit for having the user feel that the system is reacting instantaneously"</a> and 838ms is not just in the same ballpark. What's even worse is that this delay is experienced not only when a checkbox state is changed but also when any change is applied to one of the text boxes. Waiting almost a second for a checkbox to change is bad but waiting that long for each key press to be registered while typing is unbearable.</p>
-
+<p>The total time recorded by the profiler was 838ms to deal with the changing of a single checkbox. It's said that <a href="https://www.nngroup.com/articles/response-times-3-important-limits/">100ms is &quot;the limit for having the user feel that the system is reacting instantaneously&quot;</a> and 838ms is not just in the same ballpark. What's even worse is that this delay is experienced not only when a checkbox state is changed but also when any change is applied to one of the text boxes. Waiting almost a second for a checkbox to change is bad but waiting that long for each key press to be registered while typing is unbearable.</p>
 <h3>Examining the test app</h3>
-
 <p>The test app is fairly simple (and will contain no surprises if you've read my <a href="/writing-react-apps-using-bridgenet-the-dan-way-from-first-principles">Writing React apps using Bridge.NET - The Dan Way</a> three part mini-series). However, the performance improvements that I'm going to cover will be in versions of libraries that I haven't yet released - namely, <a href="https://github.com/ProductiveRage/Bridge.React">Bridge.React</a>, <a href="https://github.com/ProductiveRage/Bridge.Immutable">ProductiveRage.Immutable</a> and <a href="https://github.com/ProductiveRage/Bridge.Immutable.Extensions">ProductiveRage.Immutable.Extensions</a>. The ProductiveRage.Immutable.Extensions library includes types that I commonly use when writing Bridge / React apps (such as <strong>RequestId</strong> and <strong>NonBlankTrimmedString</strong>). So you won't yet be able to try out the changes that I'm going to discuss but (hopefully!) the process of identifying what changes to make will be useful.</p>
-
 <p><em>(I'm planning to release the updates to these libraries around the time that Bridge 15.0 comes out, which should hopefully be this month - this will include the change to using Roslyn for parsing the C#, rather than NRefactory, and so C# 6 syntax will finally be supported, which is wonderful news).</em></p>
-
 <p>One of the types that will be available in ProductiveRage.Immutable.Extensions is <strong>CommonProps&lt;T&gt;</strong>. It's extremely common for component classes to require the same sort of information - what the initial state is, how to record requests to change that state, what class name to apply to the component, whether it should be in a disabled state or not and what key the component has (for cases where it appears as part of a set of dynamic child components).</p>
-
 <pre><code>public sealed class CommonProps&lt;T&gt; : IAmImmutable
 {
     public CommonProps(
@@ -297,11 +203,8 @@
     public Optional&lt;Any&lt;string, int&gt;&gt; Key { get; private set; }
 }
 </code></pre>
-
-<p>If you have a custom text box component then you want to be able to set the initial text value and to be informed when the user is performing an action that changes the text value. If you have a row in a table that shows a message (such as in the application built up in the three part series) then each row needs to have state describing what to show in the "Content" text box and what to show in the "Author" text box. When the user tries to change of those values, the row needs to have a way to say that the current message state is changing. As a final example, if there is a Message table component then the initial state will be a set of messages to render and the "OnChange" delegate will be used whenever a user wants to change a value in an existing row or when they want to remove a row or when they want to add a row. So it's a very common pattern and having a generic class to describe it means that there's less code to write for each component, since they can use this common class rather than each component having their <em>own</em> props class.</p>
-
+<p>If you have a custom text box component then you want to be able to set the initial text value and to be informed when the user is performing an action that changes the text value. If you have a row in a table that shows a message (such as in the application built up in the three part series) then each row needs to have state describing what to show in the &quot;Content&quot; text box and what to show in the &quot;Author&quot; text box. When the user tries to change of those values, the row needs to have a way to say that the current message state is changing. As a final example, if there is a Message table component then the initial state will be a set of messages to render and the &quot;OnChange&quot; delegate will be used whenever a user wants to change a value in an existing row or when they want to remove a row or when they want to add a row. So it's a very common pattern and having a generic class to describe it means that there's less code to write for each component, since they can use this common class rather than each component having their <em>own</em> props class.</p>
 <p>There are some static factory methods to make initialising <strong>CommonProps&lt;T&gt;</strong> instances easier:</p>
-
 <pre><code>public static class CommonProps
 {
     public static CommonProps&lt;T&gt; For&lt;T&gt;(
@@ -330,9 +233,7 @@
     }
 }
 </code></pre>
-
 <p>With that in mind, the code below should be easy to understand. For simplicity, state changes are handled directly by the container component (there is no Dispatcher) and all that the app does is render 5,000 rows and allow the user to change either text box in each row or the checkbox that each row has. It might seem like a lot of code but that's partly due to the way that the lines are wrapped to fit in the blog post and it's partly because I've included <em>all</em> of the non-shared-library code from the app, which is important so that we can talk about what is and isn't worth altering.</p>
-
 <pre><code>public static class App
 {
     [Ready]
@@ -340,7 +241,7 @@
     {
         React.Render(
             new AppContainer(),
-            Document.GetElementById("main")
+            Document.GetElementById(&quot;main&quot;)
         );
     }
 }
@@ -355,7 +256,7 @@ public sealed class AppContainer : Component&lt;object, AppContainer.State&gt;
             Enumerable.Range(1, 5000)
                 .Select(i =&gt; Saved.For(
                     i.ToString(),
-                    new MessageEditState("Title" + i, "Content" + i, isAwesome: false)))
+                    new MessageEditState(&quot;Title&quot; + i, &quot;Content&quot; + i, isAwesome: false)))
                 .ToSet()
         );
     }
@@ -363,11 +264,11 @@ public sealed class AppContainer : Component&lt;object, AppContainer.State&gt;
     public override ReactElement Render()
     {
         return DOM.Div(
-            new Attributes { ClassName = "wrapper" },
+            new Attributes { ClassName = &quot;wrapper&quot; },
             new MessageTable(
                 state.Messages,
                 updatedMessages =&gt; SetState(new State(updatedMessages)),
-                className: new ClassName("messages"),
+                className: new ClassName(&quot;messages&quot;),
                 disabled: false
             )
         );
@@ -457,9 +358,9 @@ public sealed class MessageRow : PureComponent&lt;CommonProps&lt;MessageEditStat
     public override ReactElement Render()
     {
         return DOM.Div(new Attributes { ClassName = props.ClassName.ToNullableString() },
-            props.TextBoxFor(_ =&gt; _.Title, "title"),
-            props.TextBoxFor(_ =&gt; _.Content, "content"),
-            props.CheckboxFor(_ =&gt; _.IsAwesome, "is-awesome")
+            props.TextBoxFor(_ =&gt; _.Title, &quot;title&quot;),
+            props.TextBoxFor(_ =&gt; _.Content, &quot;content&quot;),
+            props.CheckboxFor(_ =&gt; _.IsAwesome, &quot;is-awesome&quot;)
         );
     }
 }
@@ -473,9 +374,9 @@ public static class CommonPropsRenderer
             where T : IAmImmutable
     {
         if (props == null)
-            throw new ArgumentNullException("props");
+            throw new ArgumentNullException(&quot;props&quot;);
         if (propertyIdentifier == null)
-            throw new ArgumentNullException("propertyIdentifier");
+            throw new ArgumentNullException(&quot;propertyIdentifier&quot;);
 
         return DOM.Input(new InputAttributes
         {
@@ -492,9 +393,9 @@ public static class CommonPropsRenderer
             where T : IAmImmutable
     {
         if (props == null)
-            throw new ArgumentNullException("props");
+            throw new ArgumentNullException(&quot;props&quot;);
         if (propertyIdentifier == null)
-            throw new ArgumentNullException("propertyIdentifier");
+            throw new ArgumentNullException(&quot;propertyIdentifier&quot;);
 
         return DOM.Input(new InputAttributes
         {
@@ -506,39 +407,28 @@ public static class CommonPropsRenderer
     }
 }
 </code></pre>
-
-<p>Except for the top-level <strong>AppContainer</strong>, every component is derived from <strong>PureComponent&lt;T&gt;</strong> which means that they automatically get implementations for React's "<a href="https://facebook.github.io/react/docs/component-specs.html#updating-shouldcomponentupdate">shouldComponentUpdate</a>" component life cycle method. This means that if a component needs to be re-rendered by the virtual DOM and if the new props settings are the same as its current props settings then the component will tell React "I'm not going to change, you do not need to re-render me (nor any of my child components)". I had originally hoped that this would mean that everything would be blazing fast without any additional work. However, as I've already said, this was not to be the case.</p>
-
-<p>Before I get stuck in, it's worth bearing in mind that this really is a <em>worst case</em> scenario. If there was a page that required 5,000 entry rows spread over ten different tables then changing any single row would only require the containing table to re-render, the other nine would not need to (the <strong>PureComponent&lt;T&gt;</strong>'s "shouldComponentUpdate" logic would take take of that). The difficulty here is that all 5,000 rows are in a <em>single</em> table and so changing any value in any row requires that the table potentially re-render all of its rows. I can't imagine very many UIs where presenting a user with so many rows simultaneously would be a particularly pleasant experience. Perhaps a spreadsheet of some sort? If you needed to present an interface with tens of thousands of inputs, there are ways to make it faster sucher as "chunking up" groups of rows (so that a change to any single row only requires the other rows in the group potentially to re-render and not any other group). A more complicated (but highly efficient) approach would be to work out what data is currently visible in the browser window and to only update that.</p>
-
+<p>Except for the top-level <strong>AppContainer</strong>, every component is derived from <strong>PureComponent&lt;T&gt;</strong> which means that they automatically get implementations for React's &quot;<a href="https://facebook.github.io/react/docs/component-specs.html#updating-shouldcomponentupdate">shouldComponentUpdate</a>&quot; component life cycle method. This means that if a component needs to be re-rendered by the virtual DOM and if the new props settings are the same as its current props settings then the component will tell React &quot;I'm not going to change, you do not need to re-render me (nor any of my child components)&quot;. I had originally hoped that this would mean that everything would be blazing fast without any additional work. However, as I've already said, this was not to be the case.</p>
+<p>Before I get stuck in, it's worth bearing in mind that this really is a <em>worst case</em> scenario. If there was a page that required 5,000 entry rows spread over ten different tables then changing any single row would only require the containing table to re-render, the other nine would not need to (the <strong>PureComponent&lt;T&gt;</strong>'s &quot;shouldComponentUpdate&quot; logic would take take of that). The difficulty here is that all 5,000 rows are in a <em>single</em> table and so changing any value in any row requires that the table potentially re-render all of its rows. I can't imagine very many UIs where presenting a user with so many rows simultaneously would be a particularly pleasant experience. Perhaps a spreadsheet of some sort? If you needed to present an interface with tens of thousands of inputs, there are ways to make it faster sucher as &quot;chunking up&quot; groups of rows (so that a change to any single row only requires the other rows in the group potentially to re-render and not any other group). A more complicated (but highly efficient) approach would be to work out what data is currently visible in the browser window and to only update that.</p>
 <p>Rather than considering these alternatives at this point, though, I want to see what we can do with the sample app as it's presented.</p>
-
 <h3>Profiling</h3>
-
-<p><img alt="Initial timings (not good)" src="/Content/Images/Posts/BridgeReactProfiling1.png" class="NoBorder HalfWidth" /></p>
-
-<p>The first thing to do was to start measuring and digging. I loaded the page in Chrome, opened the dev tools, went to the Profiles tab, clicked "Start CPU profiling", clicked a checkbox and then "Stop CPU profiling". The result is shown here. There is a natural split between two processes - the "Render" method of the <strong>MessageTable</strong> and the "receiveComponent" / "updateComponent" within React. I know that it's the <strong>MessageTable</strong>'s Render method because it calls "select" (the LINQ function) and that will be where the <strong>MessageTable</strong> creates each <strong>MessageRow</strong>. I'm going to concentrate there first since that's where most of the time is taken and it's also what I have the most direct control over.</p>
-
-<p>Just one thing to check first, though - I'm using the development build of the React library at this point, which has some overhead compared to the production version (since it performs more checks and does more work in order to provide more helpful warnings, where required). Changing to the production build trims some time off; the <strong>MessageTable</strong> "Render" method still takes 609ms but "receiveComponent" takes about half as much time, now 128ms. Clearly, the production build is not going to magically solve all of my problems.</p>
-
-<p>The Chrome dev tools allow you to zoom in on sections of the profiler results, so I tried to make sense of what I could see under the "Render" side. The problem was that it seemed like there were lots of nested calls where none were individually very expensive, it seemed like a cumulative problem with just how many components there were. There were a lot of calls to "constructor", which suggested to me that there may be some overhead in creating Bridge classes. To try to test this theory, I added a new option to the React bindings to enable components to be created by providing a static function rather than creating a component class that is derived from <strong>Component&lt;TProps, TState&gt;</strong> or <strong>PureComponent&lt;TProps&gt;</strong>. This allows <strong>MessageRow</strong> to be rewritten as:</p>
-
+<img alt="Initial timings (not good)" src="/Content/Images/Posts/BridgeReactProfiling1.png" class="NoBorder HalfWidth" />
+<p>The first thing to do was to start measuring and digging. I loaded the page in Chrome, opened the dev tools, went to the Profiles tab, clicked &quot;Start CPU profiling&quot;, clicked a checkbox and then &quot;Stop CPU profiling&quot;. The result is shown here. There is a natural split between two processes - the &quot;Render&quot; method of the <strong>MessageTable</strong> and the &quot;receiveComponent&quot; / &quot;updateComponent&quot; within React. I know that it's the <strong>MessageTable</strong>'s Render method because it calls &quot;select&quot; (the LINQ function) and that will be where the <strong>MessageTable</strong> creates each <strong>MessageRow</strong>. I'm going to concentrate there first since that's where most of the time is taken and it's also what I have the most direct control over.</p>
+<p>Just one thing to check first, though - I'm using the development build of the React library at this point, which has some overhead compared to the production version (since it performs more checks and does more work in order to provide more helpful warnings, where required). Changing to the production build trims some time off; the <strong>MessageTable</strong> &quot;Render&quot; method still takes 609ms but &quot;receiveComponent&quot; takes about half as much time, now 128ms. Clearly, the production build is not going to magically solve all of my problems.</p>
+<p>The Chrome dev tools allow you to zoom in on sections of the profiler results, so I tried to make sense of what I could see under the &quot;Render&quot; side. The problem was that it seemed like there were lots of nested calls where none were individually very expensive, it seemed like a cumulative problem with just how many components there were. There were a lot of calls to &quot;constructor&quot;, which suggested to me that there may be some overhead in creating Bridge classes. To try to test this theory, I added a new option to the React bindings to enable components to be created by providing a static function rather than creating a component class that is derived from <strong>Component&lt;TProps, TState&gt;</strong> or <strong>PureComponent&lt;TProps&gt;</strong>. This allows <strong>MessageRow</strong> to be rewritten as:</p>
 <pre><code>public static class MessageRow
 {
-    [Name("MessageRow")]
+    [Name(&quot;MessageRow&quot;)]
     public static ReactElement Render(CommonProps&lt;MessageEditState&gt; props)
     {
         return DOM.Div(new Attributes { ClassName = props.ClassName.ToNullableString() },
-            props.TextBoxFor(_ =&gt; _.Title, "title"),
-            props.TextBoxFor(_ =&gt; _.Content, "content"),
-            props.CheckboxFor(_ =&gt; _.IsAwesome, "is-awesome")
+            props.TextBoxFor(_ =&gt; _.Title, &quot;title&quot;),
+            props.TextBoxFor(_ =&gt; _.Content, &quot;content&quot;),
+            props.CheckboxFor(_ =&gt; _.IsAwesome, &quot;is-awesome&quot;)
         );
     }
 }
 </code></pre>
-
 <p>which requires <strong>MessageTable</strong> to be changed to:</p>
-
 <pre><code>public sealed class MessageTable : PureComponent&lt;CommonProps&lt;NonNullList&lt;Saved&lt;MessageEditState&gt;&gt;&gt;&gt;
 {
     public MessageTable(
@@ -568,15 +458,10 @@ public static class CommonPropsRenderer
     }
 }
 </code></pre>
-
 <p>This way, there are 5,000 <strong>MessageRow</strong> constructor calls saved each time that the <strong>MessageTable</strong> needs to re-render. (Under the hood, there is still an object created for each row but it's a very lightweight JavaScript object).</p>
-
-<p>This reduced the "Render" time to 496ms (it didn't affect "receiveComponent", but I didn't expect it to). This was a good start and made me want to look further into the cost of class instantiation in Bridge.</p>
-
+<p>This reduced the &quot;Render&quot; time to 496ms (it didn't affect &quot;receiveComponent&quot;, but I didn't expect it to). This was a good start and made me want to look further into the cost of class instantiation in Bridge.</p>
 <h3>Bridge generic classes are more expensive</h3>
-
 <p>I whipped up a quick test to try creating lots of instances of a class, like this:</p>
-
 <pre><code>public static class App
 {
     [Ready]
@@ -585,9 +470,9 @@ public static class CommonPropsRenderer
         var x = new MyClass[10000];
         var timer = Stopwatch.StartNew();
         for (var i = 0; i &lt; x.Length; i++)
-            x[i] = new MyClass("test");
+            x[i] = new MyClass(&quot;test&quot;);
         timer.Stop();
-        Console.WriteLine(timer.ElapsedMilliseconds + "ms");
+        Console.WriteLine(timer.ElapsedMilliseconds + &quot;ms&quot;);
     }
 }
 
@@ -600,11 +485,8 @@ public class MyClass
     public string Value { get; private set; }
 }
 </code></pre>
-
 <p>That only reported 3ms, which didn't seem like it could be the source of the problem.</p>
-
 <p>Next I tried going one step more complicated. The <strong>MessageRow</strong> class that I've replaced with a static function was derived from <strong>PureComponent&lt;T&gt;</strong>, which means that each <strong>MessageRow</strong> instantiation also involved an instantiation of a generic base class. Clearly <em>something</em> is still taking up a lot time.. since the <strong>CommonProps&lt;T&gt;</strong> class used for <strong>MessageRow</strong> props was a generic type, maybe it's something specifically to  do with generic types.</p>
-
 <pre><code>public static class App
 {
     [Ready]
@@ -613,9 +495,9 @@ public class MyClass
         var x = new MyClass&lt;string&gt;[10000];
         var timer = Stopwatch.StartNew();
         for (var i = 0; i &lt; x.Length; i++)
-            x[i] = new MyClass&lt;string&gt;("test");
+            x[i] = new MyClass&lt;string&gt;(&quot;test&quot;);
         timer.Stop();
-        Console.WriteLine(timer.ElapsedMilliseconds + "ms");
+        Console.WriteLine(timer.ElapsedMilliseconds + &quot;ms&quot;);
     }
 }
 
@@ -628,11 +510,8 @@ public class MyClass&lt;T&gt;
     public T Value { get; private set; }
 }
 </code></pre>
-
 <p>This time it reported 35ms. Still not an earth-shattering duration in isolation but a big step up from the non-generic class' 3ms.</p>
-
 <p>One of the nice things about Bridge is that it allows you to tweak the way that the JavaScript is generated. By default, it will strike a good balance between creating reasonable JavaScript while also creating code that is faithful to the C# representation. For example, the <strong>MyClass&lt;T&gt;</strong> class will get the following JavaScript definition:</p>
-
 <pre><code>Bridge.define('Demo.MyClass$1', function (T) { return {
     config: {
         properties: {
@@ -644,11 +523,8 @@ public class MyClass&lt;T&gt;
     }
 }; });
 </code></pre>
-
-<p>It's important that the type param "T" be available as a reference at runtime in case you ever need to access it (such as via a call to "default(T)" or when needing to instantiate another generic type whose type param will also be "T"). If the type "T" was not known to the runtime then it wouldn't be possible for the JavaScript code to do things like create a "default(T)" value appropriate to whatever "T" is; it should be null for a reference type, zero for a numeric type and false for a boolean.</p>
-
-<p>However, this creation of a class that encapsulates the type parameters must incur some overhead. For comparison, the non-generic class is defined in JavaScript with the following (note the lack of the function that captures "T") -</p>
-
+<p>It's important that the type param &quot;T&quot; be available as a reference at runtime in case you ever need to access it (such as via a call to &quot;default(T)&quot; or when needing to instantiate another generic type whose type param will also be &quot;T&quot;). If the type &quot;T&quot; was not known to the runtime then it wouldn't be possible for the JavaScript code to do things like create a &quot;default(T)&quot; value appropriate to whatever &quot;T&quot; is; it should be null for a reference type, zero for a numeric type and false for a boolean.</p>
+<p>However, this creation of a class that encapsulates the type parameters must incur some overhead. For comparison, the non-generic class is defined in JavaScript with the following (note the lack of the function that captures &quot;T&quot;) -</p>
 <pre><code>Bridge.define('Demo.MyClass', {
     config: {
         properties: {
@@ -660,11 +536,8 @@ public class MyClass&lt;T&gt;
     }
 });
 </code></pre>
-
 <p>One of the options that Bridge has to affect what JavaScript is emitted is the [IgnoreGeneric] attribute. If this is applied to a class then it <em>won't</em> be given a JavaScript definition that includes the type parameter. This means that we can create a generic C# class (and continue to fully take advantage of the safety of the C# type system) but have Bridge generate a cheaper-to-instantiate JavaScript representation.</p>
-
 <p>There is one problem with this, though. The C# code:</p>
-
 <pre><code>[IgnoreGeneric]
 public class MyClass&lt;T&gt;
 {
@@ -675,9 +548,7 @@ public class MyClass&lt;T&gt;
     public T Value { get; private set; }
 }
 </code></pre>
-
 <p>will result in the following JavaScript:</p>
-
 <pre><code>Bridge.define('Demo.MyClass$1', {
     config: {
         properties: {
@@ -689,15 +560,10 @@ public class MyClass&lt;T&gt;
     }
 });
 </code></pre>
-
-<p>All properties are set to default values before any instances are created. This is important for cases where there are constructors where one or more properties are not explicitly set since they can't be left undefined. In C#, if you don't set a property on a class instance then it will be left as its default value (null for a reference type, zero for a number, etc..) and Bridge has to maintain this behaviour in JavaScript in order to be consistent. The problem here is that the type "T" is not available and so the "Value" property <em>can't</em> reliably be set to the correct default value.</p>
-
+<p>All properties are set to default values before any instances are created. This is important for cases where there are constructors where one or more properties are not explicitly set since they can't be left undefined. In C#, if you don't set a property on a class instance then it will be left as its default value (null for a reference type, zero for a number, etc..) and Bridge has to maintain this behaviour in JavaScript in order to be consistent. The problem here is that the type &quot;T&quot; is not available and so the &quot;Value&quot; property <em>can't</em> reliably be set to the correct default value.</p>
 <p>Since I'm considering tweaking the <strong>CommonProps&lt;T&gt;</strong> class, this doesn't apply - every property will explicitly be set in the constructor and so I don't have to worry about the case of a property needing to be left with the default value for the type.</p>
-
-<p>Thankfully, Bridge has <em>another</em> way to control the JavaScript that will be helpful. The [Template] attribute may be applied to property getters and setters and will change how these are represented. The default is for "setValue(x)" and "getValue()" methods to be created on the class (this may be seen in the above code, where "this.setValue(value)" is called in the constructor). If the getter is marked with [Template("value")] then anywhere that would previously have called "getValue()" will now simply access "value" and if the setter is marked with [Template("this.value")] then the property-setting (which only happens in the constructor for <strong>CommonProps&lt;T&gt;</strong>) will not be a call to "setValue", it will simply set "this.value".</p>
-
+<p>Thankfully, Bridge has <em>another</em> way to control the JavaScript that will be helpful. The [Template] attribute may be applied to property getters and setters and will change how these are represented. The default is for &quot;setValue(x)&quot; and &quot;getValue()&quot; methods to be created on the class (this may be seen in the above code, where &quot;this.setValue(value)&quot; is called in the constructor). If the getter is marked with [Template(&quot;value&quot;)] then anywhere that would previously have called &quot;getValue()&quot; will now simply access &quot;value&quot; and if the setter is marked with [Template(&quot;this.value&quot;)] then the property-setting (which only happens in the constructor for <strong>CommonProps&lt;T&gt;</strong>) will not be a call to &quot;setValue&quot;, it will simply set &quot;this.value&quot;.</p>
 <p>To apply this to the <strong>MyClass&lt;T&gt;</strong> class, the following C#:</p>
-
 <pre><code>[IgnoreGeneric]
 public class MyClass&lt;T&gt;
 {
@@ -705,43 +571,31 @@ public class MyClass&lt;T&gt;
     {
         Value = value;
     }
-    public T Value { [Template("value")]get; [Template("this.value")]private set; }
+    public T Value { [Template(&quot;value&quot;)]get; [Template(&quot;this.value&quot;)]private set; }
 }
 </code></pre>
-
 <p>would result in the following JavaScript:</p>
-
 <pre><code>Bridge.define('Demo.MyClass$1', {
     constructor: function (value) {
         this.value = value;
     }
 });
 </code></pre>
-
 <p>Note that the set-properties-to-default-values code is no longer present in the JavaScript class definition.</p>
-
 <p>Also, it's worth noting that this will affect anywhere that the property is accessed by code outside of the class. For example, if there is C# like this:</p>
-
-<pre><code>var x = new MyClass&lt;string&gt;("test");
+<pre><code>var x = new MyClass&lt;string&gt;(&quot;test&quot;);
 Console.WriteLine(x.Value);
 </code></pre>
-
 <p>.. then, instead of the property being accessed through a getter method -</p>
-
-<pre><code>var x = new Demo.MyClass$1("test");
+<pre><code>var x = new Demo.MyClass$1(&quot;test&quot;);
 Bridge.Console.log(x.getValue());
 </code></pre>
-
 <p>.. it will be accessed directly -</p>
-
-<pre><code>var x = new Demo.MyClass$1("test");
+<pre><code>var x = new Demo.MyClass$1(&quot;test&quot;);
 Bridge.Console.log(x.value);
 </code></pre>
-
 <p>This means that the JavaScript is a slightly less faithful representation of the C# code. However, the C# compiler is complete unaware of these changes and it will continue to enforce the type system in the same way that it always does. So (presuming you are writing all of your front end code in C#, using Bridge) you are not losing anything. In fact, there will be some more performance gains to be had by accessing properties directly like this - there is a small overhead to calling functions to return values (small, but not zero) as opposed to retrieving them directly.</p>
-
 <p>If this is applied to <strong>CommonProps&lt;T&gt;</strong> then we get the following:</p>
-
 <pre><code>[IgnoreGeneric]
 public sealed class CommonProps&lt;T&gt;
 {
@@ -753,9 +607,9 @@ public sealed class CommonProps&lt;T&gt;
         Optional&lt;Any&lt;string, int&gt;&gt; key)
     {
         if (state == null)
-            throw new ArgumentNullException("state");
+            throw new ArgumentNullException(&quot;state&quot;);
         if (onChange == null)
-            throw new ArgumentNullException("onChange");
+            throw new ArgumentNullException(&quot;onChange&quot;);
 
         State = state;
         OnChange = onChange;
@@ -766,63 +620,48 @@ public sealed class CommonProps&lt;T&gt;
 
     public T State
     {
-        [Template("state")]get; [Template("this.state")]private set;
+        [Template(&quot;state&quot;)]get; [Template(&quot;this.state&quot;)]private set;
     }
     public Action&lt;T&gt; OnChange
     {
-        [Template("onChange")]get; [Template("this.onChange")]private set;
+        [Template(&quot;onChange&quot;)]get; [Template(&quot;this.onChange&quot;)]private set;
     }
     public Optional&lt;ClassName&gt; ClassName
     {
-        [Template("className")]get; [Template("this.className")]private set;
+        [Template(&quot;className&quot;)]get; [Template(&quot;this.className&quot;)]private set;
     }
     public bool Disabled
     {
-        [Template("disabled")]get; [Template("this.disabled")]private set;
+        [Template(&quot;disabled&quot;)]get; [Template(&quot;this.disabled&quot;)]private set;
     }
     public Optional&lt;Any&lt;string, int&gt;&gt; Key
     {
-        [Template("key")]get; [Template("this.key")]private set; 
+        [Template(&quot;key&quot;)]get; [Template(&quot;this.key&quot;)]private set;
     }
 }
 </code></pre>
-
-<p>In order to do this, <strong>CommonProps&lt;T&gt;</strong> could no longer be an <strong>IAmImmutable</strong> type since the "CtorSet" and "With" methods won't work with properties that rely upon any fancy shenanigans like [Template]. This isn't a huge deal with the props on components since they are always created fresh for every render, unlike the other data types that represent state. For example, when the title value of a single row is edited, a new <strong>MessageEditState</strong> instance is created using something like the following:</p>
-
+<p>In order to do this, <strong>CommonProps&lt;T&gt;</strong> could no longer be an <strong>IAmImmutable</strong> type since the &quot;CtorSet&quot; and &quot;With&quot; methods won't work with properties that rely upon any fancy shenanigans like [Template]. This isn't a huge deal with the props on components since they are always created fresh for every render, unlike the other data types that represent state. For example, when the title value of a single row is edited, a new <strong>MessageEditState</strong> instance is created using something like the following:</p>
 <pre><code>newMessage = currentMessage.With(_ =&gt; _.Title, newTitle)
 </code></pre>
-
-<p>This is important for two reasons. Firstly, if "newTitle" is the same as the current title (which can happen if the user does something to a text box that doesn't actually change ft's value - such as paste a value into the box that is the same as the current value; React will identfy this as an input change even though the value hasn't actually been altered) then a new message instance is <em>not</em> created. When the <strong>MessageRow</strong> is re-rendered, because the <strong>MessageEditState</strong> reference won't have changed, the <strong>PureComponent</strong> logic will tell React that there is no need to re-render the row, which saves React some work. Secondly, it's very convenient to be able to get a new instance of a data type with a single property changed in this manner - otherwise you would have to deal with the has-this-value-really-changed logic and either define "With{x}" methods for each individual property or call the constructor with the value that has changed <em>and</em> all of the ones that haven't. Which gets old very quickly. (You <em>could</em> use mutable data types but then you wouldn't be able perform inexpensive reference equality checks when trying to determine whether a component needs to re-render and so you end up contemplating expensive deep equality checks or you give up on implementing "shouldComponentUpdate" and force React to do much more work).</p>
-
-<p>One final note: the CtorSet method that <strong>IAmImmutable</strong> types can use ensures that no value is ever null (if you have a property that may or may not have a value then use the <strong>Optional&lt;T&gt;</strong> type - which can never be null itself since it's a struct). Since <strong>CommonProps&lt;T&gt;</strong> isn't using CtorSet any more, the constructor needs to include explicit checks for null "state" and "onChange" constructor arguments.</p>
-
-<p>With this change to <strong>CommonProps&lt;T&gt;</strong>, the "Render" time is now 124ms in the React development build. Interestingly, in the React production, the "Render" time is reduced to 69ms and the "receiveComponent" drops to 98ms. A combined 167ms is much better than the original 838ms.</p>
-
+<p>This is important for two reasons. Firstly, if &quot;newTitle&quot; is the same as the current title (which can happen if the user does something to a text box that doesn't actually change ft's value - such as paste a value into the box that is the same as the current value; React will identfy this as an input change even though the value hasn't actually been altered) then a new message instance is <em>not</em> created. When the <strong>MessageRow</strong> is re-rendered, because the <strong>MessageEditState</strong> reference won't have changed, the <strong>PureComponent</strong> logic will tell React that there is no need to re-render the row, which saves React some work. Secondly, it's very convenient to be able to get a new instance of a data type with a single property changed in this manner - otherwise you would have to deal with the has-this-value-really-changed logic and either define &quot;With{x}&quot; methods for each individual property or call the constructor with the value that has changed <em>and</em> all of the ones that haven't. Which gets old very quickly. (You <em>could</em> use mutable data types but then you wouldn't be able perform inexpensive reference equality checks when trying to determine whether a component needs to re-render and so you end up contemplating expensive deep equality checks or you give up on implementing &quot;shouldComponentUpdate&quot; and force React to do much more work).</p>
+<p>One final note: the CtorSet method that <strong>IAmImmutable</strong> types can use ensures that no value is ever null (if you have a property that may or may not have a value then use the <strong>Optional&lt;T&gt;</strong> type - which can never be null itself since it's a struct). Since <strong>CommonProps&lt;T&gt;</strong> isn't using CtorSet any more, the constructor needs to include explicit checks for null &quot;state&quot; and &quot;onChange&quot; constructor arguments.</p>
+<p>With this change to <strong>CommonProps&lt;T&gt;</strong>, the &quot;Render&quot; time is now 124ms in the React development build. Interestingly, in the React production, the &quot;Render&quot; time is reduced to 69ms and the &quot;receiveComponent&quot; drops to 98ms. A combined 167ms is much better than the original 838ms.</p>
 <p>With these improvements, there is only a slightly perceptible delay felt when clicking a checkbox. Unfortunately, though, trying to type into a text box when there is a 167ms delay between key presses being recognised is not pleasant. So it's back to the profiler..</p>
-
 <h3>Optional&lt;T&gt;</h3>
-
-<p>Taking another snapshot with the profiler, I'm still going to concentrate on the "Render" method (for the same reasons as before; it's still the slower part of the work and it's still what I can most easily control). This time I see a lot of calls to a generic constructor resulting from "op_Implicit" calls.</p>
-
-<p><img alt="Unnecessary Optional instantiation" src="/Content/Images/Posts/BridgeReactProfiling2.png" class="NoBorder FullWidth" /></p>
-
-<p>The "op_Implicit" methods are the JavaScript representations of implicit operator methods in C#. So, where the <strong>Optional&lt;T&gt;</strong> struct has an implicit operator from "T" -</p>
-
+<p>Taking another snapshot with the profiler, I'm still going to concentrate on the &quot;Render&quot; method (for the same reasons as before; it's still the slower part of the work and it's still what I can most easily control). This time I see a lot of calls to a generic constructor resulting from &quot;op_Implicit&quot; calls.</p>
+<img alt="Unnecessary Optional instantiation" src="/Content/Images/Posts/BridgeReactProfiling2.png" class="NoBorder FullWidth" />
+<p>The &quot;op_Implicit&quot; methods are the JavaScript representations of implicit operator methods in C#. So, where the <strong>Optional&lt;T&gt;</strong> struct has an implicit operator from &quot;T&quot; -</p>
 <pre><code>public static implicit operator Optional&lt;T&gt;(T value)
 {
     return new Optional&lt;T&gt;(value);
 }
 </code></pre>
-
 <p>the following JavaScript is generated:</p>
-
 <pre><code>op_Implicit: function (value) {
     return new (ProductiveRage.Immutable.Optional$1(T)).$constructor1(value);
 }
 </code></pre>
-
-<p>When a <strong>CommonProps</strong> instance is created with a null "className" argument (which is the case for every <strong>MessageRow</strong> in the sample app), each call to the <strong>CommonProps</strong> "For" method requires the null reference to be implicitly cast to an <strong>Optional&lt;ClassName&gt;</strong>.</p>
-
+<p>When a <strong>CommonProps</strong> instance is created with a null &quot;className&quot; argument (which is the case for every <strong>MessageRow</strong> in the sample app), each call to the <strong>CommonProps</strong> &quot;For&quot; method requires the null reference to be implicitly cast to an <strong>Optional&lt;ClassName&gt;</strong>.</p>
 <pre><code>public static CommonProps&lt;T&gt; For&lt;T&gt;(
     T state,
     Action&lt;T&gt; onChange,
@@ -830,36 +669,23 @@ public sealed class CommonProps&lt;T&gt;
     bool disabled,
     Any&lt;string, int&gt; key)
 </code></pre>
-
 <p>Each implicit cast requires a call to the implicit operator, which creates a new <strong>Optional&lt;ClassName&gt;</strong> instance. This feels like unnecessary work.</p>
-
-<p>The <strong>Optional&lt;T&gt;</strong> has a public static "Missing" property, so one way to avoid the creation of unnecessary instances would be to use</p>
-
+<p>The <strong>Optional&lt;T&gt;</strong> has a public static &quot;Missing&quot; property, so one way to avoid the creation of unnecessary instances would be to use</p>
 <pre><code>className: Optional&lt;ClassName&gt;.Missing
 </code></pre>
-
 <p>instead of</p>
-
 <pre><code>className: null
 </code></pre>
-
-<p>But there were a few problems with this. Firstly, <strong>Optional&lt;T&gt;</strong> is part of the ProductiveRage.Immutable library and I would like it to be as easy to use as possible. I think that it would be quite difficult to justify a significant performance cost in passing null as an Optional rather than "Missing" when there is an implicit cast to perform the translation. Secondly, the "Missing" property was implemented as</p>
-
+<p>But there were a few problems with this. Firstly, <strong>Optional&lt;T&gt;</strong> is part of the ProductiveRage.Immutable library and I would like it to be as easy to use as possible. I think that it would be quite difficult to justify a significant performance cost in passing null as an Optional rather than &quot;Missing&quot; when there is an implicit cast to perform the translation. Secondly, the &quot;Missing&quot; property was implemented as</p>
 <pre><code>    public static Optional&lt;T&gt; Missing { get { new Optional&lt;T&gt;(default(T), false); } }
 </code></pre>
-
-<p>.. which means that a new instance is created each time it's called anyway, so actually the "Missing" property wouldn't magically solve anything.</p>
-
-<p>It would make more sense for the "Missing" property to be set only once, something like:</p>
-
+<p>.. which means that a new instance is created each time it's called anyway, so actually the &quot;Missing&quot; property wouldn't magically solve anything.</p>
+<p>It would make more sense for the &quot;Missing&quot; property to be set only once, something like:</p>
 <pre><code>public static Optional&lt;T&gt; Missing { get { return _missing; } }
 private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(default(T), false);
 </code></pre>
-
-<p>When I first wrote the <strong>Optional&lt;T&gt;</strong> struct, that is how I did it. Unfortunately, there was a problem with Bridge 1.10 and I removed the private "_missing" field as a workaround. The Bridge Team have long since resolved that issue and so I can put the code back how I want it.</p>
-
+<p>When I first wrote the <strong>Optional&lt;T&gt;</strong> struct, that is how I did it. Unfortunately, there was a problem with Bridge 1.10 and I removed the private &quot;_missing&quot; field as a workaround. The Bridge Team have long since resolved that issue and so I can put the code back how I want it.</p>
 <p>This also allows for a tweak to the implicit operator method -</p>
-
 <pre><code>public static implicit operator Optional&lt;T&gt;(T value)
 {
     if (value == null)
@@ -867,104 +693,71 @@ private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(default(T), fa
     return new Optional&lt;T&gt;(value);
 }
 </code></pre>
-
-<p>Now, one might presume, there would now be no unnecessary instantiations whether "className: Optional&lt;ClassName&gt;.Missing" <em>or</em> "className: null" was specified. Unfortunately, we're not quite there yet..</p>
-
-<p>When structs are passed around in C#, they are copied. This is why they appear to be passed "by value" rather than "by reference" - if a mutable struct is instantiated in method F1 and passed to F2, any changes made to it in F2 are not visible in F1 since they both have different copies of the struct. To ensure consistency with .net, Bridge's JavaScript must do something similar - any time that a struct is passed around, it is copied. This means that a new instance <em>will</em> be created each time that "Missing" or "_missing" is accessed. This is wasteful with the <strong>Optional&lt;T&gt;</strong> struct since it's immutable; since nothing can alter its contents, there is no need to copy it when passing it around.</p>
-
-<p>Bridge has another workaround for this, the [Immutable] attribute. When applied to the <strong>Optional&lt;T&gt;</strong> struct, the Bridge compiler will not copy instances when they are passed from one method to another. These changes reduce the "Render" time to 93ms in the React development build and 61ms in production.</p>
-
+<p>Now, one might presume, there would now be no unnecessary instantiations whether &quot;className: Optional&lt;ClassName&gt;.Missing&quot; <em>or</em> &quot;className: null&quot; was specified. Unfortunately, we're not quite there yet..</p>
+<p>When structs are passed around in C#, they are copied. This is why they appear to be passed &quot;by value&quot; rather than &quot;by reference&quot; - if a mutable struct is instantiated in method F1 and passed to F2, any changes made to it in F2 are not visible in F1 since they both have different copies of the struct. To ensure consistency with .net, Bridge's JavaScript must do something similar - any time that a struct is passed around, it is copied. This means that a new instance <em>will</em> be created each time that &quot;Missing&quot; or &quot;_missing&quot; is accessed. This is wasteful with the <strong>Optional&lt;T&gt;</strong> struct since it's immutable; since nothing can alter its contents, there is no need to copy it when passing it around.</p>
+<p>Bridge has another workaround for this, the [Immutable] attribute. When applied to the <strong>Optional&lt;T&gt;</strong> struct, the Bridge compiler will not copy instances when they are passed from one method to another. These changes reduce the &quot;Render&quot; time to 93ms in the React development build and 61ms in production.</p>
 <p>While this is an improvement, I can still see what looks like a lot of time spent on generic type <em>stuff</em> in the profiler. Even though the op_Implicit calls for null values are sharing instances now, in order to get to the static op_Implicit method it is necessary to access the representation of the <strong>Optional&lt;T&gt;</strong> struct for the particular type. And, I suspect, this incurs a similar cost to instantiating a new instance.</p>
-
-<p>To confirm this, I added [IgnoreGeneric] to <strong>Optional&lt;T&gt;</strong>. This was not something I really wanted to do since it would require a minor change to the struct's public interface. There are two properties; IsDefined and Value. Currently there are two states - a state where IsDefined is true and Value has a specified "T" value and a state where IsDefined is false and Value has the default value of "T" (null for a reference type, zero for a number). With the [IgnoreGeneric] attribute, it would not be possible to set the default value of "T" for the "Missing" value state since "T" would not be available at runtime. If I was to apply [IgnoreGeneric] to the struct then "Value" would have to be considered undefined if IsDefined was false. This isn't a huge deal since I think that that's how it should have been interpreted anyway, really (an alternative would have been to be more aggressive and throw an exception from the Value property getter if IsDefined is false) but it's still a change.</p>
-
-<p>When I added [IgnoreGeneric] to the <strong>CommonProps&lt;T&gt;</strong> class, I had to apply some workarounds to deal with the type "T" not being available at runtime. I had to do similar with <strong>Optional&lt;T&gt;</strong>. The first change was that the following line clearly wouldn't work:</p>
-
+<p>To confirm this, I added [IgnoreGeneric] to <strong>Optional&lt;T&gt;</strong>. This was not something I really wanted to do since it would require a minor change to the struct's public interface. There are two properties; IsDefined and Value. Currently there are two states - a state where IsDefined is true and Value has a specified &quot;T&quot; value and a state where IsDefined is false and Value has the default value of &quot;T&quot; (null for a reference type, zero for a number). With the [IgnoreGeneric] attribute, it would not be possible to set the default value of &quot;T&quot; for the &quot;Missing&quot; value state since &quot;T&quot; would not be available at runtime. If I was to apply [IgnoreGeneric] to the struct then &quot;Value&quot; would have to be considered undefined if IsDefined was false. This isn't a huge deal since I think that that's how it should have been interpreted anyway, really (an alternative would have been to be more aggressive and throw an exception from the Value property getter if IsDefined is false) but it's still a change.</p>
+<p>When I added [IgnoreGeneric] to the <strong>CommonProps&lt;T&gt;</strong> class, I had to apply some workarounds to deal with the type &quot;T&quot; not being available at runtime. I had to do similar with <strong>Optional&lt;T&gt;</strong>. The first change was that the following line clearly wouldn't work:</p>
 <pre><code>private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(default(T), false);
 </code></pre>
-
 <p>so it was replaced with this:</p>
-
-<pre><code>private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(Script.Write&lt;T&gt;("null"), false);
+<pre><code>private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(Script.Write&lt;T&gt;(&quot;null&quot;), false);
 </code></pre>
-
-<p>The "Script.Write&lt;T&gt;" method in Bridge is a way to directly emit JavaScript (simply "null" in this case) and to tell the C# type system that a value of type "T" is being returned. So, here, the "T" is only used by the C# compiler and does not have any impact on runtime. The compromise is that "null" is being used for the Value property of the "Missing" instance regardless of the type of "T". So Value will be null even if "T" is an int or a bool in cases where IsDefined is false.</p>
-
+<p>The &quot;Script.Write&lt;T&gt;&quot; method in Bridge is a way to directly emit JavaScript (simply &quot;null&quot; in this case) and to tell the C# type system that a value of type &quot;T&quot; is being returned. So, here, the &quot;T&quot; is only used by the C# compiler and does not have any impact on runtime. The compromise is that &quot;null&quot; is being used for the Value property of the &quot;Missing&quot; instance regardless of the type of &quot;T&quot;. So Value will be null even if &quot;T&quot; is an int or a bool in cases where IsDefined is false.</p>
 <p>The other change required completely removing the C# backing field for the Value property -</p>
-
 <pre><code>private readonly T value;
 </code></pre>
-
-<p>The problem was that Bridge would generate a struct definition that would try to set "value" to default(T), which it would not be able to do since "T" would not be available at runtime.</p>
-
+<p>The problem was that Bridge would generate a struct definition that would try to set &quot;value&quot; to default(T), which it would not be able to do since &quot;T&quot; would not be available at runtime.</p>
 <p>Instead, the value would be written directly by more raw JavaScript. The constructor changed from:</p>
-
 <pre><code>public Optional(T value) : this(value, value != null) { }
     this.isDefined = isDefined &amp;&amp; (value != null);
     this.value = value;
 }
 </code></pre>
-
 <p>to:</p>
-
 <pre><code>public Optional(T value) : this(value, value != null) { }
     this.isDefined = isDefined &amp;&amp; (value != null);
-    Script.Write("this.value = {0}", value);
+    Script.Write(&quot;this.value = {0}&quot;, value);
 }
 </code></pre>
-
 <p>and the property getter changed from:</p>
-
 <pre><code>public T Value { get { return this.value; } }
 </code></pre>
-
 <p>to:</p>
-
-<pre><code>public T Value { get { return Script.Write&lt;T&gt;("this.value"); } }
+<pre><code>public T Value { get { return Script.Write&lt;T&gt;(&quot;this.value&quot;); } }
 </code></pre>
-
-<p>Finally, anywhere in the struct that the backing field was accessed was changed so that it went via the public "Value" property getter.</p>
-
-<p>This meant that there were no potential runtime errors waiting to occur within the struct (none of the code relied on access to the type "T"), that there was type safety for any code instantiating or accessing the struct in C# <em>and</em> it meant that the struct could have [IgnoreGeneric] applied and hence (theoretically) allow the application to work more efficiently.</p>
-
-<p>It worked. Using the development build of React, the "Render" time of the <strong>MessageTable</strong> was now 36ms and the "receiveComponent" time 141ms. With the production build, "Render" took "9ms" and "receiveComponent" 49ms.</p>
-
-<p>That's sufficiently fast that there is no perceived delay while typing into the text boxes. And, to put things back into context, the original "worst case scenario" that I was planning for was to deal with up to 1,000 checkboxes. I've been measuring the time for 5,000 rows that include two text boxes <em>and</em> a checkbox. If the sample app was changed to render only 1,000 rows then the React production build handles changes to elements by spending 5ms in "Render" and 17ms in "receiveComponent". This means that there is no chance of perceptible lag in typing and certainly no perceptible delay in checking or unchecking a checkbox.</p>
-
+<p>Finally, anywhere in the struct that the backing field was accessed was changed so that it went via the public &quot;Value&quot; property getter.</p>
+<p>This meant that there were no potential runtime errors waiting to occur within the struct (none of the code relied on access to the type &quot;T&quot;), that there was type safety for any code instantiating or accessing the struct in C# <em>and</em> it meant that the struct could have [IgnoreGeneric] applied and hence (theoretically) allow the application to work more efficiently.</p>
+<p>It worked. Using the development build of React, the &quot;Render&quot; time of the <strong>MessageTable</strong> was now 36ms and the &quot;receiveComponent&quot; time 141ms. With the production build, &quot;Render&quot; took &quot;9ms&quot; and &quot;receiveComponent&quot; 49ms.</p>
+<p>That's sufficiently fast that there is no perceived delay while typing into the text boxes. And, to put things back into context, the original &quot;worst case scenario&quot; that I was planning for was to deal with up to 1,000 checkboxes. I've been measuring the time for 5,000 rows that include two text boxes <em>and</em> a checkbox. If the sample app was changed to render only 1,000 rows then the React production build handles changes to elements by spending 5ms in &quot;Render&quot; and 17ms in &quot;receiveComponent&quot;. This means that there is no chance of perceptible lag in typing and certainly no perceptible delay in checking or unchecking a checkbox.</p>
 <h3>To summarise</h3>
-
-<p>I think that it's fair to call this a success! There are several things that I've particuarly enjoyed in this investigation. Firstly, it's been a good reminder of just how powerful the dev tools are that come free with browsers these days. I was using Chrome but I believe that IE and Firefox have equivalent functionality. Secondly, the options that the Bridge Team have made available are really well thought out and very clever when you examine them - in isolation, each seems quite simple but it's the recognition that <em>sometimes</em> it might be beneficial to have more control over the generated JavaScript that helps make Bridge so powerful and to enable me to do what I've done here. Thirdly, almost all of the changes that I've talked about here were made to my "Bridge.React", "ProductiveRage.Immutable", "ProductiveRage.Immutable.Extensions" libraries. That means that, when I make these changes live, anyone using those libraries will automatically reap the benefit. The only change that I made to the sample app was to change the <strong>MessageRow</strong> implementation from being a component class to being a static function.</p>
-
-<p><em>Note: I tried reverting <strong>MessageRow</strong> back to being a component class and the "Render" time was still only 20ms when editing one of 1,000 rows (compared to 5ms when <strong>MessageRow</strong> is implemented as a static function). The time spent by React in "receiveComponent" was unaffected. This means that simply updating the Bridge.React, ProductiveRage.Immutable and ProductiveRage.Immutable.Extensions packages could significantly improve the performance of complex applications with zero code changes.</em></p>
-
-<p>This is one of the benefits of using libraries where the authors care about performance and strive to improve it over time. It reminds me of when the Bridge Team added compiler support for "<a href="http://bridge.net/bridge-1-11-released/#Lifted_Anonymous_Functions">Lifted Anonyomous Functions</a>" (something I suggested after going on a bit of a JavaScript performance research binge a few months ago - but something that the team there deserve much credit for making work) and it reminds me of articles that I've read about React which talk about how there are many optimisations yet to be made that their current API will make possible (see "<a href="https://github.com/acdlite/react-fiber-architecture">React Fiber Architecture</a>"); all that we'll have to do in the future is upgrade the version of the library being used and get more performance!</p>
-
+<p>I think that it's fair to call this a success! There are several things that I've particuarly enjoyed in this investigation. Firstly, it's been a good reminder of just how powerful the dev tools are that come free with browsers these days. I was using Chrome but I believe that IE and Firefox have equivalent functionality. Secondly, the options that the Bridge Team have made available are really well thought out and very clever when you examine them - in isolation, each seems quite simple but it's the recognition that <em>sometimes</em> it might be beneficial to have more control over the generated JavaScript that helps make Bridge so powerful and to enable me to do what I've done here. Thirdly, almost all of the changes that I've talked about here were made to my &quot;Bridge.React&quot;, &quot;ProductiveRage.Immutable&quot;, &quot;ProductiveRage.Immutable.Extensions&quot; libraries. That means that, when I make these changes live, anyone using those libraries will automatically reap the benefit. The only change that I made to the sample app was to change the <strong>MessageRow</strong> implementation from being a component class to being a static function.</p>
+<p><em>Note: I tried reverting <strong>MessageRow</strong> back to being a component class and the &quot;Render&quot; time was still only 20ms when editing one of 1,000 rows (compared to 5ms when <strong>MessageRow</strong> is implemented as a static function). The time spent by React in &quot;receiveComponent&quot; was unaffected. This means that simply updating the Bridge.React, ProductiveRage.Immutable and ProductiveRage.Immutable.Extensions packages could significantly improve the performance of complex applications with zero code changes.</em></p>
+<p>This is one of the benefits of using libraries where the authors care about performance and strive to improve it over time. It reminds me of when the Bridge Team added compiler support for &quot;<a href="http://bridge.net/bridge-1-11-released/#Lifted_Anonymous_Functions">Lifted Anonyomous Functions</a>&quot; (something I suggested after going on a bit of a JavaScript performance research binge a few months ago - but something that the team there deserve much credit for making work) and it reminds me of articles that I've read about React which talk about how there are many optimisations yet to be made that their current API will make possible (see &quot;<a href="https://github.com/acdlite/react-fiber-architecture">React Fiber Architecture</a>&quot;); all that we'll have to do in the future is upgrade the version of the library being used and get more performance!</p>
 <h3>Update: The Bridge Team ruin my fun</h3>
+<p>I've been researching and writing this post over the space of a couple of weeks. Once I had observed that generic classes are slower to instantiate in Bridge than non-generic classes, and while I was looking into the workarounds required sometimes in order to use [IgnoreGeneric], I raised a bug on the <a href="http://forums.bridge.net/forum/bridge-net-pro/bugs">Bridge Forums</a> relating to properties that are initially to default(T) (which fails when &quot;T&quot; is not available at runtime).</p>
+<p>While looking into the issue for me, they noted that they found a way to optimise the instantiation of generic types (looking at the <a href="https://github.com/bridgedotnet/Bridge/pull/1740/files">pull request</a> it seems like the work required to form a new specialisation of a class / struct for a given &quot;T&quot; is now cached rather than being repeated each time that a new <strong>Whatever&lt;T&gt;</strong> is created).</p>
+<p>The good news is that this means that there will very soon be almost zero overhead to generic types in Bridge! The bad news is that many of the findings documented here are unnecessary.. However, that's the sort of bad news that I'm happy to accept! The compromise around <strong>Optional&lt;T&gt;</strong>'s &quot;Value&quot; property (for cases where &quot;IsDefined&quot; is false) will no longer be necessary. And I won't have to worry so much in the future; if I'm creating a library class, should I be avoiding generics (or using [IgnoreGeneric]) in case it's used in an expensive loop anywhere?</p>
+<p>Despite being out of date even before being published, I'll leave this post here for posterity. I had a lot of fun digging into performance tuning my Bridge / React app. And, in a roundabout way, I feel like I contributed to the optimisation (which I imagine will makes its way into the next release of Bridge) that everyone using Bridge can benefit from! I'm going to call that a win.</p>
+<p class="PostTime">Posted at 22:04</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/Performance" title="2 Posts">Performance</a></li></ul></div>
+            <p class="Comments">
+                <a href="/performance-tuning-a-bridgenet-react-app#disqus_thread" data-disqus-identifier="105">Comments</a>
+            </p>
+    </div>
 
-<p>I've been researching and writing this post over the space of a couple of weeks. Once I had observed that generic classes are slower to instantiate in Bridge than non-generic classes, and while I was looking into the workarounds required sometimes in order to use [IgnoreGeneric], I raised a bug on the <a href="http://forums.bridge.net/forum/bridge-net-pro/bugs">Bridge Forums</a> relating to properties that are initially to default(T) (which fails when "T" is not available at runtime).</p>
-
-<p>While looking into the issue for me, they noted that they found a way to optimise the instantiation of generic types (looking at the <a href="https://github.com/bridgedotnet/Bridge/pull/1740/files">pull request</a> it seems like the work required to form a new specialisation of a class / struct for a given "T" is now cached rather than being repeated each time that a new <strong>Whatever&lt;T&gt;</strong> is created).</p>
-
-<p>The good news is that this means that there will very soon be almost zero overhead to generic types in Bridge! The bad news is that many of the findings documented here are unnecessary.. However, that's the sort of bad news that I'm happy to accept! The compromise around <strong>Optional&lt;T&gt;</strong>'s "Value" property (for cases where "IsDefined" is false) will no longer be necessary. And I won't have to worry so much in the future; if I'm creating a library class, should I be avoiding generics (or using [IgnoreGeneric]) in case it's used in an expensive loop anywhere?</p>
-
-<p>Despite being out of date even before being published, I'll leave this post here for posterity. I had a lot of fun digging into performance tuning my Bridge / React app. And, in a roundabout way, I feel like I contributed to the optimisation (which I imagine will makes its way into the next release of Bridge) that everyone using Bridge can benefit from! I'm going to call that a win.</p><p class="PostTime">Posted at 22:04</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Bridge" title="12 Posts">Bridge</a></li><li><a href="/Archive/Tag/Performance" title="2 Posts">Performance</a></li></ul></div>
-			<p class="Comments">
-				<a href="/performance-tuning-a-bridgenet-react-app#disqus_thread" data-disqus-identifier="105">Comments</a>
-			</p>
-	</div>
-
-	<script type="text/javascript">
-					(function () {
-						var s = document.createElement("script");
-						s.type = "text/javascript";
-						s.async = true;
-						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
-						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
-					} ());
-	</script>
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -974,17 +767,16 @@ private static Optional&lt;T&gt; _missing = new Optional&lt;T&gt;(default(T), fa
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

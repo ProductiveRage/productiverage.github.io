@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -46,36 +45,32 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content SinglePost">
-		<h3 class="PostDate">14 August 2015</h3><h2><a id="Post89"></a><a href="/hasslefree-immutable-type-updates-in-c-sharp">Hassle-free immutable type updates in C#</a></h2>
-
+    <div class="Content SinglePost">
+        <h3 class="PostDate">14 August 2015</h3><h2><a id="hasslefree-immutable-type-updates-in-c-sharp" href="/hasslefree-immutable-type-updates-in-c-sharp">Hassle-free immutable type updates in C#</a></h2>
 <p>Earlier this week, I was talking about parsing TypeScript definitions in an inspired-by-function-programming manner. Like this:</p>
-
 <pre><code>public static Optional&lt;MatchResult&lt;PropertyDetails&gt;&gt; Property(IReadStringContent reader)
 {
   IdentifierDetails name = null;
@@ -98,18 +93,13 @@
   );
 }
 </code></pre>
-
-<p>"Identifier", "Whitespace" and "TypeScriptType" are functions that match the following delegate:</p>
-
+<p>&quot;Identifier&quot;, &quot;Whitespace&quot; and &quot;TypeScriptType&quot; are functions that match the following delegate:</p>
 <pre><code>public delegate Optional&lt;MatchResult&lt;T&gt;&gt; Parser&lt;T&gt;(
   IReadStringContent reader
 );
 </code></pre>
-
-<p>.. while "Match" is a function that returns a <strong>Parser&lt;char&gt;</strong>.</p>
-
+<p>.. while &quot;Match&quot; is a function that returns a <strong>Parser&lt;char&gt;</strong>.</p>
 <p>The <strong>MatchResult</strong> class looks like this:</p>
-
 <pre><code>public sealed class MatchResult&lt;T&gt;
 {
   public MatchResult(T result, IReadStringContent reader)
@@ -123,13 +113,13 @@
 
 /// &lt;summary&gt;
 /// This non-generic static class is just to expose a helper method that takes advantage
-/// of C#'s type inference to allow you to say "MatchResult.New(value, reader)" rather than
-/// having to write out the type of the value in "new MatchResult&lt;string&gt;(value, reader)"
+/// of C#'s type inference to allow you to say &quot;MatchResult.New(value, reader)&quot; rather than
+/// having to write out the type of the value in &quot;new MatchResult&lt;string&gt;(value, reader)&quot;
 /// &lt;/summary&gt;
 public static class MatchResult
 {
   /// &lt;summary&gt;
-  /// Convenience method to utilise C# type inherence 
+  /// Convenience method to utilise C# type inherence
   /// &lt;/summary&gt;
   public static MatchResult&lt;T&gt; New&lt;T&gt;(T value, IReadStringContent reader)
   {
@@ -142,23 +132,14 @@ public static class MatchResult
   }
 }
 </code></pre>
-
 <p>.. and <strong>Optional</strong> is basically a way to identify a type as being maybe-null (the convention then being that any non-<strong>Optional</strong> type should never be null).</p>
-
 <p>Feel free to fresh your memory at <a href="/parsing-typescript-definitions-functionally-ish">Parsing TypeScript definitions</a>!</p>
-
-<p>One thing that I thought was very un-functional-like (a very precise term! :) was the way that the "name" and "type" values were updated via callbacks from the "Then" methods. This mechanism felt wrong for two reasons; the repeat assignment to the references (setting them to null and then setting them again to something else) and the fact that the assignments were effectively done as side effects of the work of the "Then" function.</p>
-
+<p>One thing that I thought was very un-functional-like (a very precise term! :) was the way that the &quot;name&quot; and &quot;type&quot; values were updated via callbacks from the &quot;Then&quot; methods. This mechanism felt wrong for two reasons; the repeat assignment to the references (setting them to null and then setting them again to something else) and the fact that the assignments were effectively done as side effects of the work of the &quot;Then&quot; function.</p>
 <p>So I thought I'd have a look into some alternatives and see if I could whip up something better.</p>
-
 <h3>The verbose approach</h3>
-
-<p>The current approach chains together functions that take and return <strong>Optional&lt;IReadStringContent&gt;</strong> instances. If content is encountered that does not match the specified <strong>Parser</strong> then a "Missing" value will be returned from the "Then" call. If a "Then" call receives a "Missing" value then it passes that straight out. So, any time that a match is missed, all subsequent calls pass the "Missing" value straight throught.</p>
-
-<p>This is why the side effect callbacks are required to pass out the values, because each "Then" call only returns the next position for the reader (or "Missing" if content did not meet requirements).</p>
-
-<p>To change this, the "Then" function will need to return additional information. Conveniently, there is already a structure to do this - the <strong>MatchResult&lt;T&gt;</strong>. As long as we had one result type that we wanted to thread through the "Then" calls then we could write an alternate version of "Then" -</p>
-
+<p>The current approach chains together functions that take and return <strong>Optional&lt;IReadStringContent&gt;</strong> instances. If content is encountered that does not match the specified <strong>Parser</strong> then a &quot;Missing&quot; value will be returned from the &quot;Then&quot; call. If a &quot;Then&quot; call receives a &quot;Missing&quot; value then it passes that straight out. So, any time that a match is missed, all subsequent calls pass the &quot;Missing&quot; value straight throught.</p>
+<p>This is why the side effect callbacks are required to pass out the values, because each &quot;Then&quot; call only returns the next position for the reader (or &quot;Missing&quot; if content did not meet requirements).</p>
+<p>To change this, the &quot;Then&quot; function will need to return additional information. Conveniently, there is already a structure to do this - the <strong>MatchResult&lt;T&gt;</strong>. As long as we had one result type that we wanted to thread through the &quot;Then&quot; calls then we could write an alternate version of &quot;Then&quot; -</p>
 <pre><code>public static Optional&lt;MatchResult&lt;TResult&gt;&gt; Then&lt;TResult, TValue&gt;(
   this Optional&lt;MatchResult&lt;TResult&gt;&gt; resultSoFar,
   Parser&lt;TValue&gt; parser,
@@ -177,11 +158,8 @@ public static class MatchResult
   );
 }
 </code></pre>
-
-<p>This takes an <strong>Optional&lt;MatchResult&lt;T&gt;&gt;</strong> and tries to match content in the reader inside that <strong>MatchResult</strong> using a <strong>Parser</strong> (just like before) - if it successfully matches the content then it uses an "updater" which takes the previous values from the <strong>MatchResult</strong> and the matched value from the reader, and returns a new result that combines the two. It then returns a <strong>MatchResult</strong> that combines this new value with the reader in a position after the matched content. (Assuming the content met the <strong>Parser</strong> requirements.. otherwise it would return null).</p>
-
-<p>This all sounds very abstract, so let's make it concrete. Continuing with the parsing-a-TypeScript-property (such as "name: string;") example, let's declare an interim type -</p>
-
+<p>This takes an <strong>Optional&lt;MatchResult&lt;T&gt;&gt;</strong> and tries to match content in the reader inside that <strong>MatchResult</strong> using a <strong>Parser</strong> (just like before) - if it successfully matches the content then it uses an &quot;updater&quot; which takes the previous values from the <strong>MatchResult</strong> and the matched value from the reader, and returns a new result that combines the two. It then returns a <strong>MatchResult</strong> that combines this new value with the reader in a position after the matched content. (Assuming the content met the <strong>Parser</strong> requirements.. otherwise it would return null).</p>
+<p>This all sounds very abstract, so let's make it concrete. Continuing with the parsing-a-TypeScript-property (such as &quot;name: string;&quot;) example, let's declare an interim type -</p>
 <pre><code>public sealed class PartialPropertyDetails
 {
   public PartialPropertyDetails(
@@ -195,11 +173,8 @@ public static class MatchResult
   public Optional&lt;ITypeDetails&gt; Type { get; }
 }
 </code></pre>
-
 <p>This has <strong>Optional</strong> values because we are going to start with them being null (since we don't have any real values until we've done the parsing). This is the reason that I've introduced this interm type, rather than using the final <strong>PropertyDetails</strong> type - that type is very similar but it has non-<strong>Optional</strong> properties because it doesn't make sense for a correctly-parsed TypeScript property to be absent either a name or a type.</p>
-
 <p>Now, the parsing method could be rewritten into this:</p>
-
 <pre><code>public static Optional&lt;MatchResult&lt;PropertyDetails&gt;&gt; Property(IReadStringContent reader)
 {
   var result = Optional.For(MatchResult.New(
@@ -223,11 +198,8 @@ public static class MatchResult
   );
 }
 </code></pre>
-
 <p>Ta-da! No reassignments or reliance upon side effects!</p>
-
 <p>And we could make this a bit cleaner by tweaking <strong>PartialPropertyDetails</strong> -</p>
-
 <pre><code>public sealed class PartialPropertyDetails
 {
   public static PartialPropertyDetails Empty { get; }
@@ -250,9 +222,7 @@ public static class MatchResult
     =&gt; new PartialPropertyDetails(Name, value);
 }
 </code></pre>
-
 <p>and then changing the parsing code into this:</p>
-
 <pre><code>public static Optional&lt;MatchResult&lt;PropertyDetails&gt;&gt; Property(IReadStringContent reader)
 {
   var result = Optional.For(MatchResult.New(
@@ -276,17 +246,11 @@ public static class MatchResult
   );
 }
 </code></pre>
-
 <p>This makes the parsing code look nicer, at the cost of having to write more boilerplate code for the interim type.</p>
-
 <p>What if we could use anonymous types and some sort of magic for performing the copy-and-update actions..</p>
-
 <h3>One way to write less code</h3>
-
-<p>The problem with the <strong>PartialPropertyDetails</strong> is not only that it's quite a lot of code to write out (and that was only for two properties, it will quickly get bigger for more complicated structures) but also the fact that it's only useful in the context of the "Property" function. So this non-neligible chunk of code is not reusable and it clutters up the scope of whatever class or namespace has to contain it.</p>
-
+<p>The problem with the <strong>PartialPropertyDetails</strong> is not only that it's quite a lot of code to write out (and that was only for two properties, it will quickly get bigger for more complicated structures) but also the fact that it's only useful in the context of the &quot;Property&quot; function. So this non-neligible chunk of code is not reusable and it clutters up the scope of whatever class or namespace has to contain it.</p>
 <p>Anonymous types sound ideal, because they would just let us start writing objects to populate - eg.</p>
-
 <pre><code>var result = Optional.For(MatchResult.New(
     new
     {
@@ -303,27 +267,17 @@ public static class MatchResult
   .ThenOptionally(Whitespace)
   .Then(Match(';'));
 </code></pre>
-
-<p>They're immutable types (so nothing is edited in-place, which is just as bad as editing via side effects) and, despite looking like they're being defined dynamically, the C# compiler defines real classes for them behind the scenes, so the "Name" property will always be of type <strong>IdentifierDetails</strong> and "Type" will always be an <strong>ITypeDetails</strong>.</p>
-
-<p>The compiler creates new classes for every distinct combination of properties (considering both property name and property type). This means that if you declare two anonymous objects that have the same properties then they will be represented by the same class. This is what allows the above code to declare "updater" implementations such as</p>
-
+<p>They're immutable types (so nothing is edited in-place, which is just as bad as editing via side effects) and, despite looking like they're being defined dynamically, the C# compiler defines real classes for them behind the scenes, so the &quot;Name&quot; property will always be of type <strong>IdentifierDetails</strong> and &quot;Type&quot; will always be an <strong>ITypeDetails</strong>.</p>
+<p>The compiler creates new classes for every distinct combination of properties (considering both property name and property type). This means that if you declare two anonymous objects that have the same properties then they will be represented by the same class. This is what allows the above code to declare &quot;updater&quot; implementations such as</p>
 <pre><code>(value, name) =&gt; new { Name = name, Type = value.Type }
 </code></pre>
-
-<p>The "value" in the lambda will be an instance of an anonymous type and the returned value will be an instance of that same anonymous class because it specifies the exact same property names and types. This is key, because the "updater" is a delegate with the signature</p>
-
+<p>The &quot;value&quot; in the lambda will be an instance of an anonymous type and the returned value will be an instance of that same anonymous class because it specifies the exact same property names and types. This is key, because the &quot;updater&quot; is a delegate with the signature</p>
 <pre><code>Func&lt;TResult, TValue, TResult&gt; updater
 </code></pre>
-
 <p>(and so the returned value must be of the same type as the first value that it was passed).</p>
-
-<p>This is not actually a bad solution, I don't think. There was no need to create a <strong>PartialPropertyDetails</strong> class and we have full type safety through those anonymous types. The only (admittedly minor) thing is that if the data becomes more complex then there will be more and more properties and so every instantiation of the anonymous types will get longer and longer. It's a pity that there's no way to create "With{Whatever}" functions for the anonymous types.</p>
-
+<p>This is not actually a bad solution, I don't think. There was no need to create a <strong>PartialPropertyDetails</strong> class and we have full type safety through those anonymous types. The only (admittedly minor) thing is that if the data becomes more complex then there will be more and more properties and so every instantiation of the anonymous types will get longer and longer. It's a pity that there's no way to create &quot;With{Whatever}&quot; functions for the anonymous types.</p>
 <h3>A minor side-track</h3>
-
 <p>Before I go any further, there's another extension method I want to introduce. I just think that the way that these parser chains are initiated feels a bit clumsy -</p>
-
 <pre><code>var result = Optional.For(MatchResult.New(
     new
     {
@@ -335,9 +289,7 @@ public static class MatchResult
   .Then(Identifier, (value, name) =&gt; new { Name = name, Type = value.Type })
   // .. the rest of the parsing code continues here..
 </code></pre>
-
 <p>This could be neatened right up with an extension method such as this:</p>
-
 <pre><code>public static Optional&lt;MatchResult&lt;T&gt;&gt; StartMatching&lt;T&gt;(
   this IReadStringContent reader,
   T value)
@@ -345,11 +297,8 @@ public static class MatchResult
   return MatchResult.New(value, reader);
 }
 </code></pre>
-
 <p>This uses C#'s type inference to ensure that you don't have to declare the type of <strong>T</strong> (which is handy if we're using an anonymous type because we have no idea what its type name might be!) and it relies on the fact that the <strong>Optional</strong> struct has an implicit operator that allows a value <strong>T</strong> to be returned as an <strong>Optional&lt;T&gt;</strong>; it will wrap the value up automatically. (For more details on the <strong>Optional</strong> type, read what I wrote <a href="/parsing-typescript-definitions-functionally-ish">last time</a>).</p>
-
 <p>Now, the parsing code that we have look like this:</p>
-
 <pre><code>var resultWithAnonymousType = reader
   .StartMatching(new
   {
@@ -364,19 +313,12 @@ public static class MatchResult
   .ThenOptionally(Whitespace)
   .Then(Match(';'));
 </code></pre>
-
 <p>Only a minor improvement but another step towards making the code match the intent (which was one of the themes in my last post).</p>
-
 <h3>A cleverer (but less safe) alternative</h3>
-
-<p>Let's try turning the volume up to "silly" for a bit. (Fair warning: "clever" here refers more to "clever for the sake of it" than "intelligent).</p>
-
+<p>Let's try turning the volume up to &quot;silly&quot; for a bit. (Fair warning: &quot;clever&quot; here refers more to &quot;clever for the sake of it&quot; than &quot;intelligent).</p>
 <p>A convenient property of the anonymous type classes is that they each have a constructor whose arguments directly match the properties on it - this is an artifact of the way that they're translated into regular classes by the compiler. You don't see this in code anywhere since the names of these mysterious classes is kept secret and you can't directly call a constructor without knowing the name of the class to call. But they are there, nonetheless. And there is one way to call them.. REFLECTION!</p>
-
-<p>We could use reflection to create something like the "With{Whatever}" methods - that way, we could go back to only having to specify a single property-to-update in each "Then" call. The most obvious way that this could be achieved would be by specifying the name of the property-to-update as a string. But this is particularly dirty and prone to breaking if any refactoring is done (such as a change to a property name in the anonymous type). There is one way to mitigate this, though.. MORE REFLECTION!</p>
-
+<p>We could use reflection to create something like the &quot;With{Whatever}&quot; methods - that way, we could go back to only having to specify a single property-to-update in each &quot;Then&quot; call. The most obvious way that this could be achieved would be by specifying the name of the property-to-update as a string. But this is particularly dirty and prone to breaking if any refactoring is done (such as a change to a property name in the anonymous type). There is one way to mitigate this, though.. MORE REFLECTION!</p>
 <p>Let me code-first, explain-later:</p>
-
 <pre><code>public static Optional&lt;MatchResult&lt;TResult&gt;&gt; Then&lt;TResult, TValue&gt;(
   this Optional&lt;MatchResult&lt;TResult&gt;&gt; resultSoFar,
   Parser&lt;TValue&gt; parser,
@@ -393,7 +335,7 @@ public static class MatchResult
   if (memberAccessExpression == null)
   {
     throw new ArgumentException(
-      "must be a MemberAccess",
+      &quot;must be a MemberAccess&quot;,
       nameof(propertyRetriever)
     );
   }
@@ -404,7 +346,7 @@ public static class MatchResult
   || property.GetIndexParameters().Any())
   {
     throw new ArgumentException(
-      "must be a MemberAccess that targets a readable, non-indexed property",
+      &quot;must be a MemberAccess that targets a readable, non-indexed property&quot;,
       nameof(propertyRetriever)
     );
   }
@@ -453,13 +395,11 @@ public static class MatchResult
     );
   }
   throw new ArgumentException(
-    $"Unable to locate a constructor that can be used to update {property.Name}"
+    $&quot;Unable to locate a constructor that can be used to update {property.Name}&quot;
   );
 }
 </code></pre>
-
 <p>This allows the parsing code to be rewritten (again!) into:</p>
-
 <pre><code>var result = reader
   .StartMatching(new
   {
@@ -474,27 +414,17 @@ public static class MatchResult
   .ThenOptionally(Whitespace)
   .Then(Match(';'));
 </code></pre>
-
 <p>Well now. Isn't that easy on the eye! Ok.. maybe beauty is in the eye of the beholder, so let me hedge my bets and say: Well now. Isn't that succint!</p>
-
-<p>Those lambdas ("x => x.Name" and "x => x.Type") satisfy the form:</p>
-
+<p>Those lambdas (&quot;x =&gt; x.Name&quot; and &quot;x =&gt; x.Type&quot;) satisfy the form:</p>
 <pre><code>Expression&lt;Func&lt;TResult, TValue&gt;&gt;
 </code></pre>
-
 <p>This means that they are expressions which must take a <strong>TResult</strong> and return a <strong>TValue</strong>. So in the call</p>
-
 <pre><code>.Then(Identifier, x =&gt; x.Name)
 </code></pre>
-
-<p>.. the Expression describes how to take the anonymous type that we're threading through the "Then" calls and extract an <strong>IdentifierDetails</strong> instance from it (the type of this is dictated by the <strong>TValue</strong> type parameter on the "Then" method, which is inferred from the "Identifier" call - which returns an <strong>Optional&lt;IdentifierDetails&gt;</strong>).</p>
-
-<p>This is the difference between an <strong>Expression</strong> and a <strong>Func</strong> - the <strong>Func</strong> is executable and tells us how to do something (such as "take the 'Name' property from the 'x' reference") while the <strong>Expression</strong> tells us how the <strong>Func</strong> is constructed.</p>
-
-<p>This information allows the new version of "Then" to not only retrieve the specified property <em>but also to be aware of the name of that property</em>. And this is what allows the code to say "I've got a new value for one property now, I'm going to try to find a constructor that I can call which has an argument matching this property name (so I can satisfy that argument with this new value) and which has other arguments that can all be satisfied by other properties on the type".</p>
-
+<p>.. the Expression describes how to take the anonymous type that we're threading through the &quot;Then&quot; calls and extract an <strong>IdentifierDetails</strong> instance from it (the type of this is dictated by the <strong>TValue</strong> type parameter on the &quot;Then&quot; method, which is inferred from the &quot;Identifier&quot; call - which returns an <strong>Optional&lt;IdentifierDetails&gt;</strong>).</p>
+<p>This is the difference between an <strong>Expression</strong> and a <strong>Func</strong> - the <strong>Func</strong> is executable and tells us how to do something (such as &quot;take the 'Name' property from the 'x' reference&quot;) while the <strong>Expression</strong> tells us how the <strong>Func</strong> is constructed.</p>
+<p>This information allows the new version of &quot;Then&quot; to not only retrieve the specified property <em>but also to be aware of the name of that property</em>. And this is what allows the code to say &quot;I've got a new value for one property now, I'm going to try to find a constructor that I can call which has an argument matching this property name (so I can satisfy that argument with this new value) and which has other arguments that can all be satisfied by other properties on the type&quot;.</p>
 <p>Anonymous types boil down to simple classes, a little bit like this:</p>
-
 <pre><code>private sealed CRAZY_AUTO_GEN_NAME&lt;T1, T2&gt;
 {
   public CRAZY_AUTO_GEN_NAME(T1 Name, T2 Type)
@@ -506,67 +436,59 @@ public static class MatchResult
   public T2 Type { get; }
 }
 </code></pre>
-
-<p>Note: I said earlier that the compiler generates distinct classes for anonymous types that have unique combinations of property names and types. That's a bit of a lie, it only has to vary them based upon the property names since it can use generic type parameters for the types of those properties. I confirmed this by using <a href="https://msdn.microsoft.com/en-us/library/aa309387(v=vs.71).aspx">ildasm</a> on my binaries, which also showed that the name of the auto-generated class was <strong>&lt;&gt;f_AnonymousType1</strong>.. it's not <em>really</em> called "CRAZY_AUTO_GEN_NAME" :)</p>
-
-<p>So we can take the Expression "x => x.Name" and extract the fact the the "Name" property is being targeted. This allows us to match the constructor that takes a "Name" argument and a "Type" argument and to call that constructor - passing the new value into the "Name" argument and passing the existing "Type" property value into the "Type" argument.</p>
-
-<p>This has the benefit that everything would still work if one of the properties was renamed in a refactor (since if the "Name" property was renamed to "SomethingElse" then Visual Studio would update the lambda "x => x.Name" to "x => x.SomethingElse", just as it would for any other reference to that "Name" property).</p>
-
-<p>The major downside is that the "Then" function requires that the Expression relate to a simple property retrieval, failing at runtime if this is not the case.* Since an Expression could be almost anything then this could be a problem. For example, the following is valid code and would compile -</p>
-
+<p>Note: I said earlier that the compiler generates distinct classes for anonymous types that have unique combinations of property names and types. That's a bit of a lie, it only has to vary them based upon the property names since it can use generic type parameters for the types of those properties. I confirmed this by using <a href="https://msdn.microsoft.com/en-us/library/aa309387(v=vs.71).aspx">ildasm</a> on my binaries, which also showed that the name of the auto-generated class was <strong>&lt;&gt;f_AnonymousType1</strong>.. it's not <em>really</em> called &quot;CRAZY_AUTO_GEN_NAME&quot; :)</p>
+<p>So we can take the Expression &quot;x =&gt; x.Name&quot; and extract the fact the the &quot;Name&quot; property is being targeted. This allows us to match the constructor that takes a &quot;Name&quot; argument and a &quot;Type&quot; argument and to call that constructor - passing the new value into the &quot;Name&quot; argument and passing the existing &quot;Type&quot; property value into the &quot;Type&quot; argument.</p>
+<p>This has the benefit that everything would still work if one of the properties was renamed in a refactor (since if the &quot;Name&quot; property was renamed to &quot;SomethingElse&quot; then Visual Studio would update the lambda &quot;x =&gt; x.Name&quot; to &quot;x =&gt; x.SomethingElse&quot;, just as it would for any other reference to that &quot;Name&quot; property).</p>
+<p>The major downside is that the &quot;Then&quot; function requires that the Expression relate to a simple property retrieval, failing at runtime if this is not the case.* Since an Expression could be almost anything then this could be a problem. For example, the following is valid code and would compile -</p>
 <pre><code>.Then(Identifier, x =&gt; null)
 </code></pre>
-
 <p>.. but it would fail at runtime. This is what I mean by it not being safe.</p>
-
 <p>But I've got to admit, this approach has a certain charm about it! Maybe it's not an appropriate mechanism for critical life-or-death production code, but for building a little parser for a personal project.. maybe I could convince myself it's worth it!</p>
-
 <p>(Credit where it's due, I think I first saw this specify-a-property-with-an-Expression technique some years ago in <a href="http://automapper.org/">AutoMapper</a>, which is an example of code that <em>is</em> often used in production despite not offering compile-time guarantees about mappings - but has such convenience that the need to write tests around the mappings is outweighed by the benefits).</p>
+<p>* <em>(Other people might also point out that reflection is expensive and that</em> that <em>is a major downside - however, the code that is used here is fairly easy to wrap up in LINQ Expressions that are dynamically compiled so that repeated executions of hot paths are as fast as hand-written code.. and if the paths aren't hot and executed many times, what's the problem with the reflection being slower??)</em></p>
+<p class="PostTime">Posted at 00:10</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/parsing-typescript-definitions-functionally-ish">Parsing TypeScript definitions (functional-ly.. ish)</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/stronglytyped-react-with-bridgenet">Strongly-typed React (with Bridge.net)</a></div></div><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
+                <div id="disqus_thread"></div>
+                <script type="text/javascript">
+					var disqus_identifier = "89";
+					var disqus_title = "Hassle-free immutable type updates in C#";
+					(function () {
+						whenjQueryIsAvailable(
+							function () {
+								$(function () {
+									loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+									$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+								});
+							}
+						);
 
-<p>* <em>(Other people might also point out that reflection is expensive and that</em> that <em>is a major downside - however, the code that is used here is fairly easy to wrap up in LINQ Expressions that are dynamically compiled so that repeated executions of hot paths are as fast as hand-written code.. and if the paths aren't hot and executed many times, what's the problem with the reflection being slower??)</em></p><p class="PostTime">Posted at 00:10</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/parsing-typescript-definitions-functionally-ish">Parsing TypeScript definitions (functional-ly.. ish)</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/stronglytyped-react-with-bridgenet">Strongly-typed React (with Bridge.net)</a></div></div><div class="Related"><h3>You may also be interested in</h3><ul><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-			<div id="disqus_thread"></div>
-						<script type="text/javascript">
-							var disqus_identifier = "89";
-							var disqus_title = "Hassle-free immutable type updates in C#";
-							(function () {
-							    whenjQueryIsAvailable(
-									function () {
-									    $(function () {
-											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
-											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
-										});
-									}
-								);
+						var bStartedLoadingComments = false;
+						function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+							if (bStartedLoadingComments) {
+								return;
+							}
+							var $post = $("div.Content.SinglePost");
+							var bottomOfPost = $post.position().top + $post.height();
+							var $window = $(window);
+							if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+								bStartedLoadingComments = true;
+								loadComments();
+							}
+						}
 
-								var bStartedLoadingComments = false;
-								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
-								    if (bStartedLoadingComments) {
-								        return;
-								    }
-								    var $post = $("div.Content.SinglePost");
-								    var bottomOfPost = $post.position().top + $post.height();
-								    var $window = $(window);
-								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
-										bStartedLoadingComments = true;
-										loadComments();
-									}
-								}
-
-								function loadComments() {
-								    var dsq = document.createElement("script");
-									dsq.type = "text/javascript";
-									dsq.async = true;
-									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-								}
-							}());
-						</script>
-	</div>
+						function loadComments() {
+							var dsq = document.createElement("script");
+							dsq.type = "text/javascript";
+							dsq.async = true;
+							dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+							(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+						}
+					}());
+                </script>
+    </div>
 
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -576,17 +498,16 @@ public static class MatchResult
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

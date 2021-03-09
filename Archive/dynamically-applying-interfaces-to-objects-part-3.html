@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -46,43 +45,37 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content SinglePost">
-		<h3 class="PostDate">27 December 2011</h3><h2><a id="Post17"></a><a href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></h2>
-
+    <div class="Content SinglePost">
+        <h3 class="PostDate">27 December 2011</h3><h2><a id="dynamically-applying-interfaces-to-objects-part-3" href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></h2>
 <p>In this final part of this mini series there are two enhancements I want to add:</p>
-
 <ol>
 <li>For cases where the same interface may be applied to multiple objects, I want to replace the WrapObject method (which applies the interface to a single reference) with a GenerateInterfaceApplier method which returns an object that applies a specified interface to any given reference but only generating the IL once</li>
 <li>The ability to recursively wrap returned data</li>
 </ol>
-
 <p>eg. be able to apply ITest to the ExampleObject reference:</p>
-
 <pre><code>public interface ITest
 {
     IEmployee Get(int id);
@@ -99,8 +92,8 @@ public class ExampleObject
     public object Get(int id)
     {
         if (id != 1)
-            throw new ArgumentException("Only id value 1 is supported");
-        return new Person(1, "Ted");
+            throw new ArgumentException(&quot;Only id value 1 is supported&quot;);
+        return new Person(1, &quot;Ted&quot;);
     }
 
     public class Person
@@ -108,7 +101,7 @@ public class ExampleObject
         public Person(int id, string name)
         {
             if (string.IsNullOrEmpty(name))
-                throw new ArgumentException("Null/blank name specified");
+                throw new ArgumentException(&quot;Null/blank name specified&quot;);
             Id = id;
             Name = name.Trim();
         }
@@ -117,11 +110,8 @@ public class ExampleObject
     }
 }
 </code></pre>
-
 <h3>Task 1: The IInterfaceApplier class</h3>
-
 <p>The first part is fairly straight-forward so I'll jump straight in -</p>
-
 <pre><code>public class InterfaceApplierFactory : IInterfaceApplierFactory
 {
     private string _assemblyName;
@@ -129,11 +119,11 @@ public class ExampleObject
     private Lazy&lt;ModuleBuilder&gt; _moduleBuilder;
     public InterfaceApplierFactory(string assemblyName, ComVisibility comVisibilityOfClasses)
     {
-        assemblyName = (assemblyName ?? "").Trim();
-        if (assemblyName == "")
-            throw new ArgumentException("Null or empty assemblyName specified");
+        assemblyName = (assemblyName ?? &quot;&quot;).Trim();
+        if (assemblyName == &quot;&quot;)
+            throw new ArgumentException(&quot;Null or empty assemblyName specified&quot;);
         if (!Enum.IsDefined(typeof(ComVisibility), comVisibilityOfClasses))
-            throw new ArgumentOutOfRangeException("comVisibilityOfClasses");
+            throw new ArgumentOutOfRangeException(&quot;comVisibilityOfClasses&quot;);
 
         _assemblyName = assemblyName;
         _createComVisibleClasses = (comVisibilityOfClasses == ComVisibility.Visible);
@@ -162,9 +152,9 @@ public class ExampleObject
     public IInterfaceApplier&lt;T&gt; GenerateInterfaceApplier&lt;T&gt;()
     {
         if (!typeof(T).IsInterface)
-            throw new ArgumentException("typeparam must be an interface type");
+            throw new ArgumentException(&quot;typeparam must be an interface type&quot;);
 
-        var typeName = "InterfaceApplier" + Guid.NewGuid().ToString("N");
+        var typeName = &quot;InterfaceApplier&quot; + Guid.NewGuid().ToString(&quot;N&quot;);
         var typeBuilder = _moduleBuilder.Value.DefineType(
             typeName,
             TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.AutoClass |
@@ -187,7 +177,7 @@ public class ExampleObject
 
     public IInterfaceApplier GenerateInterfaceApplier(Type targetType)
     {
-        var generate = this.GetType().GetMethod("GenerateInterfaceApplier", Type.EmptyTypes);
+        var generate = this.GetType().GetMethod(&quot;GenerateInterfaceApplier&quot;, Type.EmptyTypes);
         var generateGeneric = generate.MakeGenericMethod(targetType);
         return (IInterfaceApplier)generateGeneric.Invoke(this, new object[0]);
     }
@@ -198,9 +188,9 @@ public class ExampleObject
         public InterfaceApplier(Func&lt;object, T&gt; conversion)
         {
             if (!typeof(T).IsInterface)
-                throw new ArgumentException("Invalid typeparam - must be an interface");
+                throw new ArgumentException(&quot;Invalid typeparam - must be an interface&quot;);
             if (conversion == null)
-                throw new ArgumentNullException("conversion");
+                throw new ArgumentNullException(&quot;conversion&quot;);
             _conversion = conversion;
         }
 
@@ -238,35 +228,25 @@ public interface IInterfaceApplier
     object Apply(object src);
 }
 </code></pre>
-
-<p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an "IInterfaceApplier" is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
-
+<p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an &quot;IInterfaceApplier&quot; is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
 <p>I've also supported an alternative method signature for GenerateInterfaceApplier such that the target interface can be specified as an argument rather than a typeparam to a generic method - this will become important in the next section and the only interesting things to note are how IInterfaceApplier&lt;T&gt; is returned from the generic method as opposed to the IInterfaceApplier returned from the typeparam-less signature and how the alternate method calls into the typeparam'd version using reflection.</p>
-
 <h3>Task 2: Recursively applying interfaces</h3>
-
 <p>The approach I'm going to use here is to introduce a new interface that will be used when generating the interface appliers -</p>
-
 <pre><code>public interface IReadValueConverter
 {
     object Convert(PropertyInfo property, object value);
     object Convert(MethodInfo method, object value);
 }
 </code></pre>
-
 <p>Values will be passed through this when returned by property getters or (non-void) methods and it wil be responsible for ensuring that the value returned from the Convert method matches the property.PropertyType / method.ReturnType.</p>
-
 <p>This will mean we'll change the method signature to:</p>
-
 <pre><code>public InterfaceApplier&lt;T&gt; GenerateInterfaceApplier&lt;T&gt;(IReadValueConverter readValueConverter)
 </code></pre>
-
 <p>That we'll change the constructor on the generated type:</p>
-
 <pre><code>// Declare private fields
-var srcField = typeBuilder.DefineField("_src", typeof(object), FieldAttributes.Private);
+var srcField = typeBuilder.DefineField(&quot;_src&quot;, typeof(object), FieldAttributes.Private);
 var readValueConverterField = typeBuilder.DefineField(
-    "_readValueConverter",
+    &quot;_readValueConverter&quot;,
     typeof(IReadValueConverter),
     FieldAttributes.Private
 );
@@ -285,7 +265,7 @@ ilCtor.Emit(OpCodes.Call, typeBuilder.BaseType.GetConstructor(Type.EmptyTypes));
 var nonNullSrcArgumentLabel = ilCtor.DefineLabel();
 ilCtor.Emit(OpCodes.Ldarg_1);
 ilCtor.Emit(OpCodes.Brtrue, nonNullSrcArgumentLabel);
-ilCtor.Emit(OpCodes.Ldstr, "src");
+ilCtor.Emit(OpCodes.Ldstr, &quot;src&quot;);
 ilCtor.Emit(
     OpCodes.Newobj,
     typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) })
@@ -297,7 +277,7 @@ ilCtor.MarkLabel(nonNullSrcArgumentLabel);
 var nonNullReadValueConverterArgumentLabel = ilCtor.DefineLabel();
 ilCtor.Emit(OpCodes.Ldarg_2);
 ilCtor.Emit(OpCodes.Brtrue, nonNullReadValueConverterArgumentLabel);
-ilCtor.Emit(OpCodes.Ldstr, "readValueConverter");
+ilCtor.Emit(OpCodes.Ldstr, &quot;readValueConverter&quot;);
 ilCtor.Emit(
     OpCodes.Newobj,
     typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) })
@@ -318,14 +298,12 @@ ilCtor.Emit(OpCodes.Stfld, readValueConverterField);
 // All done
 ilCtor.Emit(OpCodes.Ret);
 </code></pre>
-
 <p>That we'll change the reading of properties:</p>
-
 <pre><code>// Define get method, if required
 if (property.CanRead)
 {
     var getFuncBuilder = typeBuilder.DefineMethod(
-        "get_" + property.Name,
+        &quot;get_&quot; + property.Name,
         MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot |
         MethodAttributes.SpecialName | MethodAttributes.Virtual | MethodAttributes.Final,
         property.PropertyType,
@@ -342,16 +320,16 @@ if (property.CanRead)
     ilGetFunc.Emit(OpCodes.Ldtoken, property.DeclaringType);
     ilGetFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetTypeFromHandle", new[] { typeof(RuntimeTypeHandle) })
+        typeof(Type).GetMethod(&quot;GetTypeFromHandle&quot;, new[] { typeof(RuntimeTypeHandle) })
     );
     ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilGetFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetProperty", new[] { typeof(string) })
+        typeof(Type).GetMethod(&quot;GetProperty&quot;, new[] { typeof(string) })
     );
     ilGetFunc.Emit(OpCodes.Ldarg_0);
     ilGetFunc.Emit(OpCodes.Ldfld, srcField);
-    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
     ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilGetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.GetProperty);
     ilGetFunc.Emit(OpCodes.Ldnull);
@@ -362,7 +340,7 @@ if (property.CanRead)
     ilGetFunc.Emit(
         OpCodes.Callvirt,
         typeof(IReadValueConverter).GetMethod(
-            "Convert",
+            &quot;Convert&quot;,
             new[] { typeof(PropertyInfo), typeof(object) }
         )
     );
@@ -372,9 +350,7 @@ if (property.CanRead)
     propBuilder.SetGetMethod(getFuncBuilder);
 }
 </code></pre>
-
 <p>And that we'll change the calling of methods:</p>
-
 <pre><code>// .. skipped out the first half of the method-generating code
 // - see http://www.productiverage.com/Read/15
 
@@ -418,18 +394,18 @@ if (!method.ReturnType.Equals(typeof(void)))
     ilFunc.Emit(OpCodes.Ldtoken, method.DeclaringType);
     ilFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetTypeFromHandle", new[] { typeof(RuntimeTypeHandle) })
+        typeof(Type).GetMethod(&quot;GetTypeFromHandle&quot;, new[] { typeof(RuntimeTypeHandle) })
     );
     ilFunc.Emit(OpCodes.Ldstr, method.Name);
     ilFunc.Emit(OpCodes.Ldloc_1);
     ilFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetMethod", new[] { typeof(string), typeof(Type[]) })
+        typeof(Type).GetMethod(&quot;GetMethod&quot;, new[] { typeof(string), typeof(Type[]) })
     );
 }
 ilFunc.Emit(OpCodes.Ldarg_0);
 ilFunc.Emit(OpCodes.Ldfld, srcField);
-ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
 ilFunc.Emit(OpCodes.Ldstr, method.Name);
 ilFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.InvokeMethod);
 ilFunc.Emit(OpCodes.Ldnull);
@@ -440,54 +416,51 @@ ilFunc.Emit(OpCodes.Callvirt, methodInfoInvokeMember);
 
 if (method.ReturnType.Equals(typeof(void)))
     ilFunc.Emit(OpCodes.Pop);
-else 
+else
 {
     ilFunc.Emit(
         OpCodes.Callvirt,
         typeof(IReadValueConverter).GetMethod(
-            "Convert",
+            &quot;Convert&quot;,
             new[] { typeof(MethodInfo), typeof(object) }
         )
     );
-    if (method.ReturnType.IsValueType) 
+    if (method.ReturnType.IsValueType)
         ilFunc.Emit(OpCodes.Unbox_Any, method.ReturnType);
 }
 
 ilFunc.Emit(OpCodes.Ret);
 </code></pre>
-
 <h3>Task 2.1: Implementing IReadValueConverter</h3>
-
 <p>A naive implementation might be as follows:</p>
-
 <pre><code>public class SimpleReadValueConverter : IReadValueConverter
 {
     private IInterfaceApplierFactory _interfaceApplierFactory;
     public SimpleReadValueConverter(IInterfaceApplierFactory interfaceApplierFactory)
     {
         if (interfaceApplierFactory == null)
-            throw new ArgumentNullException("interfaceApplierFactory");
+            throw new ArgumentNullException(&quot;interfaceApplierFactory&quot;);
         _interfaceApplierFactory = interfaceApplierFactory;
     }
 
     public object Convert(PropertyInfo property, object value)
     {
         if (property == null)
-            throw new ArgumentNullException("property");
+            throw new ArgumentNullException(&quot;property&quot;);
         return tryToConvertValueIfRequired(property.PropertyType, value);
     }
 
     public object Convert(MethodInfo method, object value)
     {
         if (method == null)
-            throw new ArgumentNullException("method");
+            throw new ArgumentNullException(&quot;method&quot;);
         return tryToConvertValueIfRequired(method.ReturnType, value);
     }
 
     private object tryToConvertValueIfRequired(Type targetType, object value)
     {
         if (targetType == null)
-            throw new ArgumentNullException("targetType");
+            throw new ArgumentNullException(&quot;targetType&quot;);
 
         // If no conversion is required, no work to do
         // - Note: We can only deal with applying interfaces to objects so if a conversion
@@ -504,9 +477,7 @@ ilFunc.Emit(OpCodes.Ret);
     }
 }
 </code></pre>
-
 <p>This will do the job but it jumps out at me that if the same interface needs to be applied to multiple return values (ie. from different properties or methods) then the work done to generate that interface applier will be repeated for each request. It might be better (require less memory and cpu resources) to build up a list of interfaces that have already been handled and re-use the interface appliers where possible -</p>
-
 <pre><code>public class CachedReadValueConverter : IReadValueConverter
 {
     private IInterfaceApplierFactory _interfaceApplierFactory;
@@ -516,7 +487,7 @@ ilFunc.Emit(OpCodes.Ret);
     public CachedReadValueConverter(IInterfaceApplierFactory interfaceApplierFactory)
     {
         if (interfaceApplierFactory == null)
-            throw new ArgumentNullException("interfaceApplierFactory");
+            throw new ArgumentNullException(&quot;interfaceApplierFactory&quot;);
 
         _interfaceApplierFactory = interfaceApplierFactory;
         _interfaceAppliers = new NonNullImmutableList&lt;IInterfaceApplier&gt;();
@@ -526,7 +497,7 @@ ilFunc.Emit(OpCodes.Ret);
     public object Convert(PropertyInfo property, object value)
     {
         if (property == null)
-            throw new ArgumentNullException("property");
+            throw new ArgumentNullException(&quot;property&quot;);
 
         return tryToConvertValueIfRequired(property.PropertyType, value);
     }
@@ -534,7 +505,7 @@ ilFunc.Emit(OpCodes.Ret);
     public object Convert(MethodInfo method, object value)
     {
         if (method == null)
-            throw new ArgumentNullException("method");
+            throw new ArgumentNullException(&quot;method&quot;);
 
         return tryToConvertValueIfRequired(method.ReturnType, value);
     }
@@ -542,7 +513,7 @@ ilFunc.Emit(OpCodes.Ret);
     private object tryToConvertValueIfRequired(Type targetType, object value)
     {
         if (targetType == null)
-            throw new ArgumentNullException("targetType");
+            throw new ArgumentNullException(&quot;targetType&quot;);
 
         // If no conversion is required, no work to do
         // - Note: We can only deal with applying interfaces to objects so if a conversion
@@ -575,9 +546,7 @@ ilFunc.Emit(OpCodes.Ret);
     }
 }
 </code></pre>
-
 <p>There will still be cases where there have to be multiple interface appliers for a given interface if there are interrelated references but this should limit how many duplicates are generated. For example:</p>
-
 <pre><code>using COMInteraction.InterfaceApplication;
 using COMInteraction.InterfaceApplication.ReadValueConverters;
 
@@ -587,16 +556,16 @@ namespace Tester
     {
         static void Main(string[] args)
         {
-            var n1 = new Node() { Name = "Node1" };
-            var n2 = new Node() { Name = "Node2" };
-            var n3 = new Node() { Name = "Node3" };
+            var n1 = new Node() { Name = &quot;Node1&quot; };
+            var n2 = new Node() { Name = &quot;Node2&quot; };
+            var n3 = new Node() { Name = &quot;Node3&quot; };
             n1.Next = n2;
             n2.Previous = n1;
             n2.Next = n3;
             n3.Previous = n2;
 
             var interfaceApplierFactory = new InterfaceApplierFactory(
-                "DynamicAssembly",
+                &quot;DynamicAssembly&quot;,
                 InterfaceApplierFactory.ComVisibility.NotVisible
             );
             var interfaceApplier = interfaceApplierFactory.GenerateInterfaceApplier&lt;INode&gt;(
@@ -622,19 +591,13 @@ namespace Tester
     }
 }
 </code></pre>
-
-<p>Each unique interface applier has a specific class name (of the form "InterfaceApplier{0}" where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one "wasted" generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
-
-<h3>"Inaccessible Interface"</h3>
-
+<p>Each unique interface applier has a specific class name (of the form &quot;InterfaceApplier{0}&quot; where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one &quot;wasted&quot; generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
+<h3>&quot;Inaccessible Interface&quot;</h3>
 <p>In the above example, the INode interface has to be located outside of the Program class since it must be accessible by the InterfaceApplierFactory and the Program class is private. This isn't an issue for the Node class as the InterfaceApplierFactory doesn't need direct access to that, it just returns an IInterfaceApplier that we pass the n2 reference to as an argument. Alternatively, the Program class could be made public. This isn't exactly rocket science but if it slips your mind then you're presented with an error such as -</p>
-
 <blockquote>
-  <p>TypeLoadException: "Type 'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8' from assembly 'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' is attempting to implement an inaccessible interface."</p>
+<p>TypeLoadException: &quot;Type 'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8' from assembly 'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' is attempting to implement an inaccessible interface.&quot;</p>
 </blockquote>
-
 <p>at the line</p>
-
 <pre><code>return new InterfaceApplier&lt;T&gt;(
     src =&gt; (T)Activator.CreateInstance(
         typeBuilder.CreateType(),
@@ -643,50 +606,50 @@ namespace Tester
     )
 );
 </code></pre>
+<p>in InterfaceApplierFactory, which isn't the friendliest of warnings!</p>
+<p class="PostTime">Posted at 18:38</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/extendable-linqcompilable-mappers">Extendable LINQ-compilable Mappers</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+                <div id="disqus_thread"></div>
+                <script type="text/javascript">
+					var disqus_identifier = "17";
+					var disqus_title = "Dynamically applying interfaces to objects - Part 3";
+					(function () {
+						whenjQueryIsAvailable(
+							function () {
+								$(function () {
+									loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+									$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+								});
+							}
+						);
 
-<p>in InterfaceApplierFactory, which isn't the friendliest of warnings!</p><p class="PostTime">Posted at 18:38</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/extendable-linqcompilable-mappers">Extendable LINQ-compilable Mappers</a></div></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
-			<div id="disqus_thread"></div>
-						<script type="text/javascript">
-							var disqus_identifier = "17";
-							var disqus_title = "Dynamically applying interfaces to objects - Part 3";
-							(function () {
-							    whenjQueryIsAvailable(
-									function () {
-									    $(function () {
-											loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
-											$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
-										});
-									}
-								);
+						var bStartedLoadingComments = false;
+						function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+							if (bStartedLoadingComments) {
+								return;
+							}
+							var $post = $("div.Content.SinglePost");
+							var bottomOfPost = $post.position().top + $post.height();
+							var $window = $(window);
+							if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+								bStartedLoadingComments = true;
+								loadComments();
+							}
+						}
 
-								var bStartedLoadingComments = false;
-								function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
-								    if (bStartedLoadingComments) {
-								        return;
-								    }
-								    var $post = $("div.Content.SinglePost");
-								    var bottomOfPost = $post.position().top + $post.height();
-								    var $window = $(window);
-								    if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
-										bStartedLoadingComments = true;
-										loadComments();
-									}
-								}
-
-								function loadComments() {
-								    var dsq = document.createElement("script");
-									dsq.type = "text/javascript";
-									dsq.async = true;
-									dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
-									(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
-								}
-							}());
-						</script>
-	</div>
+						function loadComments() {
+							var dsq = document.createElement("script");
+							dsq.type = "text/javascript";
+							dsq.async = true;
+							dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+							(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+						}
+					}());
+                </script>
+    </div>
 
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -696,17 +659,16 @@ namespace Tester
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

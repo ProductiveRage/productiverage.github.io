@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -41,169 +40,115 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">13 September 2012</h3><h2><a id="Post34"></a><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40">Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0</a></h2>
-
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">13 September 2012</h3><h2><a id="ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40" href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40">Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0</a></h2>
 <p>It's got to the point with a Web Service I'm developing at work to run it through some stress tests and try to work out what kind of load we can handle with the hardware we have in mind for its hosting environment. We also have an arbitrary concept of the load we'd <em>like</em> it to be able to handle, so we need to see if the hardware solution we have in mind is even in the right ballpark.</p>
-
 <p>It's a WCF Web Service running against .Net 4.0 but it's going to be hosted in IIS 6; the Web Servers our Infrastructure Team provide us with are all Server 2003 and although there are mid-term plans to start upgrading to 2008 and IIS 7 this isn't going to happen before this service needs to be live.</p>
-
 <p>The Web Service effectively backs on to a Data Service we already have for our own private use that handles querying and caching of data and metadata, so this Web Service's primary job is to expose this data in a saner manner than the internal interface (which was built some years back and has a lot of legacy features, exposes too much craziness from the backing database which evolved over the best part of a decade and the internal service is communicates over .Net Remoting as it was originally written against .Net 2.0!). So all we're really doing is translating requests from the Web Service model into the internal format and then performing a similar act on the responses, there won't be too many caching concerns, any direct db access or much file IO; the bulk of its time I expect will be waiting on the internal service.</p>
-
 <h3>Gotcha Number One</h3>
-
 <p>To kick things off, I wanted to get an idea of how much load the internal service could handle on a single server and then see how things changed when I put a Web Server in front of it, hosting the new Service. To cut a long story short, I was able to reproduce requests to the internal service from the busiest few hours the night before and serialise them all to disk so that they could be replayed at any time against the stress-testing environment. The optimistic plan being to ramp up the speed at which the requests are replayed and see where the bottlenecks start appearing and at what sort of loads!</p>
-
-<p>The first problem I encountered was when replaying these from a test app on my computer to the data service in the load test environment. As the Web Service requests were ramping up the request times were getting longer and longer. I looked on the Web Server and found that it was doing <em>very</em> little; CPU and memory use was low and looking at the "Web Service"* performance counters it was not only dealing with very few requests but there weren't any queuing up which had been my initial thought.</p>
-
-<p>* (The "Web Service" in this context relates to the service in IIS, it's not a Web Service in the context of an ASP.Net Web Service, for example).</p>
-
+<p>The first problem I encountered was when replaying these from a test app on my computer to the data service in the load test environment. As the Web Service requests were ramping up the request times were getting longer and longer. I looked on the Web Server and found that it was doing <em>very</em> little; CPU and memory use was low and looking at the &quot;Web Service&quot;* performance counters it was not only dealing with very few requests but there weren't any queuing up which had been my initial thought.</p>
+<p>* (The &quot;Web Service&quot; in this context relates to the service in IIS, it's not a Web Service in the context of an ASP.Net Web Service, for example).</p>
 <p>Some googling revealed that outgoing http requests are limited by default in .Net applications, so the requests were getting queued up locally and weren't even getting to the server! It seemed like only two concurrent requests were being handled though I'm sure documentation suggested that it should have been 16. Not that it matters, really, that would have way been too low as well!</p>
-
 <p>Adding this to the app.config sorted it out:</p>
-
 <pre><code>&lt;system.net&gt;
     &lt;connectionManagement&gt;
-        &lt;add address="*" maxconnection="65535" /&gt;
+        &lt;add address=&quot;*&quot; maxconnection=&quot;65535&quot; /&gt;
     &lt;/connectionManagement&gt;
 &lt;/system.net&gt;
 </code></pre>
-
-<p>The "*" means that this will be applied to any endpoint. The 65535 was what I found in the example and I've been struggling to find a definitive answer as to whether this is the maximum value that it can be or not! :S</p>
-
+<p>The &quot;*&quot; means that this will be applied to any endpoint. The 65535 was what I found in the example and I've been struggling to find a definitive answer as to whether this is the maximum value that it can be or not! :S</p>
 <h3>Server Settings: Thread Counts</h3>
-
-<p>So now I was able to overload the server with more concurrents requests than it could handle at once and they were getting queued up. The performance counters are just invaluable here; there are some available for the "Web Service" - which tells us about what's happening at the IIS level - and for "ASP.Net" - which tells us about what's getting into .Net framework. So there could theoretically be limits in IIS that need to be overcome and/or limits in ASP.Net, keeping an eye on these counters gives an insight into where the bottlenecks might be.</p>
-
+<p>So now I was able to overload the server with more concurrents requests than it could handle at once and they were getting queued up. The performance counters are just invaluable here; there are some available for the &quot;Web Service&quot; - which tells us about what's happening at the IIS level - and for &quot;ASP.Net&quot; - which tells us about what's getting into .Net framework. So there could theoretically be limits in IIS that need to be overcome and/or limits in ASP.Net, keeping an eye on these counters gives an insight into where the bottlenecks might be.</p>
 <p>I ramped up the request replay rate and it seemed like the maximum concurrent connections that I could achieve was around 250. The CPU load was low, around 15%, and the memory usage was fairly meagre. Most of the time in the requests was waiting for the data service to respond, so threads were just hanging around. Not enough threads for my liking! I wanted to use more of the resources on the box and be able to deal with more requests.</p>
-
 <p>I spent <em>aaaages</em> trying to find information about whether this 250 was a limit set in IIS somewhere or if it was somehow related to the default maximum of 250 threads per CPU in a .Net ThreadPool or just where to find the knob in IIS that I can turn up to eleven! And my conclusion is that it's <em>very</em> difficult to find a definitive resource; so much of the information is for different versions of IIS (5 or 7, usually) and they usually do <em>not</em> make clear which settings are applicable to which versions and which changes I could expect to help me.</p>
-
 <p>So I'm just going to cut to the chase here. For IIS 6 (six!) I needed to do two things.</p>
-
 <p>Firstly, edit the machine.config for applicable ASP.Net version (I'm running against 4.0 and IIS is currently set up to run as 32-bit since to enable 64-bit I believe that <em>all</em> of the applications must be 64-bit and where we're going to host this Web Service I can't be sure that this will be the case):</p>
-
 <pre><code>&lt;system.web&gt;
-    &lt;processModel maxWorkerThreads="100" maxIoThreads="100" minWorkerThreads="50"/&gt;
+    &lt;processModel maxWorkerThreads=&quot;100&quot; maxIoThreads=&quot;100&quot; minWorkerThreads=&quot;50&quot;/&gt;
 </code></pre>
-
-<p>"100" is the maximum value that maxWorkerThreads and maxIoThreads can take. "50" was the value I found in the examples I encountered, presumably this lower bound is set so t hat bursty behaviour is more easily handled as a base number of threads are always spun up (starting up a load of threads is expensive and if a patch of high traffic hits the service then having to do this can result in requests being queued). These were the settings for which there is so much apparently contradictory information out there; some people will tell you the default values are 50 or 12 x the number of CPUs or 5000 depending upon the version of IIS (but infrequently saying which version they were talking about) or the version of ASP.Net (but infrequently saying which version they were talking about!) or.. I don't know.. what day of the week it is!</p>
-
-<p>The second was to increase the number of processes that were used by the Web Service's App Pool. This is done by going into the Performance tab on the App Pool's properties page and increasing the "Maximum number of worker processes" upwards from 1.</p>
-
+<p>&quot;100&quot; is the maximum value that maxWorkerThreads and maxIoThreads can take. &quot;50&quot; was the value I found in the examples I encountered, presumably this lower bound is set so t hat bursty behaviour is more easily handled as a base number of threads are always spun up (starting up a load of threads is expensive and if a patch of high traffic hits the service then having to do this can result in requests being queued). These were the settings for which there is so much apparently contradictory information out there; some people will tell you the default values are 50 or 12 x the number of CPUs or 5000 depending upon the version of IIS (but infrequently saying which version they were talking about) or the version of ASP.Net (but infrequently saying which version they were talking about!) or.. I don't know.. what day of the week it is!</p>
+<p>The second was to increase the number of processes that were used by the Web Service's App Pool. This is done by going into the Performance tab on the App Pool's properties page and increasing the &quot;Maximum number of worker processes&quot; upwards from 1.</p>
 <p>There are considerations to bear in mind with increasing the number of worker processes; the first that often jumps out in documentation is issues with Session - any Session data must be maintained in a manner such that multiple processes can access it, since requests from the same Client may not always be handled by the same process, and so an in-process Session would be no good. The Service I was working with had no need for maintaining Session data, so I could happily ignore this entirely.</p>
-
 <p>With these changes, I was able to ramp up the requests until I was max'ing out the CPU in a variety of circumstances; I set up different tests ranging from requests that could be completed very quickly (within, say 20ms) to requests that would artificially delay the response to see how concurrent requests would build up. Without trying too hard I was able to get around 500 requests / second with the quick responses and handle 4000 concurrent requests happily enough with the long-running ones.</p>
-
-<p>This is hardly crazy internet-scale traffic, but it's well in excess of the targets that I was originally trying to see if I could handle. And since the "hardware" is a virtualised box with two cores I'm fairly happy with how it's working out!</p>
-
+<p>This is hardly crazy internet-scale traffic, but it's well in excess of the targets that I was originally trying to see if I could handle. And since the &quot;hardware&quot; is a virtualised box with two cores I'm fairly happy with how it's working out!</p>
 <h3>Server Settings: Bandwidth considerations</h3>
-
 <p>Something we have to consider in exposing this data to external Clients is just how <em>much</em> data we may be passing around. The internal Data Service that is essentially be wrapped is just that; internal. This means that not only will all the data be passed around internal network connections to the requesting Web Server (that will use that data in rendering the site) but also that we can format that data however we like (ie. binary rather than xml) and take all sorts of crazy shortcuts and liberties if we need to as we have to understand the data implicitly to work efficiently with it. For the Web Service, the data's going to be broadcast as xml and we want to make the compromise of exposing a consistent and predictable data model with a simple API. This means that we'll be dealing with much larger quantities of data and we have to pass them out of our private network, out into the real world <em>where we have to pay for transfers</em>.</p>
-
 <p>This really struck home when, during the load tests, I was max'ing out the network utilisation of my connection to the server. My connection to the office network runs at 100Mbps (100 mega<em>bits</em>, not bytes) - other people get 1Gb but I get 100 meg, cos I'm really lucky :) This was in tests where a large response was being returned with a high rate of handled requests. To try to push these tests closer to the limits I had to borrow some other workstations and run requests through wcat (<a href="http://www.iis.net/downloads/community/2007/05/wcat-63-(x86)">http://www.iis.net/downloads/community/2007/05/wcat-63-(x86)</a>).</p>
-
 <p>So I figured the obvious first step was to look into whether the response were being compressed and, if not, make them.</p>
-
 <h3>WCF Compression with IIS 6 and .Net 4.0</h3>
-
-<p>I examined a request in Fiddler. No "Accept-Encoding: gzip" to be found. A flash of recollection from the past reminded me of the EnableDecompression property available on the Client proxy generated by Web References. I set it to true before making the request and looked at the request in Fiddler.</p>
-
+<p>I examined a request in Fiddler. No &quot;Accept-Encoding: gzip&quot; to be found. A flash of recollection from the past reminded me of the EnableDecompression property available on the Client proxy generated by Web References. I set it to true before making the request and looked at the request in Fiddler.</p>
 <p>Success! The http header for gzip support was passed.</p>
-
 <p>But fail! It didn't make the slightest bit of difference to the response content.</p>
-
 <p>Further googling implied that I was going to be in for some hurt configuring this on IIS 6. The good news is that WCF with .Net 4.0 <em>would</em> support compression of the data natively unlike 3.5 and earlier which required workarounds (I got as far as looking at this <a href="http://stackoverflow.com/questions/1741768/wcf-gzip-compression-request-response-processing">Stack Overflow question</a> before being glad I didn't have to worry about it).</p>
-
 <p>This blog post was a lifesaver: <a href="http://weblogs.asp.net/owscott/archive/2004/01/12/57916.aspx">IIS Compression in IIS6.0</a>.</p>
-
 <p>To summarise:</p>
-
 <ol>
-<li>In the IIS Admin tool you need to right-click on "Web Sites", click "Service" and click "Compress application files" (we don't care about static content for this particular change, and the temporary disk location is only required for static content - "application files" are always compressed on the fly). </li>
-<li>Open the IIS MetaBase file in notepad (C:\WINDOWS\system32\inetsrv\MetaBase.xml, take a backup first - getting this wrong is going to cause problems!) and search for the string "IIsCompressionScheme"; include the "svc" extension into the "HcScriptFileExtensions" section (being careful to maintain the same formatting when inserting the new extension) and then setting "HcDynamicCompressionLevel" to "9" (see that blog post for more information)</li>
-<li>Ensure that any software on the server that may try to process the requests is disabled for the "svc" extension (we have something call "IISXpress" on our Web Servers which is supposed to help with compression but which I couldn't get to work!)</li>
+<li>In the IIS Admin tool you need to right-click on &quot;Web Sites&quot;, click &quot;Service&quot; and click &quot;Compress application files&quot; (we don't care about static content for this particular change, and the temporary disk location is only required for static content - &quot;application files&quot; are always compressed on the fly).</li>
+<li>Open the IIS MetaBase file in notepad (C:\WINDOWS\system32\inetsrv\MetaBase.xml, take a backup first - getting this wrong is going to cause problems!) and search for the string &quot;IIsCompressionScheme&quot;; include the &quot;svc&quot; extension into the &quot;HcScriptFileExtensions&quot; section (being careful to maintain the same formatting when inserting the new extension) and then setting &quot;HcDynamicCompressionLevel&quot; to &quot;9&quot; (see that blog post for more information)</li>
+<li>Ensure that any software on the server that may try to process the requests is disabled for the &quot;svc&quot; extension (we have something call &quot;IISXpress&quot; on our Web Servers which is supposed to help with compression but which I couldn't get to work!)</li>
 <li>Restart IIS</li>
 </ol>
-
 <p>After this, the response were being successfully compressed! As it's xml content it's fairly well compressible and I was getting the data trimmed down to approximately an 8th of the previous size. Another result!</p>
-
 <p>Of course, there's always a compromise. And here it's the additional load on the CPU. For the sort of traffic we were looking to support, it seemed like it would be a good trade off; this CPU load overhead in exchange for the reduction in the size of the transmitted data.</p>
-
 <p>Incidentally, Hanselman has a post here <a href="http://www.hanselman.com/blog/EnablingDynamicCompressionGzipDeflateForWCFDataFeedsODataAndOtherCustomServicesInIIS7.aspx">Enabling dynamic compression (gzip, deflate) for WCF Data Feeds, OData and other custom services in IIS7</a> illustrating just how much easier it is in IIS 7. If you've got a server hosted by that, good times! :)</p>
-
 <h3>Checking for gzip support</h3>
-
 <p>I'm actually contemplating <em>requiring</em> gzip support for all requests made to the service to ensure we keep public traffic bandwidth in check. Since it's just an http header that specifies that the Client supports it, we can check for it from the Service code:</p>
-
 <pre><code>var acceptsGzip =
-    (WebOperationContext.Current.IncomingRequest.Headers["Accept-Encoding"] ?? "")
+    (WebOperationContext.Current.IncomingRequest.Headers[&quot;Accept-Encoding&quot;] ?? &quot;&quot;)
         .Split(',')
         .Select(v =&gt; v.Trim())
-        .Contains("gzip", StringComparer.InvariantCultureIgnoreCase);
+        .Contains(&quot;gzip&quot;, StringComparer.InvariantCultureIgnoreCase);
 </code></pre>
-
 <p>And if we decide that Client gzip support <em>is</em> required then an error response indicating an invalid request can be returned if this header is not present.</p>
-
 <h3>Bonus note on handling concurrent requests</h3>
-
 <p>This is probably going to sound really obvious but it caught me out when I did some testing with high numbers of concurrent requests; be careful how you deal with file locking when you have to read anything in!</p>
-
 <p>I have a config file for the Service which has various settings for different API Keys. The data in this file is cached, the cache entry being invalidated when the file changes. So for the vast majority of requests, the cached data is returned. But when it's contents are changed (or the Service is restarted), the file's contents are read fresh from disk and if there are a multiple requests arriving at the same time there may well be simultaneous requests to that file.</p>
-
 <p>I had previously been using the following approach to retrieve the file's content:</p>
-
 <pre><code>using (var stream = File.Open(filename, FileMode.Open, FileAccess.Read))
 {
     // Do stuff
 }
 </code></pre>
-
 <p>but the default behaviour is to lock the file while it's being read, so if concurrent read requests are to be supported, the following form should be used:</p>
-
 <pre><code>using (var stream = File.Open(filename, FileMode.Open, FileAccess.Read, FileShare.Read))
 {
     // Do stuff
 }
 </code></pre>
-
-<p>This way, the file can be opened simultaneously by multiple threads or processes. Hooray! :)</p><p class="PostTime">Posted at 22:56</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/ASP.Net" title="3 Posts">ASP.Net</a></li><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li></ul></div>
-			<p class="Comments">
-				<a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40#disqus_thread" data-disqus-identifier="34">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">12 August 2012</h3><h2><a id="Post33"></a><a href="/dependency-injection-with-a-wcf-service">Dependency Injection with a WCF Service</a></h2>
-
+<p>This way, the file can be opened simultaneously by multiple threads or processes. Hooray! :)</p>
+<p class="PostTime">Posted at 22:56</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/ASP.Net" title="3 Posts">ASP.Net</a></li><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li></ul></div>
+            <p class="Comments">
+                <a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40#disqus_thread" data-disqus-identifier="34">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">12 August 2012</h3><h2><a id="dependency-injection-with-a-wcf-service" href="/dependency-injection-with-a-wcf-service">Dependency Injection with a WCF Service</a></h2>
 <p>Following recently discovering how easy it is to implement Dependency Injection into ASP.Net MVC Controllers by rolling my own ControllerFactory I wanted to see if the same sort of thing could be done for some Web Services I'm working on - I've never seen any production code that does it but seemed like the sort of thing that should be possible!</p>
-
-<p>"Discovering" in this case only meant googling for the extension points that I'd heard were built into MVC as standard; hardly the most earth-shattering of realisations! :) In case it saves anyone time, it's as simple as having an implementation of System.Web.Mvc.IControllerFactory and specifying this as the ControllerFactory to be used in the Application_Start method (in Global.asax) -</p>
-
+<p>&quot;Discovering&quot; in this case only meant googling for the extension points that I'd heard were built into MVC as standard; hardly the most earth-shattering of realisations! :) In case it saves anyone time, it's as simple as having an implementation of System.Web.Mvc.IControllerFactory and specifying this as the ControllerFactory to be used in the Application_Start method (in Global.asax) -</p>
 <pre><code>protected void Application_Start()
 {
     AreaRegistration.RegisterAllAreas();
@@ -211,9 +156,7 @@
     ControllerBuilder.Current.SetControllerFactory(new ControllerFactory());
 }
 </code></pre>
-
 <p>The most basic implementation runs along the lines of:</p>
-
 <pre><code>using System;
 using System.Web.Mvc;
 using System.Web.Routing;
@@ -242,38 +185,27 @@ namepsace Demo
     }
 }
 </code></pre>
-
 <p>where requestContext exposes an HttpContext property so Cache, Request, Response and Server can be accessed.</p>
-
 <p>All very straight forward (which made me wish I'd gotten around to looking into this long ago!).</p>
-
 <h3>WCF Services</h3>
-
 <p>I wasn't as confident that it would be as simple to construct an equivalent for a WCF Web Service as I think there was quite a culture shift from the Microsoft that created WCF for .Net 3.5 and that which wrote the MVC framework, that tried to make use of existing standards, that included jQuery with the framework and that released the framework code under an open source license! But it couldn't hurt to try!</p>
-
 <p>In the Service's ServiceHost declaration a Factory may be specified which will be used to instantiate the Service type instead of the default being taken, which is to try to find a public parameter-less constructor and to call that.</p>
-
 <pre><code>&lt;%@ ServiceHost
-    Language="C#"
-    Debug="true"
-    Service="Demo.ExampleWebService"
-    Factory="Demo.ExampleWebServiceHostFactory"
-    CodeBehind="ExampleWebService.svc.cs"
+    Language=&quot;C#&quot;
+    Debug=&quot;true&quot;
+    Service=&quot;Demo.ExampleWebService&quot;
+    Factory=&quot;Demo.ExampleWebServiceHostFactory&quot;
+    CodeBehind=&quot;ExampleWebService.svc.cs&quot;
 %&gt;
 </code></pre>
-
-<p>The factory needs to inherit from the WebServiceHostFactory class. A given factory implementation may handle the instantiation of various Service types but for my purposes, and for the example here, I'm going to work on the basis that there is one factory per service (if different services are to be handled by a single factory then the "serviceType" argument passed around can be consulted to alter the behaviour as required).</p>
-
+<p>The factory needs to inherit from the WebServiceHostFactory class. A given factory implementation may handle the instantiation of various Service types but for my purposes, and for the example here, I'm going to work on the basis that there is one factory per service (if different services are to be handled by a single factory then the &quot;serviceType&quot; argument passed around can be consulted to alter the behaviour as required).</p>
 <p>The instantiation process follows theses steps:</p>
-
 <ol>
 <li>The CreateServiceHost method on the factory specified in the Service declaration is called (this is a method of WebServiceHostFactory that must be overridden)</li>
-<li>This returns a class that inherits from ServiceHost which registers a "Instance Provider" that will be used to instantiate the actual Service type (this Instance Provider must implement IContractBehaviour, so that it may be added tohe Behaviours collection, and implement IInstanceProvider to mark it as being able to instantiate the target type)</li>
+<li>This returns a class that inherits from ServiceHost which registers a &quot;Instance Provider&quot; that will be used to instantiate the actual Service type (this Instance Provider must implement IContractBehaviour, so that it may be added tohe Behaviours collection, and implement IInstanceProvider to mark it as being able to instantiate the target type)</li>
 <li>The GetInstance method (which is part of the IInstanceProvider interface) is called; this must return an instance of the Service class to handle the request</li>
 </ol>
-
 <p>Example code may make this clearer!</p>
-
 <pre><code>using System;
 using System.ServiceModel;
 using System.ServiceModel.Activation;
@@ -344,21 +276,13 @@ namespace Demo
     }
 }
 </code></pre>
-
 <p>Ta-da! The only thing to fill in is the actual instantiation of the service type; this could be handled with a Ninject or other Dependency Injection Framework call or it could be a good old-fashioned factory class which pulls in all the various dependencies and returns a ready-to-rumble Service instance.</p>
-
 <h3>Some workarounds for removing ASP.Net dependencies</h3>
-
 <p>When I've used WCF to build Web Services in the past, before using this method of dependency inversion, I've been happy enough using the ASP.Net Cache and Request references but now that I'm working with Dependency-Injected classes I've wanted to extract these dependencies so that the Service class can be tested outside of the ASP.Net environment.</p>
-
 <h4>Cache</h4>
-
 <p>The first thing to approach was that I wanted to pass a generic cache reference from the factory. The current thinking (for .Net 4.0 onwards at least) seems to favour the use of the MemoryCache found in System.Runtime.Caching (<a href="http://www.codeproject.com/Articles/290935/Using-MemoryCache-in-Net-4-0">this Code Project article</a> is a reasonable introduction). So wrote an implementation of ICache (which is internal to my project) that makes use of the MemoryCache. Job done!</p>
-
 <h4>Client IP Address</h4>
-
 <p>Something else I struggled with initially was getting the IP Address of the client making the request (information that I include in the Request logging). This was easy when accessing the ASP.Net Request directly but proved more challenging without it. As usual, some Googling and experimentation yielded an answer. This method may be added to the ExampleWebServiceProvider from the above example:</p>
-
 <pre><code>/// &lt;summary&gt;
 /// This may return an IPv4 or IPv6 format address. It will return null if unable to retrieve
 /// this information.
@@ -383,35 +307,27 @@ private string TryToGetClientIpAddress()
     return ipAddress.Trim();
 }
 </code></pre>
-
-<p>These are the two biggest things that struck me when moving over to the new Service instantiation approach, I'm sure there will be similar cases but it's reassuring to know that it seems like in most cases the .net Framework has us covered one way or another, it's just a case of finding a different place to look for the data!</p><p class="PostTime">Posted at 16:42</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/ASP.Net" title="3 Posts">ASP.Net</a></li><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li></ul></div>
-			<p class="Comments">
-				<a href="/dependency-injection-with-a-wcf-service#disqus_thread" data-disqus-identifier="33">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByTag">
-		<h3 class="PostDate">8 December 2011</h3><h2><a id="Post13"></a><a href="/sta-apartmentstate-with-aspnet-mvc">STA ApartmentState with ASP.Net MVC</a></h2>
-
+<p>These are the two biggest things that struck me when moving over to the new Service instantiation approach, I'm sure there will be similar cases but it's reassuring to know that it seems like in most cases the .net Framework has us covered one way or another, it's just a case of finding a different place to look for the data!</p>
+<p class="PostTime">Posted at 16:42</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/ASP.Net" title="3 Posts">ASP.Net</a></li><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li></ul></div>
+            <p class="Comments">
+                <a href="/dependency-injection-with-a-wcf-service#disqus_thread" data-disqus-identifier="33">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
+        <h3 class="PostDate">8 December 2011</h3><h2><a id="sta-apartmentstate-with-aspnet-mvc" href="/sta-apartmentstate-with-aspnet-mvc">STA ApartmentState with ASP.Net MVC</a></h2>
 <p>Continuing on with the proof-of-concept I'm doing at work regarding reimplementing a VBScript Engine with WSC Controls in .Net I've been trying to develop an ASP.Net MVC Controller that will execute in the STA ApartmentState having read this article:</p>
-
 <p><a href="http://msdn.microsoft.com/en-us/magazine/cc163544.aspx">http://msdn.microsoft.com/en-us/magazine/cc163544.aspx</a>.</p>
-
 <p>The upshot is that if components that run in STA are shared by something executing as MTA then only a single thread from the MTA worker can operate on the component at a time. If the caller is running as STA then separate instances will exist such that each request (I'm thinking in terms of ASP.Net MVC requests) gets its own instance, preventing requests getting queued up waiting for each other when accessing the STA components.</p>
-
-<p>ASP.Net WebForms Pages support an "ASPCompat" attibute which will create the request as STA, rather than MTA. The article I linked above demonstrates how to do similar for an asmx web service. And the forum answer here claims to describe how to do the same for ASP.Net MVC: <a href="http://forums.asp.net/t/1302406.aspx">http://forums.asp.net/t/1302406.aspx</a>.</p>
-
+<p>ASP.Net WebForms Pages support an &quot;ASPCompat&quot; attibute which will create the request as STA, rather than MTA. The article I linked above demonstrates how to do similar for an asmx web service. And the forum answer here claims to describe how to do the same for ASP.Net MVC: <a href="http://forums.asp.net/t/1302406.aspx">http://forums.asp.net/t/1302406.aspx</a>.</p>
 <p><em>However..</em></p>
-
 <p>I'm not sure what version of MVC that was for, and if things have changed since then (it's marked August 2008), but when I tried to use it it didn't compile :(</p>
-
 <p>So here's the version I'm using with the MVC 3 / .Net 4.0 project I've got on the go - we need an IRouteHandler implementation which makes use of an STA-inducing Handler. Thus:</p>
-
 <pre><code>public class STAThreadRouteHandler : IRouteHandler
 {
     public IHttpHandler GetHttpHandler(RequestContext requestContext)
     {
         if (requestContext == null)
-            throw new ArgumentNullException("requestContext");
+            throw new ArgumentNullException(&quot;requestContext&quot;);
 
         return new STAThreadHttpAsyncHandler(requestContext);
     }
@@ -423,7 +339,7 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
     public STAThreadHttpAsyncHandler(RequestContext requestContext)
     {
         if (requestContext == null)
-            throw new ArgumentNullException("requestContext");
+            throw new ArgumentNullException(&quot;requestContext&quot;);
 
         _requestContext = requestContext;
     }
@@ -435,11 +351,11 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
 
     protected override void OnInit(EventArgs e)
     {
-        var controllerName = _requestContext.RouteData.GetRequiredString("controller");
+        var controllerName = _requestContext.RouteData.GetRequiredString(&quot;controller&quot;);
         var controllerFactory = ControllerBuilder.Current.GetControllerFactory();
         var controller = controllerFactory.CreateController(_requestContext, controllerName);
         if (controller == null)
-            throw new InvalidOperationException("Could not find controller: " + controllerName);
+            throw new InvalidOperationException(&quot;Could not find controller: &quot; + controllerName);
         try
         {
             controller.Execute(_requestContext);
@@ -459,52 +375,46 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
     public override void ProcessRequest(HttpContext httpContext)
     {
         throw new NotSupportedException(
-            "STAThreadRouteHandler does not support ProcessRequest called (only BeginProcessRequest)"
+            &quot;STAThreadRouteHandler does not support ProcessRequest called (only BeginProcessRequest)&quot;
         );
     }
 }
 </code></pre>
-
 <p>Then in the routes defined in Global.asx.cs we need something along the lines of:</p>
-
 <pre><code>RouteTable.Routes.Add(new Route(
-    "{*url}",
-    new RouteValueDictionary(new { controller = "Default", action = "PageRequest" }),
+    &quot;{*url}&quot;,
+    new RouteValueDictionary(new { controller = &quot;Default&quot;, action = &quot;PageRequest&quot; }),
     new STAThreadRouteHandler()
 ));
 </code></pre>
-
 <p>in place of</p>
-
 <pre><code>routes.MapRoute(
-    "Default",
-    "{*url}",
-    new { controller = "Default", action = "PageRequest" }
+    &quot;Default&quot;,
+    &quot;{*url}&quot;,
+    new { controller = &quot;Default&quot;, action = &quot;PageRequest&quot; }
 );
 </code></pre>
-
 <p>This post has been quite derivative of other works but it took me a fair amount of researching to get to this point! Maybe this will benefit someone else going down a similar windy path..</p>
+<p>###IRequiresSessionState</p>
+<p>Of particular note (and absent from the referenced forum answer) is the IRequiresSessionState implemented by STAThreadRouteHandler. This interface has no methods or properties but identifies the Handler as being one that requires that Session State be passed to it.. er, as the name implies! But without this, the Session property of the specified Controller will always be null. This took me quite a while to track down since - unless you know of this particular interface - it's fairly difficult information to track down! Or maybe I was just having a bad Google day.. :)</p>
+<p class="PostTime">Posted at 23:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/ASP.Net" title="3 Posts">ASP.Net</a></li><li><a href="/Archive/Tag/MVC" title="2 Posts">MVC</a></li></ul></div>
+            <p class="Comments">
+                <a href="/sta-apartmentstate-with-aspnet-mvc#disqus_thread" data-disqus-identifier="13">Comments</a>
+            </p>
+    </div>
 
-<h3>IRequiresSessionState</h3>
-
-<p>Of particular note (and absent from the referenced forum answer) is the IRequiresSessionState implemented by STAThreadRouteHandler. This interface has no methods or properties but identifies the Handler as being one that requires that Session State be passed to it.. er, as the name implies! But without this, the Session property of the specified Controller will always be null. This took me quite a while to track down since - unless you know of this particular interface - it's fairly difficult information to track down! Or maybe I was just having a bad Google day.. :)</p><p class="PostTime">Posted at 23:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/ASP.Net" title="3 Posts">ASP.Net</a></li><li><a href="/Archive/Tag/MVC" title="2 Posts">MVC</a></li></ul></div>
-			<p class="Comments">
-				<a href="/sta-apartmentstate-with-aspnet-mvc#disqus_thread" data-disqus-identifier="13">Comments</a>
-			</p>
-	</div>
-
-	<script type="text/javascript">
-					(function () {
-						var s = document.createElement("script");
-						s.type = "text/javascript";
-						s.async = true;
-						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
-						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
-					} ());
-	</script>
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -514,17 +424,16 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

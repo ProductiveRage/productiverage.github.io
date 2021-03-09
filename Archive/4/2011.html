@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -41,83 +40,69 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">25 April 2011</h3><h2><a id="Post5"></a><a href="/teaching-automapper-about-verbose-constructors">Teaching AutoMapper about "verbose constructors"</a></h2>
-
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">25 April 2011</h3><h2><a id="teaching-automapper-about-verbose-constructors" href="/teaching-automapper-about-verbose-constructors">Teaching AutoMapper about &quot;verbose constructors&quot;</a></h2>
 <p>As I alluded to in an earlier post (<a href="/the-joys-of-automapper">The joys of AutoMapper</a>), I've been wanting to look into a way to get AutoMapper to work with these once-instantiated / always-valid / verbose-constructor classes I'm such a fan of. As I'd hoped, it's actually not that big of a deal and I've put together a demo project:</p>
-
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1</a></p>
-
 <p>There's an example in that download (and at the bottom of this post) if curiousity gets the better of you but I'm going to step through an outline of the solution here.</p>
-
-<p>Before we get going, it's worth noting that I'm hoping to expand on this solution and improve it in a number of areas - to make life easier if you're starting with this post, I've tagged the repository as "FirstImplementation" in its current state, so for the solution in its current form (as I'm about to describe), it may be best to download it from here:</p>
-
+<p>Before we get going, it's worth noting that I'm hoping to expand on this solution and improve it in a number of areas - to make life easier if you're starting with this post, I've tagged the repository as &quot;FirstImplementation&quot; in its current state, so for the solution in its current form (as I'm about to describe), it may be best to download it from here:</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a></p>
-
 <h3>The Plan</h3>
-
 <ol>
 <li>Take two Types - srcType and destType - and consider every constructor in destType..</li>
-<li>For each argument in the constructor, try to find a property in srcType that can be used as the value for that argument
-
+<li>For each argument in the constructor, try to find a property in srcType that can be used as the value for that argument</li>
+</ol>
 <ul>
 <li>That property must meet name-matching criteria</li>
 <li>Its value must be mappable to the constructor argument's type</li>
-</ul></li>
+</ul>
+<ol>
 <li>If multiple destType constructors can be callled using srcType's data, the most appropriate one must be selected</li>
-<li>The ConstructorInfo reference and a list of "Property Getters" are handed off to a "Type Converter" class that now has all of the necessary information to create a new instance of destType given a srcType reference
-
-<ul>
-<li>A "Property Getter" is an object that can retrieve the value of a specified PropertyInfo from a srcType instance and cast that value to a particular type (ie. the type that the destType constructor argument requires)</li>
-</ul></li>
-<li>This "Type Converter" will expose a Convert method that accepts a srcType reference and returns a new destType instance - we can pass this as a Func&lt;srcType, destType&gt; to an AutoMapper ConstructUsing method call and we're all done!</li>
+<li>The ConstructorInfo reference and a list of &quot;Property Getters&quot; are handed off to a &quot;Type Converter&quot; class that now has all of the necessary information to create a new instance of destType given a srcType reference</li>
 </ol>
-
+<ul>
+<li>A &quot;Property Getter&quot; is an object that can retrieve the value of a specified PropertyInfo from a srcType instance and cast that value to a particular type (ie. the type that the destType constructor argument requires)</li>
+</ul>
+<ol>
+<li>This &quot;Type Converter&quot; will expose a Convert method that accepts a srcType reference and returns a new destType instance - we can pass this as a Func&lt;srcType, destType&gt; to an AutoMapper ConstructUsing method call and we're all done!</li>
+</ol>
 <h3>The Players</h3>
-
 <p>There's a class that tries to locate a property on srcType which can be used as a particular constructor argument:</p>
-
 <pre><code>public interface IPropertyGetterFactory
 {
     IPropertyGetter Get(Type srcType, string propertyName, Type destPropertyType);
 }
 </code></pre>
-
-<p>The IPropertyGetterFactory implementation will apply the name-matching criteria - it will compare "propertyName" to the actual names of properties on srcType - so it will have access to:</p>
-
+<p>The IPropertyGetterFactory implementation will apply the name-matching criteria - it will compare &quot;propertyName&quot; to the actual names of properties on srcType - so it will have access to:</p>
 <pre><code>public interface INameMatcher
 {
     bool IsMatch(string from, string to);
 }
 </code></pre>
-
 <p>If the IPropertyGetterFactory manages to find a property name / type match it return an IPropertyGetter:</p>
-
 <pre><code>public interface IPropertyGetter
 {
     Type SrcType { get; }
@@ -126,17 +111,13 @@
     object GetValue(object src);
 }
 </code></pre>
-
 <p>We have a class which considers all of the constructors of destType and tries to match up their argument names to srcType properties using an IPropertyGetterFactory:</p>
-
 <pre><code>public interface ITypeConverterByConstructorFactory
 {
     ITypeConverterByConstructor&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
 }
 </code></pre>
-
 <p>If ITypeConverterByConstructorFactory is able to find destType constructors whose arguments can be fully populated by srcType data, it returns:</p>
-
 <pre><code>public interface ITypeConverterByConstructor&lt;TSource, TDest&gt;
 {
     TDest Convert(TSource src);
@@ -144,9 +125,7 @@
     IEnumerable&lt;PropertyInfo&gt; SrcProperties { get; }
 }
 </code></pre>
-
 <p>The ITypeConverterByConstructor may make use of an IConstructorInvoker implementation which handles the passing of the arguments to the constructor to create the new destType instance.</p>
-
 <pre><code>public interface IConstructorInvokerFactory
 {
     IConstructorInvoker&lt;T&gt; Get&lt;T&gt;(ConstructorInfo constructor);
@@ -157,9 +136,7 @@ public interface IConstructorInvoker&lt;TDest&gt;
     TDest Invoke(object[] args);
 }
 </code></pre>
-
 <p>For the cases where multiple destType constructors where available, a way to decide which is best is required (in most cases, we'll probably be interested in the constructor which has the most arguments, but there might be special cases):</p>
-
 <pre><code>public interface ITypeConverterPrioritiserFactory
 {
     ITypeConverterPrioritiser&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
@@ -170,37 +147,27 @@ public interface ITypeConverterPrioritiser&lt;TSource, TDest&gt;
     ITypeConverterByConstructor&lt;TSource, TDest&gt; Get(IEnumerable&lt;ITypeConverterByConstructor&lt;TSource, TDest&gt;&gt; options);
 }
 </code></pre>
-
-<p>Some of the key elements - ITypeConverterByConstructor, IConstructorInvoker, ITypeConverterPrioritiser - have generic typeparams specified but the ITypeConverterByConstructorFactory that prepares the ITypeConverterByConstructor does not; I wanted to be able to use one ITypeConverterByConstructorFactory instance to prepare converters for various combinations of srcType, destType. This is why these key elements have factory interfaces to instantiate them - the factory class will have no typeparam specification but will create "worker" classes that do. IPropertyGetter is an exception to this pattern as I was expecting to have to have to maintain a list of them in each ITypeConverterByConstructor and so they would have to at least share a interface without typeparams.</p>
-
+<p>Some of the key elements - ITypeConverterByConstructor, IConstructorInvoker, ITypeConverterPrioritiser - have generic typeparams specified but the ITypeConverterByConstructorFactory that prepares the ITypeConverterByConstructor does not; I wanted to be able to use one ITypeConverterByConstructorFactory instance to prepare converters for various combinations of srcType, destType. This is why these key elements have factory interfaces to instantiate them - the factory class will have no typeparam specification but will create &quot;worker&quot; classes that do. IPropertyGetter is an exception to this pattern as I was expecting to have to have to maintain a list of them in each ITypeConverterByConstructor and so they would have to at least share a interface without typeparams.</p>
 <h3>The Plan - Re-written</h3>
-
 <ol>
 <li>Pass srcType and destType to an ITypeConverterByConstructorFactory and call Get, this will consider each of destType's constructors and determine which can have its arguments specified with data from srcType's properties by..</li>
-<li>Calling Get on an IPropertyGetterFactory for each argument name and type, passing the srcType
-
+<li>Calling Get on an IPropertyGetterFactory for each argument name and type, passing the srcType</li>
+</ol>
 <ul>
 <li>IPropertyGetterFactory will use an INameMatcher to compare property names to the specified argument name</li>
 <li>IPropertyGetterFactory will use its own judgement to determine whether the property mapping is valid (eg. the AutoMapperEnabledPropertyGetterFactory will allow properties whose type can be converted as required by AutoMapper)</li>
-</ul></li>
+</ul>
+<ol>
 <li>The ITypeConverterByConstructorFactory may now have multiple ITypeConverterByConstructor instances (each will represent a ConstructorInfo and contain IPropertyGetters to retrieve data from the srcType to satisfy all of the constructor's arguments), it will use an ITypeConverterPrioritiser to pick the best one</li>
 <li>This ITypeConverterByConstructor&lt;srcType, destType&gt; has a method Convert which returns a new destType instance given a srcType reference - success! This allows us to hook up AutoMapper with CreateMap and ConstructUsing.</li>
 </ol>
-
 <h3>The implementation</h3>
-
 <p>These interfaces and corresponding classes can all be found in the GitHub repository and hopefully it will make a reasonable amount of sense now that everything's been outlined here. With a basic knowledge of reflection and AutoMapper hopefully the code won't be too difficult to read through and there are examples both in the solution itself and in the Readme.</p>
-
 <p>Again, there is a repository branch that only covers what's discussed here and not all the following work I'm planning for it:</p>
-
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a></p>
-
 <h3>And now?</h3>
-
 <p>I'm happy I've solved the initial case I set out to, but it seems now like AutoMapper needn't be as key as I was first envisaging! For cases where the types don't all match up into nice assignable-to conversions, AutoMapper definitely comes in handy - but one class of cases I'd like to use this for would be converting from (asmx) webservice interface objects (where all properties have loose getters and setters) to a validated-by-constructor class. Most of the time the property types would match and wouldn't need AutoMapper. And then maybe the conversion could be compiled using IL generation or Linq Expressions so that it would be as fast as hand-written code, just without the opportunity for typos.. Intriguing!</p>
-
 <h3>Example</h3>
-
 <pre><code>// Get a no-frills, run-of-the-mill AutoMapper Configuration reference..
 var mapperConfig = new Configuration(
     new TypeMapFactory(),
@@ -224,7 +191,7 @@ var translatorFactory = new SimpleTypeConverterByConstructorFactory(
 );
 var translator = translatorFactory.Get&lt;SourceType, ConstructorDestType&gt;();
 if (translator == null)
-    throw new Exception("Unable to obtain a mapping");
+    throw new Exception(&quot;Unable to obtain a mapping&quot;);
 
 // Make our translation available to the AutoMapper configuration
 mapperConfig.CreateMap&lt;SourceType, ConstructorDestType&gt;().ConstructUsing(translator.Convert);
@@ -233,11 +200,11 @@ mapperConfig.CreateMap&lt;SourceType, ConstructorDestType&gt;().ConstructUsing(t
 var dest = (new MappingEngine(mapperConfig)).Map&lt;SourceType, ConstructorDestType&gt;(
     new SourceType()
     {
-        Value = new SourceType.Sub1() { Name = "Test1" },
+        Value = new SourceType.Sub1() { Name = &quot;Test1&quot; },
         ValueList = new[]
         {
-            new SourceType.Sub1() { Name = "Test2" },
-            new SourceType.Sub1() { Name = "Test3" }
+            new SourceType.Sub1() { Name = &quot;Test2&quot; },
+            new SourceType.Sub1() { Name = &quot;Test3&quot; }
         },
         ValueEnum = SourceType.Sub2.EnumValue2
     }
@@ -270,11 +237,11 @@ public class ConstructorDestType
     public ConstructorDestType(Sub1 value, IEnumerable&lt;Sub1&gt; valueList, Sub2 valueEnum)
     {
         if (value == null)
-            throw new ArgumentNullException("value");
+            throw new ArgumentNullException(&quot;value&quot;);
         if (valueList == null)
-            throw new ArgumentNullException("valueList");
+            throw new ArgumentNullException(&quot;valueList&quot;);
         if (!Enum.IsDefined(typeof(Sub2), valueEnum))
-            throw new ArgumentOutOfRangeException("valueEnum");
+            throw new ArgumentOutOfRangeException(&quot;valueEnum&quot;);
         _value = value;
         _valueList = valueList;
         _valueEnum = valueEnum;
@@ -296,42 +263,38 @@ public class ConstructorDestType
         EnumValue3
     }
 }
-</code></pre><p class="PostTime">Posted at 17:58</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/AutoMapper" title="8 Posts">AutoMapper</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
-			<p class="Comments">
-				<a href="/teaching-automapper-about-verbose-constructors#disqus_thread" data-disqus-identifier="5">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">20 April 2011</h3><h2><a id="Post4"></a><a href="/visual-studio-express-the-cheats">Visual Studio Express - The Cheats!</a></h2>
+</code></pre>
+<p class="PostTime">Posted at 17:58</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/AutoMapper" title="8 Posts">AutoMapper</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+            <p class="Comments">
+                <a href="/teaching-automapper-about-verbose-constructors#disqus_thread" data-disqus-identifier="5">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">20 April 2011</h3><h2><a id="visual-studio-express-the-cheats" href="/visual-studio-express-the-cheats">Visual Studio Express - The Cheats!</a></h2>
+<p>Does it make me cheap that I use Visual Studio Express at home instead of paying hundreds of pounds for some full version? I hope not! :) I mean, isn't that why Microsoft released them, so that us hobby coders (&quot;work&quot; code by day, &quot;hobby&quot; code by evening!) can enjoy their tools??</p>
+<p>There have been a couple of restrictions which I'd taken for granted as part of the &quot;Express&quot; package that had been bugging me.. until recently.</p>
+<p>The first is very straight-forward: Visual Studio 2010's menu options weren't consistent with 2008 and me hitting [ALT]-[B]-[U] wasn't building my project, I had to go [ALT]-[D]-[B], via the &quot;Debug&quot; menu. Ok, it's still F6 to go direct.. But that's only because Express users would apparently prefer &quot;Basic Settings&quot; - this is an easy one; go through Tools / Settings / Expert Settings and now everything feels much more familiar. Hurrah!</p>
+<p>Visual Studio 2008 - if I hit F6 to &quot;build&quot; the solution, it builds to the Release folder, using Release settings. If I hit F5 to &quot;Start debugging&quot;, it builds the project (before executing it) to the Debug folder, using Debug settings. So maybe that's just how Express work..</p>
+<p>Except it's not! Click Tools / Customize, choose the Commands tab and drag the &quot;Solution Configuration&quot; command from the Build menu onto one of the toolbars in Visual Studio. Now you can choose either Debug or Build before you build the solution (or any other configurations you've created in Configuration Manager).</p>
+<p>Having said that, there are still a few things that are lacking that I bump into from time to time; there's no Threads window which you can use when pausing execution, there's no Quick Watch option which can be annoying when you're poking at deep-hierarchy objects in the debugger and - weirdly - the &quot;Open Folder in Windows Explorer&quot; is absent from the context menu in the Solution Explorer. But all in all I can't help but be impressed by Express products - and even more so with these tweaks applied!</p>
+<p class="PostTime">Posted at 20:26</p>
+            <p class="Comments">
+                <a href="/visual-studio-express-the-cheats#disqus_thread" data-disqus-identifier="4">Comments</a>
+            </p>
+    </div>
 
-<p>Does it make me cheap that I use Visual Studio Express at home instead of paying hundreds of pounds for some full version? I hope not! :) I mean, isn't that why Microsoft released them, so that us hobby coders ("work" code by day, "hobby" code by evening!) can enjoy their tools??</p>
-
-<p>There have been a couple of restrictions which I'd taken for granted as part of the "Express" package that had been bugging me.. until recently.</p>
-
-<p>The first is very straight-forward: Visual Studio 2010's menu options weren't consistent with 2008 and me hitting [ALT]-[B]-[U] wasn't building my project, I had to go [ALT]-[D]-[B], via the "Debug" menu. Ok, it's still F6 to go direct.. But that's only because Express users would apparently prefer "Basic Settings" - this is an easy one; go through Tools / Settings / Expert Settings and now everything feels much more familiar. Hurrah!</p>
-
-<p>Visual Studio 2008 - if I hit F6 to "build" the solution, it builds to the Release folder, using Release settings. If I hit F5 to "Start debugging", it builds the project (before executing it) to the Debug folder, using Debug settings. So maybe that's just how Express work..</p>
-
-<p>Except it's not! Click Tools / Customize, choose the Commands tab and drag the "Solution Configuration" command from the Build menu onto one of the toolbars in Visual Studio. Now you can choose either Debug or Build before you build the solution (or any other configurations you've created in Configuration Manager).</p>
-
-<p>Having said that, there are still a few things that are lacking that I bump into from time to time; there's no Threads window which you can use when pausing execution, there's no Quick Watch option which can be annoying when you're poking at deep-hierarchy objects in the debugger and - weirdly - the "Open Folder in Windows Explorer" is absent from the context menu in the Solution Explorer. But all in all I can't help but be impressed by Express products - and even more so with these tweaks applied!</p><p class="PostTime">Posted at 20:26</p>
-			<p class="Comments">
-				<a href="/visual-studio-express-the-cheats#disqus_thread" data-disqus-identifier="4">Comments</a>
-			</p>
-	</div>
-
-	<script type="text/javascript">
-					(function () {
-						var s = document.createElement("script");
-						s.type = "text/javascript";
-						s.async = true;
-						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
-						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
-					} ());
-	</script>
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -341,17 +304,16 @@ public class ConstructorDestType
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>

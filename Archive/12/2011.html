@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -41,43 +40,37 @@
 
 	<div class="WrapperOuter">
 		<div class="Wrapper">
-
 			<div class="Main HasSideBar">
 				
 
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
 
-		<script type="text/javascript">
-					var disqus_shortname = "productiverage";
-					function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
-						if (fncConditional()) { fncAction(); return; }
-						setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
-					}
-					function whenjQueryIsAvailable(fncAction) {
-					    executeWhen(
-							fncAction,
-							function () { return (typeof ($) !== "undefined") },
-							10
-						);
-					}
-					(function () {
-					    whenjQueryIsAvailable(
-							function () { $("div.Content p.Comments").show(); }
-						);
-					}());
-		</script>
-
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">27 December 2011</h3><h2><a id="Post17"></a><a href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></h2>
-
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">27 December 2011</h3><h2><a id="dynamically-applying-interfaces-to-objects-part-3" href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></h2>
 <p>In this final part of this mini series there are two enhancements I want to add:</p>
-
 <ol>
 <li>For cases where the same interface may be applied to multiple objects, I want to replace the WrapObject method (which applies the interface to a single reference) with a GenerateInterfaceApplier method which returns an object that applies a specified interface to any given reference but only generating the IL once</li>
 <li>The ability to recursively wrap returned data</li>
 </ol>
-
 <p>eg. be able to apply ITest to the ExampleObject reference:</p>
-
 <pre><code>public interface ITest
 {
     IEmployee Get(int id);
@@ -94,8 +87,8 @@ public class ExampleObject
     public object Get(int id)
     {
         if (id != 1)
-            throw new ArgumentException("Only id value 1 is supported");
-        return new Person(1, "Ted");
+            throw new ArgumentException(&quot;Only id value 1 is supported&quot;);
+        return new Person(1, &quot;Ted&quot;);
     }
 
     public class Person
@@ -103,7 +96,7 @@ public class ExampleObject
         public Person(int id, string name)
         {
             if (string.IsNullOrEmpty(name))
-                throw new ArgumentException("Null/blank name specified");
+                throw new ArgumentException(&quot;Null/blank name specified&quot;);
             Id = id;
             Name = name.Trim();
         }
@@ -112,11 +105,8 @@ public class ExampleObject
     }
 }
 </code></pre>
-
 <h3>Task 1: The IInterfaceApplier class</h3>
-
 <p>The first part is fairly straight-forward so I'll jump straight in -</p>
-
 <pre><code>public class InterfaceApplierFactory : IInterfaceApplierFactory
 {
     private string _assemblyName;
@@ -124,11 +114,11 @@ public class ExampleObject
     private Lazy&lt;ModuleBuilder&gt; _moduleBuilder;
     public InterfaceApplierFactory(string assemblyName, ComVisibility comVisibilityOfClasses)
     {
-        assemblyName = (assemblyName ?? "").Trim();
-        if (assemblyName == "")
-            throw new ArgumentException("Null or empty assemblyName specified");
+        assemblyName = (assemblyName ?? &quot;&quot;).Trim();
+        if (assemblyName == &quot;&quot;)
+            throw new ArgumentException(&quot;Null or empty assemblyName specified&quot;);
         if (!Enum.IsDefined(typeof(ComVisibility), comVisibilityOfClasses))
-            throw new ArgumentOutOfRangeException("comVisibilityOfClasses");
+            throw new ArgumentOutOfRangeException(&quot;comVisibilityOfClasses&quot;);
 
         _assemblyName = assemblyName;
         _createComVisibleClasses = (comVisibilityOfClasses == ComVisibility.Visible);
@@ -157,9 +147,9 @@ public class ExampleObject
     public IInterfaceApplier&lt;T&gt; GenerateInterfaceApplier&lt;T&gt;()
     {
         if (!typeof(T).IsInterface)
-            throw new ArgumentException("typeparam must be an interface type");
+            throw new ArgumentException(&quot;typeparam must be an interface type&quot;);
 
-        var typeName = "InterfaceApplier" + Guid.NewGuid().ToString("N");
+        var typeName = &quot;InterfaceApplier&quot; + Guid.NewGuid().ToString(&quot;N&quot;);
         var typeBuilder = _moduleBuilder.Value.DefineType(
             typeName,
             TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.AutoClass |
@@ -182,7 +172,7 @@ public class ExampleObject
 
     public IInterfaceApplier GenerateInterfaceApplier(Type targetType)
     {
-        var generate = this.GetType().GetMethod("GenerateInterfaceApplier", Type.EmptyTypes);
+        var generate = this.GetType().GetMethod(&quot;GenerateInterfaceApplier&quot;, Type.EmptyTypes);
         var generateGeneric = generate.MakeGenericMethod(targetType);
         return (IInterfaceApplier)generateGeneric.Invoke(this, new object[0]);
     }
@@ -193,9 +183,9 @@ public class ExampleObject
         public InterfaceApplier(Func&lt;object, T&gt; conversion)
         {
             if (!typeof(T).IsInterface)
-                throw new ArgumentException("Invalid typeparam - must be an interface");
+                throw new ArgumentException(&quot;Invalid typeparam - must be an interface&quot;);
             if (conversion == null)
-                throw new ArgumentNullException("conversion");
+                throw new ArgumentNullException(&quot;conversion&quot;);
             _conversion = conversion;
         }
 
@@ -233,35 +223,25 @@ public interface IInterfaceApplier
     object Apply(object src);
 }
 </code></pre>
-
-<p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an "IInterfaceApplier" is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
-
+<p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an &quot;IInterfaceApplier&quot; is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
 <p>I've also supported an alternative method signature for GenerateInterfaceApplier such that the target interface can be specified as an argument rather than a typeparam to a generic method - this will become important in the next section and the only interesting things to note are how IInterfaceApplier&lt;T&gt; is returned from the generic method as opposed to the IInterfaceApplier returned from the typeparam-less signature and how the alternate method calls into the typeparam'd version using reflection.</p>
-
 <h3>Task 2: Recursively applying interfaces</h3>
-
 <p>The approach I'm going to use here is to introduce a new interface that will be used when generating the interface appliers -</p>
-
 <pre><code>public interface IReadValueConverter
 {
     object Convert(PropertyInfo property, object value);
     object Convert(MethodInfo method, object value);
 }
 </code></pre>
-
 <p>Values will be passed through this when returned by property getters or (non-void) methods and it wil be responsible for ensuring that the value returned from the Convert method matches the property.PropertyType / method.ReturnType.</p>
-
 <p>This will mean we'll change the method signature to:</p>
-
 <pre><code>public InterfaceApplier&lt;T&gt; GenerateInterfaceApplier&lt;T&gt;(IReadValueConverter readValueConverter)
 </code></pre>
-
 <p>That we'll change the constructor on the generated type:</p>
-
 <pre><code>// Declare private fields
-var srcField = typeBuilder.DefineField("_src", typeof(object), FieldAttributes.Private);
+var srcField = typeBuilder.DefineField(&quot;_src&quot;, typeof(object), FieldAttributes.Private);
 var readValueConverterField = typeBuilder.DefineField(
-    "_readValueConverter",
+    &quot;_readValueConverter&quot;,
     typeof(IReadValueConverter),
     FieldAttributes.Private
 );
@@ -280,7 +260,7 @@ ilCtor.Emit(OpCodes.Call, typeBuilder.BaseType.GetConstructor(Type.EmptyTypes));
 var nonNullSrcArgumentLabel = ilCtor.DefineLabel();
 ilCtor.Emit(OpCodes.Ldarg_1);
 ilCtor.Emit(OpCodes.Brtrue, nonNullSrcArgumentLabel);
-ilCtor.Emit(OpCodes.Ldstr, "src");
+ilCtor.Emit(OpCodes.Ldstr, &quot;src&quot;);
 ilCtor.Emit(
     OpCodes.Newobj,
     typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) })
@@ -292,7 +272,7 @@ ilCtor.MarkLabel(nonNullSrcArgumentLabel);
 var nonNullReadValueConverterArgumentLabel = ilCtor.DefineLabel();
 ilCtor.Emit(OpCodes.Ldarg_2);
 ilCtor.Emit(OpCodes.Brtrue, nonNullReadValueConverterArgumentLabel);
-ilCtor.Emit(OpCodes.Ldstr, "readValueConverter");
+ilCtor.Emit(OpCodes.Ldstr, &quot;readValueConverter&quot;);
 ilCtor.Emit(
     OpCodes.Newobj,
     typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) })
@@ -313,14 +293,12 @@ ilCtor.Emit(OpCodes.Stfld, readValueConverterField);
 // All done
 ilCtor.Emit(OpCodes.Ret);
 </code></pre>
-
 <p>That we'll change the reading of properties:</p>
-
 <pre><code>// Define get method, if required
 if (property.CanRead)
 {
     var getFuncBuilder = typeBuilder.DefineMethod(
-        "get_" + property.Name,
+        &quot;get_&quot; + property.Name,
         MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot |
         MethodAttributes.SpecialName | MethodAttributes.Virtual | MethodAttributes.Final,
         property.PropertyType,
@@ -337,16 +315,16 @@ if (property.CanRead)
     ilGetFunc.Emit(OpCodes.Ldtoken, property.DeclaringType);
     ilGetFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetTypeFromHandle", new[] { typeof(RuntimeTypeHandle) })
+        typeof(Type).GetMethod(&quot;GetTypeFromHandle&quot;, new[] { typeof(RuntimeTypeHandle) })
     );
     ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilGetFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetProperty", new[] { typeof(string) })
+        typeof(Type).GetMethod(&quot;GetProperty&quot;, new[] { typeof(string) })
     );
     ilGetFunc.Emit(OpCodes.Ldarg_0);
     ilGetFunc.Emit(OpCodes.Ldfld, srcField);
-    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
     ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilGetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.GetProperty);
     ilGetFunc.Emit(OpCodes.Ldnull);
@@ -357,7 +335,7 @@ if (property.CanRead)
     ilGetFunc.Emit(
         OpCodes.Callvirt,
         typeof(IReadValueConverter).GetMethod(
-            "Convert",
+            &quot;Convert&quot;,
             new[] { typeof(PropertyInfo), typeof(object) }
         )
     );
@@ -367,9 +345,7 @@ if (property.CanRead)
     propBuilder.SetGetMethod(getFuncBuilder);
 }
 </code></pre>
-
 <p>And that we'll change the calling of methods:</p>
-
 <pre><code>// .. skipped out the first half of the method-generating code
 // - see http://www.productiverage.com/Read/15
 
@@ -413,18 +389,18 @@ if (!method.ReturnType.Equals(typeof(void)))
     ilFunc.Emit(OpCodes.Ldtoken, method.DeclaringType);
     ilFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetTypeFromHandle", new[] { typeof(RuntimeTypeHandle) })
+        typeof(Type).GetMethod(&quot;GetTypeFromHandle&quot;, new[] { typeof(RuntimeTypeHandle) })
     );
     ilFunc.Emit(OpCodes.Ldstr, method.Name);
     ilFunc.Emit(OpCodes.Ldloc_1);
     ilFunc.Emit(
         OpCodes.Call,
-        typeof(Type).GetMethod("GetMethod", new[] { typeof(string), typeof(Type[]) })
+        typeof(Type).GetMethod(&quot;GetMethod&quot;, new[] { typeof(string), typeof(Type[]) })
     );
 }
 ilFunc.Emit(OpCodes.Ldarg_0);
 ilFunc.Emit(OpCodes.Ldfld, srcField);
-ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
 ilFunc.Emit(OpCodes.Ldstr, method.Name);
 ilFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.InvokeMethod);
 ilFunc.Emit(OpCodes.Ldnull);
@@ -435,54 +411,51 @@ ilFunc.Emit(OpCodes.Callvirt, methodInfoInvokeMember);
 
 if (method.ReturnType.Equals(typeof(void)))
     ilFunc.Emit(OpCodes.Pop);
-else 
+else
 {
     ilFunc.Emit(
         OpCodes.Callvirt,
         typeof(IReadValueConverter).GetMethod(
-            "Convert",
+            &quot;Convert&quot;,
             new[] { typeof(MethodInfo), typeof(object) }
         )
     );
-    if (method.ReturnType.IsValueType) 
+    if (method.ReturnType.IsValueType)
         ilFunc.Emit(OpCodes.Unbox_Any, method.ReturnType);
 }
 
 ilFunc.Emit(OpCodes.Ret);
 </code></pre>
-
 <h3>Task 2.1: Implementing IReadValueConverter</h3>
-
 <p>A naive implementation might be as follows:</p>
-
 <pre><code>public class SimpleReadValueConverter : IReadValueConverter
 {
     private IInterfaceApplierFactory _interfaceApplierFactory;
     public SimpleReadValueConverter(IInterfaceApplierFactory interfaceApplierFactory)
     {
         if (interfaceApplierFactory == null)
-            throw new ArgumentNullException("interfaceApplierFactory");
+            throw new ArgumentNullException(&quot;interfaceApplierFactory&quot;);
         _interfaceApplierFactory = interfaceApplierFactory;
     }
 
     public object Convert(PropertyInfo property, object value)
     {
         if (property == null)
-            throw new ArgumentNullException("property");
+            throw new ArgumentNullException(&quot;property&quot;);
         return tryToConvertValueIfRequired(property.PropertyType, value);
     }
 
     public object Convert(MethodInfo method, object value)
     {
         if (method == null)
-            throw new ArgumentNullException("method");
+            throw new ArgumentNullException(&quot;method&quot;);
         return tryToConvertValueIfRequired(method.ReturnType, value);
     }
 
     private object tryToConvertValueIfRequired(Type targetType, object value)
     {
         if (targetType == null)
-            throw new ArgumentNullException("targetType");
+            throw new ArgumentNullException(&quot;targetType&quot;);
 
         // If no conversion is required, no work to do
         // - Note: We can only deal with applying interfaces to objects so if a conversion
@@ -499,9 +472,7 @@ ilFunc.Emit(OpCodes.Ret);
     }
 }
 </code></pre>
-
 <p>This will do the job but it jumps out at me that if the same interface needs to be applied to multiple return values (ie. from different properties or methods) then the work done to generate that interface applier will be repeated for each request. It might be better (require less memory and cpu resources) to build up a list of interfaces that have already been handled and re-use the interface appliers where possible -</p>
-
 <pre><code>public class CachedReadValueConverter : IReadValueConverter
 {
     private IInterfaceApplierFactory _interfaceApplierFactory;
@@ -511,7 +482,7 @@ ilFunc.Emit(OpCodes.Ret);
     public CachedReadValueConverter(IInterfaceApplierFactory interfaceApplierFactory)
     {
         if (interfaceApplierFactory == null)
-            throw new ArgumentNullException("interfaceApplierFactory");
+            throw new ArgumentNullException(&quot;interfaceApplierFactory&quot;);
 
         _interfaceApplierFactory = interfaceApplierFactory;
         _interfaceAppliers = new NonNullImmutableList&lt;IInterfaceApplier&gt;();
@@ -521,7 +492,7 @@ ilFunc.Emit(OpCodes.Ret);
     public object Convert(PropertyInfo property, object value)
     {
         if (property == null)
-            throw new ArgumentNullException("property");
+            throw new ArgumentNullException(&quot;property&quot;);
 
         return tryToConvertValueIfRequired(property.PropertyType, value);
     }
@@ -529,7 +500,7 @@ ilFunc.Emit(OpCodes.Ret);
     public object Convert(MethodInfo method, object value)
     {
         if (method == null)
-            throw new ArgumentNullException("method");
+            throw new ArgumentNullException(&quot;method&quot;);
 
         return tryToConvertValueIfRequired(method.ReturnType, value);
     }
@@ -537,7 +508,7 @@ ilFunc.Emit(OpCodes.Ret);
     private object tryToConvertValueIfRequired(Type targetType, object value)
     {
         if (targetType == null)
-            throw new ArgumentNullException("targetType");
+            throw new ArgumentNullException(&quot;targetType&quot;);
 
         // If no conversion is required, no work to do
         // - Note: We can only deal with applying interfaces to objects so if a conversion
@@ -570,9 +541,7 @@ ilFunc.Emit(OpCodes.Ret);
     }
 }
 </code></pre>
-
 <p>There will still be cases where there have to be multiple interface appliers for a given interface if there are interrelated references but this should limit how many duplicates are generated. For example:</p>
-
 <pre><code>using COMInteraction.InterfaceApplication;
 using COMInteraction.InterfaceApplication.ReadValueConverters;
 
@@ -582,16 +551,16 @@ namespace Tester
     {
         static void Main(string[] args)
         {
-            var n1 = new Node() { Name = "Node1" };
-            var n2 = new Node() { Name = "Node2" };
-            var n3 = new Node() { Name = "Node3" };
+            var n1 = new Node() { Name = &quot;Node1&quot; };
+            var n2 = new Node() { Name = &quot;Node2&quot; };
+            var n3 = new Node() { Name = &quot;Node3&quot; };
             n1.Next = n2;
             n2.Previous = n1;
             n2.Next = n3;
             n3.Previous = n2;
 
             var interfaceApplierFactory = new InterfaceApplierFactory(
-                "DynamicAssembly",
+                &quot;DynamicAssembly&quot;,
                 InterfaceApplierFactory.ComVisibility.NotVisible
             );
             var interfaceApplier = interfaceApplierFactory.GenerateInterfaceApplier&lt;INode&gt;(
@@ -617,19 +586,13 @@ namespace Tester
     }
 }
 </code></pre>
-
-<p>Each unique interface applier has a specific class name (of the form "InterfaceApplier{0}" where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one "wasted" generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
-
-<h3>"Inaccessible Interface"</h3>
-
+<p>Each unique interface applier has a specific class name (of the form &quot;InterfaceApplier{0}&quot; where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one &quot;wasted&quot; generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
+<h3>&quot;Inaccessible Interface&quot;</h3>
 <p>In the above example, the INode interface has to be located outside of the Program class since it must be accessible by the InterfaceApplierFactory and the Program class is private. This isn't an issue for the Node class as the InterfaceApplierFactory doesn't need direct access to that, it just returns an IInterfaceApplier that we pass the n2 reference to as an argument. Alternatively, the Program class could be made public. This isn't exactly rocket science but if it slips your mind then you're presented with an error such as -</p>
-
 <blockquote>
-  <p>TypeLoadException: "Type 'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8' from assembly 'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' is attempting to implement an inaccessible interface."</p>
+<p>TypeLoadException: &quot;Type 'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8' from assembly 'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' is attempting to implement an inaccessible interface.&quot;</p>
 </blockquote>
-
 <p>at the line</p>
-
 <pre><code>return new InterfaceApplier&lt;T&gt;(
     src =&gt; (T)Activator.CreateInstance(
         typeBuilder.CreateType(),
@@ -638,33 +601,28 @@ namespace Tester
     )
 );
 </code></pre>
-
-<p>in InterfaceApplierFactory, which isn't the friendliest of warnings!</p><p class="PostTime">Posted at 18:38</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
-			<p class="Comments">
-				<a href="/dynamically-applying-interfaces-to-objects-part-3#disqus_thread" data-disqus-identifier="17">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">14 December 2011</h3><h2><a id="Post16"></a><a href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></h2>
-
-<p>Today, I'm going to address some of the "future developments" I left at the end of the last post. Specifically:</p>
-
+<p>in InterfaceApplierFactory, which isn't the friendliest of warnings!</p>
+<p class="PostTime">Posted at 18:38</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+            <p class="Comments">
+                <a href="/dynamically-applying-interfaces-to-objects-part-3#disqus_thread" data-disqus-identifier="17">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">14 December 2011</h3><h2><a id="dynamically-applying-interfaces-to-objects-part-2" href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></h2>
+<p>Today, I'm going to address some of the &quot;future developments&quot; I left at the end of the last post. Specifically:</p>
 <ol>
-<li>Wrapping up the "Interface Applier" into a generic method that specifies the target interface</li>
+<li>Wrapping up the &quot;Interface Applier&quot; into a generic method that specifies the target interface</li>
 <li>Handling interface hierarchies</li>
 <li>Marking the wrapper as being ComVisible</li>
 </ol>
-
 <h3>Wrapping up in a method</h3>
-
-<p>Part one is easy. Take the code from the last article and wrap in </p>
-
+<p>Part one is easy. Take the code from the last article and wrap in</p>
 <pre><code>public static T WrapObject&lt;T&gt;(object src)
 {
     if (src == null)
-        throw new ArgumentNullException("src");
+        throw new ArgumentNullException(&quot;src&quot;);
     if (!typeof(T).IsInterface)
-        throw new ArgumentException("Typeparam T must be an interface type");
+        throw new ArgumentException(&quot;Typeparam T must be an interface type&quot;);
 
     // Insert existing code that generates the new class with its constructor, properties
     // and methods here..
@@ -675,13 +633,9 @@ namespace Tester
     );
 }
 </code></pre>
-
 <p>Ta-da! Note that we ensure that the typeparam T really <em>is</em> an interface - we made assumptions about this in the last article, so we need to assert this fact here. (It means that we only ever have to deal with properties and methods, and that they will always be public).</p>
-
 <h3>Handling interface hierarchies</h3>
-
 <p>This part is not much more difficult. We'll introduce something to recursively trawl through any interfaces that the target interface implements and build a list of them all:</p>
-
 <pre><code>public class InterfaceHierarchyCombiner
 {
     private Type _targetInterface;
@@ -689,9 +643,9 @@ namespace Tester
     public InterfaceHierarchyCombiner(Type targetInterface)
     {
         if (targetInterface == null)
-            throw new ArgumentNullException("targetInterface");
+            throw new ArgumentNullException(&quot;targetInterface&quot;);
         if (!targetInterface.IsInterface)
-            throw new ArgumentException("targetInterface must be an interface type", "targetInterface");
+            throw new ArgumentException(&quot;targetInterface must be an interface type&quot;, &quot;targetInterface&quot;);
 
         _interfaces = new List&lt;Type&gt;();
         buildInterfaceInheritanceList(targetInterface, _interfaces);
@@ -701,11 +655,11 @@ namespace Tester
     private static void buildInterfaceInheritanceList(Type targetInterface, List&lt;Type&gt; types)
     {
         if (targetInterface == null)
-            throw new ArgumentNullException("targetInterface");
+            throw new ArgumentNullException(&quot;targetInterface&quot;);
         if (!targetInterface.IsInterface)
-            throw new ArgumentException("targetInterface must be an interface type", "targetInterface");
+            throw new ArgumentException(&quot;targetInterface must be an interface type&quot;, &quot;targetInterface&quot;);
         if (types == null)
-            throw new ArgumentNullException("types");
+            throw new ArgumentNullException(&quot;types&quot;);
 
         if (!types.Contains(targetInterface))
             types.Add(targetInterface);
@@ -731,32 +685,22 @@ namespace Tester
     }
 }
 </code></pre>
-
 <p>Then, in this new WrapObject method, we call instantiate a new InterfaceHierarchyCombiner for the typeparam T and use retrieve <em>all</em> the properties and methods from the Interfaces list, rather than just those on T.</p>
-
 <p>eg. Instead of</p>
-
 <pre><code>foreach (var property in typeof(ITest).GetProperties())
 {
     // Deal with the properties..
 </code></pre>
-
 <p>we consider</p>
-
 <pre><code>var interfaces = (new InterfaceHierarchyCombiner(typeof(T))).Interfaces;
 foreach (var property in interfaces.SelectMany(i =&gt; i.GetProperties()))
 {
     // Deal with the properties..
 </code></pre>
-
 <p>and likewise for the methods.</p>
-
 <p>It's worth noting that there may be multiple methods within the interface hierarchy with the same name and signature. It may be worth keeping track of which properties / methods have had corresponding IL generated but - other than generating more instructions in the loop than strictly necessary - it doesn't do any harm generating duplicate properties or methods (so I haven't worried about it for now).</p>
-
 <h3>Com Visibility</h3>
-
 <p>What I wanted to do for the wrappers I was implementing was to create classes with the <strong>[ComVisible(true)]</strong> and <strong>[ClassInterface(ClassInterface.None)]</strong> attributes. This is achieved by specifying these attributes on the typeBuilder (as seen in the code in the last article):</p>
-
 <pre><code>typeBuilder.SetCustomAttribute(
     new CustomAttributeBuilder(
         typeof(ComVisibleAttribute).GetConstructor(new[] { typeof(bool) }),
@@ -770,15 +714,10 @@ typeBuilder.SetCustomAttribute(
     )
 );
 </code></pre>
-
 <p>Again, easy! Once you know how :)</p>
-
 <h3>Example code / jumping to the end</h3>
-
 <p>I've not included a complete sample here since it would take up a fairly hefty chunk of space but also because I created a GitHub repository with the final code. This can be found at <a href="https://github.com/ProductiveRage/COMInteraction">https://github.com/ProductiveRage/COMInteraction</a></p>
-
 <p>This includes the work here but also the work I want to address next time; a way to automagically wrap return values where required and a way to change the WrapObject method so that if the same interface is to be applied to multiple objects, only a single call is required (and an object be returned that can wrap any given reference in that interface). The example I put out for this return-value-wrapping was that we want to wrap an object in ITest and have the return value from its Get method <em>also</em> be wrapped if it did not already implement IEmployee:</p>
-
 <pre><code>public interface ITest
 {
     IEmployee Get(int id);
@@ -790,54 +729,43 @@ public interface IEmployee
     string Name { get; }
 }
 </code></pre>
-
-<p>For more details of how exactly this will all work, I'll see you back here; same bat-time, same bat-channel! :)</p><p class="PostTime">Posted at 21:16</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
-			<p class="Comments">
-				<a href="/dynamically-applying-interfaces-to-objects-part-2#disqus_thread" data-disqus-identifier="16">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">13 December 2011</h3><h2><a id="Post15"></a><a href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a></h2>
-
+<p>For more details of how exactly this will all work, I'll see you back here; same bat-time, same bat-channel! :)</p>
+<p class="PostTime">Posted at 21:16</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
+            <p class="Comments">
+                <a href="/dynamically-applying-interfaces-to-objects-part-2#disqus_thread" data-disqus-identifier="16">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">13 December 2011</h3><h2><a id="dynamically-applying-interfaces-to-objects" href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a></h2>
 <p>Another area of this migration proof-of-concept work I'm doing at the day job involves investigating the best way to swap out a load of COM components for C# versions over time. The plan initially is to define interfaces for them and code against those interfaces, write wrapper classes around the components that implement these interfaces and one day rewrite them one-by-one.</p>
-
 <p>Writing the interfaces is valuable since it enables some documentation-through-comments to be generated for each method and property and forces me to look into the idiosyncracies of the various components.</p>
-
-<p>However, writing endless wrappers for the components to "join" them to the interfaces sounded boring! Even if I used the .Net 4.0 "dynamic" keyword it seemed like there'd be a lot of repitition and opportunity for me to mistype a property name and not realise until debugging / writing tests. (Plus I found a problem that prevented me from using "dynamic" with the WSCs I was wrapping - see the bottom of this post for more details).</p>
-
+<p>However, writing endless wrappers for the components to &quot;join&quot; them to the interfaces sounded boring! Even if I used the .Net 4.0 &quot;dynamic&quot; keyword it seemed like there'd be a lot of repitition and opportunity for me to mistype a property name and not realise until debugging / writing tests. (Plus I found a problem that prevented me from using &quot;dynamic&quot; with the WSCs I was wrapping - see the bottom of this post for more details).</p>
 <p>I figured this is the sort of thing that should be dynamically generatable from the interfaces instead of writing them all by hand - something like how Moq can create generate Mock&lt;ITest&gt; implementations. I did most of this investigation back in Summer, not long after the AutoMapper work I was looking into, and had hoped I'd be able to leverage my sharpened Linq Expression dynamic code generation skills. Alas, it seems that new classes can not be defined in this manner so I had to go deeper..</p>
-
 <h3>Reflection.Emit</h3>
-
 <p>I was aware that IL could be generated by code at runtime and executed as any other other loaded assembly might be. I'd read (and chuckled at) this article in the past but never taken it any further: <a href="http://www.codeproject.com/Articles/19513/Dynamic-But-Fast-The-Tale-of-Three-Monkeys-A-Wolf">Dynamic... But Fast: The Tale of Three Monkeys, A Wolf and the DynamicMethod and ILGenerator Classes</a></p>
-
 <p>As I tried to find out more information, though, it seemed that a lot of articles would make the point that you could find out how to construct IL by using the IL Disassembler that's part of the .Net SDK: ildasm.exe (located in C:\Program Files\Microsoft SDKs\Windows\v7.0A\bin on my computer). This makes sense because once you start constructing simple classes and examining the generated code in ildasm you can start to get a reasonable idea for how to write the generation code yourself. But it <em>still</em> took me quite a while to get to the point where the following worked!</p>
-
 <p>What I really wanted was something to take, for example:</p>
-
 <pre><code>public interface ITest
 {
     int GetValue(string id);
     string Name { get; set; }
 }
 </code></pre>
-
 <p>and wrap an object that had that method and property such that the interface was exposed - eg.</p>
-
 <pre><code>public class TestWrapper : ITest
 {
   private object _src;
   public TestWrapper(object src)
   {
     if (src == null)
-      throw new ArgumentNullException("src");
+      throw new ArgumentNullException(&quot;src&quot;);
     _src = src;
   }
 
   public int GetValue(string id)
   {
     return _src.GetType().InvokeMember(
-      "GetValue",
+      &quot;GetValue&quot;,
       BindingFlags.InvokeMethod,
       null,
       _src,
@@ -849,24 +777,20 @@ public interface IEmployee
   {
     get
     {
-      return _src.GetType().InvokeMember("Name", BindingFlags.GetProperty, null, _src, null)
+      return _src.GetType().InvokeMember(&quot;Name&quot;, BindingFlags.GetProperty, null, _src, null)
     }
     set
     {
-      _src.GetType().InvokeMember("Name", BindingFlags.SetProperty, null, _src, new object[] { value });
+      _src.GetType().InvokeMember(&quot;Name&quot;, BindingFlags.SetProperty, null, _src, new object[] { value });
     }
   }
 }
 </code></pre>
-
 <p>It may seem like using reflection will result in there being overhead in the calls but the primary objective was to wrap a load of WSCs in C# interfaces so they could be rewritten later while doing the job for now - so performance wasn't really a massive concern at this point.</p>
-
 <h3>Somewhere to work in</h3>
-
 <p>The first thing to be aware of is that we can't create new classes in the current assembly, we'll have to create them in a new one. So we start off with</p>
-
 <pre><code>var assemblyBuilder = Thread.GetDomain().DefineDynamicAssembly(
-  new AssemblyName("DynamicAssembly"), // This is not a magic string, it can be called anything
+  new AssemblyName(&quot;DynamicAssembly&quot;), // This is not a magic string, it can be called anything
   AssemblyBuilderAccess.Run
 );
 var moduleBuilder = assemblyBuilder.DefineDynamicModule(
@@ -875,7 +799,7 @@ var moduleBuilder = assemblyBuilder.DefineDynamicModule(
 );
 
 // This NewGuid call is just to get a unique name for the new construct
-var typeName = "InterfaceApplier" + Guid.NewGuid().ToString();
+var typeName = &quot;InterfaceApplier&quot; + Guid.NewGuid().ToString();
 var typeBuilder = moduleBuilder.DefineType(
   typeName,
   TypeAttributes.Public
@@ -888,17 +812,12 @@ var typeBuilder = moduleBuilder.DefineType(
   new Type[] { typeof(ITest) }
 );
 </code></pre>
-
 <p>The TypeAttribute values I copied from the ildasm output I examined.</p>
-
-<p>Note that we're specifying ITest as the interface we're implementing by passing it as the "interfaces" parameter to the moduleBuilder's DefineType method.</p>
-
+<p>Note that we're specifying ITest as the interface we're implementing by passing it as the &quot;interfaces&quot; parameter to the moduleBuilder's DefineType method.</p>
 <h3>The Constructor</h3>
-
-<p>The constructor is fairly straight forward. The thing that took me longest to wrap my head around was how to form the "if (src == null) throw new ArgumentNullException()" construct. If seems that this is most easily done by declaring a label to jump to if src is <strong>not</strong> null which allows execution to leap over the point at which an ArgumentNullException will be raised.</p>
-
+<p>The constructor is fairly straight forward. The thing that took me longest to wrap my head around was how to form the &quot;if (src == null) throw new ArgumentNullException()&quot; construct. If seems that this is most easily done by declaring a label to jump to if src is <strong>not</strong> null which allows execution to leap over the point at which an ArgumentNullException will be raised.</p>
 <pre><code>// Declare private _src field
-var srcField = typeBuilder.DefineField("_src", typeof(object), FieldAttributes.Private);
+var srcField = typeBuilder.DefineField(&quot;_src&quot;, typeof(object), FieldAttributes.Private);
 var ctorBuilder = typeBuilder.DefineConstructor(
   MethodAttributes.Public,
   CallingConventions.Standard,
@@ -910,11 +829,11 @@ var ilCtor = ctorBuilder.GetILGenerator();
 ilCtor.Emit(OpCodes.Ldarg_0);
 ilCtor.Emit(OpCodes.Call, typeBuilder.BaseType.GetConstructor(Type.EmptyTypes));
 
-// Generate: if (src != null), don't throw new ArgumentException("src")
+// Generate: if (src != null), don't throw new ArgumentException(&quot;src&quot;)
 var nonNullSrcArgumentLabel = ilCtor.DefineLabel();
 ilCtor.Emit(OpCodes.Ldarg_1);
 ilCtor.Emit(OpCodes.Brtrue, nonNullSrcArgumentLabel);
-ilCtor.Emit(OpCodes.Ldstr, "src");
+ilCtor.Emit(OpCodes.Ldstr, &quot;src&quot;);
 ilCtor.Emit(OpCodes.Newobj, typeof(ArgumentNullException).GetConstructor(new[] { typeof(string) }));
 ilCtor.Emit(OpCodes.Throw);
 ilCtor.MarkLabel(nonNullSrcArgumentLabel);
@@ -927,15 +846,12 @@ ilCtor.Emit(OpCodes.Stfld, srcField);
 // All done!
 ilCtor.Emit(OpCodes.Ret);
 </code></pre>
-
 <h3>Properties</h3>
-
 <p>Although there's only a single property in the ITest example we're looking at, we might as look ahead and loop over <em>all</em> properties the interface has so we can apply the same sort of code to other interfaces. Since we <em>are</em> dealing with interfaces, we only need to consider whether a property is gettable, settable or both - there's no public / internal / protected / private / etc.. to worry about. Likewise, we only have to worry about properties and methods - interfaces can't declare fields.</p>
-
 <pre><code>foreach (var property in typeof(ITest).GetProperties())
 {
   var methodInfoInvokeMember = typeof(Type).GetMethod(
-    "InvokeMember",
+    &quot;InvokeMember&quot;,
     new[]
     {
       typeof(string),
@@ -958,7 +874,7 @@ ilCtor.Emit(OpCodes.Ret);
   if (property.CanRead)
   {
     var getFuncBuilder = typeBuilder.DefineMethod(
-      "get_" + property.Name,
+      &quot;get_&quot; + property.Name,
       MethodAttributes.Public
         | MethodAttributes.HideBySig
         | MethodAttributes.NewSlot
@@ -974,7 +890,7 @@ ilCtor.Emit(OpCodes.Ret);
     var ilGetFunc = getFuncBuilder.GetILGenerator();
     ilGetFunc.Emit(OpCodes.Ldarg_0);
     ilGetFunc.Emit(OpCodes.Ldfld, srcField);
-    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilGetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
     ilGetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilGetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.GetProperty);
     ilGetFunc.Emit(OpCodes.Ldnull);
@@ -992,7 +908,7 @@ ilCtor.Emit(OpCodes.Ret);
   if (property.CanWrite)
   {
     var setFuncBuilder = typeBuilder.DefineMethod(
-      "set_" + property.Name,
+      &quot;set_&quot; + property.Name,
       MethodAttributes.Public
         | MethodAttributes.HideBySig
         | MethodAttributes.SpecialName
@@ -1000,7 +916,7 @@ ilCtor.Emit(OpCodes.Ret);
       null,
       new Type[] { property.PropertyType }
     );
-    var valueParameter = setFuncBuilder.DefineParameter(1, ParameterAttributes.None, "value");
+    var valueParameter = setFuncBuilder.DefineParameter(1, ParameterAttributes.None, &quot;value&quot;);
     var ilSetFunc = setFuncBuilder.GetILGenerator();
 
     // Generate:
@@ -1011,7 +927,7 @@ ilCtor.Emit(OpCodes.Ret);
     var argValues = ilSetFunc.DeclareLocal(typeof(object[]));
     ilSetFunc.Emit(OpCodes.Ldarg_0);
     ilSetFunc.Emit(OpCodes.Ldfld, srcField);
-    ilSetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+    ilSetFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
     ilSetFunc.Emit(OpCodes.Ldstr, property.Name);
     ilSetFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.SetProperty);
     ilSetFunc.Emit(OpCodes.Ldnull);
@@ -1035,11 +951,8 @@ ilCtor.Emit(OpCodes.Ret);
   }
 }
 </code></pre>
-
-<p>The gist is that for the getter and/or setter, we have to declare a method and then assign that method to be the GetMethod or SetMethod for the property. The method is named by prefixing the property name with either "get_" or "set_", as is consistent with how C# generates it class properties' IL.</p>
-
+<p>The gist is that for the getter and/or setter, we have to declare a method and then assign that method to be the GetMethod or SetMethod for the property. The method is named by prefixing the property name with either &quot;get_&quot; or &quot;set_&quot;, as is consistent with how C# generates it class properties' IL.</p>
 <p>The call to</p>
-
 <pre><code>_src.GetType().InvokeMember(
   property.Name,
   BindingFlags.SetProperty,
@@ -1048,17 +961,11 @@ ilCtor.Emit(OpCodes.Ret);
   new object[] { value }
 );
 </code></pre>
-
-<p>is a bit painful as we have to declare an array with a single element to pass to the method, where that single element is the "value" reference available within the setter.</p>
-
-<p>Also worthy of note is that when returning a ValueType or setting a ValueType. As we're expecting to either return an object or set an object, the value has to be "boxed" otherwise bad things will happen!</p>
-
+<p>is a bit painful as we have to declare an array with a single element to pass to the method, where that single element is the &quot;value&quot; reference available within the setter.</p>
+<p>Also worthy of note is that when returning a ValueType or setting a ValueType. As we're expecting to either return an object or set an object, the value has to be &quot;boxed&quot; otherwise bad things will happen!</p>
 <p>Like the TypeAttributes in the Constructor, the MethodAttributes I've applied here were gleaned from looking at IL generated by Visual Studio.</p>
-
 <h3>Methods</h3>
-
 <p>We're on the home stretch now! Methods are very similar to the property setters except that we may have zero, one or multiple parameters to handle and we may or may not (if the return type is void) return a value from the method.</p>
-
 <pre><code>foreach (var method in typeof(ITest).GetMethods())
 {
   var parameters = method.GetParameters();
@@ -1066,11 +973,11 @@ ilCtor.Emit(OpCodes.Ret);
   foreach (var parameter in parameters)
   {
     if (parameter.IsOut)
-      throw new ArgumentException("Output parameters are not supported");
+      throw new ArgumentException(&quot;Output parameters are not supported&quot;);
     if (parameter.IsOptional)
-      throw new ArgumentException("Optional parameters are not supported");
+      throw new ArgumentException(&quot;Optional parameters are not supported&quot;);
     if (parameter.ParameterType.IsByRef)
-      throw new ArgumentException("Ref parameters are not supported");
+      throw new ArgumentException(&quot;Ref parameters are not supported&quot;);
     parameterTypes.Add(parameter.ParameterType);
   }
   var funcBuilder = typeBuilder.DefineMethod(
@@ -1105,7 +1012,7 @@ ilCtor.Emit(OpCodes.Ret);
   }
 
   var methodInfoInvokeMember = typeof(Type).GetMethod(
-    "InvokeMember",
+    &quot;InvokeMember&quot;,
     new[]
     {
       typeof(string),
@@ -1120,7 +1027,7 @@ ilCtor.Emit(OpCodes.Ret);
   //   [return] _src.GetType().InvokeMember(method.Name, BindingFlags.InvokeMethod, null, _src, args);
   ilFunc.Emit(OpCodes.Ldarg_0);
   ilFunc.Emit(OpCodes.Ldfld, srcField);
-  ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod("GetType", Type.EmptyTypes));
+  ilFunc.Emit(OpCodes.Callvirt, typeof(Type).GetMethod(&quot;GetType&quot;, Type.EmptyTypes));
   ilFunc.Emit(OpCodes.Ldstr, method.Name);
   ilFunc.Emit(OpCodes.Ldc_I4, (int)BindingFlags.InvokeMethod);
   ilFunc.Emit(OpCodes.Ldnull);
@@ -1137,29 +1044,19 @@ ilCtor.Emit(OpCodes.Ret);
   ilFunc.Emit(OpCodes.Ret);
 }
 </code></pre>
-
 <p>The boxing of ValueTypes when passed as parameters or returned from the method is required, just like the property accessors.</p>
-
 <p>The only real point of interest here is the array generation for the parameters - this also took me a little while to wrap my head around! You may note that I've been a bit lazy and not supported optional, out or ref parameters - I didn't need these for anything I was working on and didn't feel like diving into it at this point. I'm fairly sure that if they become important features then whipping out ildasm and looking at the generated code there will reveal the best way to proceed with these.</p>
-
 <h3>The payoff!</h3>
-
 <p>Now that we've defined everything about the class, we can instantiate it!</p>
-
 <pre><code>var wrapper = (ITest)Activator.CreateInstance(
   typeBuilder.CreateType(),
   src
 );
 </code></pre>
-
-<p>This gives us back an instance of a magic new class that wraps a specified "src" and passes through the ITest properties and methods! If it's applied to an object that doesn't have the required properties and methods then exceptions will be thrown when they are called - the standard exceptions that reflection calls to invalid properties/methods would result in.</p>
-
+<p>This gives us back an instance of a magic new class that wraps a specified &quot;src&quot; and passes through the ITest properties and methods! If it's applied to an object that doesn't have the required properties and methods then exceptions will be thrown when they are called - the standard exceptions that reflection calls to invalid properties/methods would result in.</p>
 <p>But I think that's pretty much enough for this installment - it's been a bit dry but I think it's been worthwhile!</p>
-
 <h3>And then..</h3>
-
 <p>There are a lot of extension points that naturally arise from this rough-from-the-edges code - the first things that spring to my mind are a way to wrap this up nicely into a generic class that could create wrappers for any given interface, a way to handle interface inheritance, a way to possibly wrap the returned values - eg. if we have</p>
-
 <pre><code>public interface ITest
 {
   IEmployee Get(int id);
@@ -1171,19 +1068,12 @@ public interface IEmployee
   string Name { get; }
 }
 </code></pre>
-
 <p>can the method that applies ITest to an object also apply IEmployee to the value returned from ITest.Get if that value itself doesn't already implement IEmployee??</p>
-
 <p>Finally, off the top of my head, if I'm using these generated classes to read interact with WSCs / COM components, am I going to need to pass references over <em>to</em> COM components? If so, I'm going to have to find a way to flag them as ComVisible.</p>
-
 <p>But these are issues to address another time :)</p>
-
-<h3>Footnote: WSC properties and "dynamic"</h3>
-
-<p>The code here doesn't use the .Net 4.0 "dynamic" keyword and so will compile under .Net 2.0. I had a bit of a poke around in the IL generated that makes use of dynamic since in some situations it should offer benefits - often performance is one such benefit! However, in the particularly niche scenario I'm working with it refuses to work :( Most of the components I'm wrapping are legacy VBScript WSCs and trying to set properties on these seems to fail when using dynamic. </p>
-
+<h3>Footnote: WSC properties and &quot;dynamic&quot;</h3>
+<p>The code here doesn't use the .Net 4.0 &quot;dynamic&quot; keyword and so will compile under .Net 2.0. I had a bit of a poke around in the IL generated that makes use of dynamic since in some situations it should offer benefits - often performance is one such benefit! However, in the particularly niche scenario I'm working with it refuses to work :( Most of the components I'm wrapping are legacy VBScript WSCs and trying to set properties on these seems to fail when using dynamic.</p>
 <p>I've pulled this example from a test (in xUnit) I wrote to illustrate that there were issues ..</p>
-
 <pre><code>[Fact]
 public void SettingCachePropertyThrowsRuntimeBinderException()
 {
@@ -1192,13 +1082,13 @@ public void SettingCachePropertyThrowsRuntimeBinderException()
   var src = Microsoft.VisualBasic.Interaction.GetObject(
     Path.Combine(
       new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
-      "TestSrc.wsc"
+      &quot;TestSrc.wsc&quot;
     )
   );
   var srcWithInterface = new ControlInterfaceApplierUsingDynamic(src);
 
-  // Expect a RuntimeBinderException with message "'System.__ComObject' does not contain a definition
-  // for 'Cache'"
+  // Expect a RuntimeBinderException with message &quot;'System.__ComObject' does not contain a definition
+  // for 'Cache'&quot;
   Assert.Throws&lt;RuntimeBinderException&gt;(() =&gt;
   {
     srcWithInterface.Cache = new NullCache();
@@ -1211,7 +1101,7 @@ public class ControlInterfaceApplierUsingDynamic : IControl
   public ControlInterfaceApplierUsingDynamic(object src)
   {
     if (src == null)
-      throw new ArgumentNullException("src");
+      throw new ArgumentNullException(&quot;src&quot;);
 
     _src = src;
   }
@@ -1234,18 +1124,16 @@ private class NullCache : ICache
   public void Remove(string key) { }
 }
 </code></pre>
-
 <p>The WSC content is as follows:</p>
-
-<pre><code>&lt;?xml version="1.0" ?&gt;
-&lt;?component error="false" debug="false" ?&gt;
+<pre><code>&lt;?xml version=&quot;1.0&quot; ?&gt;
+&lt;?component error=&quot;false&quot; debug=&quot;false&quot; ?&gt;
 &lt;package&gt;
-  &lt;component id="TestSrc"&gt;
-    &lt;registration progid="TestSrc" description="Test Control" version="1" /&gt;
+  &lt;component id=&quot;TestSrc&quot;&gt;
+    &lt;registration progid=&quot;TestSrc&quot; description=&quot;Test Control&quot; version=&quot;1&quot; /&gt;
     &lt;public&gt;
-      &lt;property name="Config" /&gt;
+      &lt;property name=&quot;Config&quot; /&gt;
     &lt;/public&gt;
-    &lt;script language="VBScript"&gt;
+    &lt;script language=&quot;VBScript&quot;&gt;
     &lt;![CDATA[
       Public Cache
     ]]&gt;
@@ -1253,68 +1141,54 @@ private class NullCache : ICache
   &lt;/component&gt;
 &lt;/package&gt;
 </code></pre>
-
-<p>I've not been able to get to the bottom of <em>why</em> this fails and it's not exactly a common problem - most people left WSCs back in the depths of time.. along with VBScript! But for the meantime we're stuck with them since the thought of trying to migrate the <em>entire</em> codebase fills me with dread, at least splitting it this way means we can move over piecemeal and re-write isolated components of the code at a time. And then one day the old cruft will have gone! And people will consider the earlier migration code the new "old cruft" and the great cycle can continue!</p>
-
+<p>I've not been able to get to the bottom of <em>why</em> this fails and it's not exactly a common problem - most people left WSCs back in the depths of time.. along with VBScript! But for the meantime we're stuck with them since the thought of trying to migrate the <em>entire</em> codebase fills me with dread, at least splitting it this way means we can move over piecemeal and re-write isolated components of the code at a time. And then one day the old cruft will have gone! And people will consider the earlier migration code the new &quot;old cruft&quot; and the great cycle can continue!</p>
 <p><strong>Update (2nd May 2014):</strong> It turns out that if</p>
-
 <pre><code>var src = Microsoft.VisualBasic.Interaction.GetObject(
   Path.Combine(
     new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
-    "TestSrc.wsc"
+    &quot;TestSrc.wsc&quot;
   )
 );
 </code></pre>
-
 <p>is altered to read</p>
-
 <pre><code>var src = Microsoft.VisualBasic.Interaction.GetObject(
-  "script:"
+  &quot;script:&quot;
   Path.Combine(
     new FileInfo(this.GetType().Assembly.FullName).DirectoryName,
-    "TestSrc.wsc"
+    &quot;TestSrc.wsc&quot;
   )
 );
 </code></pre>
-
-<p>then this test will pass! I'll leave the content here for posterity but it struck me while flipping through this old post that I had seen and addressed this problem since writing this.</p><p class="PostTime">Posted at 22:01</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
-			<p class="Comments">
-				<a href="/dynamically-applying-interfaces-to-objects#disqus_thread" data-disqus-identifier="15">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">9 December 2011</h3><h2><a id="Post14"></a><a href="/really">Really??</a></h2>
-
-<p>"The under 25 crowd use a cell phone as their primary mode of accessing the Internet" - <a href="http://www.tnrglobal.com/blog/2011/12/mobile-search-good-ux-means-fewer-touches-simple-design/">http://www.tnrglobal.com/blog</a>.</p>
-
-<p>Is this is a fact? I'm genuinely curious what this is based on. At 29 am I even older than I realised??</p><p class="PostTime">Posted at 00:25</p>
-			<p class="Comments">
-				<a href="/really#disqus_thread" data-disqus-identifier="14">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">8 December 2011</h3><h2><a id="Post13"></a><a href="/sta-apartmentstate-with-aspnet-mvc">STA ApartmentState with ASP.Net MVC</a></h2>
-
+<p>then this test will pass! I'll leave the content here for posterity but it struck me while flipping through this old post that I had seen and addressed this problem since writing this.</p>
+<p class="PostTime">Posted at 22:01</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/COM" title="8 Posts">COM</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>
+            <p class="Comments">
+                <a href="/dynamically-applying-interfaces-to-objects#disqus_thread" data-disqus-identifier="15">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">9 December 2011</h3><h2><a id="really" href="/really">Really??</a></h2>
+<p>&quot;The under 25 crowd use a cell phone as their primary mode of accessing the Internet&quot; - <a href="http://www.tnrglobal.com/blog/2011/12/mobile-search-good-ux-means-fewer-touches-simple-design/">http://www.tnrglobal.com/blog</a>.</p>
+<p>Is this is a fact? I'm genuinely curious what this is based on. At 29 am I even older than I realised??</p>
+<p class="PostTime">Posted at 00:25</p>
+            <p class="Comments">
+                <a href="/really#disqus_thread" data-disqus-identifier="14">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">8 December 2011</h3><h2><a id="sta-apartmentstate-with-aspnet-mvc" href="/sta-apartmentstate-with-aspnet-mvc">STA ApartmentState with ASP.Net MVC</a></h2>
 <p>Continuing on with the proof-of-concept I'm doing at work regarding reimplementing a VBScript Engine with WSC Controls in .Net I've been trying to develop an ASP.Net MVC Controller that will execute in the STA ApartmentState having read this article:</p>
-
 <p><a href="http://msdn.microsoft.com/en-us/magazine/cc163544.aspx">http://msdn.microsoft.com/en-us/magazine/cc163544.aspx</a>.</p>
-
 <p>The upshot is that if components that run in STA are shared by something executing as MTA then only a single thread from the MTA worker can operate on the component at a time. If the caller is running as STA then separate instances will exist such that each request (I'm thinking in terms of ASP.Net MVC requests) gets its own instance, preventing requests getting queued up waiting for each other when accessing the STA components.</p>
-
-<p>ASP.Net WebForms Pages support an "ASPCompat" attibute which will create the request as STA, rather than MTA. The article I linked above demonstrates how to do similar for an asmx web service. And the forum answer here claims to describe how to do the same for ASP.Net MVC: <a href="http://forums.asp.net/t/1302406.aspx">http://forums.asp.net/t/1302406.aspx</a>.</p>
-
+<p>ASP.Net WebForms Pages support an &quot;ASPCompat&quot; attibute which will create the request as STA, rather than MTA. The article I linked above demonstrates how to do similar for an asmx web service. And the forum answer here claims to describe how to do the same for ASP.Net MVC: <a href="http://forums.asp.net/t/1302406.aspx">http://forums.asp.net/t/1302406.aspx</a>.</p>
 <p><em>However..</em></p>
-
 <p>I'm not sure what version of MVC that was for, and if things have changed since then (it's marked August 2008), but when I tried to use it it didn't compile :(</p>
-
 <p>So here's the version I'm using with the MVC 3 / .Net 4.0 project I've got on the go - we need an IRouteHandler implementation which makes use of an STA-inducing Handler. Thus:</p>
-
 <pre><code>public class STAThreadRouteHandler : IRouteHandler
 {
     public IHttpHandler GetHttpHandler(RequestContext requestContext)
     {
         if (requestContext == null)
-            throw new ArgumentNullException("requestContext");
+            throw new ArgumentNullException(&quot;requestContext&quot;);
 
         return new STAThreadHttpAsyncHandler(requestContext);
     }
@@ -1326,7 +1200,7 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
     public STAThreadHttpAsyncHandler(RequestContext requestContext)
     {
         if (requestContext == null)
-            throw new ArgumentNullException("requestContext");
+            throw new ArgumentNullException(&quot;requestContext&quot;);
 
         _requestContext = requestContext;
     }
@@ -1338,11 +1212,11 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
 
     protected override void OnInit(EventArgs e)
     {
-        var controllerName = _requestContext.RouteData.GetRequiredString("controller");
+        var controllerName = _requestContext.RouteData.GetRequiredString(&quot;controller&quot;);
         var controllerFactory = ControllerBuilder.Current.GetControllerFactory();
         var controller = controllerFactory.CreateController(_requestContext, controllerName);
         if (controller == null)
-            throw new InvalidOperationException("Could not find controller: " + controllerName);
+            throw new InvalidOperationException(&quot;Could not find controller: &quot; + controllerName);
         try
         {
             controller.Execute(_requestContext);
@@ -1362,132 +1236,111 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
     public override void ProcessRequest(HttpContext httpContext)
     {
         throw new NotSupportedException(
-            "STAThreadRouteHandler does not support ProcessRequest called (only BeginProcessRequest)"
+            &quot;STAThreadRouteHandler does not support ProcessRequest called (only BeginProcessRequest)&quot;
         );
     }
 }
 </code></pre>
-
 <p>Then in the routes defined in Global.asx.cs we need something along the lines of:</p>
-
 <pre><code>RouteTable.Routes.Add(new Route(
-    "{*url}",
-    new RouteValueDictionary(new { controller = "Default", action = "PageRequest" }),
+    &quot;{*url}&quot;,
+    new RouteValueDictionary(new { controller = &quot;Default&quot;, action = &quot;PageRequest&quot; }),
     new STAThreadRouteHandler()
 ));
 </code></pre>
-
 <p>in place of</p>
-
 <pre><code>routes.MapRoute(
-    "Default",
-    "{*url}",
-    new { controller = "Default", action = "PageRequest" }
+    &quot;Default&quot;,
+    &quot;{*url}&quot;,
+    new { controller = &quot;Default&quot;, action = &quot;PageRequest&quot; }
 );
 </code></pre>
-
 <p>This post has been quite derivative of other works but it took me a fair amount of researching to get to this point! Maybe this will benefit someone else going down a similar windy path..</p>
-
-<h3>IRequiresSessionState</h3>
-
-<p>Of particular note (and absent from the referenced forum answer) is the IRequiresSessionState implemented by STAThreadRouteHandler. This interface has no methods or properties but identifies the Handler as being one that requires that Session State be passed to it.. er, as the name implies! But without this, the Session property of the specified Controller will always be null. This took me quite a while to track down since - unless you know of this particular interface - it's fairly difficult information to track down! Or maybe I was just having a bad Google day.. :)</p><p class="PostTime">Posted at 23:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/ASP.Net" title="3 Posts">ASP.Net</a></li><li><a href="/Archive/Tag/MVC" title="2 Posts">MVC</a></li></ul></div>
-			<p class="Comments">
-				<a href="/sta-apartmentstate-with-aspnet-mvc#disqus_thread" data-disqus-identifier="13">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">8 December 2011</h3><h2><a id="Post12"></a><a href="/mercurial-on-windows-changing-filename-case">Mercurial on Windows - Changing filename case</a></h2>
-
+<p>###IRequiresSessionState</p>
+<p>Of particular note (and absent from the referenced forum answer) is the IRequiresSessionState implemented by STAThreadRouteHandler. This interface has no methods or properties but identifies the Handler as being one that requires that Session State be passed to it.. er, as the name implies! But without this, the Session property of the specified Controller will always be null. This took me quite a while to track down since - unless you know of this particular interface - it's fairly difficult information to track down! Or maybe I was just having a bad Google day.. :)</p>
+<p class="PostTime">Posted at 23:46</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/ASP.Net" title="3 Posts">ASP.Net</a></li><li><a href="/Archive/Tag/MVC" title="2 Posts">MVC</a></li></ul></div>
+            <p class="Comments">
+                <a href="/sta-apartmentstate-with-aspnet-mvc#disqus_thread" data-disqus-identifier="13">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">8 December 2011</h3><h2><a id="mercurial-on-windows-changing-filename-case" href="/mercurial-on-windows-changing-filename-case">Mercurial on Windows - Changing filename case</a></h2>
 <p>At work today, in a fit of madness, I decided to rename a file in a BitBucket (ie. Mercurial) repository from RSSController.cs to RssController.cs for consistency with the casing in other files. At the time I wondered if this rename was a good idea, but everything seemed to go well.</p>
-
-<p>When I got home and tried to update my repository there, <em>seemed</em> became the operative word. I was greeted with a "case folding collision" error and the start of 90 minutes of my life that feel wasted and aren't ever going to come back.</p>
-
-<p>I'm not sure if there's a good way to do this and a lot of information out there about resolving this sort of mess starts with "On the Linux/FreeBSD machine.." or "On a case sensitive OS.." which is not very useful when all my computers run Windows!</p>
-
-<p>Long story short; this page helped me out a lot - <a href="http://mercurial.selenic.com/wiki/FixingCaseCollisions">http://mercurial.selenic.com/wiki/FixingCaseCollisions</a>. I haven't tried the CaseFoldExtension but following the instructions in there sorted me out. The only issue I encountered was one of the commands complained that it didn't have a username, including an additional -u"user@whereever.com" sorted that out.</p>
-
-<p>This has tired me out! :S</p><p class="PostTime">Posted at 20:50</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Mercurial" title="3 Posts">Mercurial</a></li></ul></div>
-			<p class="Comments">
-				<a href="/mercurial-on-windows-changing-filename-case#disqus_thread" data-disqus-identifier="12">Comments</a>
-			</p>
-	</div>
-	<div class="Content ArchiveByMonth">
-		<h3 class="PostDate">6 December 2011</h3><h2><a id="Post11"></a><a href="/iisexpress-virtual-directories-and-applications">IISExpress - Virtual Directories and Applications</a></h2>
-
+<p>When I got home and tried to update my repository there, <em>seemed</em> became the operative word. I was greeted with a &quot;case folding collision&quot; error and the start of 90 minutes of my life that feel wasted and aren't ever going to come back.</p>
+<p>I'm not sure if there's a good way to do this and a lot of information out there about resolving this sort of mess starts with &quot;On the Linux/FreeBSD machine..&quot; or &quot;On a case sensitive OS..&quot; which is not very useful when all my computers run Windows!</p>
+<p>Long story short; this page helped me out a lot - <a href="http://mercurial.selenic.com/wiki/FixingCaseCollisions">http://mercurial.selenic.com/wiki/FixingCaseCollisions</a>. I haven't tried the CaseFoldExtension but following the instructions in there sorted me out. The only issue I encountered was one of the commands complained that it didn't have a username, including an additional -u&quot;user@whereever.com&quot; sorted that out.</p>
+<p>This has tired me out! :S</p>
+<p class="PostTime">Posted at 20:50</p><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Mercurial" title="3 Posts">Mercurial</a></li></ul></div>
+            <p class="Comments">
+                <a href="/mercurial-on-windows-changing-filename-case#disqus_thread" data-disqus-identifier="12">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByMonth">
+        <h3 class="PostDate">6 December 2011</h3><h2><a id="iisexpress-virtual-directories-and-applications" href="/iisexpress-virtual-directories-and-applications">IISExpress - Virtual Directories and Applications</a></h2>
 <p>Recently I've been using IIS Express, mostly at home where I don't have a fancy OS with a full IIS installation. Integrated with Visual Studio it's great at being an environment closer-to-real-IIS than the built-in VS WebServer / Casini (is it even still called that these days??) but recently I've been doing some proof-of-concept work for an Engine that integrates with some Legacy WSC components we have in a project at work. Oh yes, the bleeding edge of VBScript in pseudo-COM wrappers - awesome :S And for this work there are stretches of time where I don't want the overhead of the debugger being attached and be able to flip the app pool and re-load the components and using WebMatrix to configure the site has allowed me to do just that.</p>
-
 <p>But even with WebMatrix there isn't a huge amount of configuring that can be done through the GUI. I'd heard that IIS Express could support Virtual Directories and Virtual Applications but I just couldn't find where to do it through the interface! And I still can't.. but the good news is that the config files for IIS Express - like IIS 7 - are really easy to get into!</p>
-
 <h3>The upshot</h3>
-
-<p>Since IIS Express installs against the user account (which contributes to its non-requirement of Admin rights), the config files are located in the "IISExpress\config" folder under "My Documents". The interesting file here is "applicationhost.config" which describe all the sites under "configuration/system.applicationHost/sites". The default site may described as -</p>
-
-<pre><code>&lt;site name="WebSite1" id="1" serverAutoStart="true"&gt;
-    &lt;application path="/"&gt;
-        &lt;virtualDirectory path="/" physicalPath="%IIS_SITES_HOME%\WebSite1" /&gt;
+<p>Since IIS Express installs against the user account (which contributes to its non-requirement of Admin rights), the config files are located in the &quot;IISExpress\config&quot; folder under &quot;My Documents&quot;. The interesting file here is &quot;applicationhost.config&quot; which describe all the sites under &quot;configuration/system.applicationHost/sites&quot;. The default site may described as -</p>
+<pre><code>&lt;site name=&quot;WebSite1&quot; id=&quot;1&quot; serverAutoStart=&quot;true&quot;&gt;
+    &lt;application path=&quot;/&quot;&gt;
+        &lt;virtualDirectory path=&quot;/&quot; physicalPath=&quot;%IIS_SITES_HOME%\WebSite1&quot; /&gt;
     &lt;/application&gt;
     &lt;bindings&gt;
-        &lt;binding protocol="http" bindingInformation=":8080:localhost" /&gt;
+        &lt;binding protocol=&quot;http&quot; bindingInformation=&quot;:8080:localhost&quot; /&gt;
     &lt;/bindings&gt;
 &lt;/site&gt;
 </code></pre>
-
 <p>to add a Virtual Directory is as easy as adding a new virtualDirectory node such as -</p>
-
-<pre><code>&lt;site name="WebSite1" id="1" serverAutoStart="true"&gt;
-    &lt;application path="/"&gt;
-        &lt;virtualDirectory path="/" physicalPath="%IIS_SITES_HOME%\WebSite1" /&gt;
+<pre><code>&lt;site name=&quot;WebSite1&quot; id=&quot;1&quot; serverAutoStart=&quot;true&quot;&gt;
+    &lt;application path=&quot;/&quot;&gt;
+        &lt;virtualDirectory path=&quot;/&quot; physicalPath=&quot;%IIS_SITES_HOME%\WebSite1&quot; /&gt;
         &lt;virtualDirectory
-            path="/config"
-            physicalPath="C:\Documents and Settings\Dan\My Documents\Projects\Config"
+            path=&quot;/config&quot;
+            physicalPath=&quot;C:\Documents and Settings\Dan\My Documents\Projects\Config&quot;
          /&gt;
     &lt;/application&gt;
     &lt;bindings&gt;
-        &lt;binding protocol="http" bindingInformation=":8080:localhost" /&gt;
+        &lt;binding protocol=&quot;http&quot; bindingInformation=&quot;:8080:localhost&quot; /&gt;
     &lt;/bindings&gt;
 &lt;/site&gt;
 </code></pre>
-
 <p>while adding a new Virtual Directory is done with a new application node -</p>
-
-<pre><code>&lt;site name="WebSite1" id="1" serverAutoStart="true"&gt;
-    &lt;application path="/"&gt;
-        &lt;virtualDirectory path="/" physicalPath="%IIS_SITES_HOME%\WebSite1" /&gt;
+<pre><code>&lt;site name=&quot;WebSite1&quot; id=&quot;1&quot; serverAutoStart=&quot;true&quot;&gt;
+    &lt;application path=&quot;/&quot;&gt;
+        &lt;virtualDirectory path=&quot;/&quot; physicalPath=&quot;%IIS_SITES_HOME%\WebSite1&quot; /&gt;
     &lt;/application&gt;
-    &lt;application path="/config"&gt;
+    &lt;application path=&quot;/config&quot;&gt;
         &lt;virtualDirectory
-            path="/"
-            physicalPath="C:\Documents and Settings\Dan\My Documents\Projects\Config"
+            path=&quot;/&quot;
+            physicalPath=&quot;C:\Documents and Settings\Dan\My Documents\Projects\Config&quot;
          /&gt;
     &lt;/application&gt;
     &lt;bindings&gt;
-        &lt;binding protocol="http" bindingInformation=":8080:localhost" /&gt;
+        &lt;binding protocol=&quot;http&quot; bindingInformation=&quot;:8080:localhost&quot; /&gt;
     &lt;/bindings&gt;
 &lt;/site&gt;
 </code></pre>
-
 <h3>So?</h3>
-
 <p>Well it's hardly rocket science! But it took me a while to get this sorted out.. there are quite a few questions out there to this effect but it seems like once someone works it out they think it's obvious and so there aren't that many answering posts out there.</p>
+<p>This is my contribution to that end :)</p>
+<p class="PostTime">Posted at 18:11</p>
+            <p class="Comments">
+                <a href="/iisexpress-virtual-directories-and-applications#disqus_thread" data-disqus-identifier="11">Comments</a>
+            </p>
+    </div>
 
-<p>This is my contribution to that end :)</p><p class="PostTime">Posted at 18:11</p>
-			<p class="Comments">
-				<a href="/iisexpress-virtual-directories-and-applications#disqus_thread" data-disqus-identifier="11">Comments</a>
-			</p>
-	</div>
-
-	<script type="text/javascript">
-					(function () {
-						var s = document.createElement("script");
-						s.type = "text/javascript";
-						s.async = true;
-						s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
-						(document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
-					} ());
-	</script>
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
 
 				<div class="Footer">
-					© Productive Rage 2011 - 2020
+					© Productive Rage 2011 - 2021
 				</div>
 			</div>
 
@@ -1497,17 +1350,16 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
 					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
 					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
-
 				</div>
 				<div class="Search">
-<form action="/Search" method="get" />						<div>
+<form action="/Search" method="get">						<div>
 							<input type="text" class="SiteSearch" name="term" value="" />
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#39;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li><li><a href="/type-aliases-in-bridgenet-c-sharp">Type aliases in Bridge.NET (C#)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/removing-all-assembly-names-in-jsonnet-typenamehandling-output">Removing ALL assembly names in Json.NET TypeNameHandling output</a></li><li><a href="/private-local-c-sharp-analysers-without-nuget">Private / local C# analysers (without NuGet)</a></li></ul><div class="RSSFeedLink"><a href="http://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>
