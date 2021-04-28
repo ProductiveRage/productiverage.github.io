@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<meta name="theme-color" content="#393939" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<!--[if lt IE 9]>
+	<link rel="stylesheet" type="text/css" href="/Content/IEBefore9.css" />
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<link rel="canonical" href="http://www.productiverage.com/automating-suggested-related-posts-links-for-my-blog-posts-part-2" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="https://www.productiverage.com/feed" />
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', "UA-32312857-1"]);
+		_gaq.push(['_setSiteSpeedSampleRate', 100]);
+		_gaq.push(['_trackPageview']);
+		(function () {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:site" content="productiverage" />
+    <meta name="twitter:title" content="Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2" />
+    <meta name="twitter:image" content="http://www.productiverage.com/Content/Images/Grouch.jpg" />
+    <meta name="twitter:description" content="By training another type of model from the open source .NET library that I&#x27;ve been using and combining its results with the similarity model from last time (see Automating &quot;suggested / related.." />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+			<div class="Main HasSideBar">
+				
+
+        <script type="text/javascript">
+			var disqus_shortname = "productiverage";
+			function executeWhen(fncAction, fncConditional, intDelayBetweenRetries) {
+				if (fncConditional()) { fncAction(); return; }
+				setTimeout(function () { executeWhen(fncAction, fncConditional, intDelayBetweenRetries); }, intDelayBetweenRetries);
+			}
+			function whenjQueryIsAvailable(fncAction) {
+				executeWhen(
+					fncAction,
+					function () { return (typeof ($) !== "undefined") },
+					10
+				);
+			}
+			(function () {
+				whenjQueryIsAvailable(
+					function () { $("div.Content p.Comments").show(); }
+				);
+			}());
+        </script>
+
+    <div class="Content SinglePost">
+        <h3 class="PostDate">28 April 2021</h3><h2><a id="automating-suggested-related-posts-links-for-my-blog-posts-part-2" href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a></h2>
+<h3>TL;DR</h3>
+<p>By training another type of model from the open source .NET library that I've been using and combining its results with the similarity model from last time (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">Automating &quot;suggested / related posts&quot; links for my blog posts</a>), I'm going to improve the automatically-generated &quot;you may be interested in&quot; links that I'm adding to my blog.</p>
+<p>Improvement, in fact, sufficient such that I'll start displayed the machine-suggested links at the bottom of each post.</p>
+<h3>Where I left off last time</h3>
+<p>In my last post, I had trained a <a href="https://en.wikipedia.org/wiki/FastText">fastText</a> model (as part of the <a href="https://github.com/curiosity-ai/catalyst">Catalyst .NET library</a> by having it read all of my blog posts so that it could predict which posts were most likely to be similar to which other posts.</p>
+<p>This came back with some excellent suggestions, like this:</p>
+<blockquote>
+<p><strong>Learning F# via some Machine Learning: The Single Layer Perceptron</strong><br />
+How are barcodes read?? (Library-less image processing in C#)<br />
+Writing F# to implement 'The Single Layer Perceptron'<br />
+Face or no face (finding faces in photos using C# and AccordNET)</p>
+</blockquote>
+<p>.. but it also produced some less good selections, like this:</p>
+<blockquote>
+<p><strong>Simple TypeScript type definitions for AMD modules</strong><br />
+STA ApartmentState with ASP.Net MVC<br />
+WCF with JSON (and nullable types)<br />
+The joys of AutoMapper</p>
+</blockquote>
+<p>I'm still not discounting the idea that I might be able to improve the results by tweaking hyperparameters on the training model (such as epoch, negative sampling rate and dimensions) or maybe even changing how it processes the blog posts - eg. it's tackling the content as English language documents but there are large code segments in many of the posts and maybe that's confusing it; maybe removing the code samples before processing would give better results?</p>
+<p>However, fiddling with those options and rebuilding over and over is a time-consuming process and there is no easy way to evaluate the &quot;goodness&quot; of the results - so I need to flick through them all myself and try to get a rough feel for whether I think the last run was an improvement or not.</p>
+<h3>Introducing a new model</h3>
+<p>The premise that I wil be experimenting with is to determine what words in my post titles are &quot;interesting&quot; and to then order the suggested-similar posts first by a score based upon how many interesting words they share <em>and then</em> by the similarity score that I already have.</p>
+<p>The model that I'll be training for this is called &quot;TF-IDF&quot; or &quot;Term Frequency - Inverse Document Frequency&quot; and it looks at every word in every blog post and considers how many times that word appears in the document (the more often, the more likely that the document relates to the word) and how many times it appears across multiple documents (the more often, the more common and less &quot;specific&quot; it's likely to be).</p>
+<p>For each blog post that I'm looking for similar posts to, I'll:</p>
+<ol>
+<li>take the words from its title</li>
+<li>take the words from another post's title</li>
+<li>add together all of the TF-IDF scores for words that appear in both titles (the higher the score for each word, the greater the relevance)</li>
+<li>repeat until all other post titles have been compared</li>
+</ol>
+<p>Taking the example from above that didn't have particularly good similar-post recommendations, the words in its title will have the following scores:</p>
+<table>
+<thead>
+<tr>
+<th>Word</th>
+<th>Score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Simple</td>
+<td>0.6618375</td>
+</tr>
+<tr>
+<td>TypeScript</td>
+<td>4.39835453</td>
+</tr>
+<tr>
+<td>type</td>
+<td>0.7873714</td>
+</tr>
+<tr>
+<td>definitions</td>
+<td>2.60178781</td>
+</tr>
+<tr>
+<td>for</td>
+<td>0</td>
+</tr>
+<tr>
+<td>AMD</td>
+<td>3.81998682</td>
+</tr>
+<tr>
+<td>modules</td>
+<td>3.96386051</td>
+</tr>
+</tbody>
+</table>
+<p>.. so it should be clear that any other titles that contain the word &quot;TypeScript&quot; will be given a boost.</p>
+<p>This is by no means a perfect system as there will often be posts whose main topics are similar but whose titles are not. The example from earlier that fastText generated really good similar-post suggestions for is a great illustration of this:</p>
+<blockquote>
+<p><strong>Learning F# via some Machine Learning: The Single Layer Perceptron</strong><br />
+How are barcodes read?? (Library-less image processing in C#)<br />
+Writing F# to implement 'The Single Layer Perceptron'<br />
+Face or no face (finding faces in photos using C# and AccordNET)</p>
+</blockquote>
+<p>All of them are investigations into some form of machine learning or computer vision but the titles share very little in common. It's likely that the prediction quality of this one will actually suffer a little with the change I'm introducing but I'm looking for an overall improvement, across the entire blog. I'm also not looking for a perfect general solution, I'm trying to find something that works well for <em>my</em> data (again, bearing in mind that there is a relatively small quantity of it as there are only around 120 posts, which doesn't give the computer a huge amount of data to work from).</p>
+<p><em>(It's also worth noting that the way I implement this in my blog is that I maintain two lists - the manually-curated list that I had before that had links for about a dozen posts and a machine-generated list; if there are manual links present then they will be displayed and the auto-generated ones will be hidden - so if I find that I have a particuarly awkward post where the machine can't find nice matches then I can always tidy it up myself by manually creating the related-post links for that post)</em></p>
+<h3>Implementation</h3>
+<p><a href="/automating-suggested-related-posts-links-for-my-blog-posts">Last time</a>, I had code that was reading and parsing my blog posts into a &quot;postsWithDocuments&quot; list.</p>
+<p>After training the fastText model, I'll train a TF-IDF model on all of the documents. I'll then go back round each document again, have this new &quot;Process&quot; them and retrieve &quot;Frequency&quot; values for each word. These values allow for a score to be generated - since the scores depend upon how often a word appears in a given document, the scores will vary from one blog post to another and so I'm taking an average score for each distinct word.</p>
+<p>(Confession: I'm not 100% sure that this averaging is the ideal approach here but it seems to be doing a good enough job and I'm only fiddling around with things, so <em>good enough</em> should be all that I need)</p>
+<pre><code>Console.WriteLine(&quot;Training TF-IDF model..&quot;);
+var tfidf = new TFIDF(pipeline.Language, version: 0, tag: &quot;&quot;);
+await tfidf.Train(postsWithDocuments.Select(postWithDocument =&gt; postWithDocument.Document));
+
+Console.WriteLine(&quot;Getting average TF-IDF weights per word..&quot;);
+var tokenValueTFIDF = new Dictionary&lt;string, List&lt;float&gt;&gt;(StringComparer.OrdinalIgnoreCase);
+foreach (var doc in postsWithDocuments.Select(postWithDocument =&gt; postWithDocument.Document))
+{
+    // Calling &quot;Process&quot; on the document updates data on the tokens within the document
+    // (specifically, the token.Frequency value)
+    tfidf.Process(doc);
+    foreach (var sentence in doc)
+    {
+        foreach (var token in sentence)
+        {
+            if (!tokenValueTFIDF.TryGetValue(token.Value, out var freqs))
+            {
+                freqs = new();
+                tokenValueTFIDF.Add(token.Value, freqs);
+            }
+            freqs.Add(token.Frequency);
+        }
+    }
+}
+var averagedTokenValueTFIDF = tokenValueTFIDF.ToDictionary(
+    entry =&gt; entry.Key,
+    entry =&gt; entry.Value.Average(), StringComparer.OrdinalIgnoreCase
+);
+</code></pre>
+<p>Now, with a couple of helper methods:</p>
+<pre><code>private static float GetProximityByTitleTFIDF(
+    string similarPostTitle,
+    HashSet&lt;string&gt; tokenValuesInInitialPostTitle,
+    Dictionary&lt;string, float&gt; averagedTokenValueTFIDF,
+    Pipeline pipeline)
+{
+    return GetAllTokensForText(similarPostTitle, pipeline)
+        .Where(token =&gt; tokenValuesInInitialPostTitle.Contains(token.Value))
+        .Sum(token =&gt;
+        {
+            var tfidfValue = averagedTokenValueTFIDF.TryGetValue(token.Value, out var score)
+                ? score
+                : 0;
+            if (tfidfValue &lt;= 0)
+            {
+                // Ignore any tokens that report a negative impact (eg. punctuation or
+                // really common words like &quot;in&quot;)
+                return 0;
+            }
+            return tfidfValue;
+        });
+}
+
+private static IEnumerable&lt;IToken&gt; GetAllTokensForText(string text, Pipeline pipeline)
+{
+    var doc = new Document(text, pipeline.Language);
+    pipeline.ProcessSingle(doc);
+    return doc.SelectMany(sentence =&gt; sentence);
+}
+</code></pre>
+<p>.. it's possible, for any given post, to sort the titles of the other posts according to how many &quot;interesting&quot; words (and <em>how</em> &quot;interesting&quot; they are) they have in common like this:</p>
+<pre><code>// Post 82 on my blog is &quot;Simple TypeScript type definitions for AMD modules&quot;
+var post82 = postsWithDocuments.Select(p =&gt; p.Post).FirstOrDefault(p =&gt; p.ID == 82);
+var title = post82.Title;
+
+var tokenValuesInTitle =
+    GetAllTokensForText(NormaliseSomeCommonTerms(title), pipeline)
+        .Select(token =&gt; token.Value)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+		
+var others = postsWithDocuments
+    .Select(p =&gt; p.Post)
+    .Where(p =&gt; p.ID != post82.ID)
+    .Select(p =&gt; new
+    {
+        Post = p,
+        ProximityByTitleTFIDF = GetProximityByTitleTFIDF(
+            NormaliseSomeCommonTerms(p.Title),
+            tokenValuesInTitle,
+            averagedTokenValueTFIDF,
+            pipeline
+        )
+    })
+    .OrderByDescending(similarResult =&gt; similarResult.ProximityByTitleTFIDF);
+	
+foreach (var result in others)
+    Console.WriteLine($&quot;{result.ProximityByTitleTFIDF:0.000} {result.Post.Title}&quot;);
+</code></pre>
+<p>The top 11 scores (after which, everything has a TF-IDF proximity score of zero) are these:</p>
+<blockquote>
+<p>7.183 Parsing TypeScript definitions (functional-ly.. ish)<br />
+4.544 TypeScript State Machines<br />
+4.544 Writing React components in TypeScript<br />
+4.544 TypeScript classes for (React) Flux actions<br />
+4.544 TypeScript / ES6 classes for React components - without the hacks!<br />
+4.544 Writing a Brackets extension in TypeScript, in Brackets<br />
+0.796 A static type system is a wonderful message to the present and future<br />
+0.796 A static type system is a wonderful message to the present and future - Supplementary<br />
+0.796 Type aliases in Bridge.NET (C#)<br />
+0.796 Hassle-free immutable type updates in C#<br />
+0.000 I love Immutable Data</p>
+</blockquote>
+<p>So the idea is to then use the fastText similarity score when deciding which of these matches is best.</p>
+<p>There are all sorts of ways that these two scoring mechanisms could be combined - eg. I could take the 20 titles with the greatest TF-IDF proximity scores and then order them by similarity (ie. which results the fastText model thinks are best) or I could reverse it and take the 20 titles that fastText thought were best and <em>then</em> take the three with the greatest TF-IDF proximity scores from within those. For now, I'm using the simplest approach and ordering by the TF-IDF scores first and then by the fastText similarity model. So, from the above list, the 7.183-scoring post will be taken first and then 2 out of the 5 posts that have a TF-IDF score of 4.544 will be taken, according to which ones the fastText model thought were more similar.</p>
+<p>Again, there are lots of things that could be tweaked and fiddled with - and I imagine that I will experiment with them at some point. The main problem is that I have enough data across my posts that it's tedious looking through the output to try to decide if I've improved things each time I make change but there <em>isn't</em> enough data that the algorithms have a huge pile of information to work on. Coupled with the fact that training takes a few minutes to run and I have recipe for frustration if I obsess too much about it. Right now, I'm happy enough with the suggestions and any that I want to manually override, I can do so easily.</p>
+<h3>Trying the code yourself</h3>
+<p>If you want to try out the code, you can find a complete sample in the &quot;SimilarityWithTitleTFIDF&quot; project in the solution of this repo: <a href="https://github.com/ProductiveRage/BlogPostSimilarity">BlogPostSimilarity</a>.</p>
+<h3>Has it helped?</h3>
+<p>Let's return to those examples that I started with.</p>
+<p>Good suggestions from last time:</p>
+<blockquote>
+<p><strong>Learning F# via some Machine Learning: The Single Layer Perceptron</strong><br />
+How are barcodes read?? (Library-less image processing in C#)<br />
+Writing F# to implement 'The Single Layer Perceptron'<br />
+Face or no face (finding faces in photos using C# and AccordNET)</p>
+</blockquote>
+<p><em>Less</em> good suggestions:</p>
+<blockquote>
+<p><strong>Simple TypeScript type definitions for AMD modules</strong><br />
+STA ApartmentState with ASP.Net MVC<br />
+WCF with JSON (and nullable types)<br />
+The joys of AutoMapper</p>
+</blockquote>
+<p>Now, the not-very-good one has improved and has these offered:</p>
+<blockquote>
+<p><strong>Simple TypeScript type definitions for AMD modules</strong><br />
+Parsing TypeScript definitions (functional-ly.. ish)<br />
+TypeScript State Machines<br />
+Writing a Brackets extension in TypeScript, in Brackets</p>
+</blockquote>
+<p>.. but, as I said before, the good suggestions are now not <em>as</em> good as they were:</p>
+<blockquote>
+<p><strong>How are barcodes read?? (Library-less image processing in C#)</strong><br />
+Face or no face (finding faces in photos using C# and Accord.NET)<br />
+Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#<br />
+A follow-up to &quot;Implementing F#-inspired 'with' updates in C#&quot;</p>
+</blockquote>
+<p>There are lots of suggestions that <em>are</em> still very good - eg.</p>
+<blockquote>
+<p><strong>Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</strong><br />
+Using Roslyn to identify unused and undeclared variables in VBScript WSC components<br />
+Locating TODO comments with Roslyn<br />
+Using Roslyn code fixes to make the &quot;Friction-less immutable objects in Bridge&quot; even easier</p>
+<p><strong>Migrating my Full Text Indexer to .NET Core (supporting multi-target NuGet packages)</strong><br />
+Revisiting .NET Core tooling (Visual Studio 2017)<br />
+The Full Text Indexer Post Round-up<br />
+The NeoCities Challenge! aka The Full Text Indexer goes client-side!</p>
+<p><strong>Dependency Injection with a WCF Service</strong><br />
+Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0<br />
+Consuming a WCF Web Service from PHP<br />
+WCF with JSON (and nullable types)</p>
+<p><strong>Translating VBScript into C#</strong><br />
+VBScript is DIM<br />
+Using Roslyn to identify unused and undeclared variables in VBScript WSC components<br />
+If you can keep your head when all about you are losing theirs and blaming it on VBScript</p>
+</blockquote>
+<p>.. but still some less-good suggestions, like:</p>
+<blockquote>
+<p><strong>Auto-releasing Event Listeners</strong><br />
+Writing React apps using Bridge.NET - The Dan Way (Part Three)<br />
+Persistent Immutable Lists - Extended<br />
+Extendable LINQ-compilable Mappers</p>
+<p><strong>Problems in Immutability-land</strong><br />
+Language detection and words-in-sentence classification in C#<br />
+Using Roslyn to identify unused and undeclared variables in VBScript WSC components<br />
+Writing a Brackets extension in TypeScript, in Brackets</p>
+</blockquote>
+<p>However, having just looked through the matches to try to find any really awful suggestions, there aren't many that jump out at me. And, informal as that may be as a measure of success, I'm fairly happy with that!</p>
+<p class="PostTime">Posted at 21:56</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/automating-suggested-related-posts-links-for-my-blog-posts">Automating &quot;suggested / related posts&quot; links for my blog posts</a></div></div><div class="Related"><h3>You may also be interested in:</h3><ul><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts">Automating &quot;suggested / related posts&quot; links for my blog posts</a></li><li><a href="/the-full-text-indexer-automating-index-generation">The Full Text Indexer - Automating Index Generation</a></li><li><a href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Machine%20Learning" title="6 Posts">Machine Learning</a></li><li><a href="/Archive/Tag/Curiosity" title="3 Posts">Curiosity</a></li></ul></div>
+                <div id="disqus_thread"></div>
+                <script type="text/javascript">
+					var disqus_identifier = "121";
+					var disqus_title = "Automating \u0022suggested / related posts\u0022 links for my blog posts - Part 2";
+					(function () {
+						whenjQueryIsAvailable(
+							function () {
+								$(function () {
+									loadCommentsIfHalfwayDownAndNotAlreadyLoaded();
+									$(window).scroll(loadCommentsIfHalfwayDownAndNotAlreadyLoaded);
+								});
+							}
+						);
+
+						var bStartedLoadingComments = false;
+						function loadCommentsIfHalfwayDownAndNotAlreadyLoaded() {
+							if (bStartedLoadingComments) {
+								return;
+							}
+							var $post = $("div.Content.SinglePost");
+							var bottomOfPost = $post.position().top + $post.height();
+							var $window = $(window);
+							if (($window.scrollTop() + $window.height()) >= (bottomOfPost / 2)) {
+								bStartedLoadingComments = true;
+								loadComments();
+							}
+						}
+
+						function loadComments() {
+							var dsq = document.createElement("script");
+							dsq.type = "text/javascript";
+							dsq.async = true;
+							dsq.src = "https://" + disqus_shortname + ".disqus.com/embed.js";
+							(document.getElementsByTagName("head")[0] || document.getElementsByTagName("body")[0]).appendChild(dsq);
+						}
+					}());
+                </script>
+    </div>
+
+
+				<div class="Footer">
+					© Productive Rage 2011 - 2021
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+				</div>
+				<div class="Search">
+<form action="/Search" method="get">						<div>
+							<input type="text" class="SiteSearch" name="term" value="" />
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a></li><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts">Automating &quot;suggested / related posts&quot; links for my blog posts</a></li><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li><li><a href="/monitoring-my-gardens-limited-sunlight-time-period-with-an-arduino-and-some-tupperware">Monitoring my garden&#x27;s limited sunlight time period with an Arduino (and some tupperware)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li></ul><div class="RSSFeedLink"><a href="https://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/4/2021">April 2021 (2)</a></li><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>
