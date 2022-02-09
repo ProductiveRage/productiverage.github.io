@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<meta charset="utf-8" />
 	<title>Productive Rage - Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</title>
@@ -67,7 +67,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <h3 class="PostDate">28 June 2016</h3><h2><a id="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner" href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></h2>
+        <p class="PostDate">28 June 2016</p><h2><a id="creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner" href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></h2>
 <p><strong>Update 28th April 2021:</strong> I came to write a new analyser today and found that the project format has completely changed, so this post is now very out-of-date and I intend to revamp it at some point. However, I haven't done so yet and - until I do - I'll leave you with these resources that I found useful:</p>
 <ul>
 <li>Microsoft Tutorial: <a href="https://docs.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/tutorials/how-to-write-csharp-analyzer-code-fix">Write your first analyzer and code fix</a></li>
@@ -178,7 +178,7 @@ public void TestMethod2()
 <p>I want to introduce one other useful technique before moving on - the use of the &quot;Syntax Visualizer&quot;. An analyser works on an in-memory tree of nodes that represent the source code of the file that you're looking at*. In the unit test above, the named symbol &quot;TypeName&quot; is a child node of the &quot;TypeName&quot; class declaration, which is a child node of the &quot;ConsoleApplication1&quot; namespace, which is a child of a top-level construct called the &quot;CompilationUnit&quot;. Understanding the various types of node will be key to writing analysers and the Syntax Visualizer makes this a little bit easier.</p>
 <p>* <em>(Although an analyser starts by examining source code in a particular file, it's also possible to look up types and values that are referenced in that code that live elsewhere - to find out what namespace a class that is referenced exists in, for example, or to determine what arguments a method that is called that exists in a different library. These lookups are more expensive than looking solely at the content in the current file, however, and so should only be done if strictly necessary. We will see how to do this shortly. When looking only at content parsed from the current file, we are looking at the &quot;syntax tree&quot;. When looking up references elsewhere in the solution we accessing the &quot;semantic model&quot;).</em></p>
 <p>Having installed the &quot;.NET Compiler Platform SDK&quot; earlier, you will now have access to this tool - go to View / Other Windows / Syntax Visualizer. This shows the syntax tree for any code within your project. So, if you click on the name &quot;TestMethod2&quot; then you will see that it is an <strong>IdentifierToken</strong> (which is the name &quot;TestMethod2&quot;) that is a child node of a <strong>MethodDeclaration</strong> which is a child node of a <strong>ClassDeclaration</strong> which is a child node of a <strong>NamespaceDeclaration</strong>, which is a child node of a <strong>CompilationUnit</strong>. You can click on any of these nodes in the Syntax Visualiser to inspect some of the properties of the node and you can open further branches to inspect more - for example, there is a &quot;Block&quot; node that will appear shortly after the <strong>IdentifierToken</strong> that you may click to reveal the nodes that represent the statements within the method.</p>
-<p><img src="/Content/Images/Posts/SyntaxVisualizer.png" alt="The Syntax Visualizer" /></p>
+<p><img src="/Content/Images/Posts/SyntaxVisualizer.png" alt="The Syntax Visualizer" title="The Syntax Visualizer" /></p>
 <h3>Writing a real analyser</h3>
 <p>I'm going to walk through an analyser that I created recently - starting from scratch and, hopefully, encountering the same problems that I did last time so that I can illustrate how to find out how to solve them.</p>
 <p>The analyser is part of my <a href="https://www.nuget.org/packages/Bridge.React">Bridge.React</a> library but you won't need to know anything about React or Bridge to follow along.</p>
@@ -370,7 +370,7 @@ namespace ExampleAnalyser.Test
 <pre><code>var x = new Bridge.React.SelectAttributes { Multiple = true, Value = &quot;x&quot; };
 </code></pre>
 <p>Ensuring that the Syntax Visualizer is visible (View / Other Windows / Syntax Visualizer), clicking on &quot;Multiple&quot; shows the following:</p>
-<p><img src="/Content/Images/Posts/ObjectInitializerExpression.png" alt="ObjectInitializerExpression" /></p>
+<p><img src="/Content/Images/Posts/ObjectInitializerExpression.png" alt="ObjectInitializerExpression" title="ObjectInitializerExpression" /></p>
 <p>The <strong>IdentifierToken</strong> is the &quot;Multiple&quot; property, which is part of a <strong>SimpleAssignment</strong> (ie. &quot;Multiple = 1&quot;) which is a child of an <strong>ObjectInitializerExpression</strong> (which is the curly brackets around the two properties being set) which is a child of an <strong>ObjectCreationExpression</strong> (which is the entire statement that includes &quot;new Bridge.React.SelectAttributes&quot; <em>and</em> the setting of the two properties) and that itself is part of a <strong>VariableDeclaration</strong> (which sets &quot;x&quot; to be the result of the object creation). With the Syntax Visualizer, we could go all the way up to the top of the method and then to the class and then to the namespace and then to the top-level CompilationUnit. However, what we're most interested in is the <strong>ObjectInitializerExpression</strong>, since that contains the properties that we want to verify.</p>
 <p>So, how do we alter the analyser class that we currently have in order to identify object initialisers such as this?</p>
 <p>Currently the example analyser class has an &quot;Initialize&quot; method that looks like this:</p>
@@ -872,8 +872,11 @@ namespace ExampleAnalyser
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
 				</div>
 				<div class="Search">
-<form action="/Search" method="get">						<div>
-							<input type="text" class="SiteSearch" name="term" value="" />
+<form action="/Search" autocomplete="off" method="get">						<div>
+							<label class="SearchField">
+								<span class="text">Site Search</span>
+								<input type="text" class="SiteSearch" name="term" value="" />
+							</label>
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
@@ -885,8 +888,7 @@ namespace ExampleAnalyser
 		</div>
 	</div>
 
-	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
-	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/autocomplete.js"></script>
 	<script type="text/javascript" src="/Scripts/prettify.js"></script>
 	<script type="text/javascript" src="/Scripts/Site.js"></script>
 	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>

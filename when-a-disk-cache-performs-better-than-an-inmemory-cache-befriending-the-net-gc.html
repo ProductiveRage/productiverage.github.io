@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<meta charset="utf-8" />
 	<title>Productive Rage - When a disk cache performs better than an in-memory cache (befriending the .NET GC)</title>
@@ -67,7 +67,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <h3 class="PostDate">21 September 2016</h3><h2><a id="when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc" href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></h2>
+        <p class="PostDate">21 September 2016</p><h2><a id="when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc" href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></h2>
 <h3>TL;DR (especially for Bud Goode)</h3>
 <p>The .NET garbage collector is a complex beast. Occasionally it might infuriate but remember that it's keeping you from the misery of manual memory management and that you're better to consider it an ally than a foe.</p>
 <p>Sometimes, ways to improve its performance seem counter-intuitive, such as intentionally keeping objects around that will have to be considered by each of the already-expensive gen 2 collections, even when we have no intention of letting those objects go (aka. object pooling) and such as using disk caching instead of in-memory caching, despite an in-memory cache &quot;obviously&quot; being more performant than having to hit the file system.</p>
@@ -136,7 +136,7 @@
 <p>At this point, it was feeling like a success.</p>
 <p>To stretch things further, though, I thought that I'd see how it responded if I played the requests as fast as I could. In normal operation throughout the day, each server doesn't have to deal with much more than an average of 12 requests per second. There will be the odd peak of double that, but they tend to be short-lived. There will be busier times of day where the average rate may be more like 16 requests per second, but not usually for more than a few hours. I was only using a single computer to generate load in this case but that was sufficient to create a sustained load of 35-40 requests per second. I figured that if the service would deal with this then we'd be doing great.</p>
 <p>And for about forty minutes, things <em>do</em> go great. The server is busy, it's serving a lot (relative to a normal load) of requests, the gen 0 heap peaks and troughs the most, the gen 1 heap blips up and down with less drama, the gen 2 heap makes slower steps up then drops back down then very gently climbs then steps up then is steady then steps up slightly then drops down, carrying on merrily enough.</p>
-<img alt="Gen 2 heap 'blow up'" src="/Content/Images/Posts/Memory Blow Up - Gen 2 Heap.jpg" class="HalfWidth" />
+<img alt="Gen 2 heap 'blow up'" src="/Content/Images/Posts/Memory Blow Up - Gen 2 Heap.jpg" class="HalfWidth" title="Gen 2 heap 'blow up'" />
 <p>Until, at some point, the gen 2 heap starts curving up dramatically, followed by many steep steps upward, then a slightly pathetic dip immediately followed by steep steps upward. Having barely hit a gigabyte in size while gently building up and dropping earlier, it's now got to around 4 gig in a very short space of time. Here, it flatlines. During this steep climb, requests have gotten slower and slower and, at this flatline, they are no longer processed. This state continues for a couple of minutes, after which some work appears to attempt to continue, though the gen 2 heap doesn't drop in size at all. Some unusual errors are seen in the logs, such as:</p>
 <blockquote>
 <p>Timeout expired.  The timeout period elapsed prior to obtaining a connection from the pool.</p>
@@ -146,7 +146,7 @@
 <p>Incidentally, after this &quot;flatline period&quot;, as requests appear to (slowly) begin being served again, the gen 2 heap grows to over 5 gig and then another flatline period is entered. This one much longer. So long, in fact, that I gave up waiting for it. Maybe my attention span is a bit short but I think that after more than five minutes of being completely stuck it's probably not much use even if the service <em>does</em> start going again.</p>
 <p>The symptoms of this condition sound identical to the occasional &quot;memory blow up&quot; that was seen with the old version of the code on the live servers. It would seem that the changes so far had not provided a magic bullet.</p>
 <h3>Looking for clues</h3>
-<img alt="GC CPU time during the 'blow up'" src="/Content/Images/Posts/Memory Blow Up - GC CPU.jpg" class="HalfWidth" />
+<img alt="GC CPU time during the 'blow up'" src="/Content/Images/Posts/Memory Blow Up - GC CPU.jpg" class="HalfWidth" title="GC CPU time during the 'blow up'" />
 <p>I wanted some insight into what was going on during these periods of apparent inactivity - well, it seemed like <em>my</em> code was inactive, though it appeared that the GC was being very busy. The &quot;% time in GC&quot; would spike around during work but seem to get more frenzied in its peaking in the lead up to the gen 2 heap size flat line, then it too would flat line in sympathy. After the first flat line period, it would remain higher but spike up and down, then it would flatline again when the gen 2 heap size flatlined, at a higher level than the time before.</p>
 <p>I initially presumed that there must be something in the requests that caused this behaviour. So, if I skipped the first {whatever} thousand requests then I should be able to get this to happen sooner. Not so - skipping 10k requests still meant that I had to wait the same period of time for the behaviour to present itself. Skipping 20k, the same. If I skipped too many then the requests would complete without blowing up at all.</p>
 <p>My next step was to try to use <a href="http://www.red-gate.com/products/dotnet-development/ants-memory-profiler/">ANTS Memory Profiler</a> and to take a couple of snapshots as the blowout started occurring. Unfortunately, by the time that the gen 2 heap size started climbing sharply, it would quickly get too big for the profiler to snapshot. There's a hard limit in the software as to how big of a memory dump it will try to process (&quot;for performance reasons&quot;). There's an option to take less information about each object so that larger dumps may be taken but even enabling that didn't work. In retrospect, it might have been worth reducing the memory in the virtual box and trying to reproduce the issue then - hopefully ANTS would have been able to deal with it then (everything got stuck when the gen 2 heap reached around four gig out of a total six gig of RAM, if the server only had four gig total then the available memory would be exhausted and the GC would presumably throw a tantrum much earlier, with a much smaller gen 2 heap).</p>
@@ -163,7 +163,7 @@
 <p>* <em>(File IO of this type will suffer contention issues but this is a read-only service and so the worst case is  that some database hits that could theoretically have been avoided are processed; if a request comes in whose results are not available in cache then it will get the data live and then try to write to a cache file - if another request comes in whose search criteria gets hashed to the same key then it won't be possible to read the data for that key while the writing from the first request is taking place)</em></p>
 <h3>In conclusion</h3>
 <p>It has now been a couple of weeks that this code has been in production. Over that time, all of the gen 0, 1 and 2 Small Object Heaps have appeared to breathe in and out in a healthy fashion, as has the Large Object Heap. There has been no indication of the slow-memory-usage-climb-to-oblivion that would be seen before.</p>
-<img alt="GC Memory Graph" src="/Content/Images/Posts/GC Memory Graph.png" class="HalfWidth" />
+<img alt="GC Memory Graph" src="/Content/Images/Posts/GC Memory Graph.png" class="HalfWidth" title="GC Memory Graph" />
 <p>The experience has been very interesting for me, it's given me a chance to expand my understanding of the garbage collector and to apply what I already knew about it. It would have been the icing on the cake to find out more about just what was happening in the process when it was having one of its &quot;blow ups&quot;, but I'm more glad that it doesn't look likely to happen again than I am curious as to what was in its mind at the time! It's given me a fresh appreciation of the garbage collector and it's served as a reminder that it really is my buddy and not my enemy.</p>
 <p>It's also gratifying that this service continues to get the love it needs to grow and develop. It doesn't seem to be particularly uncommon for code to be written that doesn't expect to be in use more than two years in the future (sometimes simply because a project is released and &quot;handed off&quot; to a client, never to be maintained or updated again - necessitating its replacement in the not-too-distant-future as the real world moves further and further away from what the original solution is able to do).</p>
 <p>I wrote such a large portion of the service code myself that I have to bear the blame for the bad bits as well as the glory for the successes. Those custom non-locking-for-read-but-fully-cloning-for-write dictionaries (replaced in &quot;Step 1&quot; with the more modern <strong>ConcurrentDictionary</strong>) were my idea and implementation and seemed fantastic at the time - but I'm not upset in the slightest to have seen the back of them now! It's a great opoortunity to look back over the years and see not only how technology has moved on since then but also my own knowledge. I very much intend to see it continuing!</p>
@@ -221,8 +221,11 @@
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
 				</div>
 				<div class="Search">
-<form action="/Search" method="get">						<div>
-							<input type="text" class="SiteSearch" name="term" value="" />
+<form action="/Search" autocomplete="off" method="get">						<div>
+							<label class="SearchField">
+								<span class="text">Site Search</span>
+								<input type="text" class="SiteSearch" name="term" value="" />
+							</label>
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
@@ -234,8 +237,7 @@
 		</div>
 	</div>
 
-	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
-	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/autocomplete.js"></script>
 	<script type="text/javascript" src="/Scripts/prettify.js"></script>
 	<script type="text/javascript" src="/Scripts/Site.js"></script>
 	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>

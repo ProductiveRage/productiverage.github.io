@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<meta charset="utf-8" />
 	<title>Productive Rage - How are barcodes read?? (Library-less image processing in C#)</title>
@@ -67,7 +67,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <h3 class="PostDate">7 August 2020</h3><h2><a id="how-are-barcodes-read-libraryless-image-processing-in-c-sharp" href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></h2>
+        <p class="PostDate">7 August 2020</p><h2><a id="how-are-barcodes-read-libraryless-image-processing-in-c-sharp" href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></h2>
 <p>I've been using MyFitnessPal and it has the facility to load nutrition information by scanning the barcode on the product. I can guess how the retrieval works once the barcode number is obtained (a big database somewhere) but it struck me that I had no idea how the reading of the barcode <em>itself</em> worked and.. well, I'm curious and enjoy the opportunity to learn something new to me by writing the code to do it. I do enjoy being able to look up (almost) anything on the internet to find out how it works!</p>
 <p><em>(For anyone who wants to either play along but not copy-paste the code themselves or for anyone who wants to jump to the end result, I've put the code - along with the example image I've used in this post - up on a <a href="https://github.com/ProductiveRage/BarcodeReader">GitHub repo</a>)</em></p>
 <h3>The plan of attack</h3>
@@ -97,20 +97,20 @@
 <p><em>(Some of the techniques are similar to things that I did in my <a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a> and so I'll be using some of the same code shortly that I described then)</em></p>
 <h3>Identifying maybe-barcode images</h3>
 <p>Let's this image as an example to work with (peanut butter.. I <em>do</em> love peanut butter) -</p>
-<img alt="Delicious peanut butter" src="/Content/Images/Posts/PeanutBarcode.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Delicious peanut butter" src="/Content/Images/Posts/PeanutBarcode.jpg" class="NoBorder AlwaysFullWidth" title="Delicious peanut butter" />
 <p>Before looking at any code, let's visualise the process.</p>
 <p>We're going to consider horizontal and vertical gradient intensity maps - at every point in the image we either look to the pixels to the left and to the right (for the horizontal gradient) or we look at the pixels above and below (for the vertical gradient) and the larger the change, the brighter the pixel in the gradient intensity map</p>
-<img alt="Horizontal gradient intensity" src="/Content/Images/Posts/PeanutBarcode-HorizontalAndVerticalGradients.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Horizontal gradient intensity" src="/Content/Images/Posts/PeanutBarcode-HorizontalAndVerticalGradients.jpg" class="NoBorder AlwaysFullWidth" title="Horizontal gradient intensity" />
 <p>And when they're combined by subtracting the vertical gradient at each point from the horizontal gradient, it looks lke this:</p>
-<img alt="Combined gradient intensity" src="/Content/Images/Posts/PeanutBarcode-CombinedGradients.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Combined gradient intensity" src="/Content/Images/Posts/PeanutBarcode-CombinedGradients.jpg" class="NoBorder AlwaysFullWidth" title="Combined gradient intensity" />
 <p>If this image is blurred then we get this:</p>
-<img alt="Blurred combined gradient intensity" src="/Content/Images/Posts/PeanutBarcode-Blurred.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Blurred combined gradient intensity" src="/Content/Images/Posts/PeanutBarcode-Blurred.jpg" class="NoBorder AlwaysFullWidth" title="Blurred combined gradient intensity" />
 <p>.. and if we create a binary mask by saying &quot;normalise the intensity values so that their range goes from zero (for the darkest pixel) to one (for the brightest) and then set any pixels that are in the bottom third in terms of intensity to 0 and set the rest to 1&quot; then we get this:</p>
-<img alt="Mask of possibly-part-of-a-barcode areas" src="/Content/Images/Posts/PeanutBarcode-Mask.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Mask of possibly-part-of-a-barcode areas" src="/Content/Images/Posts/PeanutBarcode-Mask.jpg" class="NoBorder AlwaysFullWidth" title="Mask of possibly-part-of-a-barcode areas" />
 <p>If each distinct area (where an &quot;area&quot; means &quot;a group of pixels that are connected&quot;) is identified and squares overlaid and centered around the areas then we see this:</p>
-<img alt="Mask of possibly-part-of-a-barcode areas, extended into squared areas" src="/Content/Images/Posts/PeanutBarcode-MaskSquares.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Mask of possibly-part-of-a-barcode areas, extended into squared areas" src="/Content/Images/Posts/PeanutBarcode-MaskSquares.jpg" class="NoBorder AlwaysFullWidth" title="Mask of possibly-part-of-a-barcode areas, extended into squared areas" />
 <p>.. and if the areas whose bounding squares overlap are combined and then cropped around the white pixels then we end up with this:</p>
-<img alt="Combined possibly-a-barcode areas" src="/Content/Images/Posts/PeanutBarcode-MaskSquaresCombined.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Combined possibly-a-barcode areas" src="/Content/Images/Posts/PeanutBarcode-MaskSquaresCombined.jpg" class="NoBorder AlwaysFullWidth" title="Combined possibly-a-barcode areas" />
 <p>This has identified the area around the barcode and also two tiny other areas - when we come to trying to read barcode numbers out of these, the tiny regions will result in no value while the area around the genuine barcode content <em>should</em> result in a number successfully being read. But I'm getting ahead of myself.. let's look at the code required to perform the above transformations.</p>
 <p>I'm going to start with a <strong>DataRectangle</strong> for performing transformations -</p>
 <pre><code>public static class DataRectangle
@@ -349,7 +349,7 @@ public sealed class DataRectangle&lt;T&gt;
 }
 </code></pre>
 <p>This gets us to this point:</p>
-<img alt="Mask of possibly-part-of-a-barcode areas" src="/Content/Images/Posts/PeanutBarcode-Mask.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Mask of possibly-part-of-a-barcode areas" src="/Content/Images/Posts/PeanutBarcode-Mask.jpg" class="NoBorder AlwaysFullWidth" title="Mask of possibly-part-of-a-barcode areas" />
 <p>.. which feels like good progress!</p>
 <p>Now we need to try to identify distinct &quot;islands&quot; of pixels where each &quot;island&quot; or &quot;object&quot; is a set of points that are within a single connected area. A straightforward way to do that is to look at every point in the mask that is set to 1 and either:</p>
 <ol>
@@ -403,13 +403,13 @@ public sealed class DataRectangle&lt;T&gt;
 }
 </code></pre>
 <p>The problem is that, even with the blurring we performed, there will likely be some groups of distinct objects that are actually part of a single barcode. These areas need to be joined together. It's quite possible for there to be relatively large gaps in the middle of barcodes (there is in the example that we've been looking at) and so we might not easily be able to just take the distinct objects that we've got and join together areas that seem &quot;close enough&quot;.</p>
-<img alt="Areas that are possibly part of a barcode" src="/Content/Images/Posts/PeanutBarcode-MaskObjects.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Areas that are possibly part of a barcode" src="/Content/Images/Posts/PeanutBarcode-MaskObjects.jpg" class="NoBorder AlwaysFullWidth" title="Areas that are possibly part of a barcode" />
 <p>On the basis that individual bars in a barcode are tall compared to the largest possible width that any of them can be (which I'll go into more detail about later on), it seems like a reasonable idea to take any areas that are taller than they are wide and expand their width until they become square. That would give us this:</p>
-<img alt="Mask of possibly-part-of-a-barcode areas, extended into squared areas" src="/Content/Images/Posts/PeanutBarcode-MaskSquares.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Mask of possibly-part-of-a-barcode areas, extended into squared areas" src="/Content/Images/Posts/PeanutBarcode-MaskSquares.jpg" class="NoBorder AlwaysFullWidth" title="Mask of possibly-part-of-a-barcode areas, extended into squared areas" />
 <p>We'd then work out which of these &quot;squared off&quot; rectangles overlap (if any) and replace overlapping rectangles with rectangles that cover their combined areas, which would look like this:</p>
-<img alt="Overlapping squared-off areas that have been combined" src="/Content/Images/Posts/PeanutBarcode-MaskSquaresCombinedPreTrimmed.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Overlapping squared-off areas that have been combined" src="/Content/Images/Posts/PeanutBarcode-MaskSquaresCombinedPreTrimmed.jpg" class="NoBorder AlwaysFullWidth" title="Overlapping squared-off areas that have been combined" />
 <p>The only problem with this is that the combined rectangles extend too far to the left and right of the areas, so we need to trim them down. The will be fairly straightforward because we have the information about what distinct objects there are and each object is just a list of points - so we work out which objects have points within each of the combined bounding areas and then we work out which out of all of the objects for each combined area has the smallest &quot;x&quot; value and smallest &quot;y&quot; value and which have the largest values. That way, we can change the combined bounding areas to only cover actual barcode pixels. Which would leave us with this:</p>
-<img alt="Combined possibly-a-barcode areas" src="/Content/Images/Posts/PeanutBarcode-MaskSquaresCombined.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Combined possibly-a-barcode areas" src="/Content/Images/Posts/PeanutBarcode-MaskSquaresCombined.jpg" class="NoBorder AlwaysFullWidth" title="Combined possibly-a-barcode areas" />
 <p>That might sound like a lot of complicated work but if we take a bit of a brute force* approach to it then it can be expressed like this:</p>
 <pre><code>private static IEnumerable&lt;Rectangle&gt; GetOverlappingObjectBounds(
     IEnumerable&lt;IEnumerable&lt;Point&gt;&gt; objects)
@@ -516,7 +516,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
     });
 </code></pre>
 <p>The final result is that the barcode has been successfully located on the image - hurrah!</p>
-<img alt="Barcode located!" src="/Content/Images/Posts/PeanutBarcode-Identified.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="Barcode located!" src="/Content/Images/Posts/PeanutBarcode-Identified.jpg" class="NoBorder AlwaysFullWidth" title="Barcode located!" />
 <p>With this information, we should be able to extract regions or &quot;sub images&quot; from the source image and attempt to decipher the barcode value in it (presuming that there IS a bar code in it and we haven't got a false positive match).</p>
 <p>As we'll see in a moment, the barcode doesn't have to be perfectly lined up - some rotation is acceptable (depending upon the image, up to around 20 or 30 degrees should be fine). The MyFitnessPal app has a couple of fallbacks that I've noticed, such as being able to read barcodes that are upside down or even back to front (which can happen if a barcode is scanned from the wrong side of a transparent wrapper). While I won't be writing code here for either of those approaches, I'm sure that you could envisage how it could be done - the source image data could be processed as described here and then, if no barcode is read, rotated 180 degrees and re-processed and reversed and re-processed, etc..</p>
 <h3>How to read a bar code</h3>
@@ -545,7 +545,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 </code></pre>
 <p><em>(Note that every combination of values totals 7 when they added up - this is very helpful later!)</em></p>
 <p>To see what that looks like in the real world, here's a slice of that barcode from the jar of peanut butter with each section and each numberic value identified:</p>
-<img alt="Barcode numbers interpreted" src="/Content/Images/Posts/PeanutBarcode-AnnotatedValues.png" class="NoBorder AlwaysFullWidth" />
+<img alt="Barcode numbers interpreted" src="/Content/Images/Posts/PeanutBarcode-AnnotatedValues.png" class="NoBorder AlwaysFullWidth" title="Barcode numbers interpreted" />
 <p><em>(I should point out that the article <a href="https://habr.com/en/post/439768/">How does a barcode work?</a> was extremely helpful in the research I did for this post and I'm very grateful to the author for having written it in such an approachable manner!)</em></p>
 <p>Any combination of bar widths that is not found in the table is considered to be invalid. On the one hand, you might think that this a potential loss; the format could support more combinations of bar widths to encode more values and then more data could be packed into the same space. There is an advantage, however, to having relatively few valid combinations of bar widths - it makes easier to tell whether the information being read appears to be correct. If a combination is encountered that seems incorrect then the read attempt should be aborted and retried. The format has existed for decades and it would make sense, bearing that in mind, to prioritise making it easier for the hardware to read rather prioritising trying to cram as much data in there as possible. There is <em>also</em> a checksum included in the numerical data to try to catch any &quot;misreads&quot; but when working with low resolutions or hardware with little computing power, the easier that it is to bail out of a scan and to retry the better.</p>
 <p>The way to tackle the reading is to:</p>
@@ -757,13 +757,13 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <p>It should be noted that, even with the small amount of flexibility in the &quot;TryToGetValueForLengths&quot; method, in the peanut butter bar code example it requires 15 calls to &quot;GetBarLengthsFromBarcodeSlice&quot; until a bar code is successfully matched! Presumably, this is because there is a little more distortion further up the bar code due to the curve of the jar.</p>
 <p>That's not to say, however, that this approach to bar reading is particularly fussy. The redundancy and simplicity, not to mention the <em>size</em> of the average bar code, means that there is plenty of opportunity to try reading a sub image in multiple slices until one of them does match. In fact, I mentioned earlier that the barcode doesn't have to be perfectly at 90 degrees in order to be interpretable and that some rotation is acceptable. This hopefully makes some intuitive sense based upon the logic above and how it doesn't matter how long each individual bar code line is because they are averaged out - if a bar code was rotated a little and then a read was attempted of it line by line then the ratios between each line should remain consistent and the same data should be readable.</p>
 <p>To illustrate, here's a zoomed-in section of the middle of the peanut butter bar code in the orientation shown so far:</p>
-<img alt="A strip of the peanut butter jar's bar code" src="/Content/Images/Posts/PeanutBarcode-SingleStrip.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="A strip of the peanut butter jar's bar code" src="/Content/Images/Posts/PeanutBarcode-SingleStrip.jpg" class="NoBorder AlwaysFullWidth" title="A strip of the peanut butter jar's bar code" />
 <p>If we then rotate it like this:</p>
-<img alt="The peanut butter jar rotated slightly" src="/Content/Images/Posts/PeanutBarcode-Rotated.png" class="NoBorder AlwaysFullWidth" />
+<img alt="The peanut butter jar rotated slightly" src="/Content/Images/Posts/PeanutBarcode-Rotated.png" class="NoBorder AlwaysFullWidth" title="The peanut butter jar rotated slightly" />
 <p>.. then the code above will still read the value correctly because a strip across the rotated bar code looks like this:</p>
-<img alt="A strip of the peanut butter jar's bar code from the rotated image" src="/Content/Images/Posts/PeanutBarcode-SingleStripFromRotated.png" class="NoBorder AlwaysFullWidth" />
+<img alt="A strip of the peanut butter jar's bar code from the rotated image" src="/Content/Images/Posts/PeanutBarcode-SingleStripFromRotated.png" class="NoBorder AlwaysFullWidth" title="A strip of the peanut butter jar's bar code from the rotated image" />
 <p>Hopefully it's clear enough that, for each given line, the ratios are essentially the same as for the non-rotated strip:</p>
-<img alt="A strip of the peanut butter jar's bar code" src="/Content/Images/Posts/PeanutBarcode-SingleStrip.jpg" class="NoBorder AlwaysFullWidth" />
+<img alt="A strip of the peanut butter jar's bar code" src="/Content/Images/Posts/PeanutBarcode-SingleStrip.jpg" class="NoBorder AlwaysFullWidth" title="A strip of the peanut butter jar's bar code" />
 <p>To get a reading from an image that is rotated more than this requires a very clear source image and will still be limited by the first stage of processing - that tried to find sections where the horizontal image intensity changed with steep gradients but the vertical intensity did not. If the image is rotated too much then there will be more vertical image intensity differences encountered and it is less likely to identify it as a &quot;maybe a bar code&quot; region.</p>
 <p><em>(Note: I experimented with rotated images that were produced by an online barcode generator and had more success - meaning that I could rotate them more than I could with real photographs - but that's because those images are generated with stark black and white and the horizontal / vertical intensity gradients are maintained for longer when the image is rotated if they start with such a high level of clarity.. I'm more interested in reading values from real photographs and so I would suggest that only fairly moderate rotation will work - though it would still be plenty for an MyFitnessPal-type app that expects the User to hold the bar code in roughly the right orientation!)</em></p>
 <h3>Tying it all together</h3>
@@ -862,8 +862,11 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
 				</div>
 				<div class="Search">
-<form action="/Search" method="get">						<div>
-							<input type="text" class="SiteSearch" name="term" value="" />
+<form action="/Search" autocomplete="off" method="get">						<div>
+							<label class="SearchField">
+								<span class="text">Site Search</span>
+								<input type="text" class="SiteSearch" name="term" value="" />
+							</label>
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
@@ -875,8 +878,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 		</div>
 	</div>
 
-	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
-	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/autocomplete.js"></script>
 	<script type="text/javascript" src="/Scripts/prettify.js"></script>
 	<script type="text/javascript" src="/Scripts/Site.js"></script>
 	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>

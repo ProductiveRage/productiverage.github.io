@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<meta charset="utf-8" />
 	<title>Productive Rage - September 2018</title>
@@ -62,7 +62,7 @@
         </script>
 
     <div class="Content ArchiveByMonth">
-        <h3 class="PostDate">30 September 2018</h3><h2><a id="i-didnt-understand-why-people-struggled-with-nets-async" href="/i-didnt-understand-why-people-struggled-with-nets-async">I didn't understand why people struggled with (.NET's) async</a></h2>
+        <p class="PostDate">30 September 2018</p><h2><a id="i-didnt-understand-why-people-struggled-with-nets-async" href="/i-didnt-understand-why-people-struggled-with-nets-async">I didn't understand why people struggled with (.NET's) async</a></h2>
 <p>Long story short (I know that some readers love a TL;DR), I have almost always worked with async/await in C# projects where it's been async from top-to-bottom and so I've rarely tried to start integrating async code into a large project that is primarily <em>non</em>-async. Due to this, I have never encountered any async problems.. so I've occasionally wondered &quot;why would people be worried about getting deadlocks?&quot;</p>
 <p>Recently, this changed and I wanted to start integrating components that use async methods into a big project that doesn't. And it didn't take long until I got a hanging application!</p>
 <p>Before I get to my story (and my solution), let me quickly recap what all the fuss is about.</p>
@@ -75,15 +75,15 @@
 <p><em>(Before async / await, it was possible to do this but it was much more convoluted and you had to deal with code that might follow a tangled web of callbacks and you would have to manually pass around any references that you would want to access in those callbacks - it was possible to do but made for code that was harder to read and write and, thusly, was more likely to contain mistakes)</em></p>
 <p>When the .NET environment deals with &quot;await&quot;, the thread that the await call happened on will be free'd back up. Then, when the async work is completed, a thread will be given back to that request so that it can carry on doing its thing. You might be wondering &quot;how does .NET <em>know</em> when the work has completed? Surely that requires another thread to monitor whether the external resource has responded and, if so, aren't we right back where we started because we're blocking threads?&quot; This is what I thought when I was first learning about async / await (and so I happen to think that it's an entirely reasonable question!) but it's not the case. The operating system and its drivers expose ways to say (and I'm grossly simplifying again because it's only the gist that we need here, not the full nitty gritty) &quot;start sending this network data and notify me when data starts coming back in response&quot; (and similar mechanisms for other types of I/O). When that notification occurs, the .NET environment can provide a thread to the request that was awaiting and let it carry on.</p>
 <p>To try to illustrate this, imagine that the below image represents a web request. The blue parts are when computational work is being done on the thread and the white parts are when it's waiting on an external resource (like a database) -</p>
-<img alt="Illustration of a web request with delays for external data shown" src="/Content/Images/Posts/Threads-SingleExample.png" class="NoBorder FullWidth" />
+<img alt="Illustration of a web request with delays for external data shown" src="/Content/Images/Posts/Threads-SingleExample.png" class="NoBorder FullWidth" title="Illustration of a web request with delays for external data shown" />
 <p>At a glance, it's clear that there will be a lot of wasted time that a thread spends doing nothing (in a blocked state) if we're using the old model of &quot;one thread for the entirety of the request&quot;. What might be slightly less easy to envisage, though, is <em>just how many</em> unnecessary threads that we might be occupying at any given time if all requests are like this.</p>
 <p>To try to illustrate that, I've stacked eight identical web requests representations on top of each other, staggered slightly in time -</p>
-<img alt="Illustration of a staggered concurrent web requests" src="/Content/Images/Posts/Threads-Stacked.png" class="NoBorder FullWidth" />
+<img alt="Illustration of a staggered concurrent web requests" src="/Content/Images/Posts/Threads-Stacked.png" class="NoBorder FullWidth" title="Illustration of a staggered concurrent web requests" />
 <p>Again, the blue represents time when each request is actively doing work and the white represents time when it's waiting for something (grey before a request is time before that request arrived at the server and grey after a request is time after it completed).</p>
 <p>With the classic &quot;one thread for the entirety of the request&quot;, we would be using up to eight threads for much of this time; initially only one thread would be active and then the second request would arrive and a second thread would get tied up and then a third thread would be used when the third request arrived and the threads wouldn't start getting free'd until the first request completed.</p>
 <p>On the other hand, if we could free up a request's thread every time that it was waiting for an external resource then we would <em>never</em> require eight threads at any one time for these eight requests because there is no point in time when all eight of the requests are actively doing work at the exact same time.</p>
 <p>Time for a graph!</p>
-<img alt="Threads required for async vs non-async concurrent web requests" src="/Content/Images/Posts/Threads-Graph.png" class="NoBorder FullWidth" />
+<img alt="Threads required for async vs non-async concurrent web requests" src="/Content/Images/Posts/Threads-Graph.png" class="NoBorder FullWidth" title="Threads required for async vs non-async concurrent web requests" />
 <p>The blue line shows the number of active requests. If we have one-thread-per-request then that blue line also shows how many threads would be required to handle those requests.</p>
 <p>The green line shows how many requests are actually doing work at any one time. If we are able to use the async / await model and only have web requests occupy threads while they're actively doing work then this is how many threads would be required. It's always less than the number of active requests and it's less than <em>half</em> for nearly all of the time in this example.</p>
 <p>The async / await model means that we need to use less threads and that's less resources and that's a good thing!</p>
@@ -438,8 +438,11 @@ public struct SynchronizationContextRemover : INotifyCompletion
 					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
 				</div>
 				<div class="Search">
-<form action="/Search" method="get">						<div>
-							<input type="text" class="SiteSearch" name="term" value="" />
+<form action="/Search" autocomplete="off" method="get">						<div>
+							<label class="SearchField">
+								<span class="text">Site Search</span>
+								<input type="text" class="SiteSearch" name="term" value="" />
+							</label>
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
@@ -451,8 +454,7 @@ public struct SynchronizationContextRemover : INotifyCompletion
 		</div>
 	</div>
 
-	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
-	<script type="text/javascript" src="/Scripts/jquery.autocomplete.min.js"></script>
+	<script type="text/javascript" src="/Scripts/autocomplete.js"></script>
 	<script type="text/javascript" src="/Scripts/prettify.js"></script>
 	<script type="text/javascript" src="/Scripts/Site.js"></script>
 	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
