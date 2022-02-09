@@ -1,8 +1,8 @@
 (function() {
 	"use strict";
 
-	var $elementToReplaceWithResult = $("div.Content p.NoResults");
-	if ($elementToReplaceWithResult.length === 0) {
+	var elementToReplaceWithResult = document.querySelector("div.Content p.NoResults");
+	if (!elementToReplaceWithResult) {
 		Log("SearchPage.js: Not the Search Page");
 		PreLoadSearchIndex();
 		return;
@@ -14,63 +14,82 @@
 		strSearchTerm = ("" + objQueryString["term"]).replace(/^\s+|\s+$/g, '');
 	}
 	if (!strSearchTerm) {
-		$elementToReplaceWithResult.replaceWith(
-			"<p class=\"NoResults\">No search term entered..</p>"
-		);
+		elementToReplaceWithResult.innerText = "No search term entered..";
 		Log("SearchPage.js: No search term");
 		PreLoadSearchIndex();
 		return;
 	}
 	Log("SearchPage.js: Searching for \"" + strSearchTerm + "\"");
 
-	$("div.SideBar div.Search input.SiteSearch").val(strSearchTerm);
+	var siteSearchInput = document.querySelector("div.SideBar div.Search input.SiteSearch");
+	if (siteSearchInput) {
+		siteSearchInput.value = strSearchTerm;
+	}
 
-	var $loading = $("<p class=\"SearchResultContent\">Searching..</p>");
-	$elementToReplaceWithResult.replaceWith($loading);
-	$elementToReplaceWithResult = $loading;
+	var loading = document.createElement("p");
+	loading.className = "SearchResultContent";
+	loading.innerText = "Searching..";
+	ReplaceWith(elementToReplaceWithResult, loading);
+	elementToReplaceWithResult = loading;
 
-	$.ajax({
-		url: "/SearchIndex-SummaryDictionary.js",
-		dataType: "json",
-		success: function (objSearchIndexSummaryData) { // TODO: Handle failure
-			Log("SearchPage.js: Loaded summary index");
-			SearchIndexFor(objSearchIndexSummaryData, strSearchTerm);
-		}
-	});
+	(function () {
+		var request = new XMLHttpRequest();
+		request.open("GET", "/SearchIndex-SummaryDictionary.js", true);
+		request.onload = function () {
+			if (this.status >= 200 && this.status < 400) {
+				Log("SearchPage.js: Loaded summary index");
+				SearchIndexFor(JSON.parse(this.response), strSearchTerm);
+			}
+		};
+		request.send();
+	})();
+	
+	function ReplaceWith(elementToReplace, newElement) {
+		elementToReplace.parentNode.insertBefore(newElement, elementToReplace);
+		elementToReplace.remove();
+	}
 
 	function SearchIndexFor(objSearchIndexSummaryData) {
 		var arrMatches = IndexSearchGenerator.Get(objSearchIndexSummaryData).SearchFor(strSearchTerm);
 		Log("SearchPage.js: Identified " + arrMatches.length + " match" + (arrMatches.length === 1 ? "" : "es"));
 		if (arrMatches.length === 0) {
-			var $noResults = $("<p class=\"NoResults\">");
-			$noResults.text("No results for: " + strSearchTerm);
-			$elementToReplaceWithResult.replaceWith($noResults);
+			var noResults = document.createElement("p");
+			noResults.className = "NoResults";
+			noResults.innerText = "No results for: " + strSearchTerm;
+			ReplaceWith(elementToReplaceWithResult, noResults);
 			return;
 		}
 		LoadCompressedJsonData(
 			"SearchIndex-Titles.lz.txt",
 			function (objTitles) {
 				Log("SearchPage.js: Loaded titles");
-				var $content = $("");
 				for (var intIndex = 0; intIndex < arrMatches.length; intIndex++) {
 					var intKey = arrMatches[intIndex].Key;
-					var $headerLink = $("<a href=\"/" + objTitles[intKey].Slug + "\" />");
-					$headerLink.text(objTitles[intKey].Title);
-					var $header = $("<h3/>");
-					$header.append($headerLink);
-					$content = $content.add($header);
-					var $summary = $("<p class=\"SearchResultContent\"/>");
-					$summary.text("Retrieving content..");
-					$summary.css({opacity: 0.2});
-					$content = $content.add($summary);
-					LoadSummaryContentFor($summary, intKey);
+					
+					var headerLink = document.createElement("a");
+					headerLink.href = "/" + objTitles[intKey].Slug;
+					headerLink.innerText = objTitles[intKey].Title;
+
+					var header = document.createElement("h3");
+					header.appendChild(headerLink);
+					
+					elementToReplaceWithResult.parentNode.insertBefore(header, elementToReplaceWithResult);
+					
+					var summary = document.createElement("p");
+					summary.className = "SearchResultContent";
+					summary.innerText = "Retrieving content..";
+					summary.style.opacity = "0.2";
+					LoadSummaryContentFor(summary, intKey);
+					
+					elementToReplaceWithResult.parentNode.insertBefore(header, elementToReplaceWithResult);
+					elementToReplaceWithResult.parentNode.insertBefore(summary, elementToReplaceWithResult);
 				}
-				$elementToReplaceWithResult.replaceWith($content);
+				elementToReplaceWithResult.remove();
 			}
 		);
 	}
 
-	function LoadSummaryContentFor($summary, intKey) {
+	function LoadSummaryContentFor(summary, intKey) {
 		LoadCompressedJsonData(
 			"SearchIndex-" + intKey + "-CompleteDictionary.lz.txt",
 			function (objSearchIndexDetailDataForPost) { // TODO: Handle failure
@@ -98,8 +117,9 @@
 								);
 							}
 						}
-						$summary.html(strHtmlContent);
-						$summary.animate({opacity: 1}, 1000);
+						summary.innerHTML = strHtmlContent;
+						summary.style.transition = "1s";
+						summary.style.opacity = "1";
 					}
 				);
 			}
@@ -162,10 +182,9 @@
 	}
 
 	function PreLoadSearchIndex() {
-		$.ajax({
-			url: "/SearchIndex-SummaryDictionary.js",
-			dataType: "json"
-		});
+		var request = new XMLHttpRequest();
+		request.open("GET", "/SearchIndex-SummaryDictionary.js", true);
+		request.send();
 	}
 
 	function LoadCompressedJsonData(strUrl, fncSuccess, fncFailure) {
@@ -197,14 +216,13 @@
 		// renamed to ".txt", I'm not sure if this is in IIS that it's failing or if jQuery is requesting the data
 		// in a slightly different manner (despite the explicit dataType option), so best just ensuring that all
 		// LZ-compressed data is stored in a file with a ".txt" extension.
-		$.ajax({
-			url: strUrl,
-			dataType: "text",
-			success: function(strCompressedContent) {
+		var request = new XMLHttpRequest();
+		request.open("GET", strUrl, true);
+		request.onload = function () {
+			if (this.status >= 200 && this.status < 400) {
 				var strContent;
 				try {
-					strContent = LZString.DecompressFromUTF16(strCompressedContent);
-			
+					strContent = LZString.DecompressFromUTF16(this.response);
 				}
 				catch(e) {
 					if (fncFailure) {
@@ -214,7 +232,8 @@
 				}
 				fncSuccess(strContent);
 			}
-		});
+		};
+		request.send();
 	}
 
 	function Log(strContent) {

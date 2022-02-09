@@ -9,7 +9,7 @@ var SearchTermHighlighter = (function() {
 		if (arrSourceLocations.length > 1) {
 			for (var intIndexSourceLocation = 1; intIndexSourceLocation < arrSourceLocations.length; intIndexSourceLocation++) {
 				if (arrSourceLocations[intIndexSourceLocation].SourceFieldIndex !== arrSourceLocations[0].SourceFieldIndex) {
-					throw new Error("SearchTermHighlighter.IdentifySearchTermsToHighlight: All sourceLocations must have the same SourceFieldIndex")
+					throw new Error("SearchTermHighlighter.IdentifySearchTermsToHighlight: All sourceLocations must have the same SourceFieldIndex");
 				}
 			}
 		}
@@ -60,7 +60,7 @@ var SearchTermHighlighter = (function() {
 		arrSourceLocations = arrSourceLocations.slice(0); // Clone before sorting to prevent affecting the caller's data when sorting
 		arrSourceLocations.sort(function(x, y) {
 			return x.SourceIndex - y.SourceIndex;
-		})
+		});
 
 		var arrStringSegments = [];
 		var arrSourceLocationsToCombine = [];
@@ -152,12 +152,12 @@ var SearchTermHighlighter = (function() {
 			intStartIndexOfContent = 0;
 		}
 		else {
-			arrMatchesToHighlight.sort(function(x, y) { return y.EndIndex - x.EndIndex }); // Order EndIndex descending
+			arrMatchesToHighlight.sort(function(x, y) { return y.EndIndex - x.EndIndex; }); // Order EndIndex descending
 			if (arrMatchesToHighlight[arrMatchesToHighlight.length - 1].EndIndex <= intMaxLengthForHighlightedContent) {
 				intStartIndexOfContent = 0;
 			}
 			else {
-				arrMatchesToHighlight.sort(function(x, y) { return x.Index - y.Index }); // Order Index ascending
+				arrMatchesToHighlight.sort(function(x, y) { return x.Index - y.Index; }); // Order Index ascending
 				var intStartIndexOfFirstHighlightedTerm = arrMatchesToHighlight[0].Index;
 				if (strPlainTextContent.length - intStartIndexOfFirstHighlightedTerm <= intMaxLengthForHighlightedContent) {
 					intStartIndexOfContent = strPlainTextContent.length - intMaxLengthForHighlightedContent;
@@ -171,10 +171,10 @@ var SearchTermHighlighter = (function() {
 		// Beginning at this start index, build up a string of content where the highlighted sections are wrapped in "strong" tags (even though the
 		// content is plain text, it will need to be html-encoded since plain text content can include characters that should be encoded such as
 		// "<" or "&")
-		var arrHighlightedContent = []
+		var arrHighlightedContent = [];
 		var intEndIndexOfLastSection = intStartIndexOfContent;
 		var intLengthOfContentIncluded = 0;
-		arrMatchesToHighlight.sort(function(x, y) { return x.Index - y.Index }); // Order by Index ascending
+		arrMatchesToHighlight.sort(function(x, y) { return x.Index - y.Index; }); // Order by Index ascending
 		for (var intIndex = 0; intIndex < arrMatchesToHighlight.length; intIndex++) {
 			var objMatchToHighlight = arrMatchesToHighlight[intIndex];
 			if (objMatchToHighlight.Index > intEndIndexOfLastSection)
@@ -222,7 +222,9 @@ var SearchTermHighlighter = (function() {
 		return arrHighlightedContent.join("");
 
 		function HtmlEncode(strValue) {
-			return $("<div/>").html("" + strValue).html();
+			var d = document.createElement("div");
+			d.innerText = strValue;
+			return d.innerHTML;
 		}
 	}
 
