@@ -118,7 +118,7 @@
 							}
 						}
 						summary.innerHTML = strHtmlContent;
-						summary.style.transition = "1s";
+						summary.style.transition = "opacity 1s";
 						summary.style.opacity = "1";
 					}
 				);
