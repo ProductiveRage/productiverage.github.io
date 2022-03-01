@@ -209,7 +209,7 @@ static void LogWithTime(string message) =&gt;
 </blockquote>
 <p>While the starting order is not predictable, the iteration-completion order is somewhat more predictable <em>in this example code</em> as loops 0, 6, 12, etc.. (ie. every multiple of 6) completes in 1s while every other value of i takes longer.</p>
 <p>As such, the first &quot;Finished {i}&quot; messages are 18, 0, 12, 6 in the output shown above.</p>
-<p>The &quot;Received item {item}&quot; messages will be interspersed between &quot;Starting {i}&quot; and &quot;Finished {i}&quot; messages because enumeration of the results <em>can</em> commence as soon as soom of the loops have completed.. however, again, it's important to note that the ordering of the results should not be considered to be defined as the scheduling of the threads depends upon how .NET decides to use its <strong>ThreadPool</strong> to handle the work and how it will &quot;join&quot; the separate threads used for the loop iteration back to the primary thread that the program is running as.</p>
+<p>The &quot;Received item {item}&quot; messages will be interspersed between &quot;Starting {i}&quot; and &quot;Finished {i}&quot; messages because enumeration of the results <em>can</em> commence as soon as some of the loops have completed.. however, again, it's important to note that the ordering of the results should not be considered to be defined as the scheduling of the threads depends upon how .NET decides to use its <strong>ThreadPool</strong> to handle the work and how it will &quot;join&quot; the separate threads used for the loop iteration back to the primary thread that the program is running as.</p>
 <p>That may sound a little confusing, so if we change the code a little bit then maybe it can become clearer:</p>
 <pre><code>var items = Enumerable
     .Range(0, 50)
@@ -327,7 +327,7 @@ static void LogWithTime(string message) =&gt;
 <p>This means that the console messages will consist entirely of &quot;Starting {i}&quot; and &quot;Finished {i}&quot; messages until <em>all</em> 50 iterations are completed, then all of the &quot;Received item {item}&quot; messages will be written out. This will still have the same running time (eg. 11s on my computer) because the work is being performed in the same way - the only difference is that the results are all buffered up until the work is completed, otherwise the <strong>OrderBy</strong> call wouldn't be able to do its job because it couldn't know all of the values that were going to be produced.</p>
 <h3>Implementation details</h3>
 <p>There are a <em>lot</em> of options and intricacies that you can find if you dig deep enough into how this works in the .NET library. I have no intention of trying to cover all of them but there are a few options and observations that I think are worth including in this post.</p>
-<p>The first thing to be aware of is that parallelisation of the work will not be enabled until after the &quot;AsParallel()&quot; call is made - for example, the following code will <em>not</em> spread the the <strong>Thread.Sleep</strong> calls across multiple cores:</p>
+<p>The first thing to be aware of is that parallelisation of the work will not be enabled until after the &quot;AsParallel()&quot; call is made - for example, the following code will <em>not</em> spread the <strong>Thread.Sleep</strong> calls across multiple cores:</p>
 <pre><code>var items = Enumerable
     .Range(0, 50)
     .Select(i =&gt;
