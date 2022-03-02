@@ -848,7 +848,7 @@ public class SomethingWithPrivateField
 <p>Core   : .NET Core 4.6.25211.01, 64bit RyuJIT</p>
 </blockquote>
 <p>And produces the following table:</p>
-<table>
+<div class="TableScrollWrapper"><table>
 <thead>
 <tr>
 <th>Method</th>
@@ -909,8 +909,8 @@ public class SomethingWithPrivateField
 <td>0.1132 ns</td>
 </tr>
 </tbody>
-</table>
-<table>
+</table></div>
+<div class="TableScrollWrapper"><table>
 <thead>
 <tr>
 <th>Method</th>
@@ -971,7 +971,7 @@ public class SomethingWithPrivateField
 <td>0.0560 ns</td>
 </tr>
 </tbody>
-</table>
+</table></div>
 <p>The easiest thing to interpret is the &quot;Mean&quot; - BenchmarkDotNet did a few &quot;pilot runs&quot; to try to see how long the benchmark methods would take and then tries to decide what is an appropriate number of runs to do for real in order to get reliable results.</p>
 <p>The short version is that when delegates are compiled using LINQ Expressions and emitted-IL that they both execute <em>a lot</em> faster than reflection; over 85x faster for .NET Framework 4.6.1 and 1,500x faster for .NET Core 1.1!</p>
 <p>The huge difference between reflection and the other two approaches, though, may slightly overshadow the fact that the LINQ Expression delegates are actually about 1.6x faster than the emitted-IL delegates. I hadn't expected this at all, I would have thought that they would be almost identical - in fact, I'm still surprised and don't currently have any explanation for it.</p>
@@ -1115,7 +1115,7 @@ var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
 </code></pre>
 <p><em>(Note: There is an additional &quot;Ldind_Ref&quot; instruction required for the IL to &quot;unwrap&quot; the ref argument but it's otherwise the same)</em></p>
 <p>I used BenchmarkDotNet again to compare the performance of the two reflection methods (&quot;SetValue&quot; and &quot;SetValueDirect&quot;) against LINQ Expressions and emitted IL when setting a private field on an instance and found that having to call &quot;__makeRef&quot; and &quot;SetValueDirect&quot; was much slower on .NET 4.6.1 than just calling &quot;SetValue&quot; (about 17x slower) but actually marginally <em>faster</em> on .NET Core.</p>
-<table>
+<div class="TableScrollWrapper"><table>
 <thead>
 <tr>
 <th>Method</th>
@@ -1183,8 +1183,8 @@ var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
 <td>0.0834 ns</td>
 </tr>
 </tbody>
-</table>
-<table>
+</table></div>
+<div class="TableScrollWrapper"><table>
 <thead>
 <tr>
 <th>Method</th>
@@ -1252,7 +1252,7 @@ var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
 <td>0.0080 ns</td>
 </tr>
 </tbody>
-</table>
+</table></div>
 <p>It's worth noting that the LINQ Expressions and emitted-IL approaches are slightly slower when working with a &quot;ref&quot; parameter than they were in the original version of the code. I suppose that this makes sense because there is an extra instruction explicitly required in the emitted-IL code and the LINQ-Expression-constructed delegate will have to deal with the added indirection under the hood (though this happens &quot;by magic&quot; and the way that LINQ Expressions code doesn't need to be changed to account for it).</p>
 <p>I guess that it's possible that &quot;SetValueDirect&quot; could be faster if you already have a <strong>TypedReference</strong> (which is what &quot;__makeRef&quot; gives you) and you want to set multiple properties on it.. but that wasn't the use case that I had in mind when I looked into all of this and so I haven't tried to measured that.</p>
 <p>All in all, this was another fun diversion. It's curious that the performance between using &quot;SetValue&quot; and &quot;__makeRef&quot; / &quot;SetValueDirect&quot; is so pronounced in the &quot;classic&quot; .NET Framework but much less so in Core. On the other hand, if the target reference is a struct then the performance discrepancies are moot since trying to use &quot;SetValue&quot; won't work!</p>
