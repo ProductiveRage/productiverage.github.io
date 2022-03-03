@@ -58,10 +58,10 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">26 July 2012</p><h2><a id="the-full-text-indexer-going-international" href="/the-full-text-indexer-going-international">The Full Text Indexer - Going International!</a></h2>
+        <p class="PostDate">26 July 2012</p><h2 id="the-full-text-indexer-going-international"><a href="/the-full-text-indexer-going-international">The Full Text Indexer - Going International!</a></h2>
 <p>Pushing on with the Full Text Indexer series I'm been posting about (see <a href="/the-full-text-indexer">Full Text Indexer</a> and <a href="/the-full-text-indexer-adding-and-subtracting">Full Text Indexer - Adding and Subtracting</a>) I want to demonstrate how it can work with multi-lingual content (or other content variations - for example, with the data at my day job Products have different delivery &quot;channels&quot; for which different descriptions may be recorded, <em>as well</em> as being in multiple languages).</p>
 <p><strong>A heads-up:</strong> This post is going to be largely code with a few explanatory paragraphs. There's nothing particularly complex going on and I think the code will - for the most part - speak for itself!</p>
-<h3>Setting the scene</h3>
+<h3 id="setting-the-scene"><a href="#setting-the-scene">Setting the scene</a></h3>
 <p>In the previous examples, the TKey type of the IIndexData was an int representing an item's unique id. One way to extend this would be to specify as TKey the following:</p>
 <pre><code>public interface ILanguageScopedId : IEquatable&lt;ILanguageScopedId&gt;
 {
@@ -262,7 +262,7 @@ public class MultiLingualContent
 }
 </code></pre>
 <p><strong>Note:</strong> The ImmutableDictionary (along with the NonNullImmutableList and the ToNonNullImmutableList extension method which are seen elsewhere in the code) can be found in the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer repo on Bitbucket</a>.</p>
-<h3>Generating and querying the new Index format</h3>
+<h3 id="generating-and-querying-the-new-index-format"><a href="#generating-and-querying-the-new-index-format">Generating and querying the new Index format</a></h3>
 <p>For the purposes of this example, I'm going to assume that all of the possible languages are known upfront (if not then each time an Index is built, it's feasible that the source Article data could be analysed each time to determine which languages are present but for now I'm going to go with the easier case of knowledge of all options beforehand).</p>
 <p>As we've seen before, we need to prepare an IndexGenerator (this time IndexGenerator&lt;ArticleI, LanguageScopedId&gt; instead of IndexGenerator&lt;ArticleI, int&gt; since the key type of the IIndexData that will be produced is no longer an int) with Content Retrievers, a Key Comparer, Token Breaker, Weighted Entry Combiner and Logger. Here there are more Content Retrievers as the multi-lingual content must be requested for each supported language (though the non-multi-lingual content - the Author field on Article instances - only needs a single retriever).</p>
 <pre><code>var languages = new[] { 1, 2, 3 };
@@ -375,7 +375,7 @@ var index = indexGenerator.Generate(new NonNullImmutableList&lt;Article&gt;(new[
     }
 }
 </code></pre>
-<h3>Extended Key Types</h3>
+<h3 id="extended-key-types"><a href="#extended-key-types">Extended Key Types</a></h3>
 <p>This approach to supporting multi-lingual data is just one way of using the generic TKey type of the IndexGenerator / IndexData classes. I mentioned at the top that the data I deal with at my real job also varies descriptive data over multiple delivery channels, this could be implemented in a similar manner to the above by extending the ILanguageScopedId interface to:</p>
 <pre><code>public interface ILanguageScopedId : IEquatable&lt;ILanguageScopedId&gt;
 {
@@ -385,7 +385,7 @@ var index = indexGenerator.Generate(new NonNullImmutableList&lt;Article&gt;(new[
 </code></pre>
 <p>And, in the same way as the above code has both the LanguageScopedId and NonLanguageScopedId, there could be various implementations for content that does/doesn't vary by language and/or does/doesn't vary by delivery channel.</p>
 <p>In fact, since there must be a Key Comparer passed in as a constructor argument to the IndexGenerator, any kind of key can be used with the index so long as an appropriate comparer is available!</p>
-<h3>Performance</h3>
+<h3 id="performance"><a href="#performance">Performance</a></h3>
 <p>The downside to this sort of approach is, predictably, increased resource requirements in the index generation. I say predictably because it should be clear that specifying more Content Retrievers (which we are; they have to increase as the number languages of increases) means that more work will be done when an index is generated from input data.</p>
 <p>Also in the above example, more storage space will be required to store the results as more content is being extracted and stored in the index - it's feasible that source data could be present which doesn't have any multi-lingual data and so returns the default values from the MultiLingualContent.GetContent(language) call for every language. For each token that is recorded for the data, keys for each of the languages will be recorded in the index - each with duplicate weight data, repeated for each language. It's possible that a more intelligent key structure could reduce that amount of space taken up in these cases but that's outside the scope of this post I think (plus no solution springs immediately to mind at this time of night! :)</p>
 <p>The good news is that the retrieval time shouldn't be significantly increased; the additional work is to filter the matched keys and group them together on the underlying id, the lookup should still be very quick. The additional load that the filtering and grouping will incur will depend upon the structure of the key class.</p>

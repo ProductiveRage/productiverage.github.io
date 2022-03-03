@@ -58,7 +58,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">23 July 2014</p><h2><a id="javascript-dependencies-that-work-with-brackets-node-and-inbrowser" href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></h2>
+        <p class="PostDate">23 July 2014</p><h2 id="javascript-dependencies-that-work-with-brackets-node-and-in-browser"><a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></h2>
 <p><strong>tl;dr</strong> - I wanted to create a JavaScript package I could use in an <a href="http://brackets.io">Adobe Brackets</a> extension <em>and</em> release to <a href="https://www.npmjs.org">npm</a> for use with <a href="http://nodejs.org">Node.js</a> <em>and</em> have work in the browser as an old-school script tag import. It turned out that my knowledge of JavaScript dependency management was woefully out of date and while I came up with this solution..</p>
 <pre><code>/*jslint vars: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
 /*global define, require, module */
@@ -72,11 +72,11 @@
 </code></pre>
 <p>.. there may very well have plenty of room for improvement - but the meandering journey to get here taught me a lot (and so if there is a better solution out there, I'll happily switch over to it and chalk this all up to a learning experience!).</p>
 <p>This is the story of how I arrived at the cryptic jumble of characters above.</p>
-<h3>Back to the beginning</h3>
+<h3 id="back-to-the-beginning"><a href="#back-to-the-beginning">Back to the beginning</a></h3>
 <p>I've been working on an extension for <a href="http://brackets.io">Adobe Brackets</a>, an editor I've been trying out recently and liking for writing JavaScript and LESS stylesheets in particular. I used to instinctively go to Visual Studio for everything, but recently it's gone from starting up in a couple of seconds to taking over 40 if not a minute (I think it was since I installed Xamarin and then NuGet for VS 2010 that it got really bad, but it might have been something else and I'm unfairly misassigning blame).</p>
 <p>Brackets is written in JavaScript and its extensions are JavaScript modules, the API seems excellent so far. I like that linting of files is, by default, enabled on save. It has JSLint checks built in for JavaScript files and JSLint is specified in the <a href="https://github.com/adobe/brackets/wiki/Brackets-Coding-Conventions">Brackets Coding Conventions</a>. I actually quite like a good coding convention or style guide - it takes the guess work out of a lot of decisions and, in writing a Brackets extension, I thought I'd jump right in and try to make sure that I write everything &quot;Brackets style&quot;.</p>
 <p>Although I have written a lot of JavaScript in the past (and continue to do so), I've gotten out of touch with modern dependency management. JavaScript dependencies for projects at work are based on a custom dependency manager of sorts and my personal projects tend to be a bit more ad hoc.</p>
-<h3>Good practices for browser scripts, leading into Node.js</h3>
+<h3 id="good-practices-for-browser-scripts-leading-into-node.js"><a href="#good-practices-for-browser-scripts-leading-into-node.js">Good practices for browser scripts, leading into Node.js</a></h3>
 <p>I started off writing a module in my normal manner, which tends to involve wrapping the code in an <a href="http://en.wikipedia.org/wiki/Immediately-invoked_function_expression">IIFE</a> and then exporting public references into a fixed namespace. This works fine if the JavaScript is being loaded directly into a web page - eg.</p>
 <pre><code>(function () {
 
@@ -115,7 +115,7 @@ var root = this;
 <p>The &quot;.call(this)&quot; at the bottom ensures that the &quot;this&quot; reference is maintained inside the function, so that when it's loaded into Node &quot;this&quot; is the &quot;exports&quot; reference that may be added to and in the browser &quot;this&quot; is the window, which also may have properties set on it. But the IIFE means that if it <em>is</em> being loaded in the browser that no global state is stomped on or private references leaked. When loaded into Node, some clever magic is done that ensures that the content is loaded in its own scope and that it doesn't leak anything out, which is why no IIFE is present on the &quot;<a href="http://howtonode.org/creating-custom-modules">Creating Custom Modules</a>&quot; example.</p>
 <p>It's also worth noting on that page, that &quot;Node implements <a href="http://www.commonjs.org/specs/modules/1.0">CommonJS Modules 1.0</a>&quot;, which is helpful information when trying to compare all of the different mechanism that different solutions use.</p>
 <p>At this point, I did't know the difference between RequireJS, CommonJS, AMD; I had just heard the names. And didn't really know what else could be out there that I <em>hadn't</em> heard of!</p>
-<h3>What does Brackets use?</h3>
+<h3 id="what-does-brackets-use"><a href="#what-does-brackets-use">What does Brackets use?</a></h3>
 <p>Having considered the above, I then came to realise that I hadn't actually looked into how Brackets deals with modules - which was somewhat foolish, considering a Brackets extension was to be my end goal! Part of the reason for this is that I got sidelined looking into pushing a package onto <a href="https://www.npmjs.org">npmjs</a>, but I'll talk about that another day, I don't want to stumble too far from my dependency implementation adventure right now.</p>
 <p>I learned from <a href="http://artoale.com/tutorial/brackets/2013/09/30/writing-brackets-extension-01">Writing Brackets extension - part 1</a> that</p>
 <blockquote>
@@ -151,7 +151,7 @@ var root = this;
 });
 </code></pre>
 <p>in which case the dependency is not lazily instantiated, but otherwise the pattern is very similar.</p>
-<h3>So I can't have one file work with Node <em>and</em> with Brackets?? :(</h3>
+<h3 id="so-i-cant-have-one-file-work-with-node-and-with-brackets"><a href="#so-i-cant-have-one-file-work-with-node-and-with-brackets">So I can't have one file work with Node <em>and</em> with Brackets?? :(</a></h3>
 <p>Now I had my npm module that I wanted to use as a Brackets dependency, but the two formats looked completely different.</p>
 <p>There has been a lot written about this, particularly there is the &quot;<a href="https://github.com/umdjs/umd">UMD (Universal Module Definition)</a>&quot; code on GitHub with lots of patterns of ways to have modules that combine support for a variety of dependency managers, but when I looked at some of the examples I wasn't sure exactly what each was doing and I couldn't tell immediately which example (if any) would address the combination I was interested in; to work with Node <em>and</em> with Brackets <em>and</em> as a browser script.</p>
 <p>After some more stumbling around, I encounted <a href="http://webreflection.blogspot.co.uk/2013/01/a-simplified-universal-module-definition.html">A Simplified Universal Module Definition</a> which had this pattern to work with &quot;define&quot; if it was present -</p>
@@ -188,7 +188,7 @@ what.ever();
 <pre><code>what.ever();
 </code></pre>
 <p>as &quot;what&quot; will have been added to the global scope.</p>
-<h3>More on Node packages</h3>
+<h3 id="more-on-node-packages"><a href="#more-on-node-packages">More on Node packages</a></h3>
 <p>So I've already found that &quot;this&quot; in a Node package is an alias onto &quot;exports&quot;, which allows us to declare what to return as the elements of the dependency. Well, it turns out that there are more references available within the dependency scope. For example, the &quot;require&quot; function is available so that dependencies that the current dependency depend on may be loaded. The &quot;exports&quot; reference is available <em>and</em> a &quot;module&quot; reference is available. Interestingly, these are the same three references passed into the &quot;define&quot; method - so it's the same information, just exposed in a different manner.</p>
 <p>It further turns out that &quot;exports&quot; is an alias onto an &quot;exports&quot; property on &quot;module&quot;. However, the property on &quot;module&quot; can be overwritten completely, so (in a Node package)</p>
 <pre><code>module.exports = function(){
@@ -226,7 +226,7 @@ what.ever();
 
 });
 </code></pre>
-<h3>Final tweaks</h3>
+<h3 id="final-tweaks"><a href="#final-tweaks">Final tweaks</a></h3>
 <p>At this point, it was shaping up well, but there were a couple of other minor niggles I wanted to address.</p>
 <p>In the browser, if the file is being loaded with a script tag, then any other dependencies should also be loaded through script tag(s) - so if &quot;dependency2&quot; requires &quot;dependency1&quot; in order to operate, then the &quot;dependency1&quot; script should be loaded before &quot;dependency2&quot;. But in Node and Brackets, I want to be able to load them through calls to &quot;require&quot;.</p>
 <p>This means that I wanted any &quot;require&quot; calls to be ignored when the script is loaded in the browser. This may be contentious, but it made sense to me.. and if you wanted a more robust dependency-handling mechanism for use in the browser, well <a href="http://requirejs.org">RequireJS</a> actually <em>is</em> intended for in-browser use - so you could use that to deal with complicated dependencies instead of relying on the old-fashioned script tag method!</p>
@@ -285,7 +285,7 @@ what.ever();
 });
 </code></pre>
 <p>The only part that needs to change between files is the value of &quot;n&quot; (which was named &quot;dependencyName&quot; before minification).</p>
-<h3>The end (probably not really the end)</h3>
+<h3 id="the-end-probably-not-really-the-end"><a href="#the-end-probably-not-really-the-end">The end (probably not really the end)</a></h3>
 <p>So.. I've achieved what I originally set out to do, which was to create a package that could be used by Node, Brackets or direct-in-the-browser.</p>
 <p>But more importantly, I've learnt a lot about some of the modern methods of dealing with dependencies in JavaScript. I suspect that there's a reasonable chance that I will change this template in the future, possibly to one of the &quot;<a href="https://github.com/umdjs/umd">UMD (Universal Module Definition)</a>&quot; examples if one matches my needs or possibly I'll just refine what I currently have.</p>
 <p>But for now, I want to get back to actually writing the meat of the package instead of worrying about how to deliver it!</p>

@@ -53,7 +53,7 @@
         </script>
 
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">19 August 2015</p><h2><a id="stronglytyped-react-with-bridgenet" href="/stronglytyped-react-with-bridgenet">Strongly-typed React (with Bridge.net)</a></h2>
+        <p class="PostDate">19 August 2015</p><h2 id="strongly-typed-react-with-bridge.net"><a href="/stronglytyped-react-with-bridgenet">Strongly-typed React (with Bridge.net)</a></h2>
 <p>A few weeks ago, I wrote about using <a href="/react-and-flux-with-bridgenet">React with Bridge.net</a>. I described that I'd only written the bare minimum of bindings required to get my samples working - so, while I had a function for React.DOM.div -</p>
 <pre><code>[Name(&quot;div&quot;)]
 public extern static ReactElement Div(
@@ -70,7 +70,7 @@ public class HTMLAttributes
 }
 </code></pre>
 <p>It's time to revisit this and build up my bindings library!</p>
-<h3>A starting point</h3>
+<h3 id="a-starting-point"><a href="#a-starting-point">A starting point</a></h3>
 <p>An obvious resource to work from initially is the &quot;<a href="https://github.com/borisyankov/DefinitelyTyped/blob/master/react/react.d.ts">DefinitelyTyped</a>&quot; bindings that allow you to use React from TypeScript. But I'd identified a pattern that I didn't like with them in my earlier post - the type system isn't being used to as full effect as it could be. For example, in the declaration of &quot;input&quot; elements. Let me explain (and please bear with me, I need to go through a few steps to get to the point)..</p>
 <p>The TypeScript bindings describe a function for creating input elements:</p>
 <pre><code>React.DOM.input(props: HTMLAttributes, ...children: ReactNode[]): DOMElement
@@ -152,7 +152,7 @@ public class InputEventTarget : EventTarget
 <p>And I've already mentioned having to define the <strong>FormEvent&lt;T&gt;</strong> and <strong>InputAttributes</strong> classes..</p>
 <p>What I'm saying is that these improvements do not come for free, they required some analysis and some further effort putting into the bindings (which is not to take anything away from DefinitelyTyped, by the way - I'm a big fan of the work in that repository and I'm very glad that it's available, both for TypeScript / React work I've done in the past <em>and</em> to use as a starting point for Bridge bindings).</p>
 <p>Seeing how these more focussed / specific classes can improve things, I come to my second problem with the TypeScript bindings..</p>
-<h3>Why must the HTMLAttributes have almost 150 properties??</h3>
+<h3 id="why-must-the-htmlattributes-have-almost-150-properties"><a href="#why-must-the-htmlattributes-have-almost-150-properties">Why must the HTMLAttributes have almost 150 properties??</a></h3>
 <p>The place that I wanted to start in extending my (very minimal) bindings was in fleshing out the <strong>HTMLAttributes</strong> class. Considering that it had only a single property (&quot;className&quot;) so far, and that it would be used by so many element types, that seemed like a reasonable plan. But looking at the TypeScript binding, I felt like I was drowning in properties.. I realised that I wasn't familiar with <em>everything</em> that appeared in html5, but I was astonished by how many options there were - and convinced that they couldn't <em>all</em> be applicable to <em>all</em> elements types. So I picked one at random, of those that stood out as being completely unfamiliar to me: &quot;download&quot;.</p>
 <p>w3schools has this to say about the <a href="http://www.w3schools.com/tags/att_a_download.asp">HTML &lt;a&gt; download Attribute</a>:</p>
 <blockquote>
@@ -215,7 +215,7 @@ public abstract class HasHrefAttribute : HTMLAttributes
 }
 </code></pre>
 <p>which <strong>AnchorAttributes</strong> and <strong>LinkAttributes</strong> could be derived from. While it might <em>appear</em> initially to make sense, I imagine that it will all come unstuck quite quickly and you'll end up finding yourself wanting to inherit from multiple base classes and all sorts of things that C# doesn't like. I think this is a KISS over DRY scenario (I'd rather repeat &quot;public string href;&quot; in a few distinct places than try to tie the classes together in some convoluted manner).</p>
-<h3>More type shenanigans</h3>
+<h3 id="more-type-shenanigans"><a href="#more-type-shenanigans">More type shenanigans</a></h3>
 <p>So, with more thought and planning, I think a reduced <strong>HTMLAttributes</strong> class could be written <em>and</em> a range of attribute classes produced that make the type system work for us. I should probably admit that I haven't actually <em>done</em> any of that further thought or planning yet! I feel like I've spent this month coming up with grandiose schemes and then writing about doing them rather than actually getting them done! :D</p>
 <p>Anyway, enough about my shortcomings, there's <em>another</em> issue I found while looking into this &quot;download&quot; attribute. Thankfully, it's a minor problem that can easily be solved with the way that bindings may be written for Bridge..</p>
 <p>There was an issue on React's GitHub repo: &quot;<a href="https://github.com/facebook/react/issues/1337">Improve handling of download attribute</a>&quot; which says the following:</p>
@@ -294,7 +294,7 @@ React.DOM.a(
 React.DOM.a({ name: &quot;/instructions.pdf&quot;, download: true })
 </code></pre>
 <p>Again, this illustrates why the &quot;value&quot; argument was thrown away in the <strong>StringOrBoolean</strong> implicit operator calls - because those calls do not exist in the translated JavaScript.</p>
-<h3>A nice bonus</h3>
+<h3 id="a-nice-bonus"><a href="#a-nice-bonus">A nice bonus</a></h3>
 <p>Another thing that I like about the &quot;ObjectLiteral&quot; attribute that I've used on these <strong>{Whatever}Attributes</strong> classes is that the translated code only includes the properties that have been explicitly set.</p>
 <p>This means that, unlike in the TypeScript definitions, we don't have to declare all value types as nullable. If, for example, we have an attributes class for table cells - like:</p>
 <pre><code>[Ignore]
@@ -320,7 +320,7 @@ public class TableCellAttributes : HTMLAttributes
 </code></pre>
 <p>This has <em>two</em> benefits, actually, because not only do we not have to mark all of the properties as nullable (while that wouldn't be the end of the world, it's nicer - I think - to have the attribute classes have properties that match the html values as closely as possible and using simple value types does so) but it also keeps the generated JavaScript succint. Imagine the alternative, where <em>every</em> property was included in the JavaScript.. every time a div element was declared it would have 150 properties listed along with it. The JavaScript code would get huge, very quickly!*</p>
 <p>* <em>(Ok, ok, it shouldn't be 150 properties for every div since half the point of this post is that it will be much better to create attribute classes that are as specific as possible - but there would still be a lot of properties that appear in element initialisations in the JavaScript which were not present in the C# code, it's much better only having the explicitly-specified values wind up in the translated output).</em></p>
-<h4>A change in Bridge 1.8</h4>
+<h4 id="a-change-in-bridge-1.8"><a href="#a-change-in-bridge-1.8">A change in Bridge 1.8</a></h4>
 <p>I was part way through writing about how pleased I was that unspecified properties in an [ObjectLiteral]-decorated class do not appear in the generated JavaScript when I decided to upgrade to Bridge 1.8 (which was just released two days ago).. and things stopped doing what I wanted.</p>
 <p>With version 1.8, it seems like if you have an [ObjectLiteral] class then all of the properties <em>will</em> be included in the JavaScript - with default values if you did not specify them explicitly. So the example above:</p>
 <pre><code>DOM.td(new TableCellAttributes { colSpan = 2 }, &quot;Hello!&quot;)
@@ -341,7 +341,7 @@ public class TableCellAttributes : HTMLAttributes
 <p>I only came across the idea of combining [Ignore] with [ObjectLiteral] when I was looking through their source code on <a href="https://github.com/bridgedotnet/">GitHub</a> (open source software, ftw!) and found a few places where there are checks for one of those attributes or <em>both</em> of them in some places.</p>
 <p><em>(I've updated the code samples in this post to illustrate what I mean - now anywhere that has [ObjectLiteral] also has [Ignore]).</em></p>
 <p>I'm a little bit concerned that this may change again in the future or that I'm not using these options correctly, but I've raised a bug in their forums and they've been very good at responding to these in the past - <a href="http://forums.bridge.net/forum/bridge-net-pro/bugs/495-objectliteral-classes-generate-values-for-all-properties-in-1-8-changed-from-1-7">ObjectLiteral classes generate values for all properties in 1.8 (changed from 1.7)</a>.</p>
-<h3>What's next</h3>
+<h3 id="whats-next"><a href="#whats-next">What's next</a></h3>
 <p>So.. how am I intending to progress this? Or am I going to just leave it as an interesting initial investigation, something that I've looked briefly into and then blogged about??</p>
 <p>Well, no. Because I <em>am</em> actually planning to do some useful work on this! :) I'm a big fan of both React and Bridge and hope to be doing work with both of them, so moving this along is going to be a necessity as much as a nice idea to play around with. It's just a case of <em>how</em> to proceed - as the I-have-never-heard-of-this-new-download-attribute story goes to show, I'm not intimately familiar with every single tag and every single attribute, particular in regards to some of the less well-known html5 combinations.</p>
 <p>Having done some research while writing this post, I think the best resource that I've found has been <a href="https://developer.mozilla.org/en-US/">MDN</a> (the Mozilla Developer Network). It seems like you can look up any tag - eg.</p>
@@ -359,7 +359,7 @@ public class TableCellAttributes : HTMLAttributes
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">14 August 2015</p><h2><a id="hasslefree-immutable-type-updates-in-c-sharp" href="/hasslefree-immutable-type-updates-in-c-sharp">Hassle-free immutable type updates in C#</a></h2>
+        <p class="PostDate">14 August 2015</p><h2 id="hassle-free-immutable-type-updates-in-c"><a href="/hasslefree-immutable-type-updates-in-c-sharp">Hassle-free immutable type updates in C#</a></h2>
 <p>Earlier this week, I was talking about parsing TypeScript definitions in an inspired-by-function-programming manner. Like this:</p>
 <pre><code>public static Optional&lt;MatchResult&lt;PropertyDetails&gt;&gt; Property(IReadStringContent reader)
 {
@@ -426,7 +426,7 @@ public static class MatchResult
 <p>Feel free to fresh your memory at <a href="/parsing-typescript-definitions-functionally-ish">Parsing TypeScript definitions</a>!</p>
 <p>One thing that I thought was very un-functional-like (a very precise term! :) was the way that the &quot;name&quot; and &quot;type&quot; values were updated via callbacks from the &quot;Then&quot; methods. This mechanism felt wrong for two reasons; the repeat assignment to the references (setting them to null and then setting them again to something else) and the fact that the assignments were effectively done as side effects of the work of the &quot;Then&quot; function.</p>
 <p>So I thought I'd have a look into some alternatives and see if I could whip up something better.</p>
-<h3>The verbose approach</h3>
+<h3 id="the-verbose-approach"><a href="#the-verbose-approach">The verbose approach</a></h3>
 <p>The current approach chains together functions that take and return <strong>Optional&lt;IReadStringContent&gt;</strong> instances. If content is encountered that does not match the specified <strong>Parser</strong> then a &quot;Missing&quot; value will be returned from the &quot;Then&quot; call. If a &quot;Then&quot; call receives a &quot;Missing&quot; value then it passes that straight out. So, any time that a match is missed, all subsequent calls pass the &quot;Missing&quot; value straight throught.</p>
 <p>This is why the side effect callbacks are required to pass out the values, because each &quot;Then&quot; call only returns the next position for the reader (or &quot;Missing&quot; if content did not meet requirements).</p>
 <p>To change this, the &quot;Then&quot; function will need to return additional information. Conveniently, there is already a structure to do this - the <strong>MatchResult&lt;T&gt;</strong>. As long as we had one result type that we wanted to thread through the &quot;Then&quot; calls then we could write an alternate version of &quot;Then&quot; -</p>
@@ -538,7 +538,7 @@ public static class MatchResult
 </code></pre>
 <p>This makes the parsing code look nicer, at the cost of having to write more boilerplate code for the interim type.</p>
 <p>What if we could use anonymous types and some sort of magic for performing the copy-and-update actions..</p>
-<h3>One way to write less code</h3>
+<h3 id="one-way-to-write-less-code"><a href="#one-way-to-write-less-code">One way to write less code</a></h3>
 <p>The problem with the <strong>PartialPropertyDetails</strong> is not only that it's quite a lot of code to write out (and that was only for two properties, it will quickly get bigger for more complicated structures) but also the fact that it's only useful in the context of the &quot;Property&quot; function. So this non-neligible chunk of code is not reusable and it clutters up the scope of whatever class or namespace has to contain it.</p>
 <p>Anonymous types sound ideal, because they would just let us start writing objects to populate - eg.</p>
 <pre><code>var result = Optional.For(MatchResult.New(
@@ -566,7 +566,7 @@ public static class MatchResult
 </code></pre>
 <p>(and so the returned value must be of the same type as the first value that it was passed).</p>
 <p>This is not actually a bad solution, I don't think. There was no need to create a <strong>PartialPropertyDetails</strong> class and we have full type safety through those anonymous types. The only (admittedly minor) thing is that if the data becomes more complex then there will be more and more properties and so every instantiation of the anonymous types will get longer and longer. It's a pity that there's no way to create &quot;With{Whatever}&quot; functions for the anonymous types.</p>
-<h3>A minor side-track</h3>
+<h3 id="a-minor-side-track"><a href="#a-minor-side-track">A minor side-track</a></h3>
 <p>Before I go any further, there's another extension method I want to introduce. I just think that the way that these parser chains are initiated feels a bit clumsy -</p>
 <pre><code>var result = Optional.For(MatchResult.New(
     new
@@ -604,7 +604,7 @@ public static class MatchResult
   .Then(Match(';'));
 </code></pre>
 <p>Only a minor improvement but another step towards making the code match the intent (which was one of the themes in my last post).</p>
-<h3>A cleverer (but less safe) alternative</h3>
+<h3 id="a-cleverer-but-less-safe-alternative"><a href="#a-cleverer-but-less-safe-alternative">A cleverer (but less safe) alternative</a></h3>
 <p>Let's try turning the volume up to &quot;silly&quot; for a bit. (Fair warning: &quot;clever&quot; here refers more to &quot;clever for the sake of it&quot; than &quot;intelligent).</p>
 <p>A convenient property of the anonymous type classes is that they each have a constructor whose arguments directly match the properties on it - this is an artifact of the way that they're translated into regular classes by the compiler. You don't see this in code anywhere since the names of these mysterious classes is kept secret and you can't directly call a constructor without knowing the name of the class to call. But they are there, nonetheless. And there is one way to call them.. REFLECTION!</p>
 <p>We could use reflection to create something like the &quot;With{Whatever}&quot; methods - that way, we could go back to only having to specify a single property-to-update in each &quot;Then&quot; call. The most obvious way that this could be achieved would be by specifying the name of the property-to-update as a string. But this is particularly dirty and prone to breaking if any refactoring is done (such as a change to a property name in the anonymous type). There is one way to mitigate this, though.. MORE REFLECTION!</p>
@@ -742,7 +742,7 @@ public static class MatchResult
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">10 August 2015</p><h2><a id="parsing-typescript-definitions-functionally-ish" href="/parsing-typescript-definitions-functionally-ish">Parsing TypeScript definitions (functional-ly.. ish)</a></h2>
+        <p class="PostDate">10 August 2015</p><h2 id="parsing-typescript-definitions-functional-ly.ish"><a href="/parsing-typescript-definitions-functionally-ish">Parsing TypeScript definitions (functional-ly.. ish)</a></h2>
 <p>A couple of things have happened recently, I've started using Visual Studio 2015 and C# 6 (<a href="http://csharp.2000things.com/2014/10/31/1216-c-6-0-initializing-read-only-auto-properties-within-constructors/">read-only auto-properties</a>, where have you been all my life???) and I've been playing around with using <a href="/react-and-flux-with-bridgenet">Bridge.net to write React applications in C#</a>. So far, I've only written the bare minimum of bindings that I required to use React in Bridge so I was wondering if there was a shortcut to extending these - like taking the <a href="https://github.com/borisyankov/DefinitelyTyped/blob/master/react/react.d.ts">DefinitelyTyped TypeScript/React bindings</a> and converting them somehow.</p>
 <p>Looking at those TypeScript bindings, there really isn't <em>that</em> much content and it's not particularly complicated. Translating the majority of it into C# Bridge.net bindings by hand would probably not be a huge deal. But I don't really want to have to spend much time trying to update bindings when new versions of React come out (in fairness, React is fairly stable now and I suspect that any changes in the future will be very minor for most of the surface area of these bindings).</p>
 <p>.. if I'm being really honest, though, I didn't just start out trying to manually translate the TypeScript bindings because I wanted to play around with writing some code! In the professional world, if there's a chance that a one-off(ish) operation like this will be much quicker (and not much less accurate) to perform by hand than by code then it's not an easy sell to say that you should code up an awesome general solution (that <em>probably</em>.. or.. <em>hopefully</em> will work) instead.-But this is all for my own enjoyment, so I'm going to do it however I damn well please! :D</p>
@@ -834,7 +834,7 @@ public static class Optional
 <p>I'm also thinking of trying to make all classes either abstract or sealed - inheritance always makes me a bit nervous when I'm trying to write &quot;value-like&quot; classes (I might want to write a nice custom Equals implementation, but then I start worrying that if someone derives from the type then there's no way to require that they also write their own Equals function that ensures that any new data they add to the type is considered in the comparison). Interestingly, someone posted a question Stack Overflow about this a few years ago, so rather than talk any more about it I'll just link to that: <a href="http://stackoverflow.com/questions/2016608/why-are-concrete-types-rarely-useful-as-bases-for-further-derivation/2016927#2016927">why are concrete types rarely useful as bases for further derivation</a>.</p>
 <p>On a less significant note, I've been meaning to create functions as static by default for a while now. I'm going to make a concerted effort this time. If a function in a class does not need to access any instance state, then marking it as static is a good way to highlight this fact to the reader - it's a sort-of indicator that the function is pure (nitpickers might highlight the fact that a static function could still interact with any static state that the containing class has, but - even in these cases - marking it as static still reduces the possible references that it could affect). Little touches like this can make code more readable, I find. The only problem comes when you could pass just that one piece of state into it, keeping the function static and pure.. but then you find you need to make a change and pass it <em>another</em> piece of state - at which point should you say that the number of arguments required offsets the benefits of purity? (I don't have an easy answer to that, in case you were wondering!).</p>
 <p>By applying these principles, I've found that the style of code that I wrote changed a bit. And I think that the patterns that came out are quite interesting - maybe some of this is due to the changing nature of C#, or maybe it's because I've read so many blog posts over the last couple of years about functional programming that some of it was bound to stick!</p>
-<h3>Getting on with it</h3>
+<h3 id="getting-on-with-it"><a href="#getting-on-with-it">Getting on with it</a></h3>
 <p>Imagine that, during parsing a TypeScript definition, we find ourselves within an interface and need to parse a property that it has -</p>
 <pre><code>name: string;
 </code></pre>
@@ -1033,7 +1033,7 @@ public static Optional&lt;MatchResult&lt;string&gt;&gt; MatchWhitespace(IReadStr
 <p>This feels like it's going to get repetitive very quickly and that silly mistakes could easily slip in. I don't like the continued re-assignment of the &quot;reader&quot; reference, I can see myself making a stupid mistake in code like that quite easily.</p>
 <p>On top of this, the code above misses a valid case - where there is whitespace <em>before</em> the colon as well as after it (eg. &quot;name : string;&quot;).</p>
 <p>We can do better.</p>
-<h3>Let's get functional</h3>
+<h3 id="lets-get-functional"><a href="#lets-get-functional">Let's get functional</a></h3>
 <p>What I'd like to do is chain the content-matching methods together. My first thought was how jQuery chains functions one after another, but LINQ might have been just as appropriate an inspiration.</p>
 <p>The way that both of these libraries work is that they have standard input / output types. In LINQ, you can get a lot of processing done based just on <strong>IEnumerable&lt;T&gt;</strong> references. With jQuery, you're commonly working with sets of DOM elements (it has methods like &quot;<a href="http://api.jquery.com/jquery.map/">map</a>&quot;, though, so nothing forces you to operate <em>only</em> on sets of elements).</p>
 <p>So what I need to do is to encourage my parsing functions into a standard form. Well.. that's not quite true. I like my parsing functions as they are! They're clear and succinct and their type signatures are informative (&quot;GetIdentifier&quot; takes a non-null reader reference and returns either a result-plus-reader-after-the-result or a no-match response; similarly MatchCharacter has a very simple but descriptive signature).</p>
@@ -1136,7 +1136,7 @@ public static Optional&lt;MatchResult&lt;string&gt;&gt; MatchWhitespace(IReadStr
 <p>It's also an example of.. if I've got this right.. the Monad Pattern. That concept that seems impossibly theoretical in 99% of articles you read (or maybe that's just me). Even this highly-upvoted answer on Stack Overflow by the ever-readable Eric Lipperts starts off sounding very dense and full of abstract terms: <a href="http://stackoverflow.com/a/2704795">Monad in plain English</a>.</p>
 <p>I don't want to get too hung up on all that, though, I just thought it was interesting to highlight the concept in use in some practical code. Plus, if I try to make myself out as some functional programming guru then someone might pick on me for writing &quot;Then&quot; in such a way that it requires a side effect to report the value it matches - side effects are so commonly (and fairly, imho) seen as an evil that must be minimised that it seems strange to write a function that will be used in many places that <em>relies</em> upon them. However, with C#, I think it would be complicated to come up with a structure that is passed through the &quot;Then&quot; calls, along with the <strong>Optional&lt;IReadStringContent&gt;</strong>, and since the side effects are so localised here, it's not something I'm going to lose sleep over. Maybe it will be easier if &quot;<a href="https://github.com/dotnet/roslyn/issues/206">record types</a>&quot; get implemented in C# 7, or maybe it's just an exercise for the reader to come up with an elegant solution and let me know! :)</p>
 <p>Speaking of exercises for the reader, you might have noticed that I haven't included the source code for the <strong>ITypeDetails</strong> interface or the &quot;GetTypeScriptType&quot; function. That's because I haven't finished writing them yet! To be honest, I've been having a bit of an attention span problem so I thought I'd switch from writing code to writing a blog post for a little while. Hopefully, at some point, I'll release the source in case it's of any use to anyone else - but for now it's such work-in-progress that it's not even much use to <em>me</em> yet!</p>
-<h3>Refinements</h3>
+<h3 id="refinements"><a href="#refinements">Refinements</a></h3>
 <p>After wrapping the &quot;GetIdentifier&quot;, &quot;MatchCharacter&quot;, etc.. functions in &quot;Then&quot; calls, I felt like renaming them. In general, I prefer to have variables and properties named as nouns and functions named as verbs. However, when functions are being passed around as arguments for other functions, it blurs the borders! So, since &quot;GetIdentifier&quot; and &quot;MatchWhitespace&quot; are only ever passed into &quot;Then&quot; as arguments, I've switched them from being verbs into being nouns (simply &quot;Identifer&quot; and &quot;Whitespace&quot;).</p>
 <p>I've also shortened the &quot;MatchCharacter&quot; function to just &quot;Match&quot;. It's still a verb, but that's because it will be passed a character to match - and the <strong>Parser</strong> that the &quot;Match&quot; function returns is passed to &quot;Then&quot;. (To make things worse, &quot;Match&quot; can be either a verb <em>or</em> a noun, but in this case I'm taking it to be a verb!).</p>
 <p>Now &quot;GetPropertyDetails&quot; looks like this:</p>
@@ -1267,7 +1267,7 @@ public sealed class ConditionalParser&lt;TCondition&gt;
 <pre><code>.If(Match('&lt;')).Then(GenericTypeParameters, value =&gt; genericTypeParameters = value)
 </code></pre>
 <p>And because the <strong>ConditionalParser</strong>'s &quot;Then&quot; function returns an <strong>Optional&lt;IReadStringContent&gt;</strong> we can go back to chaining more &quot;Then&quot; calls right on to it (as I do in the &quot;InterfaceHeader&quot; example above).</p>
-<h3>In conclusion..</h3>
+<h3 id="in-conclusion"><a href="#in-conclusion">In conclusion..</a></h3>
 <p>I really like how the techniques I've talked about work together and how combining these small functions enables complex forms to be described while still keeping things manageable. Having the complexity grow at a nice linear rate, rather than multiplying out every time something new needs to be considered, is very gratifying. Not to mention that having these small and simple functions also makes automated testing a lot easier.</p>
 <p>All of the functions shown are pure (although some technically have side effects, these effects are only<br />
 actioned through lambdas that are passed to the functions as arguments) and nothing shares state, which makes the code very easy to reason about.</p>

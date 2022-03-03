@@ -58,11 +58,11 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">28 April 2021</p><h2><a id="automating-suggested-related-posts-links-for-my-blog-posts-part-2" href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a></h2>
-<h3>TL;DR</h3>
+        <p class="PostDate">28 April 2021</p><h2 id="automating-suggested-related-posts-links-for-my-blog-posts-part-2"><a href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a></h2>
+<h3 id="tldr"><a href="#tldr">TL;DR</a></h3>
 <p>By training another type of model from the open source .NET library that I've been using and combining its results with the similarity model from last time (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">Automating &quot;suggested / related posts&quot; links for my blog posts</a>), I'm going to improve the automatically-generated &quot;you may be interested in&quot; links that I'm adding to my blog.</p>
 <p>Improvement, in fact, sufficient such that I'll start displaying the machine-suggested links at the bottom of each post.</p>
-<h3>Where I left off last time</h3>
+<h3 id="where-i-left-off-last-time"><a href="#where-i-left-off-last-time">Where I left off last time</a></h3>
 <p>In my last post, I had trained a <a href="https://en.wikipedia.org/wiki/FastText">fastText</a> model (as part of the <a href="https://github.com/curiosity-ai/catalyst">Catalyst .NET library</a>) by having it read all of my blog posts so that it could predict which posts were most likely to be similar to which other posts.</p>
 <p>This came back with some excellent suggestions, like this:</p>
 <blockquote>
@@ -80,7 +80,7 @@ The joys of AutoMapper</p>
 </blockquote>
 <p>I'm still not discounting the idea that I might be able to improve the results by tweaking hyperparameters on the training model (such as epoch, negative sampling rate and dimensions) or maybe even changing how it processes the blog posts - eg. it's tackling the content as English language documents but there are large code segments in many of the posts and maybe that's confusing it; maybe removing the code samples before processing would give better results?</p>
 <p>However, fiddling with those options and rebuilding over and over is a time-consuming process and there is no easy way to evaluate the &quot;goodness&quot; of the results - so I need to flick through them all myself and try to get a rough feel for whether I think the last run was an improvement or not.</p>
-<h3>Introducing a new model</h3>
+<h3 id="introducing-a-new-model"><a href="#introducing-a-new-model">Introducing a new model</a></h3>
 <p>The premise that I wil be experimenting with is to determine what words in my post titles are &quot;interesting&quot; and to then order the suggested-similar posts first by a score based upon how many interesting words they share <em>and then</em> by the similarity score that I already have.</p>
 <p>The model that I'll be training for this is called &quot;TF-IDF&quot; or &quot;Term Frequency - Inverse Document Frequency&quot; and it looks at every word in every blog post and considers how many times that word appears in the document (the more often, the more likely that the document relates to the word) and how many times it appears across multiple documents (the more often, the more common and less &quot;specific&quot; it's likely to be).</p>
 <p>For each blog post that I'm looking for similar posts to, I'll:</p>
@@ -139,7 +139,7 @@ Face or no face (finding faces in photos using C# and AccordNET)</p>
 </blockquote>
 <p>All of them are investigations into some form of machine learning or computer vision but the titles share very little in common. It's likely that the prediction quality of this one will actually suffer a little with the change I'm introducing but I'm looking for an overall improvement, across the entire blog. I'm also not looking for a perfect general solution, I'm trying to find something that works well for <em>my</em> data (again, bearing in mind that there is a relatively small quantity of it as there are only around 120 posts, which doesn't give the computer a huge amount of data to work from).</p>
 <p><em>(It's also worth noting that the way I implement this in my blog is that I maintain two lists - the manually-curated list that I had before that had links for about a dozen posts and a machine-generated list; if there are manual links present then they will be displayed and the auto-generated ones will be hidden - so if I find that I have a particuarly awkward post where the machine can't find nice matches then I can always tidy it up myself by manually creating the related-post links for that post)</em></p>
-<h3>Implementation</h3>
+<h3 id="implementation"><a href="#implementation">Implementation</a></h3>
 <p><a href="/automating-suggested-related-posts-links-for-my-blog-posts">Last time</a>, I had code that was reading and parsing my blog posts into a &quot;postsWithDocuments&quot; list.</p>
 <p>After training the fastText model, I'll train a TF-IDF model on all of the documents. I'll then go back round each document again, have this new model &quot;Process&quot; them and retrieve Frequency values for each word. These values allow for a score to be generated - since the scores depend upon how often a word appears in a given document, the scores will vary from one blog post to another and so I'm taking an average score for each distinct word.</p>
 <p>(Confession: I'm not 100% sure that this averaging is the ideal approach here but it seems to be doing a good enough job and I'm only fiddling around with things, so <em>good enough</em> should be all that I need)</p>
@@ -248,9 +248,9 @@ foreach (var result in others)
 <p>So the idea is to then use the fastText similarity score when deciding which of these matches is best.</p>
 <p>There are all sorts of ways that these two scoring mechanisms could be combined - eg. I could take the 20 titles with the greatest TF-IDF proximity scores and then order them by similarity (ie. which results the fastText model thinks are best) or I could reverse it and take the 20 titles that fastText thought were best and <em>then</em> take the three with the greatest TF-IDF proximity scores from within those. For now, I'm using the simplest approach and ordering by the TF-IDF scores first and then by the fastText similarity model. So, from the above list, the 7.183-scoring post will be taken first and then 2 out of the 5 posts that have a TF-IDF score of 4.544 will be taken, according to which ones the fastText model thought were more similar.</p>
 <p>Again, there are lots of things that could be tweaked and fiddled with - and I imagine that I will experiment with them at some point. The main problem is that I have enough data across my posts that it's tedious looking through the output to try to decide if I've improved things each time I make change but there <em>isn't</em> enough data that the algorithms have a huge pile of information to work on. Coupled with the fact that training takes a few minutes to run and I have recipe for frustration if I obsess too much about it. Right now, I'm happy enough with the suggestions and any that I want to manually override, I can do so easily.</p>
-<h3>Trying the code yourself</h3>
+<h3 id="trying-the-code-yourself"><a href="#trying-the-code-yourself">Trying the code yourself</a></h3>
 <p>If you want to try out the code, you can find a complete sample in the &quot;SimilarityWithTitleTFIDF&quot; project in the solution of this repo: <a href="https://github.com/ProductiveRage/BlogPostSimilarity">BlogPostSimilarity</a>.</p>
-<h3>Has it helped?</h3>
+<h3 id="has-it-helped"><a href="#has-it-helped">Has it helped?</a></h3>
 <p>Let's return to those examples that I started with.</p>
 <p>Good suggestions from last time:</p>
 <blockquote>

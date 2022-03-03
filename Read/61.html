@@ -58,7 +58,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">11 August 2013</p><h2><a id="c-sharp-state-machines" href="/c-sharp-state-machines">C# State Machines</a></h2>
+        <p class="PostDate">11 August 2013</p><h2 id="c-state-machines"><a href="/c-sharp-state-machines">C# State Machines</a></h2>
 <p>Not too long ago, I published <a href="/parsing-css">Parsing CSS</a> which talked about how I'd used a form of state machine to traverse the content and how doing so made changing the logic for &quot;changing requirements&quot; much easier -</p>
 <blockquote>
 <p>When I started writing it, I somehow forgot all about attribute selectors [..] If this had been processed in some contorted single loop full of complicated interacting conditions [..] then adding that extra set of conditions would have filled me with dread. With this approach, it was no big deal.</p>
@@ -69,7 +69,7 @@
 <p>Having linked to that article, hopefully what I'm going to write here won't seem redundant :)</p>
 <p>Someone who I used to work with (hiya, Pricey!) got in touch with me about my parsing post and said that he'd also been getting to grips with the state machine pattern and we'd talked about using it to describe how a traffic light works. I presume that this is one of those examples that's been around <em>forever</em>. I have a <em>very</em> vague recollection of some interface between a BBC Micro and some sort of Lego-brick-mounted motors and lights and sensors when I was in my last year at primary school - one of the teaching projects was to try to model how a traffic light works. This was a loooooooong time before all those fancy Mindstorms Lego packages became available! And while researching this post, I've found numerous mention of traffic lights in relation to state machine tutorials or exercises.</p>
 <p>Anyway... I thought this was a cool idea since a single traffic light is quite a simple prospect, but it could quickly be made increasingly complex by considering multiple sets of traffic lights controlling traffic at a crossroads, for example.</p>
-<h3>How do UK Traffic Lights work?</h3>
+<h3 id="how-do-uk-traffic-lights-work"><a href="#how-do-uk-traffic-lights-work">How do UK Traffic Lights work?</a></h3>
 <p>Traffic light strategies can be extremely complex when lights interact with each other so to begin with we'll just consider modelling a single set of lights controlling traffic flow. It seems like it would be odd to have traffic lights arbitrarily stopping cars if there is no traffic to flow perpendicular to it (whether that be pedestrians trying to cross or other cars at a junction or crossroads) but let's start simple.</p>
 <ul>
 <li>The default light state is red</li>
@@ -80,7 +80,7 @@
 </ul>
 <p>The change from the first state occurs only if car(s) arrive at the light. The other transitions occur only according to the passing of time.</p>
 <p>(If there were two sets of traffic lights at a crossroads - with two roads running perpendicular and controlling traffic in both directions on both roads - then the state of the traffic flow on the other road must be considered as well; just because both sets of lights have cars waiting to go doesn't mean they should both transition to green at the same time! But we'll talk about that later on..)</p>
-<h3>Modelling</h3>
+<h3 id="modelling"><a href="#modelling">Modelling</a></h3>
 <p>Let's get straight in with some code. I'm going to declare an interface for a single traffic light state, the implementations of which will be immutable. Then I'll have a <strong>TrafficLight</strong> class which has a mutable state reference and that passes through possible transition triggers for car-has-arrived-at-lights and time-has-passed events. This class will also be used to log when the state visibly changes - eg. &quot;red light to red-and-yellow light&quot;. So first the interface..</p>
 <pre><code>public interface IAmATrafficLightState
 {
@@ -311,10 +311,10 @@ public abstract class TimeBasedTransitiveState : IAmATrafficLightState
   }
 }
 </code></pre>
-<h2>First pass complete!</h2>
+<h2 id="first-pass-complete"><a href="#first-pass-complete">First pass complete!</a></h2>
 <p>That is actually all of the code required to run a simulation of the traffic light, according the behaviour I described earlier.</p>
 <p>It's not all that exciting, though, is it? And it's not immediately obvious why writing this as a state machine would be particularly beneficial. (Although, there is an argument made that by the time you realise that a state machine might me most appropriate that it's too late: <a href="http://www.skorks.com/2011/09/why-developers-never-use-state-machines/">Why Developers Never Use State Machines</a>). So let's ramp up the complexity a bit!</p>
-<h3>See you at the crossroads</h3>
+<h3 id="see-you-at-the-crossroads"><a href="#see-you-at-the-crossroads">See you at the crossroads</a></h3>
 <p>Let's paint a picture. There's a road that runs North-South and one that runs East-West. Where they cross, there are traffic lights for both roads. For this example, I'm going to say that both sets of traffic lights work in the same manner as outlined above with one caveat: only one light may be anything other than red at any time. So if one set of lights is anywhere in the red-and-yellow, green, yellow cycle then the other lights must be red. As soon as that first set of lights becomes red again, the other set are elligible to cycle round if traffic requires that they do so.</p>
 <p>There are all sorts of variations that could be made instead at this point. If the North-South road is always busier than the East-West road then, to maximise overall throughput, the lights on the North-South road might be configured to default to green unless there is East-West traffic. In America, I believe that you can turn right at crossroads if you're in the right lane, even when they're on red in some (if not all?) circumstances. I don't know if that changes the behaviour of the lights depending upon which lane traffic is in? Traffic light patterns can be further complicated by having different patterns applied at different times of the day and further <em>again</em> if lights at multiple junctions interact with each other - so traffic at one junction can affect other junctions by giving them knowledge of what traffic may be coming towards them. It actually sounds like it could be a really interesting field to work in!</p>
 <p>Having an insight into how complex things could get makes the state machine pattern look like a good fit here.</p>
@@ -408,7 +408,7 @@ public enum StatusOptions
 <p>I'm not entirely sure <em>why</em> there is this short delay before changing to red-and-yellow with real-life traffic lights. I'm not sure if it's something to do with traffic calming, whether it improves traffic flow in a non-intuitive manner, whether it's about ensuring that drivers assume they will always have to come to a full stop when approaching a red light or if there's another explanation. What I <em>do</em> know, though, is that if traffic is already queued up at a crossroads' red light since the other road has traffic passing, then this delay should be removed. When the other road changes to red, the traffic lights for the road with backed-up cars should be able to transtion straight to red-and-yellow.</p>
 <p>The <strong>RedLightWaitingForAccess</strong> covers this case. It is not affected by more cars arriving at the lights but each time slice it will check the status of the other road's lights and change state to <strong>RedAndYellowLight</strong> as soon as those other lights report &quot;NotHandlingTraffic&quot;.</p>
 <p>The other new state is the <strong>RedLightPausedBeforeWaitingForTraffic</strong>. A <strong>YellowLight</strong> will transition to this before returning to <strong>RedLightWaitingForTraffic</strong>. This imposes a short delay on a set of traffic lights which guarantees that it will stay in a state with status &quot;NotHandlingTraffic&quot; after allowing through traffic. This will ensure that traffic lights on the other road can transition if required, even if a car arrives at the set of traffic lights that just cycled round. Essentially, it makes sure that if traffic is trying to pass both North-South and East-West then the roads &quot;take turns&quot; in allowing traffic to pass.</p>
-<h3>The new code</h3>
+<h3 id="the-new-code"><a href="#the-new-code">The new code</a></h3>
 <p>To work with the new <strong>IAmATrafficLightState</strong> interface and to add support for a &quot;state stack&quot;, the <strong>TrafficLight</strong> wrapper class will need to be updated -</p>
 <pre><code>public class TrafficLight
 {
@@ -729,7 +729,7 @@ public class RedLightPausedBeforeWaitingForTraffic : TimeBasedTransitiveState
   }
 }
 </code></pre>
-<h3>Win?</h3>
+<h3 id="win"><a href="#win">Win?</a></h3>
 <p>It might look like quite a lot of code since I've decided to include <em>all</em> of the code here. But there wasn't that much new code required to go from supporting the simple one-traffic-light example to the more complex configuration. And at each step, it's easy to see what exactly is going on and how the various interactions are being handled.</p>
 <p>That's the real benefit of the state machine pattern, adding complexity is much cheaper than it is with more naive approaches. If we wanted to add <em>another</em> set of lights here (maybe there's a pedestrian crossing) then doing so wouldn't blow up the code complexity. Even if we bear in mind the fact that pedestrian crossing lights have different rules to traffic lights (there's only a red man and a green man - or &quot;walk&quot; and &quot;don't walk&quot;, if you prefer - there's no yellow light).</p>
 <p>Another interesting pattern would be to vary the length that the green light stays on for, depending upon the traffic pressure building up on the other road. This might require a way to pass a &quot;pressure retriever&quot; reference through to the <strong>GreenLight</strong> (similar to the is-access-allowed delegate that the <strong>RedLightWaitingForTraffic</strong> and <strong>RedLightWaitingForAccess</strong> states have, but with a sliding scale rather than a simple yes-or-no), but all of the complexity would be contained within that <strong>GreenLight</strong> state.</p>

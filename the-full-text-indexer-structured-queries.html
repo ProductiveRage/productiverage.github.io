@@ -58,7 +58,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">13 March 2013</p><h2><a id="the-full-text-indexer-structured-queries" href="/the-full-text-indexer-structured-queries">The Full Text Indexer - Structured Queries</a></h2>
+        <p class="PostDate">13 March 2013</p><h2 id="the-full-text-indexer-structured-queries"><a href="/the-full-text-indexer-structured-queries">The Full Text Indexer - Structured Queries</a></h2>
 <p>I've considered in the past extending the way in which searches can be defined for use with the Full Text Indexer. The current approaches are:</p>
 <ol>
 <li>A simple one-word query</li>
@@ -67,7 +67,7 @@
 </ol>
 <p>The first doesn't need much explaining, most of the examples have been based around this. The use of GetPartialMatches was outlined in the first <a href="/the-full-text-indexer">Full Text Indexer post</a>; the method takes a search term, a Token Breaker (to break the multi-word term into single-word terms) and a &quot;MatchCombiner&quot; delegate which describes how to combine the weighted matches for each broken-down word (this delegate will include the logic that determines whether <em>all</em> of the words in the original term must be matched or if it's just that a greater combined weight should be given to results that do match them all). This is the method that the search facility on this blog uses.</p>
 <p>The third approach makes use of the <strong>ConsecutiveTokenCombiningTokenBreaker</strong> and is a bit different; when the index is being generated, the content is not only broken down into individual words but also runs of multiple words. This is explained in more detail in the <a href="/the-full-text-indexer-token-breaker-and-string-normaliser-variations">Token Breaker and String Normaliser variations</a> post, but that's the gist. In this scenario, the search term is <em>not</em> broken down and treated as a single token to search for. If you want to perform searches for multi-word terms where those words must appear in the order specified (rather than just appearing in any order, anywhere throughout the source content - possibly spanning multiple fields) then this is what you'd use.</p>
-<h3>Structured Querying</h3>
+<h3 id="structured-querying"><a href="#structured-querying">Structured Querying</a></h3>
 <p>I wanted to introduce a consolidated query method but I'd been putting off writing a parser to take a search string and work out what to do with the various components. However, having recently written a CSS / LESS parser (<a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser on Bitbucket</a>) I was inspired to use the same recursive parsing technique and piece together something for the Full Text Indexer.</p>
 <p>I went into it wanting something vaguely like GetPartialMatches but with.. more. The first assumption I wanted to make was that where multiple terms are specified then they should be considered an OR combination; so a match will be found if any one of the terms is found. If a particular term absolutely must be present then it can be prefixed with a &quot;+&quot;. If a term must <em>not</em> be present then it can be prefixed with a &quot;-&quot;. These ideas are directly influenced by Google query format! :)</p>
 <p>This would allow us straight away to specify</p>
@@ -96,9 +96,9 @@
 </blockquote>
 <p>This will return articles that contain <em>at least one</em> of &quot;apples&quot; / &quot;pears&quot; / &quot;bananas&quot; <em>and</em> &quot;fruit&quot; <em>and</em> &quot;nut&quot; and <em>not</em> &quot;lunatic&quot;.</p>
 <p>The bracketing and compulsory / excluding (the &quot;+&quot; and &quot;-&quot;) operators should be combinable and nestable in any manner. They can't be nested within quoted sections as they would be considered to be part of the content, but quoted sections can be nested with brackets or combined with the other operators, as already seen. (If a quote is required within a quoted section that it may be escaped with a backslash).</p>
-<h3>Show me the code!</h3>
+<h3 id="show-me-the-code"><a href="#show-me-the-code">Show me the code!</a></h3>
 <p>In case you're not that interested in stepping through the internals, there's a complete working example at the end of this post that demonstrates how to use this! Just change the string passed to the querier.GetMatches method to play around with it.</p>
-<h3>Content Analysers</h3>
+<h3 id="content-analysers"><a href="#content-analysers">Content Analysers</a></h3>
 <p>The first step is to break down a search term into the various <strong>IQuerySegment</strong> types in the Querier project (in the <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer Bitbucket repository</a>): the <strong>StandardMatchQuerySegment</strong>, <strong>PreciseMatchQuerySegment</strong>, <strong>CompulsoryQuerySegment</strong>, <strong>ExcludingQuerySegment</strong>, <strong>CombiningQuerySegment</strong> and <strong>NoMatchContentQuerySegment</strong> (used, for example, when brackets surround empty content).</p>
 <p>To illustrate, the example</p>
 <blockquote>
@@ -136,10 +136,10 @@
 </code></pre>
 <p>That's quite a mouthful, but if you read on you'll see that the <strong>Querier</strong> class means that you should never need to call that directly.</p>
 <p>It breaks tokens on whitespace unless inside a quoted section, so the only way to specify particular multi-word phrases is to quote them (as with &quot;apples and pears&quot; above).</p>
-<h3>Two Indexes</h3>
+<h3 id="two-indexes"><a href="#two-indexes">Two Indexes</a></h3>
 <p>One thing I haven't addressed so far is how quoted sections can be processed differently to none-quoted sections. Unfortunately, there's no clever facility to introduce and the bad news is that to deal with this, <em>two</em> indexes will have to be generated for the source content. The first index, the &quot;default&quot;, uses the most common construction parameters and will be more forgiving on matches. It would be appropriate to use the <strong>EnglishPluralityStringNormaliser</strong> for this index, for example (assuming that it <em>is</em> English language content!). It will only need to deal with single word matches (as only quoted sections in the content are parsed into query segments with multiple words).</p>
 <p>The second index, the &quot;precise match&quot; index, should be less forgiving (using a <strong>DefaultStringNormaliser</strong>, perhaps, which will normalise casing and ignore punctuation but not consider singular and plural versions of words to be equivalent). It will also need to make use of the <strong>ConsecutiveTokenCombiningTokenBreaker</strong> if quoted phrases are to be matchable (as opposed to only supporting quoting individual words).</p>
-<h3>Query Translator</h3>
+<h3 id="query-translator"><a href="#query-translator">Query Translator</a></h3>
 <p>The two indexes (and a MatchCombiner, see below) are used to instantiate a <strong>QueryTranslator</strong> whose method GetMatches will take an <strong>IQuerySegment</strong> and return an immutable set of WeighedEntry results, just like the *<em>IIndexData</em> class.</p>
 <p>The MatchCombiner is used whenever multiple matches need be combined together into one - this will happen if there are multiple words in the initial query and will happen any times multiple terms are bracketed together. For the search term</p>
 <blockquote>
@@ -152,9 +152,9 @@
 <li>apples / combined-bananas-combined-pomegranate-tomato</li>
 </ol>
 <p>This could be a simple summing or averaging of the match weights. One variation is to sum the weights but then always divide by a particular value, this reduces the weight of nested terms - so if terms are several bracketing levels deep then they will impart a lower weight on the final weight of the result. Whether this seems appropriate or not is up to you!</p>
-<h3>The Querier</h3>
+<h3 id="the-querier"><a href="#the-querier">The Querier</a></h3>
 <p>The <strong>Querier</strong> class tidies up access to the Content Analysers and the Query Translator to try to make life easier. The <strong>Querier</strong> is instantiated with the two indexes and the MatchCombiner that the <strong>QueryTranslator</strong> requires and exposes a method GetMatches which takes a search term, translates it into an <strong>IQuerySegment</strong>, passes it through the <strong>QueryTranslator</strong> and returns the weighted results.</p>
-<h3>Example code</h3>
+<h3 id="example-code"><a href="#example-code">Example code</a></h3>
 <p>Below is a complete example that has a simple &quot;Post&quot; source type. I've used the <strong>AutomatedIndexGeneratorFactoryBuilder</strong> (see <a href="/the-full-text-indexer-automating-index-generation">The Full Text Indexer - Automating Index Generation</a>) to kick things off. I've taken the first content from a couple of Posts on my blog as example content. The largest piece of setup code is the instantiation of the generator for the &quot;precise match&quot; index, and that's most due to the explanatory comments!</p>
 <pre><code>using System;
 using System.Linq;

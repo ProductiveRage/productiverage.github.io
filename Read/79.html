@@ -58,12 +58,12 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">22 December 2014</p><h2><a id="if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript" href="/if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript">If you can keep your head when all about you are losing theirs and blaming it on VBScript</a></h2>
+        <p class="PostDate">22 December 2014</p><h2 id="if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript"><a href="/if-you-can-keep-your-head-when-all-about-you-are-losing-theirs-and-blaming-it-on-vbscript">If you can keep your head when all about you are losing theirs and blaming it on VBScript</a></h2>
 <p>I've been migrating an old VBScript app to .net and some of those old idiosyncracies of VBScript have been rearing their head again. For a language that is intended to make things simple (and, in fairness, for many use cases it does), it really does have some confusing and complicated rules hidden behind its facade of ease!</p>
 <p>Language design quite interests me, there's always a view into someone's way of thinking, about how things should be done. And there's always compromises (like all programming). Is it really true that languages like <a href="http://stackoverflow.com/a/1937434">Smalltalk have no &quot;if&quot; statement</a>? Why did the features that got into C# 6 get in and why didn't other candidates? Should languages make immutable structures simple, or should these be difficult because immutability is expensive (yes, no and it's not - if you ask me)?</p>
 <p>Anyway, if you're not similarly interested <em>and</em> you're not just happy to point and laugh, not only at some of the decisions* made in VBScript, but also that someone <em>is still using it in this day and age</em> then this post might not be for you..</p>
 <p>* I'm not really having a go at VBScript (tempting as it might be), its design comes from a difficult place in that it was supposed to be backwards compatible with VB6 where possible and &quot;<a href="http://blogs.msdn.com/b/ericlippert/archive/2004/08/25/error-handling-in-vbscript-part-three.aspx">it was designed for simple administration and web scripts, where often 'muddle on through' is exactly what you want it to do</a>&quot;. This quotes certainly goes some way to explaining its error model, along with why it can be so troublesome to write large, reliable applications in it (since this was never an intended use).</p>
-<h3>If This = That Then</h3>
+<h3 id="if-this-that-then"><a href="#if-this-that-then">If This = That Then</a></h3>
 <p>To remain focused, I'm just going to talk about the &quot;IF&quot; statement today.</p>
 <p>Simple, right?</p>
 <p>Well, this one is..</p>
@@ -110,7 +110,7 @@ If (a = (1)) Then
 End If
 </code></pre>
 <p>The right-hand side is a bracketed value, but the interpreter ignores the unnecessary bracketing and sees it as a literal - and so applies the convert-to-number logic.</p>
-<h3>String theory</h3>
+<h3 id="string-theory"><a href="#string-theory">String theory</a></h3>
 <p>But number literals aren't the only ones that bring in their own magic. Strings do it too.</p>
 <pre><code>a = 1
 If (a = &quot;1&quot;) Then
@@ -118,7 +118,7 @@ If (a = &quot;1&quot;) Then
 End If
 </code></pre>
 <p>Isn't this example just like the <em>(a = b)</em> example we saw where <em>a</em> was the number 1 and <em>b</em> the string &quot;1&quot;?? Well, no. Here, the string literal on the right-hand side introduces a behaviour where the other side of the comparison is converted into a string and then considered. So the number 1 becomes the string &quot;1&quot;, which does in fact match the right-hand side string literal &quot;1&quot;. Crazy.</p>
-<h3>True for booleans?</h3>
+<h3 id="true-for-booleans"><a href="#true-for-booleans">True for booleans?</a></h3>
 <p>So what about that last type of VBScript primitive type; the boolean?</p>
 <pre><code>a = &quot;aa&quot;
 If (a = False) Then
@@ -126,12 +126,12 @@ If (a = False) Then
 End If
 </code></pre>
 <p>You might have expected that the boolean literal False in the condition would result in the left-hand side being converted to a boolean - something which the string <code>aa</code> can not be. But no &quot;Type mismatch&quot; error is raised, the condition just isn't met. This is also explained by the <a href="http://blogs.msdn.com/b/ericlippert/archive/2004/07/30/202432.aspx">Typing Hard Can Trip You Up</a> post - it's a bug! As if the whole system wouldn't have been confusing enough had there been an internal consistency for all primitive types, <em>this</em> comes along! When I first noticed the oddity with the numeric literals when examining some code, I poked around and came up with a whole variety of test cases and did a fairly good job of deducing the rules around numeric and string literals, it was only later that I found that Lippert post - had I not, I mighn't have realised about the booleans since they had slipped my mind while writing the examples. It seems crazy to me to think that that post was written more than ten years ago now, who would have thought that VBScript projects would still be clinging on for dear life (much as I'm slowly cutting the cords on the work projects) so far on? And I wonder how many people with VBScript experience actually know these rules - I've worked on projects using it over the last decade or so and normally things seem to just work (maybe that's a <em>slight</em> exaggeration!) and it's only when you dig deep into the edge cases that you realise there's such layers of crazy hiding down there.</p>
-<h3>Objects?</h3>
+<h3 id="objects"><a href="#objects">Objects?</a></h3>
 <p>Comparisons such as &quot;=&quot; are not for objects (there is the &quot;IS&quot; comparison for object equality).</p>
 <p>If an object reference appears on either side of an &quot;=&quot; comparison (or &quot;&lt;&quot;, &quot;&gt;&quot;, etc..) then it must have a parameter-less default property or method - this will be called and then the standard rules apply (if there is no such default then an &quot;Object doesn't support this property of method&quot; error will be raised - it's looking for a default property or method on the object and can't find one, so this kinda makes sense).</p>
 <p>If the default property or method returns another object then a &quot;Type mismatch&quot; error is raised. It doesn't matter if this object itself has a default member, the try-to-access-default-member logic does not apply recursively.</p>
 <p>There can be some minor complications when interacting with non-VBScript objects that are communicated with over IDispatch, since these may have additional rules of their own. But that's out of scope for today.</p>
-<h3>To err is human, but to really foul things up you need VBScript</h3>
+<h3 id="to-err-is-human-but-to-really-foul-things-up-you-need-vbscript"><a href="#to-err-is-human-but-to-really-foul-things-up-you-need-vbscript">To err is human, but to really foul things up you need VBScript</a></h3>
 <p>We're so close to being VBScript &quot;IF&quot; gurus now (it's probably best not to worry about what is being pushed out of your brain to make space for this information!) - but there's another spanner in the works yet: <strong>On Error Resume Next</strong>, the error-handling mechanism that just isn't quite what you'd expect in oh, so many cases.</p>
 <p>Let's try this one; a variation of one of the earlier number literal examples from above:</p>
 <pre><code>On Error Resume Next
@@ -167,7 +167,7 @@ ElseIf (1/0) Then
   ' No
 End If
 </code></pre>
-<h3>That's enough for today (my head hurts)</h3>
+<h3 id="thats-enough-for-today-my-head-hurts"><a href="#thats-enough-for-today-my-head-hurts">That's enough for today (my head hurts)</a></h3>
 <p>Was I the only one surprised by all this? I presume that all of this weirdness can be linked back to some use cases where these rules made code look like it was doing &quot;the right thing&quot; but it's like one leaky abstraction after another!</p>
 <p>As I said at the start, though, I'm really not trying to take cheap shots at VBScript - the very fact that I looked into all this while migrating an important application written in it says a lot about it; that large production applications were able to be written in it and maintained until the present day does sort of speak quite highly about it. Or maybe it just harks to the eternal difficulty of the dreaded rewrite! While I feel a bit unfair slating it, let's put it this way - I'm not going to miss it when this transition is complete and it's finally gone! :)</p>
 <p class="PostTime">Posted at 22:35</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/locating-todo-comments-with-roslyn">Locating TODO comments with Roslyn</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/typescript-classes-for-react-flux-actions">TypeScript classes for (React) Flux actions</a></div></div><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/using-roslyn-to-identify-unused-and-undeclared-variables-in-vbscript-wsc-components">Using Roslyn to identify unused and undeclared variables in VBScript WSC components</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/vbscript-is-dim">VBScript is DIM</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/VBScript" title="8 Posts">VBScript</a></li></ul></div>

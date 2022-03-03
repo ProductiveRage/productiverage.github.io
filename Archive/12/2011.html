@@ -53,7 +53,7 @@
         </script>
 
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">27 December 2011</p><h2><a id="dynamically-applying-interfaces-to-objects-part-3" href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></h2>
+        <p class="PostDate">27 December 2011</p><h2 id="dynamically-applying-interfaces-to-objects-part-3"><a href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></h2>
 <p>In this final part of this mini series there are two enhancements I want to add:</p>
 <ol>
 <li>For cases where the same interface may be applied to multiple objects, I want to replace the WrapObject method (which applies the interface to a single reference) with a GenerateInterfaceApplier method which returns an object that applies a specified interface to any given reference but only generating the IL once</li>
@@ -94,7 +94,7 @@ public class ExampleObject
     }
 }
 </code></pre>
-<h3>Task 1: The IInterfaceApplier class</h3>
+<h3 id="task-1-the-iinterfaceapplier-class"><a href="#task-1-the-iinterfaceapplier-class">Task 1: The IInterfaceApplier class</a></h3>
 <p>The first part is fairly straight-forward so I'll jump straight in -</p>
 <pre><code>public class InterfaceApplierFactory : IInterfaceApplierFactory
 {
@@ -214,7 +214,7 @@ public interface IInterfaceApplier
 </code></pre>
 <p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an &quot;IInterfaceApplier&quot; is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
 <p>I've also supported an alternative method signature for GenerateInterfaceApplier such that the target interface can be specified as an argument rather than a typeparam to a generic method - this will become important in the next section and the only interesting things to note are how IInterfaceApplier&lt;T&gt; is returned from the generic method as opposed to the IInterfaceApplier returned from the typeparam-less signature and how the alternate method calls into the typeparam'd version using reflection.</p>
-<h3>Task 2: Recursively applying interfaces</h3>
+<h3 id="task-2-recursively-applying-interfaces"><a href="#task-2-recursively-applying-interfaces">Task 2: Recursively applying interfaces</a></h3>
 <p>The approach I'm going to use here is to introduce a new interface that will be used when generating the interface appliers -</p>
 <pre><code>public interface IReadValueConverter
 {
@@ -415,7 +415,7 @@ else
 
 ilFunc.Emit(OpCodes.Ret);
 </code></pre>
-<h3>Task 2.1: Implementing IReadValueConverter</h3>
+<h3 id="task-2.1-implementing-ireadvalueconverter"><a href="#task-2.1-implementing-ireadvalueconverter">Task 2.1: Implementing IReadValueConverter</a></h3>
 <p>A naive implementation might be as follows:</p>
 <pre><code>public class SimpleReadValueConverter : IReadValueConverter
 {
@@ -576,7 +576,7 @@ namespace Tester
 }
 </code></pre>
 <p>Each unique interface applier has a specific class name (of the form &quot;InterfaceApplier{0}&quot; where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one &quot;wasted&quot; generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
-<h3>&quot;Inaccessible Interface&quot;</h3>
+<h3 id="inaccessible-interface"><a href="#inaccessible-interface">&quot;Inaccessible Interface&quot;</a></h3>
 <p>In the above example, the INode interface has to be located outside of the Program class since it must be accessible by the InterfaceApplierFactory and the Program class is private. This isn't an issue for the Node class as the InterfaceApplierFactory doesn't need direct access to that, it just returns an IInterfaceApplier that we pass the n2 reference to as an argument. Alternatively, the Program class could be made public. This isn't exactly rocket science but if it slips your mind then you're presented with an error such as -</p>
 <blockquote>
 <p>TypeLoadException: &quot;Type <code>'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8'</code> from assembly <code>'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null'</code> is attempting to implement an inaccessible interface.&quot;</p>
@@ -597,14 +597,14 @@ namespace Tester
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">14 December 2011</p><h2><a id="dynamically-applying-interfaces-to-objects-part-2" href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></h2>
+        <p class="PostDate">14 December 2011</p><h2 id="dynamically-applying-interfaces-to-objects-part-2"><a href="/dynamically-applying-interfaces-to-objects-part-2">Dynamically applying interfaces to objects - Part 2</a></h2>
 <p>Today, I'm going to address some of the &quot;future developments&quot; I left at the end of the last post. Specifically:</p>
 <ol>
 <li>Wrapping up the &quot;Interface Applier&quot; into a generic method that specifies the target interface</li>
 <li>Handling interface hierarchies</li>
 <li>Marking the wrapper as being ComVisible</li>
 </ol>
-<h3>Wrapping up in a method</h3>
+<h3 id="wrapping-up-in-a-method"><a href="#wrapping-up-in-a-method">Wrapping up in a method</a></h3>
 <p>Part one is easy. Take the code from the last article and wrap in</p>
 <pre><code>public static T WrapObject&lt;T&gt;(object src)
 {
@@ -623,7 +623,7 @@ namespace Tester
 }
 </code></pre>
 <p>Ta-da! Note that we ensure that the typeparam T really <em>is</em> an interface - we made assumptions about this in the last article, so we need to assert this fact here. (It means that we only ever have to deal with properties and methods, and that they will always be public).</p>
-<h3>Handling interface hierarchies</h3>
+<h3 id="handling-interface-hierarchies"><a href="#handling-interface-hierarchies">Handling interface hierarchies</a></h3>
 <p>This part is not much more difficult. We'll introduce something to recursively trawl through any interfaces that the target interface implements and build a list of them all:</p>
 <pre><code>public class InterfaceHierarchyCombiner
 {
@@ -688,7 +688,7 @@ foreach (var property in interfaces.SelectMany(i =&gt; i.GetProperties()))
 </code></pre>
 <p>and likewise for the methods.</p>
 <p>It's worth noting that there may be multiple methods within the interface hierarchy with the same name and signature. It may be worth keeping track of which properties / methods have had corresponding IL generated but - other than generating more instructions in the loop than strictly necessary - it doesn't do any harm generating duplicate properties or methods (so I haven't worried about it for now).</p>
-<h3>Com Visibility</h3>
+<h3 id="com-visibility"><a href="#com-visibility">Com Visibility</a></h3>
 <p>What I wanted to do for the wrappers I was implementing was to create classes with the <strong>[ComVisible(true)]</strong> and <strong>[ClassInterface(ClassInterface.None)]</strong> attributes. This is achieved by specifying these attributes on the typeBuilder (as seen in the code in the last article):</p>
 <pre><code>typeBuilder.SetCustomAttribute(
     new CustomAttributeBuilder(
@@ -704,7 +704,7 @@ typeBuilder.SetCustomAttribute(
 );
 </code></pre>
 <p>Again, easy! Once you know how :)</p>
-<h3>Example code / jumping to the end</h3>
+<h3 id="example-code-jumping-to-the-end"><a href="#example-code-jumping-to-the-end">Example code / jumping to the end</a></h3>
 <p>I've not included a complete sample here since it would take up a fairly hefty chunk of space but also because I created a GitHub repository with the final code. This can be found at <a href="https://github.com/ProductiveRage/COMInteraction">https://github.com/ProductiveRage/COMInteraction</a></p>
 <p>This includes the work here but also the work I want to address next time; a way to automagically wrap return values where required and a way to change the WrapObject method so that if the same interface is to be applied to multiple objects, only a single call is required (and an object be returned that can wrap any given reference in that interface). The example I put out for this return-value-wrapping was that we want to wrap an object in ITest and have the return value from its Get method <em>also</em> be wrapped if it did not already implement IEmployee:</p>
 <pre><code>public interface ITest
@@ -725,12 +725,12 @@ public interface IEmployee
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">13 December 2011</p><h2><a id="dynamically-applying-interfaces-to-objects" href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a></h2>
+        <p class="PostDate">13 December 2011</p><h2 id="dynamically-applying-interfaces-to-objects"><a href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a></h2>
 <p>Another area of this migration proof-of-concept work I'm doing at the day job involves investigating the best way to swap out a load of COM components for C# versions over time. The plan initially is to define interfaces for them and code against those interfaces, write wrapper classes around the components that implement these interfaces and one day rewrite them one-by-one.</p>
 <p>Writing the interfaces is valuable since it enables some documentation-through-comments to be generated for each method and property and forces me to look into the idiosyncracies of the various components.</p>
 <p>However, writing endless wrappers for the components to &quot;join&quot; them to the interfaces sounded boring! Even if I used the .Net 4.0 &quot;dynamic&quot; keyword it seemed like there'd be a lot of repitition and opportunity for me to mistype a property name and not realise until debugging / writing tests. (Plus I found a problem that prevented me from using &quot;dynamic&quot; with the WSCs I was wrapping - see the bottom of this post for more details).</p>
 <p>I figured this is the sort of thing that should be dynamically generatable from the interfaces instead of writing them all by hand - something like how Moq can create generate Mock&lt;ITest&gt; implementations. I did most of this investigation back in Summer, not long after the AutoMapper work I was looking into, and had hoped I'd be able to leverage my sharpened Linq Expression dynamic code generation skills. Alas, it seems that new classes can not be defined in this manner so I had to go deeper..</p>
-<h3>Reflection.Emit</h3>
+<h3 id="reflection.emit"><a href="#reflection.emit">Reflection.Emit</a></h3>
 <p>I was aware that IL could be generated by code at runtime and executed as any other other loaded assembly might be. I'd read (and chuckled at) this article in the past but never taken it any further: <a href="http://www.codeproject.com/Articles/19513/Dynamic-But-Fast-The-Tale-of-Three-Monkeys-A-Wolf">Dynamic... But Fast: The Tale of Three Monkeys, A Wolf and the DynamicMethod and ILGenerator Classes</a></p>
 <p>As I tried to find out more information, though, it seemed that a lot of articles would make the point that you could find out how to construct IL by using the IL Disassembler that's part of the .Net SDK: ildasm.exe (located in C:\Program Files\Microsoft SDKs\Windows\v7.0A\bin on my computer). This makes sense because once you start constructing simple classes and examining the generated code in ildasm you can start to get a reasonable idea for how to write the generation code yourself. But it <em>still</em> took me quite a while to get to the point where the following worked!</p>
 <p>What I really wanted was something to take, for example:</p>
@@ -776,7 +776,7 @@ public interface IEmployee
 }
 </code></pre>
 <p>It may seem like using reflection will result in there being overhead in the calls but the primary objective was to wrap a load of WSCs in C# interfaces so they could be rewritten later while doing the job for now - so performance wasn't really a massive concern at this point.</p>
-<h3>Somewhere to work in</h3>
+<h3 id="somewhere-to-work-in"><a href="#somewhere-to-work-in">Somewhere to work in</a></h3>
 <p>The first thing to be aware of is that we can't create new classes in the current assembly, we'll have to create them in a new one. So we start off with</p>
 <pre><code>var assemblyBuilder = Thread.GetDomain().DefineDynamicAssembly(
   new AssemblyName(&quot;DynamicAssembly&quot;), // This is not a magic string, it can be called anything
@@ -803,7 +803,7 @@ var typeBuilder = moduleBuilder.DefineType(
 </code></pre>
 <p>The TypeAttribute values I copied from the ildasm output I examined.</p>
 <p>Note that we're specifying ITest as the interface we're implementing by passing it as the &quot;interfaces&quot; parameter to the moduleBuilder's DefineType method.</p>
-<h3>The Constructor</h3>
+<h3 id="the-constructor"><a href="#the-constructor">The Constructor</a></h3>
 <p>The constructor is fairly straight forward. The thing that took me longest to wrap my head around was how to form the &quot;if (src == null) throw new ArgumentNullException()&quot; construct. If seems that this is most easily done by declaring a label to jump to if src is <strong>not</strong> null which allows execution to leap over the point at which an ArgumentNullException will be raised.</p>
 <pre><code>// Declare private _src field
 var srcField = typeBuilder.DefineField(&quot;_src&quot;, typeof(object), FieldAttributes.Private);
@@ -835,7 +835,7 @@ ilCtor.Emit(OpCodes.Stfld, srcField);
 // All done!
 ilCtor.Emit(OpCodes.Ret);
 </code></pre>
-<h3>Properties</h3>
+<h3 id="properties"><a href="#properties">Properties</a></h3>
 <p>Although there's only a single property in the ITest example we're looking at, we might as look ahead and loop over <em>all</em> properties the interface has so we can apply the same sort of code to other interfaces. Since we <em>are</em> dealing with interfaces, we only need to consider whether a property is gettable, settable or both - there's no public / internal / protected / private / etc.. to worry about. Likewise, we only have to worry about properties and methods - interfaces can't declare fields.</p>
 <pre><code>foreach (var property in typeof(ITest).GetProperties())
 {
@@ -953,7 +953,7 @@ ilCtor.Emit(OpCodes.Ret);
 <p>is a bit painful as we have to declare an array with a single element to pass to the method, where that single element is the &quot;value&quot; reference available within the setter.</p>
 <p>Also worthy of note is that when returning a ValueType or setting a ValueType. As we're expecting to either return an object or set an object, the value has to be &quot;boxed&quot; otherwise bad things will happen!</p>
 <p>Like the TypeAttributes in the Constructor, the MethodAttributes I've applied here were gleaned from looking at IL generated by Visual Studio.</p>
-<h3>Methods</h3>
+<h3 id="methods"><a href="#methods">Methods</a></h3>
 <p>We're on the home stretch now! Methods are very similar to the property setters except that we may have zero, one or multiple parameters to handle and we may or may not (if the return type is void) return a value from the method.</p>
 <pre><code>foreach (var method in typeof(ITest).GetMethods())
 {
@@ -1035,7 +1035,7 @@ ilCtor.Emit(OpCodes.Ret);
 </code></pre>
 <p>The boxing of ValueTypes when passed as parameters or returned from the method is required, just like the property accessors.</p>
 <p>The only real point of interest here is the array generation for the parameters - this also took me a little while to wrap my head around! You may note that I've been a bit lazy and not supported optional, out or ref parameters - I didn't need these for anything I was working on and didn't feel like diving into it at this point. I'm fairly sure that if they become important features then whipping out ildasm and looking at the generated code there will reveal the best way to proceed with these.</p>
-<h3>The payoff!</h3>
+<h3 id="the-payoff"><a href="#the-payoff">The payoff!</a></h3>
 <p>Now that we've defined everything about the class, we can instantiate it!</p>
 <pre><code>var wrapper = (ITest)Activator.CreateInstance(
   typeBuilder.CreateType(),
@@ -1044,7 +1044,7 @@ ilCtor.Emit(OpCodes.Ret);
 </code></pre>
 <p>This gives us back an instance of a magic new class that wraps a specified &quot;src&quot; and passes through the ITest properties and methods! If it's applied to an object that doesn't have the required properties and methods then exceptions will be thrown when they are called - the standard exceptions that reflection calls to invalid properties/methods would result in.</p>
 <p>But I think that's pretty much enough for this installment - it's been a bit dry but I think it's been worthwhile!</p>
-<h3>And then..</h3>
+<h3 id="and-then"><a href="#and-then">And then..</a></h3>
 <p>There are a lot of extension points that naturally arise from this rough-from-the-edges code - the first things that spring to my mind are a way to wrap this up nicely into a generic class that could create wrappers for any given interface, a way to handle interface inheritance, a way to possibly wrap the returned values - eg. if we have</p>
 <pre><code>public interface ITest
 {
@@ -1060,7 +1060,7 @@ public interface IEmployee
 <p>can the method that applies ITest to an object also apply IEmployee to the value returned from ITest.Get if that value itself doesn't already implement IEmployee??</p>
 <p>Finally, off the top of my head, if I'm using these generated classes to read interact with WSCs / COM components, am I going to need to pass references over <em>to</em> COM components? If so, I'm going to have to find a way to flag them as ComVisible.</p>
 <p>But these are issues to address another time :)</p>
-<h3>Footnote: WSC properties and &quot;dynamic&quot;</h3>
+<h3 id="footnote-wsc-properties-and-dynamic"><a href="#footnote-wsc-properties-and-dynamic">Footnote: WSC properties and &quot;dynamic&quot;</a></h3>
 <p>The code here doesn't use the .Net 4.0 &quot;dynamic&quot; keyword and so will compile under .Net 2.0. I had a bit of a poke around in the IL generated that makes use of dynamic since in some situations it should offer benefits - often performance is one such benefit! However, in the particularly niche scenario I'm working with it refuses to work :( Most of the components I'm wrapping are legacy VBScript WSCs and trying to set properties on these seems to fail when using dynamic.</p>
 <p>I've pulled this example from a test (in xUnit) I wrote to illustrate that there were issues ..</p>
 <pre><code>[Fact]
@@ -1155,7 +1155,7 @@ private class NullCache : ICache
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">9 December 2011</p><h2><a id="really" href="/really">Really??</a></h2>
+        <p class="PostDate">9 December 2011</p><h2 id="really"><a href="/really">Really??</a></h2>
 <p>&quot;The under 25 crowd use a cell phone as their primary mode of accessing the Internet&quot; - <a href="http://www.tnrglobal.com/blog/2011/12/mobile-search-good-ux-means-fewer-touches-simple-design/">http://www.tnrglobal.com/blog</a>.</p>
 <p>Is this is a fact? I'm genuinely curious what this is based on. At 29 am I even older than I realised??</p>
 <p class="PostTime">Posted at 00:25</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days">Why is saving Performance Monitor (PerfMon) settings so difficult these days?!</a></li><li><a href="/why-do-you-hate-my-wcf-types-php">Why do you hate my (WCF) types, PHP??</a></li></ul></div>
@@ -1164,7 +1164,7 @@ private class NullCache : ICache
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">8 December 2011</p><h2><a id="sta-apartmentstate-with-aspnet-mvc" href="/sta-apartmentstate-with-aspnet-mvc">STA ApartmentState with ASP.Net MVC</a></h2>
+        <p class="PostDate">8 December 2011</p><h2 id="sta-apartmentstate-with-asp.net-mvc"><a href="/sta-apartmentstate-with-aspnet-mvc">STA ApartmentState with ASP.Net MVC</a></h2>
 <p>Continuing on with the proof-of-concept I'm doing at work regarding reimplementing a VBScript Engine with WSC Controls in .Net I've been trying to develop an ASP.Net MVC Controller that will execute in the STA ApartmentState having read this article:</p>
 <p><a href="http://msdn.microsoft.com/en-us/magazine/cc163544.aspx">http://msdn.microsoft.com/en-us/magazine/cc163544.aspx</a>.</p>
 <p>The upshot is that if components that run in STA are shared by something executing as MTA then only a single thread from the MTA worker can operate on the component at a time. If the caller is running as STA then separate instances will exist such that each request (I'm thinking in terms of ASP.Net MVC requests) gets its own instance, preventing requests getting queued up waiting for each other when accessing the STA components.</p>
@@ -1253,7 +1253,7 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">8 December 2011</p><h2><a id="mercurial-on-windows-changing-filename-case" href="/mercurial-on-windows-changing-filename-case">Mercurial on Windows - Changing filename case</a></h2>
+        <p class="PostDate">8 December 2011</p><h2 id="mercurial-on-windows-changing-filename-case"><a href="/mercurial-on-windows-changing-filename-case">Mercurial on Windows - Changing filename case</a></h2>
 <p>At work today, in a fit of madness, I decided to rename a file in a BitBucket (ie. Mercurial) repository from RSSController.cs to RssController.cs for consistency with the casing in other files. At the time I wondered if this rename was a good idea, but everything seemed to go well.</p>
 <p>When I got home and tried to update my repository there, <em>seemed</em> became the operative word. I was greeted with a &quot;case folding collision&quot; error and the start of 90 minutes of my life that feel wasted and aren't ever going to come back.</p>
 <p>I'm not sure if there's a good way to do this and a lot of information out there about resolving this sort of mess starts with &quot;On the Linux/FreeBSD machine..&quot; or &quot;On a case sensitive OS..&quot; which is not very useful when all my computers run Windows!</p>
@@ -1265,10 +1265,10 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">6 December 2011</p><h2><a id="iisexpress-virtual-directories-and-applications" href="/iisexpress-virtual-directories-and-applications">IISExpress - Virtual Directories and Applications</a></h2>
+        <p class="PostDate">6 December 2011</p><h2 id="iisexpress-virtual-directories-and-applications"><a href="/iisexpress-virtual-directories-and-applications">IISExpress - Virtual Directories and Applications</a></h2>
 <p>Recently I've been using IIS Express, mostly at home where I don't have a fancy OS with a full IIS installation. Integrated with Visual Studio it's great at being an environment closer-to-real-IIS than the built-in VS WebServer / Casini (is it even still called that these days??) but recently I've been doing some proof-of-concept work for an Engine that integrates with some Legacy WSC components we have in a project at work. Oh yes, the bleeding edge of VBScript in pseudo-COM wrappers - awesome :S And for this work there are stretches of time where I don't want the overhead of the debugger being attached and be able to flip the app pool and re-load the components and using WebMatrix to configure the site has allowed me to do just that.</p>
 <p>But even with WebMatrix there isn't a huge amount of configuring that can be done through the GUI. I'd heard that IIS Express could support Virtual Directories and Virtual Applications but I just couldn't find where to do it through the interface! And I still can't.. but the good news is that the config files for IIS Express - like IIS 7 - are really easy to get into!</p>
-<h3>The upshot</h3>
+<h3 id="the-upshot"><a href="#the-upshot">The upshot</a></h3>
 <p>Since IIS Express installs against the user account (which contributes to its non-requirement of Admin rights), the config files are located in the &quot;IISExpress\config&quot; folder under &quot;My Documents&quot;. The interesting file here is &quot;applicationhost.config&quot; which describe all the sites under &quot;configuration/system.applicationHost/sites&quot;. The default site may described as -</p>
 <pre><code>&lt;site name=&quot;WebSite1&quot; id=&quot;1&quot; serverAutoStart=&quot;true&quot;&gt;
     &lt;application path=&quot;/&quot;&gt;
@@ -1309,7 +1309,7 @@ public class STAThreadHttpAsyncHandler : Page, IHttpAsyncHandler, IRequiresSessi
     &lt;/bindings&gt;
 &lt;/site&gt;
 </code></pre>
-<h3>So?</h3>
+<h3 id="so"><a href="#so">So?</a></h3>
 <p>Well it's hardly rocket science! But it took me a while to get this sorted out.. there are quite a few questions out there to this effect but it seems like once someone works it out they think it's obvious and so there aren't that many answering posts out there.</p>
 <p>This is my contribution to that end :)</p>
 <p class="PostTime">Posted at 18:11</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications">Friction-less immutable objects in Bridge (C# / JavaScript) applications</a></li><li><a href="/windbg-rides-again">WinDbg Rides Again</a></li><li><a href="/css-minification-regular-expressions">CSS Minification Regular Expressions</a></li></ul></div>

@@ -53,11 +53,11 @@
         </script>
 
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">10 August 2016</p><h2><a id="retrieving-performance-counter-from-a-remote-pc-using-c-sharp" href="/retrieving-performance-counter-from-a-remote-pc-using-c-sharp">Retrieving Performance Counter from a remote PC using C#</a></h2>
+        <p class="PostDate">10 August 2016</p><h2 id="retrieving-performance-counter-from-a-remote-pc-using-c"><a href="/retrieving-performance-counter-from-a-remote-pc-using-c-sharp">Retrieving Performance Counter from a remote PC using C#</a></h2>
 <p><a href="/why-is-saving-performance-monitor-perfmon-settings-so-difficult-these-days">PerfMon</a> can be an invaluable tool for monitoring performance counters on the local or remote computer. It allows you to graph the information live and it allows you to write the data away to disk for future analysis.</p>
 <p>However, for some performance investigation that I was doing, I wanted something slightly different to what PerfMon offers. I was testing a service under load, a service that was being hosted on a dedicated box for the performance investigation - and I was testing it by generating the load from another dedicated server. Since nothing else would be hitting the service host box, what I wanted to do for each test run was to restart the service on the host, hit it with the sample load and record the processor time, % time in GC, number of garbage collections at each generation and some other metrics until the work was fully processed - at that point, there would be no more information to gather for that particular run. The experiment could be repeated a few times and the results filed away, brought back out to compare to the same load being run after some performance tweaks had been made to the code.</p>
 <p>It wouldn't be the end of the world if I had to do this manually - configure PerfMon to write the counter data to disk somewhere, restart the service before each run and then extract the data from the PerfMon logs that relate to the time period that just passed.. but it's tedious work that I don't want to bother with; I want to deploy a change then run-test-and-gather-data with a single button press. Better than that, I want to be able to perform multiple runs without any manual intervention - I want to deploy the new code then have the test harness restart the service, replay the test load, record the counter data in a file and then repeat as many times as desired.</p>
-<h3>Restarting the service</h3>
+<h3 id="restarting-the-service"><a href="#restarting-the-service">Restarting the service</a></h3>
 <p>This part is easy, we can use a method such as this -</p>
 <pre><code>private static void Restart(string server, string serviceName)
 {
@@ -76,7 +76,7 @@
   }
 }
 </code></pre>
-<h3>Querying a performance counter remotely</h3>
+<h3 id="querying-a-performance-counter-remotely"><a href="#querying-a-performance-counter-remotely">Querying a performance counter remotely</a></h3>
 <p>This bit is a little trickier.. I started with code from an article <a href="http://haishibai.blogspot.co.uk/2010/02/tiy-collect-remote-performance-counters.html">TIY – Collect remote performance counters using C#</a> which sounded <em>exactly</em> like what I wanted. Unfortunately, I was getting an error with the lines</p>
 <pre><code>IntPtr userHandle = new IntPtr(0);
 LogonUser(
@@ -249,7 +249,7 @@ namespace PerformanceCounterCapture
 <p>The &quot;counterRetriever.Get&quot; call returns an <strong>IEnumerable&lt;float&gt;</strong> which retrieves a new value every time that a new value is requested from the enumerable reference. The code above (very roughly) imitates PerfMon in that it reads a new &quot;% Processor Time&quot; value every second.</p>
 <p><em>(Note: The code above never terminates since nothing breaks it out of the loop, which is not useful in many scenarios.. but I'll talk about dealing with that shortly)</em></p>
 <p>This is a good first step. However, when I'm analysing the results of my test runs, I want to know more than just how much processor time is being used by the service.</p>
-<h3>Querying multiple performance counters remotely</h3>
+<h3 id="querying-multiple-performance-counters-remotely"><a href="#querying-multiple-performance-counters-remotely">Querying multiple performance counters remotely</a></h3>
 <p>If I want to collect the data from multiple performance counters then I need to get multiple <strong>IEnumerable&lt;float&gt;</strong> instances from multiple &quot;counterRetriever.Get&quot; calls and then retrieve a value from each before pausing and repeating.</p>
 <pre><code>using (var counterRetriever = new PerformanceCounterRetriever(&quot;TestBox&quot;, &quot;Home&quot;, &quot;Dan&quot;, &quot;password&quot;))
 {
@@ -278,10 +278,10 @@ namespace PerformanceCounterCapture
 }
 </code></pre>
 <p>This could be extended to do the job (in my case, there are seven counters that I'm interested in so the above could be chopped and changed to record them all) but the code will get a bit verbose and &quot;noisy&quot; quite quickly.</p>
-<h3>Troublesome counters</h3>
+<h3 id="troublesome-counters"><a href="#troublesome-counters">Troublesome counters</a></h3>
 <p>There is also a problem with writing code like the above and presuming that you can track all performance counters in the same way. For example, I also want to track the number of garbage collections that have occurred at generations 0, 1 and 2 since the service was restarted. It probably doesn't make much sense to record the values of these every second; I don't really care if there had been a single gen 0 garbage collection after 1s and after 2s and after 3s and after 4s, I'd much rather see that at 1s there had been a single gen 0 collection and then, at 4s, there had been a second. I want to know when these kinds of values change and I'm not interested in the repeated values between the changes.</p>
 <p>As another example, I'm also interested in capturing information about the rate at which bytes are allocated by the service, for which I can consult the &quot;Allocated Bytes/sec&quot; counter. However, this counter is only updated after a GC event and will report zero the result of the time. This doesn't mean that zero bytes per second really were being allocated each time that the counter reports zero, it's just that there is nothing that can accurately report a value for this counter <em>except</em> immediately following a collection. For this counter, it's probably best for me to exclude zero values - particularly while a performance test is underway, since it is basically impossible that the service will ever be allocating <em>zero</em> bytes per second while it's deserialising requests and processing them. As with the &quot;number of collections at gen {x}&quot; counters, it will be worth ignoring some of the counter values but it will be important to know <em>when</em> the values that we do pay attention to were recorded (since, for the &quot;Allocated Bytes/sec&quot; counter, it should be possible to use this information to approximate the allocation rate at any given time).</p>
-<h3>A complete solution</h3>
+<h3 id="a-complete-solution"><a href="#a-complete-solution">A complete solution</a></h3>
 <p>To try to address all of these problems, I've come up with the following. It's not the smallest code sample in the world but it should be easy to follow and understand if you need to extend it for your own purposes -</p>
 <pre><code>using System;
 using System.Collections.Generic;
@@ -542,7 +542,7 @@ resultsReadyIndicator.WaitOne();
 // TODO: Write the &quot;performanceCounterResults&quot; data away to analyse later...........
 </code></pre>
 <p>There are two big TODOs in the above code - somehow the request payload needs to be fired at the remote server that is being measured and somehow the performance counter results need to be compared between one run and the next. Obviously, these will vary from one project to the next and so they will be very dependent upon what kind of service that you're testing (and what performance counters you're interested in). In my case, I already had a decent system available for replaying old requests so that changes to the system could be examined, all I needed on top of that was a way to capture some performance counters to bring some <em>cold hard numbers</em> into proceedings - if you're in a similar position then hopefully this post will be helpful!</p>
-<h3>Shameless plug</h3>
+<h3 id="shameless-plug"><a href="#shameless-plug">Shameless plug</a></h3>
 <p>Although I had a system in place to replay historical requests in order to simulate load, there was a slight problem with this in that the service would read from a database and it was totally feasible that the data persisted there could vary from hour to hour (if not more frequently). This could mean that one performance run would not be directly comparable to the next - one run may return more or less results for a particular query, for example, or have to process some of those results in a different (ie. more or less expensive) manner.</p>
 <p>This would make meaningful comparisons difficult - really, each run should return precisely the same data as the next.</p>
 <p>For this particular service, a few things were in my favour on this front; the service was read only, its job is only to deliver data for rendering on various web sites and it does not have to perform any write operations. It also only specifies a database connection in a fairly limited number of places. This allowed me to add a config option to the service that would (when in a particular test mode) create database connections that get their data from a proxy service instead of going directly to the SQL database.</p>

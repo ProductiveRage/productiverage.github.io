@@ -58,7 +58,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">14 August 2015</p><h2><a id="hasslefree-immutable-type-updates-in-c-sharp" href="/hasslefree-immutable-type-updates-in-c-sharp">Hassle-free immutable type updates in C#</a></h2>
+        <p class="PostDate">14 August 2015</p><h2 id="hassle-free-immutable-type-updates-in-c"><a href="/hasslefree-immutable-type-updates-in-c-sharp">Hassle-free immutable type updates in C#</a></h2>
 <p>Earlier this week, I was talking about parsing TypeScript definitions in an inspired-by-function-programming manner. Like this:</p>
 <pre><code>public static Optional&lt;MatchResult&lt;PropertyDetails&gt;&gt; Property(IReadStringContent reader)
 {
@@ -125,7 +125,7 @@ public static class MatchResult
 <p>Feel free to fresh your memory at <a href="/parsing-typescript-definitions-functionally-ish">Parsing TypeScript definitions</a>!</p>
 <p>One thing that I thought was very un-functional-like (a very precise term! :) was the way that the &quot;name&quot; and &quot;type&quot; values were updated via callbacks from the &quot;Then&quot; methods. This mechanism felt wrong for two reasons; the repeat assignment to the references (setting them to null and then setting them again to something else) and the fact that the assignments were effectively done as side effects of the work of the &quot;Then&quot; function.</p>
 <p>So I thought I'd have a look into some alternatives and see if I could whip up something better.</p>
-<h3>The verbose approach</h3>
+<h3 id="the-verbose-approach"><a href="#the-verbose-approach">The verbose approach</a></h3>
 <p>The current approach chains together functions that take and return <strong>Optional&lt;IReadStringContent&gt;</strong> instances. If content is encountered that does not match the specified <strong>Parser</strong> then a &quot;Missing&quot; value will be returned from the &quot;Then&quot; call. If a &quot;Then&quot; call receives a &quot;Missing&quot; value then it passes that straight out. So, any time that a match is missed, all subsequent calls pass the &quot;Missing&quot; value straight throught.</p>
 <p>This is why the side effect callbacks are required to pass out the values, because each &quot;Then&quot; call only returns the next position for the reader (or &quot;Missing&quot; if content did not meet requirements).</p>
 <p>To change this, the &quot;Then&quot; function will need to return additional information. Conveniently, there is already a structure to do this - the <strong>MatchResult&lt;T&gt;</strong>. As long as we had one result type that we wanted to thread through the &quot;Then&quot; calls then we could write an alternate version of &quot;Then&quot; -</p>
@@ -237,7 +237,7 @@ public static class MatchResult
 </code></pre>
 <p>This makes the parsing code look nicer, at the cost of having to write more boilerplate code for the interim type.</p>
 <p>What if we could use anonymous types and some sort of magic for performing the copy-and-update actions..</p>
-<h3>One way to write less code</h3>
+<h3 id="one-way-to-write-less-code"><a href="#one-way-to-write-less-code">One way to write less code</a></h3>
 <p>The problem with the <strong>PartialPropertyDetails</strong> is not only that it's quite a lot of code to write out (and that was only for two properties, it will quickly get bigger for more complicated structures) but also the fact that it's only useful in the context of the &quot;Property&quot; function. So this non-neligible chunk of code is not reusable and it clutters up the scope of whatever class or namespace has to contain it.</p>
 <p>Anonymous types sound ideal, because they would just let us start writing objects to populate - eg.</p>
 <pre><code>var result = Optional.For(MatchResult.New(
@@ -265,7 +265,7 @@ public static class MatchResult
 </code></pre>
 <p>(and so the returned value must be of the same type as the first value that it was passed).</p>
 <p>This is not actually a bad solution, I don't think. There was no need to create a <strong>PartialPropertyDetails</strong> class and we have full type safety through those anonymous types. The only (admittedly minor) thing is that if the data becomes more complex then there will be more and more properties and so every instantiation of the anonymous types will get longer and longer. It's a pity that there's no way to create &quot;With{Whatever}&quot; functions for the anonymous types.</p>
-<h3>A minor side-track</h3>
+<h3 id="a-minor-side-track"><a href="#a-minor-side-track">A minor side-track</a></h3>
 <p>Before I go any further, there's another extension method I want to introduce. I just think that the way that these parser chains are initiated feels a bit clumsy -</p>
 <pre><code>var result = Optional.For(MatchResult.New(
     new
@@ -303,7 +303,7 @@ public static class MatchResult
   .Then(Match(';'));
 </code></pre>
 <p>Only a minor improvement but another step towards making the code match the intent (which was one of the themes in my last post).</p>
-<h3>A cleverer (but less safe) alternative</h3>
+<h3 id="a-cleverer-but-less-safe-alternative"><a href="#a-cleverer-but-less-safe-alternative">A cleverer (but less safe) alternative</a></h3>
 <p>Let's try turning the volume up to &quot;silly&quot; for a bit. (Fair warning: &quot;clever&quot; here refers more to &quot;clever for the sake of it&quot; than &quot;intelligent).</p>
 <p>A convenient property of the anonymous type classes is that they each have a constructor whose arguments directly match the properties on it - this is an artifact of the way that they're translated into regular classes by the compiler. You don't see this in code anywhere since the names of these mysterious classes is kept secret and you can't directly call a constructor without knowing the name of the class to call. But they are there, nonetheless. And there is one way to call them.. REFLECTION!</p>
 <p>We could use reflection to create something like the &quot;With{Whatever}&quot; methods - that way, we could go back to only having to specify a single property-to-update in each &quot;Then&quot; call. The most obvious way that this could be achieved would be by specifying the name of the property-to-update as a string. But this is particularly dirty and prone to breaking if any refactoring is done (such as a change to a property name in the anonymous type). There is one way to mitigate this, though.. MORE REFLECTION!</p>

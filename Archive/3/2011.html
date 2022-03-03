@@ -53,7 +53,7 @@
         </script>
 
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">29 March 2011</p><h2><a id="the-joys-of-automapper" href="/the-joys-of-automapper">The joys of AutoMapper</a></h2>
+        <p class="PostDate">29 March 2011</p><h2 id="the-joys-of-automapper"><a href="/the-joys-of-automapper">The joys of AutoMapper</a></h2>
 <p>Earlier this year I was introduced by someone I work with to <a href="http://automapper.codeplex.com/">AutoMapper</a>. At a very convenient time it turned out since I was in the middle of a couple of projects that I had to do a lot of run-of-the-mill gluing together of request between web services where there were very similar object models in play but which came from different services - so I was looking at writing a load of code that basically took a request from one side and re-formed it into a very similar request to push elsewhere. Not particularly fun, and I find one of the places I'm most like to make stupid mistakes are when I'm not 100% mentally switched on because the task at hand makes me feel like I'm being a robot!</p>
 <p>So, for one of these projects I was getting stuck into; AutoMapper to the rescue!</p>
 <p>AutoMapper is an &quot;object-to-object&quot; mapper which, well.. maps from one object to another! :) If the source and destination objects have identical structure but different namespaces then most times AutoMapper will be able to translate from one to another as-if-by-magic, and there are several conventions that are applied by the default mapper that perform simple object flattening and other tricks.</p>
@@ -99,7 +99,7 @@ public class Person
 <p>AutoMapper to go from Domain -&gt; ViewModel and Domain -&gt; EditModel.  This is again because the view and controller put constraints on our model that we didn't want in our domain.  AutoMapper flattened our domain into very discrete ViewModel objects, containing only the data for our view, and only in the shape we want.</p>
 </blockquote>
 <p>.. which sounds like a very sensible application for it to me! (The rest of that article's definitely worth a read, btw).</p>
-<h3>Whoops!</h3>
+<h3 id="whoops"><a href="#whoops">Whoops!</a></h3>
 <p>There <em>was</em> one gotcha using it that caught me out, but it made perfect sense when I reasoned it through afterward.</p>
 <p>I was mapping from one large, most-flat object into another where the first was a subset of the second; it was an old legacy webservice where the interface accepted every property for several types of bookings, where maybe 60% of the properties were shared between types and then the rest were specific to different booking types. So a booking made through the web interface resulted in an HotelBooking being instantiated, for example, and this was mapped onto the &quot;super&quot; booking object of the legacy service interface.</p>
 <pre><code>var source = new Hotel(
@@ -161,7 +161,7 @@ public class Booking
 <p>Well it turns out that AutoMapper finds that there is no NetworkType property to map from Hotel to Booking but sees that there <em>is</em> a &quot;Network&quot; value. It then tries to see if it can perform some object flattening by checking whether the Network value has a Type property which, being a string, it doesn't. But it <em>then</em> consider a property retrieval method rather than a standard property getter so it looks for a GetType() method which, since string inherits from objects, it does! So it takes the .Network.GetType() value and assumes we want this for the Booking.NetworkType value!</p>
 <p>Like I said, it all makes perfect sense but it took me a little while to work out what was happening in this case :)</p>
 <p>Did I mention AutoMapper is open source? This is great cos it let me have a poke around the source code and get a feel for what magic seemed to be going on!</p>
-<h3>Something rotten in Denmark</h3>
+<h3 id="something-rotten-in-denmark"><a href="#something-rotten-in-denmark">Something rotten in Denmark</a></h3>
 <p>My biggest problem is with scenarios where I want to do the opposite of the above - instead of translating from an &quot;always-valid&quot; internal object to a webservice class I'd like to be able to instantiate a class through its constructor, using data from a source class.</p>
 <p>Now, AutoMapper <em>does</em> have some sort of support for using constructors for mapping - eg.</p>
 <pre><code>Mapper.CreateMap&lt;Booking, Hotel&gt;()
@@ -175,7 +175,7 @@ public class Booking
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">22 March 2011</p><h2><a id="problems-in-immutabilityland" href="/problems-in-immutabilityland">Problems in Immutability-land</a></h2>
+        <p class="PostDate">22 March 2011</p><h2 id="problems-in-immutability-land"><a href="/problems-in-immutabilityland">Problems in Immutability-land</a></h2>
 <p>Having sung the praises of immutability last time, there <em>are</em> a couple of flies in the ointment. The first is a bit of a non-issue I think, but bears mentioning; if I have a class with half a dozen properties it feels like a <em>lot</em> of monotonous typing hammering out those private properties, those arguments-not-whitespace-or-null checks, those property assigments, those public properties, those comments about the class contract - it's boring! Now I know that developers should all be superfast, touch-typist maniacs (<a href="http://www.codinghorror.com/blog/2008/11/we-are-typists-first-programmers-second.html">http://www.codinghorror.com/blog/2008/11/we-are-typists-first-programmers-second.html</a>) - and I am, that's not the problem - but it still makes me grimace when I know I have to throw down a big chunk of boilerplate-looking code like the Name class I used in an example last time.</p>
 <pre><code>public class Name
 {
@@ -210,7 +210,7 @@ public class Booking
 }
 </code></pre>
 <p>Now, on the other hand, this means that callers can take on certain guarantees about the class and so contain less &quot;gotcha&quot; code (checking for null values and all that). So this is probably code that would have to be written in one way or another elsewhere. Possibly many times over. So I think it's definitely a win overall, which is why I said it's kind of a non-issue - but still it makes my fingers hurt a bit for that quick blaze of crazy typing. I'm concerned the key motions for ArgumentNullException are so ingrained in my muscle memory that my one day my hands will refuse to type anything else!</p>
-<h3>The DeferredElementStore</h3>
+<h3 id="the-deferredelementstore"><a href="#the-deferredelementstore">The DeferredElementStore</a></h3>
 <p>Another issue I've come across a few times was highlighted quite nicely by something I was writing the other day; we had some forms that we wanted to generate from xml config files so some of the elements could be added, removed, made optional, compulsory, etc, etc.. It was fairly straight-forward and each element was parsed from the file and described by a corresponding immutable class but there was a problem - some of the elements were related, or rather one might depend on another. A cascading dropdown scenario, basically. So each element needed a way to access the other elements in the form data to read their values and whatnot. But when initialising each element there didn't exist any single object that had awareness of all of the elements since we were still in the process of initialising them! Catch-22, bang!</p>
 <p>To work around this I used an object that appear immutable to the element but which would not guarantee to be able to respond to requests for references to other element until the Init phase of the pagecycle (this was in ASP.Net and the process was to parse the config file, build a list of controls that the elements required and then add those controls to a Page all at once - so the Init event for each of those controls would be raised after all of the elements had been initialised and the controls created). This object would contain no data initially and be used just as a reference to pass to the elements during initialisation. When the initialisation of all of the elements was complete, a reference to the list of these elements was passed to this mystery object; our &quot;deferred element store&quot;. And then the elements' controls were added to the Page. So when the element classes requested access to other elements during or after the Init phase, the data was available!</p>
 <p>Now, this clearly immutable data - it's more like some sort of single-setting, delayed-instantation object.. or something. I'm going to link to Eric Lippert again here since he's pretty much the guru on this sort of thing and since he describes this precise scenario in the following article:</p>
@@ -273,7 +273,7 @@ foreach (var element in elements)
 </code></pre>
 <p>This could just as well be used if there are circular references between classes. I suppose then you'd have to have a container to handle both objects being instantiated and pass a read-only wrapper of this container to both classes, then push references to those instances into the container.</p>
 <p>This isn't quite the same as the &quot;obervational immutability&quot; described in that article, but I feel I've got an article about dynamic factory classes coming on which will touch on that!</p>
-<h3>Still loving it</h3>
+<h3 id="still-loving-it"><a href="#still-loving-it">Still loving it</a></h3>
 <p>All in all, I'm still definitely a big fan of this immutability lark and am still convinced it makes the code easier to deal with overall. I was reading something earlier that I know can't find so I'll have to paraphrase - they were saying that when you're trying to get to grips with existing code, the less you have to keep in your head about what's going on at any time, the easier it is. This is hardly news but it was used in the context of the advantages of immutable data; that if you have references that just <em>are</em> and aren't going to undergo all sorts of states changes, there's much fewer potential interactions you have to deal with mentally. And that means it should be easier to deal with!</p>
 <p class="PostTime">Posted at 19:00</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/using-roslyn-to-identify-unused-and-undeclared-variables-in-vbscript-wsc-components">Using Roslyn to identify unused and undeclared variables in VBScript WSC components</a></li><li><a href="/writing-a-brackets-extension-in-typescript-in-brackets">Writing a Brackets extension in TypeScript, in Brackets</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li></ul></div>
             <p class="Comments">
@@ -281,7 +281,7 @@ foreach (var element in elements)
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">14 March 2011</p><h2><a id="i-love-immutable-data" href="/i-love-immutable-data">I love Immutable Data</a></h2>
+        <p class="PostDate">14 March 2011</p><h2 id="i-love-immutable-data"><a href="/i-love-immutable-data">I love Immutable Data</a></h2>
 <p>I love immutable data. There, I said it. I think over the last couple of years a few major factors have had the most influence in leading me to this point -</p>
 <ul>
 <li>I've been driven mad by dealing with code full of complicated object models with no indication which properties are required, which are optional, which go together, which are mutually exclusive, etc..</li>
@@ -357,7 +357,7 @@ public class Name
 </code></pre>
 <p>Except - wow! - the amount of code seems to have ballooned and I've not even included the &quot;DefinedStringList&quot; class! (Well, not here at least - it's down the bottom of the post).</p>
 <p>But what we <em>do</em> have now will be instances of Employee that are always in a known good state and we can safely retrieve employee.Name.FirstName without first ensuring that Name is not null. We also know that Employees that have not been assigned roles will have a Roles instance that declares a Count of zero rather than wondering if it will be that or whether there will be a null Roles instance. So the upshot should be that there will actually be <em>less</em> code in places where Employee instances are accessed.</p>
-<h3>Multithreaded access</h3>
+<h3 id="multithreaded-access"><a href="#multithreaded-access">Multithreaded access</a></h3>
 <p>Now, to recreate a really trivial version of the multithreaded datastore I mentioned earlier, imagine we have a local store of Employees that is being written to and read from - eg.</p>
 <pre><code>public class EmployeeStore
 {
@@ -409,7 +409,7 @@ public class Name
 </code></pre>
 <p>Easy! Of course this relies upon the Employee class being immutable (which must cover all of its properties' types as well). Now we're not just reaping the benefits in state validity but we've got more performant threaded code (again, my example was heavy on reads and light). In a lot of cases immutability such as this can make areas of multi-threaded code much easier to write and maintain.</p>
 <p>I think in this case I extended the ImmutableList to a NonNullImmutableList which had validation to ensure it would never contain any null references. Similar to how the DefinedStringList will ensure it has no null or empty values. Another layer of comforting behaviour guarantee so that callers don't have to worry about nulls. It makes me feel warm and fuzzy.</p>
-<h3>Undo!</h3>
+<h3 id="undo"><a href="#undo">Undo!</a></h3>
 <p>In most scenarios it seems I've been working with recently, classes such as Employee <em>would</em> be instantiated just the once and then not changed unless another query was executed that returned a new set of Employee data. But feasibly we may want to alter the Employee class such that it is &quot;editable&quot; in the same way that the DefinedStringList that we're talking about is - you can call methods that return a new instance of the class with the alteration made, leaving the original reference unaltered.</p>
 <pre><code>public class Employee
 {
@@ -453,7 +453,7 @@ public class Name
 }
 </code></pre>
 <p>Here the name can be overwritten and roles can be added or removed. What's interesting about this approach is that returning new instances each time means you could persists a chain of changes - an undo history or sorts! I must admit that I've never taken advantage of this in any way, but it's often struck me that it could be useful in some situations..</p>
-<h3>Some more views</h3>
+<h3 id="some-more-views"><a href="#some-more-views">Some more views</a></h3>
 <p>While writing this post, I did a bit of research to try and make sure I wasn't say anything either too done-to-death or too stupid and the following links are articles I like, largely because they agree with me! :)</p>
 <blockquote>
 <p>Immutable data structures are the way of the future in C#</p>
@@ -470,7 +470,7 @@ public class Name
 <p><a href="http://blog.dezfowler.com/2009/05/always-valid-entity-anti-pattern.html">http://blog.dezfowler.com/2009/05/always-valid-entity-anti-pattern.html</a></p>
 <p>I've worked with Derek before so although I read that article two or three times and couldn't agree with it, I didn't give up 'cos I know he's a bright guy. And it finally broke for me what I think he meant when I read the comments on that piece - there's only four and it's the last one that made it stick for me. Partly because someone I work with <em>now</em> has a similar view, I think. The way I see things working together is that the validation in these &quot;verbose constructors&quot; is a last line of defense to ensure that the object's state is ensured to be valid and is <em>not</em> business logic where the intention is to throw a load of possibly-valid values at it and see what sticks. There should be a nice validation layer between the UI and these constructors that only allows through allowable state and handles the aggregation of errors where required. The exceptions in the constructor should still be just that; exceptions, not the norm for invalid UI input.</p>
 <p>But in summary, I'm still all for these &quot;verbose constructors&quot; - as this final defense that allows us not to worry about instances of these immutable classes - if they exist, then they're valid. And I like that.</p>
-<h3>An immutable list (and the DefinedStringList class)</h3>
+<h3 id="an-immutable-list-and-the-definedstringlist-class"><a href="#an-immutable-list-and-the-definedstringlist-class">An immutable list (and the DefinedStringList class)</a></h3>
 <p>Since this code is a bit long to jam in the middle of the article, here it is in all its glory:</p>
 <pre><code>public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
 {
@@ -626,7 +626,7 @@ public interface IValueValidator&lt;T&gt;
 }
 </code></pre>
 <p>These are actually cut-down versions of classes I've got in one of my projects that also includes AddRange, Insert, RemoveAt, Contains(T value, IEqualityComparer<t> comparer), etc.. but this is more than enough to get the gist. At some point I may look into that GitHub thing..</t></p>
-<h3>Immutability purity</h3>
+<h3 id="immutability-purity"><a href="#immutability-purity">Immutability purity</a></h3>
 <p>A final side note(*) - you might notice that internally the ImmutableList <em>does</em> actually participate in some mutability! When calling the Add method, we validate the new value (if required) and then create a new instance of the class with no data and <em>then</em> assign its internal &quot;values&quot; and &quot;validator&quot; references, meaning we sidestep the looping of all the data in the constructor which is unnecessary since we know the values are all valid, that's part of the point of the class! BTW, it feels like a bit of a trick updating these private references after creating the new instances and it's only possible because we've just created the instance ourself and the new object is an instance of the class that is performing the work. I don't know if there's a phrase to describe this method and I was a bit surprised to discover it could be done since it has a feeling of breaking the &quot;private&quot; member contract!</p>
 <p>* I don't want to go into <em>too</em> much detail since I want to talk about this further another time!</p>
 <p><strong>Update (26th November 2012):</strong> A re-visit of this principle can be seen in the post <a href="/persistent-immutable-lists">Persistent Immutable Lists</a> which has an alternate implementation of the immutable list with improved performance but all of the immutability-based safety!</p>

@@ -58,7 +58,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">25 July 2013</p><h2><a id="autoreleasing-event-listeners" href="/autoreleasing-event-listeners">Auto-releasing Event Listeners</a></h2>
+        <p class="PostDate">25 July 2013</p><h2 id="auto-releasing-event-listeners"><a href="/autoreleasing-event-listeners">Auto-releasing Event Listeners</a></h2>
 <p>Last month, in <a href="/parsing-css">Parsing CSS</a>, I talked about a way to parse CSS and identify character-by-character what &quot;type&quot; it was (eg. &quot;SelectorOrStyleProperty&quot;, &quot;Value&quot;, &quot;Whitespace&quot;, etc..). The interesting things, I think, are more what I intend to do with the work (trying to validate the rules from <a href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a>) and <em>how</em> the processing was performed. The input content is traversed through this interface:</p>
 <pre><code>public interface IWalkThroughStrings
 {
@@ -70,7 +70,7 @@
 <p>But I'd suggested that an alternate implementation could wrap a <strong>TextReader</strong> and read through potentially huge amounts of content using relatively few resources since very little &quot;reading ahead&quot; is required and so only a small segment of the complete data need be in memory at any one time.</p>
 <p>(The returned data is an enumerable set that delivers the results through <a href="http://msdn.microsoft.com/en-us/library/vstudio/9k7k7cf0.aspx">yield return</a> and so there is no internal list built that has to describe the entirety of the content, further limiting the resource requirements).</p>
 <p>Actually writing an implementation of <strong>IWalkThroughStrings</strong> that used the <strong>TextReader</strong>, however, turned out to be an interesting adventure and introduced me (in great detail) to one of the few not-too-difficult-to-encounter &quot;memory leaks&quot; of the .net framework.</p>
-<h3>Memory leaks in .net?!</h3>
+<h3 id="memory-leaks-in.net"><a href="#memory-leaks-in.net">Memory leaks in .net?!</a></h3>
 <p>I'll quickly try to describe what I was doing; the problem with wrapping a <strong>TextReader</strong> in an interface that is supposed to represent immutable data is that a <strong>TextReader</strong> instance is <em>not</em> immutable. It has a Read method that can retrieve zero, one or multiple bytes and will then move past the read content (if there was any). So subsequent calls to Read with the same arguments will (much of the time) return different data.</p>
 <p>If I want to parse the content</p>
 <pre><code>a:hover { color: blue; }
@@ -87,7 +87,7 @@
 <p>Until I did some investigation..</p>
 <p>I added a finaliser to the <strong>TextReaderStringWalker</strong> class which would write to the console when instances were garbage collected so that I could see them being tidied up as the content was traversed. At least that was the plan. The finalisers didn't get called until my little console app terminated, despite a liberal smattering of <a href="http://msdn.microsoft.com/en-us/library/xe0c2357.aspx">GC.Collect</a> calls (for the purposes of testing only, of course!).</p>
 <p>Head-scratching ensued.. I'd expected to encounter problems when I was learning about memory pinning in <a href="/idispatch-iwastedtimeonthis-but-ilearntlots">IDispatch (IWastedTimeOnThis but ILearntLots)</a> but not when doing something as apparently simple as this!</p>
-<h3>Events use EventHandlers, EventHandlers are delegates, delegates are..</h3>
+<h3 id="events-use-eventhandlers-eventhandlers-are-delegates-delegates-are"><a href="#events-use-eventhandlers-eventhandlers-are-delegates-delegates-are">Events use EventHandlers, EventHandlers are delegates, delegates are..</a></h3>
 <p>Bear with me while we go briefly back to basics. A typical way to subscribe to an event is</p>
 <pre><code>button.Click += (sender, e) =&gt;
 {
@@ -106,7 +106,7 @@
 <p>Many times this isn't a problem. If a button's Click event triggers some code in a Windows Form, for example, the Button and the Form will probably be disposed of at approximately the same time. The Form being referenced by the Button due to the event subscription is unlikely to be an issue since the Button is unlikely to exist after the Form has been closed and so this link won't be &quot;keeping alive&quot; the Form (ie. it won't be preventing it from being garbage collected).</p>
 <p>But when the lifespan of the event publisher is expected to be longer than that of the subscriber then it <em>can</em> become an issue. This is what was happening with my <strong>TextReaderStringWalker</strong> and the wrapper around the <strong>TextReader</strong> that was raising the events; so long as a reference to that wrapper existed, there would also be references to the string walkers through the subscribed events. So as long as we were still parsing the content, none of those <strong>TextReaderStringWalker</strong> instances that we had used and then finished with (and to which we no longer even had any direct references) could be collected!</p>
 <p>My tester app did all of the work in the Main method and so the reference to the <strong>TextReader</strong> wasn't dropped until the program terminated and so, by extension, the references to the string walkers weren't dropped until that point either. This explains why it seemed like none of them were collected until the program ended.</p>
-<h3>Another example of what not to do in the finaliser</h3>
+<h3 id="another-example-of-what-not-to-do-in-the-finaliser"><a href="#another-example-of-what-not-to-do-in-the-finaliser">Another example of what not to do in the finaliser</a></h3>
 <p>A pattern I'm sure I've seen in some code in the past is to try to unhook event handlers in class finalisers - eg.</p>
 <pre><code>public class SillyExample
 {
@@ -137,14 +137,14 @@
 </code></pre>
 <p>The idea being that the event will be &quot;tidied up&quot; in the finaliser. It should be clear from what I've written above that this won't work. It's not going to be possible for <strong>SillyExample</strong> to &quot;tidy up&quot; by unhooking from the event in its finaliser, because so long as it is still registered with that event its finaliser can never be called!</p>
 <p><em>(I say &quot;another&quot; thing not to do in the finaliser since there are so many other things to bear in mind about what you should and should not access in there - and then you read something like <a href="http://ericlippert.com/2013/06/10/construction-destruction/">&quot;Construction deconstruction&quot;</a> which explains that technically it &quot;is possible for an object to be destructed while its constructor is running on another thread&quot;. Yes, it's Lippert again. I can't help it that he writes a lot of interesting things that tie into what I'm interested in! :)</em></p>
-<h3>The WeakReference and &quot;Weak Event Handlers&quot;</h3>
+<h3 id="the-weakreference-and-weak-event-handlers"><a href="#the-weakreference-and-weak-event-handlers">The WeakReference and &quot;Weak Event Handlers&quot;</a></h3>
 <p>So... What would be ideal would be if there was a way for the event source to have a reference to the listener but somehow not prevent the listener from being garbage-collected if nothing else is keeping it alive.</p>
 <p>Well, conveniently, the framework provides just that: the <strong>WeakReference</strong>!</p>
 <p>The <strong>WeakReference</strong> wraps a reference and provides access to it through the &quot;Target&quot; property without preventing it from being garbage collected. If the reference <em>has</em> been garbage collected then the <strong>WeakReference</strong> whose Target property previously referred to it will now report a null Target.</p>
 <p>So if a class is written where it is expected that listeners for a given event will be shorter-lived than the event publisher then whenever someone subscribes to an event, the EventHandler can be manipulated such that the reference to the subscriber is replaced with a WeakReference. This is the case with the class that will wrap the <strong>TextReader</strong> and which will raise the read-ahead events (this will be long-lived) and the <strong>TextReaderStringWalker</strong>, whose instances will be short-lived.</p>
 <p>(It's also possible to turn this round such that listeners that expect to be shorter-lived than the event source can make sure that they provide <strong>EventHandler</strong> delegates which already use weak references - there's an excellent article about doing it this way round that I'll link to later on).</p>
 <p>But first a quick segue into more detail about what an event is and what it means to attach to one or detach from it.</p>
-<h3>More specifics about delegates and events</h3>
+<h3 id="more-specifics-about-delegates-and-events"><a href="#more-specifics-about-delegates-and-events">More specifics about delegates and events</a></h3>
 <p>I said above that delegates are essentially a pairing of a target and a method. That's not the whole truth. When a delegate is defined, such as</p>
 <pre><code>public delegate void EventHandler&lt;TEventArgs&gt;(object sender, TEventArgs e);
 </code></pre>
@@ -233,7 +233,7 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
 </code></pre>
 <p>(The remove method is the same except the &quot;+&quot; is replaced with a &quot;-&quot; when newValue is generated).</p>
 <p>Using CompareExchange is much faster than having to acquire a lock (which I touched on very briefly in <a href="/caching-mechanisms">Caching Mechanisms</a>) but at least as important is that locks should always be taken on private references to avoid deadlocks. Locking on the instance of the class that contains the event is a bad idea (as explained at <a href="http://msdn.microsoft.com/en-us/magazine/cc188793.aspx">Safe Thread Synchronization</a> - written by Jeffrey Richter, who wrote &quot;CLR via C#&quot; which I'm reading on-and-off and thoroughly enjoying).</p>
-<h3>Reining it back in</h3>
+<h3 id="reining-it-back-in"><a href="#reining-it-back-in">Reining it back in</a></h3>
 <p>Ok, that was quite a tangent, so let's try to get back on track.</p>
 <p>What we want to do is take a delegate and break the target reference away from the method, wrapping the target in a <strong>WeakReference</strong>. Then each time the delegate should be invoked (ie. when the subscribed-to event is raised), the <strong>WeakReference</strong> is checked for null and - if it is not null - the method should be called with the <strong>WeakReference</strong> target as the method's target. If it <em>is</em> null, then the target has been GC'd and so the record of the delegate should be removed from the event's callback set. (We'll not worry about whether we're dealing with a <strong>MulticastDelegate</strong> that has more than one target / method right now, let's crack one part of the problem at a time!).</p>
 <p>Conveniently, .net offers a mechanism that enables this delegate-breaking; the &quot;Open Delegate&quot;.</p>
@@ -331,7 +331,7 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
 <pre><code>private void RaiseMyEvent(object sender, MyEventArgs e)
 </code></pre>
 <p>which would run through the set of &quot;weak callbacks&quot; and call &quot;ExecuteCallbackIfTargetStillAlive&quot; on them all. Any that return false (to indicate that their target is no longer alive) would be removed from the set.</p>
-<h3>But what about those MulticastDelegates??</h3>
+<h3 id="but-what-about-those-multicastdelegates"><a href="#but-what-about-those-multicastdelegates">But what about those MulticastDelegates??</a></h3>
 <p>One of the corners that I cut above was choosing to ignore the fact that a single <strong>EventHandler&lt;MyEventArgs&gt;</strong> could actually have several target / method pairs.</p>
 <p>Fortunately, this is not too difficult to deal with since the <strong>Delegate</strong> type (and so the <strong>MulticastDelegate</strong> type which inherits from it) has the method &quot;GetInvocationList&quot; which returns an array of <strong>Delegate</strong> instances, all of which may be cast to same type as the &quot;containing&quot; delegate but which all represent only a single target / method pair.</p>
 <p>So all we need to do is ensure that the RegisterForMyEvent method does something like</p>
@@ -345,7 +345,7 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
 }
 </code></pre>
 <p>(The above method is not thread-safe but this isn't the final form I have in mind, so we'll not worry about that for now).</p>
-<h3>Wrapping it up to look like an event</h3>
+<h3 id="wrapping-it-up-to-look-like-an-event"><a href="#wrapping-it-up-to-look-like-an-event">Wrapping it up to look like an event</a></h3>
 <p>The RegisterForMyEvent approach above isn't that bad, I think it's a viable way to go if this &quot;Weak Event Source&quot; is something that is required for one event on one class. But I want to tidy it up so that the callback set need not be maintained by the event publisher and I want to make it match the pattern of standard .net events more closely.</p>
 <p>So the first thing to do is create a <strong>WeakEventSource&lt;TEventsArgs&gt;</strong> class that wraps up the functionality.</p>
 <pre><code>public class WeakEventSource&lt;TEventArgs&gt; where TEventArgs : EventArgs
@@ -427,7 +427,7 @@ public event EventHandler&lt;EventArgs&gt; MyEvent
 <pre><code>publisher.MyEvent += (sender, e) =&gt; { /* Do whatever */ };
 </code></pre>
 <p>and unregister in a similar manner.</p>
-<h3>So all good, eh?</h3>
+<h3 id="so-all-good-eh"><a href="#so-all-good-eh">So all good, eh?</a></h3>
 <p>Well no. Firstly, I cheated a bit in the code above by calling the method &quot;CorrespondsTo&quot; on <strong>IMakeEventCallbacks</strong> when I hadn't got round to mentioning it!</p>
 <p>It's not complicated, though. To work out whether an <strong>InstanceCallbackData</strong> should be removed from the internal list that the <strong>WeakEventSource</strong> maintains, we need only compare the target and method of each. Unfortunately, in the earlier code, the EventHandler's method was thrown away after it was used to create an open delegate alternative. So the interface and class need changing slightly..</p>
 <pre><code>private interface IMakeEventCallbacks
@@ -552,7 +552,7 @@ private void RaiseMyEvent(MyEventArgs e)
 </code></pre>
 <p>since MyEvent may be null (if nothing has subscribed to the event or everything has unsubscribed again). But this doesn't address multi-threaded scenarios where it isn't null when the code compares it to null, but <em>is</em> set to null by work on another thread before it is actually called on the subsequent line. There's a lot of discussion about the best way to deal with this, a good place to start is this answer to the <a href="http://stackoverflow.com/a/672666">StackOverflow question &quot;Use of null check in event handler&quot;</a>. The response is by Jon Skeet so it's going to be worth reading.</p>
 <p>Since I needed this helper class for multi-threading, I took the easy way out and had an event reference passed to a Fire method. The <strong>WeakEventSource</strong> reference in the publisher class may change while the helper class' Fire method is being called, but that won't affect the &quot;eventSource&quot; reference that Fire is dealing with; either that is null and should be ignored or it is non-null and can not change to become null before the Fire method can call it.</p>
-<h3>Do EventHandlers really have to have non-null Targets?</h3>
+<h3 id="do-eventhandlers-really-have-to-have-non-null-targets"><a href="#do-eventhandlers-really-have-to-have-non-null-targets">Do EventHandlers really have to have non-null Targets?</a></h3>
 <p>All of the work so far assumes that we have a delegate with a target which we want to avoid maintaining a strong reference to. To the extent that the <strong>InstanceCallbackData</strong> will throw an ArgumentException if the specified EventHandler's Target is null. This was to solve the original problem that I had which was caused by the event keeping a strong Target reference. But now that that is largely solved then it would be nice if the <strong>WeakEventSource</strong> implementation could also work with static EventHandlers, just like regular events.</p>
 <p>A static EventHandler may be a method that is explicitly marked as static -</p>
 <pre><code>  // More code here..
@@ -631,7 +631,7 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
 }
 </code></pre>
 <p>There is no generics / reflection madness required since that was all to deal with making a <strong>WeakReference</strong> for the target and for static EventHandlers there <em>is</em> no target.</p>
-<h3>Concluding the TextReaderStringWalker saga</h3>
+<h3 id="concluding-the-textreaderstringwalker-saga"><a href="#concluding-the-textreaderstringwalker-saga">Concluding the TextReaderStringWalker saga</a></h3>
 <p>Since this post has gone on longer than I'd originally envisaged, I figure I might as well go whole hog and include the solution to my original problem. I wanted an <strong>IWalkThroughStrings</strong> implementation that would wrap a <strong>TextReader</strong> so that I could parse CSS (or LESS) content without having to load it all into memory at once.</p>
 <p>I described how each instance of this <strong>TextReaderStringNavigator</strong> would potentially require an internal character buffer for cases where the position of the wrapped reader is ahead of the <strong>TextReaderStringNavigator</strong>. Each <strong>TextReaderStringNavigator</strong> instance will also require an internal property indicating the position in the content that it describes.</p>
 <p>Let's pick up the use case example one more time..</p>
@@ -791,7 +791,7 @@ private static void Subscriber_MyEvent(object sender, MyEventArgs e)
 </ol>
 <p>All of this reminds me of one of the reasons that I like truly-immutable classes so much - there is so much less messing about with locking required for thread-safety. In many places it's not required at all!.</p>
 <p>One final point to address with this locking mechanism: There is nothing to stop whoever provided the <strong>TextReader</strong> to the initial <strong>TextReaderStringNavigator</strong> instance from advancing the reader independently. This would interfere with the operation of the <strong>TextReaderStringNavigator</strong> as it would have no way of knowing that the reader had been advanced. The character data that was read externally will essentially be lost, so far as the <strong>TextReaderStringNavigator</strong> is concerned. The locking ensures that the data will always be internally consistent across a <strong>TextReaderStringNavigator</strong> and its related instances, but there is no way to prevent that form of external meddling.</p>
-<h3>That's all, folks!</h3>
+<h3 id="thats-all-folks"><a href="#thats-all-folks">That's all, folks!</a></h3>
 <p>This really has been one of the most difficult posts I've written since there were so many things that I wanted to (somewhat obsessively-compulsively) get right. Both in terms of testing out numerous different approaches first, then deciding on which I thought was best and finally taking multiple passes at writing this <a href="http://www.youtube.com/watch?v=E3fmPZkg1zk">behemoth</a>.</p>
 <p>The final (honest!) thing I have to add is that I said I'd link to a post where an alternate approach is described; the &quot;Weak Event Handler&quot;, as opposed to the Weak Event Source. The burden here being on the subscriber to handle access in such a way that the event publisher has no strong reference to it. I've read quite a few articles on this subject now and I think that this one is the best: <a href="http://diditwith.net/2007/03/23/SolvingTheProblemWithEventsWeakEventHandlers.aspx">Solving the Problem with Events: Weak Event Handlers</a>.</p>
 <p>The thing I most dislike about this alternative is that an &quot;UnregisterCallback&quot; delegate is required so that the event can be unhooked when it is found that the subscriber is no longer &quot;alive&quot; (ie. there are no strong references to it remaining). Not only is that an extra argument that must be specified in order for the tidying-up to be completed, but passing another delegate means that there is a risk that it might be written such that it encapsulates a strong reference to the publisher which means that the reference still won't be released properly. Granted, this won't be a problem if the standard form of &quot;provider.MyEvent -= eh;&quot; is stuck to for the UnregisterCallback, but it's unfortunate that it's not possible to automate that away and prevent it from even potentially being a problem.</p>

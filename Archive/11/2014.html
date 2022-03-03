@@ -53,12 +53,12 @@
         </script>
 
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">2 November 2014</p><h2><a id="locating-todo-comments-with-roslyn" href="/locating-todo-comments-with-roslyn">Locating TODO comments with Roslyn</a></h2>
+        <p class="PostDate">2 November 2014</p><h2 id="locating-todo-comments-with-roslyn"><a href="/locating-todo-comments-with-roslyn">Locating TODO comments with Roslyn</a></h2>
 <p>I picked up an old project recently that I knew I'd made good progress on and that the bits that were finished were looking good.. but also I knew that it had TODO comments littered throughout it to remind me what I <em>hadn't</em> finished.</p>
 <p>To get an idea just how many of these there were, I did a solution-wide search for &quot;TODO&quot; in Visual Studio. There were just over two hundred of them. The search results gave me a fair idea of where they were but I got it into my head that I wanted to export this into a list and then map them onto projects and - ideally - classes and methods. The first part is easy, the search results output contains the path to the file, which indicates the project name. The classes, also, could often be extracted from the filename - so long as there was only one class (or interface or enum or whatever) per file, though no nested types would be awkward.</p>
 <p>And this, really, would have been enough information to start tracking my progress and have a checklist that I could take satisfaction in crossing items off from. But of course I wanted more! Isn't this new* Roslyn thing supposed to be about parsing code, shouldn't I be able to use it to find out what properties or methods the TODO comments I've found are associated with? And don't I sometimes need a break from genuinely productive work to play with something new and shiny under the pretense of doing something useful with it?? :)</p>
 <p>* <em>(Not that new, actually, seeing as it was announced for preview back in 2011)</em>.</p>
-<h3>The two sides of Roslyn</h3>
+<h3 id="the-two-sides-of-roslyn"><a href="#the-two-sides-of-roslyn">The two sides of Roslyn</a></h3>
 <p>Roslyn is often talked about as enabling a &quot;compiler as a service&quot; - where code can be compiled and executed on-the-fly. So some sort of scripting engine could be created to dynamically change behaviour on already-executing code. Essentially, Roslyn can take source code (C# or VB) and generate IL, which can then be executed and interacted with by the application that fed that source code through it.</p>
 <p>However, the other side of it is that it provides &quot;rich code analysis APIs&quot; (according to its <a href="http://msdn.microsoft.com/en-gb/vstudio/roslyn.aspx">page on MSDN</a>) - meaning that it will help you examine the source code, even if you have no intention of executing that code. Which sounds exactly like what I want to try to locate my TODO comments within a containing method / property / type / namespace.</p>
 <p>If I had more ambitious aims in mind then it could also be used for all manner of IDE extensions for code investigation, refactoring or &quot;best practices analysis&quot;. A bit like many of the features that <a href="https://www.jetbrains.com/resharper">ReSharper</a> provides (though ReSharper predates it, and woe betide anyone who asks if they are thinking of integrating with Roslyn so that they don't have to maintain as much parsing code of their own - <a href="http://blog.jetbrains.com/dotnet/2014/04/10/resharper-and-roslyn-qa">Ask me again if ReSharper will use Roslyn.. I dare you</a>).</p>
@@ -81,7 +81,7 @@
 <p>By persistence I mean the ability to reuse most of the existing nodes in the tree when an edit is made to the text buffer. Since the nodes are immutable, there's no barrier to reusing them, as I've discussed many times on this blog. We need this for performance; we cannot be re-parsing huge wodges of text every time you hit a key. We need to re-lex and re-parse only the portions of the tree that were affected by the edit, because we are potentially re-doing this analysis between every keystroke.</p>
 </blockquote>
 <p>This is in the context of using Roslyn to analyse code being written within Visual Studio - the full post is titled <a href="http://blogs.msdn.com/b/ericlippert/archive/2012/06/08/persistence-facades-and-roslyn-s-red-green-trees.aspx">Persistence, Facades and Roslyn's Red-Green Trees</a>.</p>
-<h3>Get to the point already!</h3>
+<h3 id="get-to-the-point-already"><a href="#get-to-the-point-already">Get to the point already!</a></h3>
 <p>So. Enough history. Back to my TODO-search.</p>
 <p>The <strong>SyntaxTree</strong> returned from &quot;ParseText&quot; looks quite complex at first glance when you starting poking around it with Visual Studio's &quot;QuickWatch&quot; facility, at least (which is the first thing I did).</p>
 <p>However, Roslyn helpfully provides a <strong>SyntaxWalker</strong> class, which may be used to easily examine every node within the tree. It uses the vistor pattern to do this. Design patterns are said to be a benefit when their form is appropriate to your problem such that they extend your vocabulary to describe the solution. There seem like there are times, unfortunately, that people layer on design patterns and abstractions only because they think they should - which is why it's nice in cases like this where it makes perfect sense and succeeds in makings things simple if you know the pattern being used. Last year, I was writing a plugin for <a href="http://www.dotlesscss.org">dotLess</a> which used the visitor pattern to traverse the nodes in a stylesheet (see <a href="/cross-browser-pseudo-source-mapping-with-less">Cross Browser (Pseudo) Source Mapping with LESS</a>) and it was nice to see the exact same concept in use here.</p>
@@ -234,7 +234,7 @@
 <p>So now, given the contents of any C# file, the comments can be identified and traced to the constructs that they're associated with. Now they just need to be filtered to those containing the text &quot;TODO&quot;, since those are the particular comments of interest.</p>
 <p>For the first stab I took at this, I did a search-all-solution for &quot;TODO&quot; and copy-pasted the results into a file. I then read in this file, extracted the filenames and ran the above against the contents of each file.</p>
 <p>But surely there's a better way..</p>
-<h3>Parsing the solution</h3>
+<h3 id="parsing-the-solution"><a href="#parsing-the-solution">Parsing the solution</a></h3>
 <p>What would be ideal would be the ability to point some code at a solution file, for it to determine what projects are in the solution, what C# code files are in the projects and then to extract all of the locations of TODO comments within those. None of this search-all / copy-paste / parse-the-results-and-read-the-files-from-there nonsense.</p>
 <p>There are two parts to this - reading the solution file to get the projects and reading the individual project files. I'll start with the latter since it turned out to be easier.</p>
 <p>If you add a reference to &quot;Microsoft.Build&quot; then you can can use the <strong>ProjectCollection</strong> type in a method such as</p>
@@ -271,7 +271,7 @@
 }
 </code></pre>
 <p>It feels a bit dirty but it seems to do the job! And this is hardly production code so I can live with it.</p>
-<h3>Cryptic warnings</h3>
+<h3 id="cryptic-warnings"><a href="#cryptic-warnings">Cryptic warnings</a></h3>
 <p>There is another small niggle with all this code. It works but there's a compile warning</p>
 <blockquote>
 <p>Found conflicts between different versions of the same dependent assembly that could not be resolved.  These reference conflicts are listed in the build log when log verbosity is set to detailed.</p>
@@ -284,7 +284,7 @@
 </blockquote>
 <p>It also includes lots of other useful information like what references have what dependencies, so I can see that Microsoft Build v4 is required by project item &quot;Microsoft.Build&quot; (meaning that is the version that I explicitly added as a reference to parse the project files). And I can see that Microsoft Build v14 is required by the project items &quot;Microsoft.CodeAnalysis.Workspaces&quot;, &quot;Microsoft.CodeAnalysis.VisualBasic.Workspaces&quot; and &quot;Microsoft.CodeAnalysis.CSharp.Workspaces&quot;, which are references pulled in by the Roslyn NuGet package.</p>
 <p>Unfortunately, I've already explained that I gave up trying to install Microsoft.Build v14! If this was &quot;real&quot; code then I would do it properly and investigate installing that package properly to get rid of this warning.. but for this sort of one-off task (pulling the TODO comments out of a solution, once) I decided I can live with the warning. At least I have an idea how to sort it out if I ever do want to use this code in a more demanding environment.</p>
-<h3>Parting words</h3>
+<h3 id="parting-words"><a href="#parting-words">Parting words</a></h3>
 <p>This first foray into Roslyn's capabilities has been interesting. I've clearly scratched only the very outer surface of it but it seems like a really well considered product, I think it could be useful in many scenarios and fully intend to have a poke around with its compiling capabilities at some point (since I do love a bit of dynamic compilation, as I was writing about last time!).</p>
 <p>If anything that I've written about today could be useful to you, I've put a complete solution up on Bitbucket - find it at <a href="https://bitbucket.org/DanRoberts/todocommentretriever">The TODOCommentRetriever</a>.</p>
 <p class="PostTime">Posted at 19:38</p><div class="Related"><h3>You may also be interested in:</h3><ul><li><a href="/cross-browser-pseudo-source-mapping-with-less">Cross Browser (Pseudo) Source Mapping with LESS</a></li><li><a href="/c-sharp-state-machines">C# State Machines</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Immutability" title="12 Posts">Immutability</a></li><li><a href="/Archive/Tag/Roslyn" title="4 Posts">Roslyn</a></li></ul></div>

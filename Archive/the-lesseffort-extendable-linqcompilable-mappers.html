@@ -58,7 +58,7 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">3 January 2012</p><h2><a id="the-lesseffort-extendable-linqcompilable-mappers" href="/the-lesseffort-extendable-linqcompilable-mappers">The Less-Effort Extendable LINQ-compilable Mappers</a></h2>
+        <p class="PostDate">3 January 2012</p><h2 id="the-less-effort-extendable-linq-compilable-mappers"><a href="/the-lesseffort-extendable-linqcompilable-mappers">The Less-Effort Extendable LINQ-compilable Mappers</a></h2>
 <p>The <a href="/extendable-linqcompilable-mappers">last post</a> almost finished off something I originally started back last April and enabled the creation of Compilable Type Converters which take properties from a source type and feed them in as constructor arguments on a destination type.</p>
 <p>The only issue I had is that the final code to set up conversions was a bit verbose. To create a Converter from SourceEmployee to DestEmployee -</p>
 <pre><code>public class SourceEmployee
@@ -137,7 +137,7 @@ var converterFactory = new ExtendableCompilableTypeConverterFactory(
 converterFactory = converterFactory.CreateMap&lt;SourceRole, DestRole&gt;();
 var converter = converterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
 </code></pre>
-<h3>The ExtendableCompilableTypeConverterFactory</h3>
+<h3 id="the-extendablecompilabletypeconverterfactory"><a href="#the-extendablecompilabletypeconverterfactory">The ExtendableCompilableTypeConverterFactory</a></h3>
 <p>This class basically wraps up the duplication seen above and returns a new ExtendableCompilableTypeConverterFactory instance each time that CreateMap is successfully called, the new instance having a Compilable Property Getter than can support that mapping. If the CreateMap calls was <em>not</em> successful then an exception will be raised - this will be case if there is no constructor on the destination type whose arguments can all be satisified by properties on the source type (this also covers cases where additional mappings are required for referenced types). This exception is equivalent to the AutoMapperMappingException that AutoMapper throws in similar circumstances.</p>
 <p>I'm just going to jump right in with this - if you've been reading this far then this will hold no challenges or surprises.</p>
 <pre><code>public class ExtendableCompilableTypeConverterFactory : ICompilableTypeConverterFactory
@@ -270,7 +270,7 @@ public class DestEmployee
 }
 </code></pre>
 <p>as the CreateMap would return a Converter Factory that could map SourceRole to DestRole <em>and</em> IEnumerable&lt;SourceRole&gt; to IEnumerable&lt;DestRole&gt;.</p>
-<h3>CreateMap vs AddNewConverter</h3>
+<h3 id="createmap-vs-addnewconverter"><a href="#createmap-vs-addnewconverter">CreateMap vs AddNewConverter</a></h3>
 <p>The CreateMap method will try to generate a new Converter and build new Property Getter Factories using that by passing it to AddNewConverter. If you need to add any custom mapping mechanisms then AddNewConverter may be called with an ICompilableTypeConverter.</p>
 <p>For example, if our types now looked like</p>
 <pre><code>public class SourceEmployee
@@ -329,7 +329,7 @@ public class CompilableIntToStringTypeConverter : ICompilableTypeConverter&lt;in
 }
 </code></pre>
 <p>See, I promised last time that splitting ICompilableTypeConverter away from ICompilableTypeConverterByConstructor at some point! :)</p>
-<h3>Signing off</h3>
+<h3 id="signing-off"><a href="#signing-off">Signing off</a></h3>
 <p>This has all turned into a bit of a saga! The final code for all this can be found at</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/</a></p>
 <p>I've not done <em>loads</em> of performance testing but the generated Converters have consistently been around 1.1 or 1.2 times as slow as hand-rolled code (ie. approximately the same), not including the work required to generate the Converters. Compared to AutoMapper, this is quite a win (which was what originally inspired me to go on this journey). But out of the box it doesn't support all the many configurations that AutoMapper does! My main use case was to map legacy WebService objects (with parameter-less constructors) onto internal objects (with verbose constructors) which is all done. But there's currently no way to map back.. I think that's something to worry about another day! :)</p>

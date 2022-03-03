@@ -53,11 +53,11 @@
         </script>
 
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">7 May 2014</p><h2><a id="happy-logging" href="/happy-logging">Happy Logging</a></h2>
+        <p class="PostDate">7 May 2014</p><h2 id="happy-logging"><a href="/happy-logging">Happy Logging</a></h2>
 <p>I started a project recently and got to the point where some of the classes needed a way to write out warnings and other debug messages so I started hashing out a quick <strong>ILogEvents</strong> interface, as I've done for other projects.</p>
 <p>And stopped, wondering if I had half a dozen different projects with very similar logging requirements that I'd written similar code for. There are some reasons that I've allowed this duplication of effort to occur; some code was for internal work projects whereas some was for my personal projects. Some projects had specific requirements like writing requests and responses into particular columns in a database.. but most of the time, general purpose logging-this-or-that boils down to the same sorts of things.</p>
 <p>Now, in fairness, through writing this &quot;same sort of thing&quot; over various iterations in varios scenarios, I've refined it down somewhat - which is good - but now I'm past the point where it changes significantly from implementation to implementation. The time for churning this code out over and over for my general purpose logging needs has been and gone!</p>
-<h3>What do I really want from a logger?</h3>
+<h3 id="what-do-i-really-want-from-a-logger"><a href="#what-do-i-really-want-from-a-logger">What do I really want from a logger?</a></h3>
 <p>Although it seems obvious at a first glance what a logger should do (log messages, duh) there are some requirements - or maybe ideals - that I'd like.</p>
 <ol>
 <li><p>Each message should have a Log Level (so that I can filter messages to only include Warnings and Errors, if that seems appropriate at the time)</p>
@@ -72,7 +72,7 @@
 </li>
 </ol>
 <p>A follow-on from points 3 (about batching) and 4 (about error handling) is that it should to try to log as much as possible if things go wrong. For example, if a batch of six log messages are to be written and it turns out that one of those messages throws an exception when its message content is evaluated, then that one message should be ignored and the others written. This is a bit different to how I would normally like to write code (fail as fast as possible and identify what failed) but for logging it feels like it makes sense.</p>
-<h3>The Interface</h3>
+<h3 id="the-interface"><a href="#the-interface">The Interface</a></h3>
 <p>So this is my solution. I call it &quot;Happy Logging&quot; since it seems almost impossible to come up with a name for a logging framework that is neither boring nor generic. Instead I thought I'd come up with something cheery and memorable! (You can find <a href="https://bitbucket.org/DanRoberts/happylogging">&quot;Happy Logging&quot; on Bitbucket</a>).</p>
 <p>The core interface itself is very simple, a logger implementation needs to be able to deal with a set of messages. There may be zero, one or multiple entries in that set, but it's considered an error condition to pass a null <em>messages</em> reference (the implementation should raise an exception).</p>
 <pre><code>public interface ILogEvents
@@ -214,7 +214,7 @@ public enum LogLevel
     }
 }
 </code></pre>
-<h3>The exciting stuff, the implementations!</h3>
+<h3 id="the-exciting-stuff-the-implementations"><a href="#the-exciting-stuff-the-implementations">The exciting stuff, the implementations!</a></h3>
 <p>Ok, now we're through the intro, let's get to the real meat! There are implementations <strong>ConsoleLogger</strong> and <strong>TraceLogger</strong> (for when you want to write to the Console or to Trace), there's a <strong>NullLogger</strong> (for when you want to disable logging) and there's a <strong>FilteredLogger</strong> (that wraps another logger but only passes through messages with particular log levels). There's a <strong>CombinedLogger</strong> (which wraps multiple loggers and passes through messages to all of them) and there's a <strong>FileLogger</strong> (which writes messages immediately to disk). The <strong>FileLogger</strong> may either be provided a hard-coded filename or be given a delegate that generates a filename for every write (this makes it easy to write log files whose filename includes the current date and time).</p>
 <p>The <strong>ConsoleLogger</strong>, <strong>TraceLogger</strong> and <strong>FileLogger</strong> all write out message details in a default format that can overridden if required.</p>
 <p>But this is still child's play.</p>
@@ -235,7 +235,7 @@ public enum LogLevel
 <p>For a long-running service that logs its information to disk (which is one of the most comon cases that I need this sort of thing for), these seem like appropriate starting values.</p>
 <p>It should be noted that, for such a service, it would make most sense for a single logger reference to be used by all request threads, otherwise there could still be contention when flushing the messages to disk. The <strong>ThrottlingLogger</strong> uses a <strong>ConcurrentQueue</strong> internally and so is thread-safe for pushing messages to. If a single <strong>ThrottlingLogger</strong> is used by all threads then it will mean that only one thread will ever be writing the disk log at a time, which will avoid any &quot;file in use&quot; IO errors that more naive disk-writing log mechanisms may risk.</p>
 <p>Your favourite IoC framework can help with this, if that's what floats your boat. (Personally, I think you can go a long way before needing to rely upon a full &quot;framework&quot; to handle all of your dependencies, but let's not get bogged down with all that here).</p>
-<h3>Error BackTracking</h3>
+<h3 id="error-backtracking"><a href="#error-backtracking">Error BackTracking</a></h3>
 <p>Ok! So far, so good. But now I want to go one step further and support what I've heard called &quot;opportunistic logging&quot;. One of the big problems with logging is trying to work out what to log and when. If you log <em>everything</em> then your log files get big quick (or your-favoured-persistence-mechanism takes up a lot of space quickly - maybe you're logging to SQL, for example). The CPU cost of logging may also become a factor if your detailed (ie. Debug level) messages perform complicated analysis or serialisation of complex data structures. However, if you don't log <em>enough</em>, then when things go wrong the logs don't give you enough clues!</p>
 <p>This is where opportunistic logging comes in, the logger will queue up messages and - when things are going well - throw most of them away. But when an Error message is recorded, the logger will flush everything out of its queue, writing away all of the information leading up to the problem. Since messages contents' are lazily-evaluated, potentially-expensive Debug messages can be prepared but the overhead of evaluating their content not be paid unless there is an error scenario in which the cost will be worth it.</p>
 <p>So you get compact logs when things are going well and detailed logs when things go wrong. The best of both worlds!</p>
@@ -254,7 +254,7 @@ public enum LogLevel
 </code></pre>
 <p>which uses default values of 1000 for <em>maximumNumberOfHistoricalMessagesToMaintain</em>, 100 for <em>maximumNumberOfHistoricalMessagesToIncludeWithAnErrorEntry</em>, &quot;IncludePrecedingMessagesFromTheSameThreadOnly&quot; for <em>historyLoggingBehaviour</em> and &quot;Ignore&quot; for <em>individualLogEntryErrorBehaviour</em>. These feel like sensible starting values that may be easily tweaked if different use cases require it.</p>
 <p>Just to clarify: <em>maximumNumberOfHistoricalMessagesToMaintain</em> is the cap on the queue size and <em>maximumNumberOfHistoricalMessagesToIncludeWithAnErrorEntry</em> is the cap on the number of backlog messages that will be flushed out with any error. If you had a service that was only ever going to service a single request at a time or if you had a case where you wanted to flush <em>all</em> queued log messages (and not just those that originated on the same thread) with an Error message, then these two values may as well be set to the same value. However, if requests are concurrent, independent and have a dedicated (managed) thread each, then it makes sense for <em>maximumNumberOfHistoricalMessagesToMaintain</em> to be larger since it must maintain backlog information for all of the requests that are being processed at any given time.</p>
-<h3>Combining loggers</h3>
+<h3 id="combining-loggers"><a href="#combining-loggers">Combining loggers</a></h3>
 <p>To conclude, let's look at putting some of these loggers together:</p>
 <pre><code>var logger = new CombinedLogger(
   new FilteredLogger(
@@ -274,7 +274,7 @@ public enum LogLevel
 <p>In the above example, the only log level not being passed to the <strong>TraceLogger</strong> is Debug. This is the log level that I would recommend be used for any expensive messages, such as serialised representations of requests, responses or interim state. This ensures that the work to generate those messages is not performed unless it's really useful, like when an error has occurred and we want all the information we can get (the <strong>ErrorWithBackTrackLogger</strong> writes messages for <em>all</em> log levels).</p>
 <p>And with that, we're done! This library is simple enough that I can happily use it with any new project that I start but it can also be easily configured to handle almost every situation I've needed a logger for that I can think of in the last few years. A lot of unusual cases can probably be dealt with by tweaking values on the current loggers or by extending the functionality by writing a new implementation (such as one to write to a persistence mechanism other than disk).</p>
 <p><a href="https://bitbucket.org/DanRoberts/happylogging">Happy Logging</a> indeed! :)</p>
-<h3>Update (8th May 2014)</h3>
+<h3 id="update-8th-may-2014"><a href="#update-8th-may-2014">Update (8th May 2014)</a></h3>
 <p>Following feedback, I've got a couple of updates.</p>
 <p>Firstly, the <strong>LogEventDetails</strong> implementation I originally posted was executing the <em>contentGenerator</em> delegate to ensure that it wasn't null or blank. This is crazy, since it totally negates the effort to enable lazily-evaluated messages! So I've removed that from the code here and on Bitbucket. I also tweaked the default message formatter to deal with the case of an empty message (that code is just in the repo, it's not in this post).</p>
 <p>I then added another extension method for logging exceptions -</p>
@@ -311,7 +311,7 @@ catch(Exception e)
             </p>
     </div>
     <div class="Content ArchiveByMonth">
-        <p class="PostDate">2 May 2014</p><h2><a id="vbscript-is-dim" href="/vbscript-is-dim">VBScript is DIM</a></h2>
+        <p class="PostDate">2 May 2014</p><h2 id="vbscript-is-dim"><a href="/vbscript-is-dim">VBScript is DIM</a></h2>
 <p>At work, we still have some projects that are are written in VBScript (aka &quot;Classic ASP&quot;). Projects that are important to the company and its bottom line. Which, yes, is madness.</p>
 <blockquote>
 <p>I'm working in C# and C++, languages specifically designed for implementing complex software written by large teams. VBScript is not such a language -- it was designed for simple administration and web scripts</p>

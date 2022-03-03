@@ -58,10 +58,10 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">7 August 2020</p><h2><a id="how-are-barcodes-read-libraryless-image-processing-in-c-sharp" href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></h2>
+        <p class="PostDate">7 August 2020</p><h2 id="how-are-barcodes-read-library-less-image-processing-in-c"><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></h2>
 <p>I've been using MyFitnessPal and it has the facility to load nutrition information by scanning the barcode on the product. I can guess how the retrieval works once the barcode number is obtained (a big database somewhere) but it struck me that I had no idea how the reading of the barcode <em>itself</em> worked and.. well, I'm curious and enjoy the opportunity to learn something new to me by writing the code to do it. I do enjoy being able to look up (almost) anything on the internet to find out how it works!</p>
 <p><em>(For anyone who wants to either play along but not copy-paste the code themselves or for anyone who wants to jump to the end result, I've put the code - along with the example image I've used in this post - up on a <a href="https://github.com/ProductiveRage/BarcodeReader">GitHub repo</a>)</em></p>
-<h3>The plan of attack</h3>
+<h3 id="the-plan-of-attack"><a href="#the-plan-of-attack">The plan of attack</a></h3>
 <p>There are two steps required here:</p>
 <ol>
 <li>Read image and try to identify areas that look like barcodes</li>
@@ -86,7 +86,7 @@
 </ol>
 <p>This approach is fairly resilient to changes in lighting and orientation because the barcode regions are still likely to have the highest horizontal intensity gradient whether the image is dark or light (and even if <em>part</em> of the image is light and part of it is dark) and the barcode-reading algorithm works on ratios of bar/space-between-bar widths and these remain constant if the image is rotated.</p>
 <p><em>(Some of the techniques are similar to things that I did in my <a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a> and so I'll be using some of the same code shortly that I described then)</em></p>
-<h3>Identifying maybe-barcode images</h3>
+<h3 id="identifying-maybe-barcode-images"><a href="#identifying-maybe-barcode-images">Identifying maybe-barcode images</a></h3>
 <p>Let's this image as an example to work with (peanut butter.. I <em>do</em> love peanut butter) -</p>
 <img alt="Delicious peanut butter" src="/Content/Images/Posts/PeanutBarcode.jpg" class="NoBorder AlwaysFullWidth" title="Delicious peanut butter" />
 <p>Before looking at any code, let's visualise the process.</p>
@@ -510,7 +510,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <img alt="Barcode located!" src="/Content/Images/Posts/PeanutBarcode-Identified.jpg" class="NoBorder AlwaysFullWidth" title="Barcode located!" />
 <p>With this information, we should be able to extract regions or &quot;sub images&quot; from the source image and attempt to decipher the barcode value in it (presuming that there IS a bar code in it and we haven't got a false positive match).</p>
 <p>As we'll see in a moment, the barcode doesn't have to be perfectly lined up - some rotation is acceptable (depending upon the image, up to around 20 or 30 degrees should be fine). The MyFitnessPal app has a couple of fallbacks that I've noticed, such as being able to read barcodes that are upside down or even back to front (which can happen if a barcode is scanned from the wrong side of a transparent wrapper). While I won't be writing code here for either of those approaches, I'm sure that you could envisage how it could be done - the source image data could be processed as described here and then, if no barcode is read, rotated 180 degrees and re-processed and reversed and re-processed, etc..</p>
-<h3>How to read a bar code</h3>
+<h3 id="how-to-read-a-bar-code"><a href="#how-to-read-a-bar-code">How to read a bar code</a></h3>
 <p>A barcode is comprised of both black and white bars - so it's not just the black parts that are significant, it is the spaces between them as well.</p>
 <p>The format of a barcode is as follows:</p>
 <ol>
@@ -563,7 +563,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <p>60 length values is the precise number that we expect to find - there is expected to be some blank space before the barcode starts (1) and then a guard section of three single-width lines that we use to gauge bar width (3) and then six numbers that are encoded in four bars each (6x4=24) and then a guard section of five single-width lines (5) and then six numbers (6x4=24) and then a final guard region of three single-width bars, giving 1+3+24+5+24+3=60.</p>
 <p>There will likely be another section of blank content after the barcode that we ignore</p>
 <p>If we don't want to validate the final guard region then we can work with a barcode image where some of the end of cut off, so long as the data for the 12 digits is there; in this case, 57 lengths if the minimum number that we can accept</p>
-<h3>Reading the numeric value with code</h3>
+<h3 id="reading-the-numeric-value-with-code"><a href="#reading-the-numeric-value-with-code">Reading the numeric value with code</a></h3>
 <p>I'm going to try to present the code in approximately the same order as the steps presented above. So, firstly we need to convert the sub image to greyscale and create a binary mark from it. Then we'll go line by line down the image data and try to read a value. So we'll take this:</p>
 <pre><code>public static string? TryToReadBarcodeValue(Bitmap subImage)
 {
@@ -757,7 +757,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <img alt="A strip of the peanut butter jar's bar code" src="/Content/Images/Posts/PeanutBarcode-SingleStrip.jpg" class="NoBorder AlwaysFullWidth" title="A strip of the peanut butter jar's bar code" />
 <p>To get a reading from an image that is rotated more than this requires a very clear source image and will still be limited by the first stage of processing - that tried to find sections where the horizontal image intensity changed with steep gradients but the vertical intensity did not. If the image is rotated too much then there will be more vertical image intensity differences encountered and it is less likely to identify it as a &quot;maybe a bar code&quot; region.</p>
 <p><em>(Note: I experimented with rotated images that were produced by an online barcode generator and had more success - meaning that I could rotate them more than I could with real photographs - but that's because those images are generated with stark black and white and the horizontal / vertical intensity gradients are maintained for longer when the image is rotated if they start with such a high level of clarity.. I'm more interested in reading values from real photographs and so I would suggest that only fairly moderate rotation will work - though it would still be plenty for an MyFitnessPal-type app that expects the User to hold the bar code in roughly the right orientation!)</em></p>
-<h3>Tying it all together</h3>
+<h3 id="tying-it-all-together"><a href="#tying-it-all-together">Tying it all together</a></h3>
 <p>We've looked at the separate steps involved in the whole reading process, all that is left is to combine them. The &quot;GetPossibleBarcodeAreasForBitmap&quot; and &quot;TryToReadBarcodeValue&quot; methods can be put together into a fully functioning program like this:</p>
 <pre><code>static void Main()
 {
@@ -795,7 +795,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
     Console.ReadLine();
 }
 </code></pre>
-<h3>Finito!</h3>
+<h3 id="finito"><a href="#finito">Finito!</a></h3>
 <p>And with that, we're finally done! I must admit that I started writing this post about three years ago and it's been in my TODO list for a loooooong time now. But I've taken a week off work and been able to catch up with a few things and have finally been able to cross it off the list. And I'm quite relieved that I didn't give up on it entirely because it was a fun little project and coming back to it now allowed me to tidy it up a bit with the newer C# 8 syntax and even enable the nullable reference types option on the project (I sure do hate unintentional nulls being allowed to sneak in!)</p>
 <p>A quick reminder if you want to see it in action or play about it yourself, the <a href="https://github.com/ProductiveRage/BarcodeReader">GitHub repo is here</a>.</p>
 <p>Thanks to anyone that read this far!</p>

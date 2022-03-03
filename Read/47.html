@@ -58,12 +58,12 @@
         </script>
 
     <div class="Content SinglePost">
-        <p class="PostDate">2 March 2013</p><h2><a id="extending-the-css-minifier" href="/extending-the-css-minifier">Extending the CSS Minifier</a></h2>
+        <p class="PostDate">2 March 2013</p><h2 id="extending-the-css-minifier"><a href="/extending-the-css-minifier">Extending the CSS Minifier</a></h2>
 <p>I have a <a href="https://bitbucket.org/DanRoberts/cssminifier">CSS Minifier project hosted on Bitbucket</a> which I've used for some time to compile and minify the stylesheet contents for this blog but I've recently extended its functionality after writing the <a href="/noncascading-css-a-revolution">Non-cascading CSS: A revolution!</a> post.</p>
 <p>The original, fairly basic capabilities were to flatten imports into a single request and then to remove comments and minify the content to reduce bandwidth requirements in delivery. The CSSMinifierDemo project in solution above also illustrated implementing support for 304 responses (for when the Client already has the latest content in their browser cache) and compression (gzip or deflate) handling. I wrote about this in the <a href="/onthefly-css-minification">On-the-fly CSS Minification</a> post.</p>
 <p>Some time after that I incorporated LESS support by including a reference to <a href="http://www.dotlesscss.org/">dotLess</a>.</p>
 <p>However, now I think it has some features which aren't quite as bog standard and so it's worth talking about again!</p>
-<h3>Source Mapping</h3>
+<h3 id="source-mapping"><a href="#source-mapping">Source Mapping</a></h3>
 <p>One of the difficulties with &quot;debugging&quot; styles in large and complex sheets when they've been combined and minified (and compiled, in the case of LESS content) is tracking down precisely where a given still originated from when you're looking at it in Firebug or any of the other web developer tools in the browsers.</p>
 <p>With javascript - whether it be minified, compiled from CoffeeScript or otherwise manipulated before being delivered the Client - there is support in modern browsers for &quot;Source Mapping&quot; where metadata is made available that can map anywhere in the processed content back to the original. Clever stuff. (There's a decent started article on HTML5 Rocks: <a href="http://www.html5rocks.com/en/tutorials/developertools/sourcemaps/">Introduction to Javascript Source Maps</a>).</p>
 <p>However, there's (currently, if I'm being optimistic) no such support for CSS.</p>
@@ -129,7 +129,7 @@ h2 a:hover
 <p>The LESS translator has had to multiply out the comma separated selectors &quot;#Test2.css_1&quot; and &quot;h2&quot; across the nested selectors &quot;#Test2.css_5&quot; and &quot;a:hover&quot; since this is the only way it <em>can</em> be translated into CSS and be functionality equivalent.</p>
 <p>But this isn't as helpful when it comes to examining the styles to trace back to the source. So additional work is required to add another processing step to remove any unnecessary markers. This can be dealt with by the <strong>InjectedIdTidyingTextFileLoader</strong> but it requires that you keep track of all of the markers inserted with the <strong>LessCssLineNumberingTextFileLoader</strong> (which isn't a massive deal if the delegate that is passed to the <strong>LessCssLineNumberingTextFileLoader</strong> also records the markers it has provided).</p>
 <p>The good news is that the class <strong>CSSMinifier.FileLoaders.Factories.EnhancedNonCachedLessCssLoaderFactory</strong> in the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSS Minifier repo</a> will instantiate a LESS file loader / processor that will apply all of the functionality that I'm going to cover in this post (including this source mapping) so if it's not clear from what I've described here how to implement it, you can either use that directly or look at the code to see how to configure it.</p>
-<h3>Body-scope overhead removing</h3>
+<h3 id="body-scope-overhead-removing"><a href="#body-scope-overhead-removing">Body-scope overhead removing</a></h3>
 <p>Rule 5 in <a href="/noncascading-css-a-revolution">Non-cascading CSS</a> states that</p>
 <blockquote>
 <p>All files other than the reset and theme sheets should be wrapped in a body &quot;scope&quot;</p>
@@ -177,7 +177,7 @@ h2 a:hover{text-decoration:none}
 </code></pre>
 <p>The string &quot;REPLACEME&quot; and &quot;REPLACEME &quot; (with the trailing space) are specified as constructor arguments for the <strong>LessCssOpeningBodyTagRenamer</strong> and <strong>ContentReplacingTextFileLoader</strong> so different values may be used if you think something else would be more appropriate.</p>
 <p><strong>Update (4th June):</strong> I've replaced <strong>LessCssOpeningBodyTagRenamer</strong> with <strong>LessCssOpeningHtmlTagRenamer</strong> since trimming out the body tag will prevent stylesheets being written where selectors target classes on the body, which some designs I've worked with rely upon being able to do.</p>
-<h3>Media Query Grouping</h3>
+<h3 id="media-query-grouping"><a href="#media-query-grouping">Media Query Grouping</a></h3>
 <p>In order to follow <a href="/noncascading-css-a-revolution">Non-cascading CSS</a> Rule 3</p>
 <blockquote>
 <p>No bare selectors may occur in the non-reset-or-theme rules (a bare selector may occur within a nested selector so long as child selectors are strictly used)</p>
@@ -186,7 +186,7 @@ h2 a:hover{text-decoration:none}
 <p>I'm sure that I've read somewhere* that on some devices, having many such sections can be expensive since they all have to evaluated. I think it mentioned a particular iPhone model but I can't for the life of me find the article now! But if this is a concern then we can take all styles that are media-query-wrapped and merge any media queries whose criteria are identical using the <strong>MediaQueryGroupingCssLoader</strong>.</p>
 <p>Note that this will move all of the media query sections to the end of the style content. If your styles rely on them appearing in the final output in the same order as they appear in the source then this may pose a problem. But this is one of the issues addressed by the <a href="/noncascading-css-a-revolution">Non-cascading CSS</a> rules, so if they're followed then this manipulation will always be safe.</p>
 <p>* <strong>Update (4th June):</strong> It finally found what I was thinking of but couldn't find - it was <a href="http://alwaystwisted.com/post.php?s=2012-05-05-everyday-im-bubbling-with-media-queries-and-less#comment-537669505">this comment</a> on the artible <a href="http://alwaystwisted.com/post.php?s=2012-05-05-everyday-im-bubbling-with-media-queries-and-less">Everyday I'm Bubbling. With Media Queries and LESS</a>.</p>
-<h3>More to come!</h3>
+<h3 id="more-to-come"><a href="#more-to-come">More to come!</a></h3>
 <p>As part of this work, I've written a CSS / LESS parser which can be found on Bitbucket: <a href="https://bitbucket.org/DanRoberts/cssparser">CSS Parser</a>. It will lazily evaluate the content, so if you only need to examine the first few style declarations of a file then only the work required to parse those styles will be performed. It's used by the <strong>LessCssOpeningBodyTagRenamer</strong> (<strong>4th June</strong>: Now the <strong>LessCssOpeningHtmlTagRenamer</strong>) and I intend to use it to write a validator that will check which of my Non-cascading CSS rules are or aren't followed by particular content. I might write more about the parser then.</p>
 <p>In the meantime, if you want to give it a go for any reason then clone that repository and call</p>
 <pre><code>CSSParser.Parser.ParseLESS(content);

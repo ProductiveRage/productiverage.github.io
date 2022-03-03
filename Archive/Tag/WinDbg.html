@@ -53,7 +53,7 @@
         </script>
 
     <div class="Content ArchiveByTag">
-        <p class="PostDate">23 February 2013</p><h2><a id="windbg-rides-again" href="/windbg-rides-again">WinDbg Rides Again</a></h2>
+        <p class="PostDate">23 February 2013</p><h2 id="windbg-rides-again"><a href="/windbg-rides-again">WinDbg Rides Again</a></h2>
 <p>I've been trying to get a .Net COM component working in a Classic ASP site and was consistently getting an error the first time it was accessed:</p>
 <blockquote>
 <p>Active Server Pages error 'ASP 0115'</p>
@@ -73,7 +73,7 @@
 <p>Unable to find module 'mscorwks'</p>
 </blockquote>
 <p>The answer to this was found at this MSDN blog post <a href="http://blogs.msdn.com/b/rihamselim/archive/2012/03/04/error-loading-clr.aspx">Error loading sos.dll</a>; to use &quot;.loadby sos clr&quot;</p>
-<h3>Now we're cooking!</h3>
+<h3 id="now-were-cooking"><a href="#now-were-cooking">Now we're cooking!</a></h3>
 <p><img src="/Content/Images/Posts/WinDbgASPError1.png" alt="WinDbg .loadby sos clr" title="WinDbg .loadby sos clr" /></p>
 <p>So now some progress is being made! The next step is to view all of the managed threads in the process with the command &quot;!threads&quot;:</p>
 <p><img src="/Content/Images/Posts/WinDbgASPError2.png" alt="WinDbg viewing managed threads" title="WinDbg viewing managed threads" /></p>
@@ -82,9 +82,9 @@
 <p>Not <em>that</em> helpful-looking yet, but there's a hint to dig deeper and look at the InnerException:</p>
 <p><img src="/Content/Images/Posts/WinDbgASPError4.png" alt="WinDbg PrintException InnterException" title="WinDbg PrintException InnerException" /></p>
 <p>Well <em>now</em> we're getting somewhere! When the component tries to access the System.Web.HttpRuntime.Cache an exception is being raised. This message is a little cryptic and I have no idea why it would only be happening on first access but at least I have something to search for and it's not directly <em>my</em> code that's causing it!</p>
-<h3>Stack Overflowing..</h3>
+<h3 id="stack-overflowing"><a href="#stack-overflowing">Stack Overflowing..</a></h3>
 <p>Google brings me to this Stack Overflow question as the most promising lead: <a href="http://stackoverflow.com/questions/583932/attempted-to-read-or-write-protected-memory-at-system-web-hosting-unsafeiismetho">Attempted to read or write protected memory at System.Web.Hosting.UnsafeIISMethods.MgdGetSiteNameFromId</a>. While there are no actual explanations, someone suggests that having encountered this they changed the build parameters to target &quot;x86&quot; specifically and the problem went away. Unfortunately, this was not the case for me. Instead, the HttpRuntime.Cache was only being used if the site didn't provide the COM component with a cache reference that it could stash things in - it was being used as a default cache mechanism. I changed the integration to remove this default and require a cache reference and now the problem has gone. Granted, I didn't <em>strictly-speaking</em> solve the underlying problem.. but I identified it and removed it with a solution I'm happier with overall, so I'm considering this a success! :)</p>
-<h3>WinDbg dumps in Visual Studio</h3>
+<h3 id="windbg-dumps-in-visual-studio"><a href="#windbg-dumps-in-visual-studio">WinDbg dumps in Visual Studio</a></h3>
 <p>While I was investigating this, I came across this post from WinDbg guru Tess Ferrandez <a href="http://blogs.msdn.com/b/tess/archive/2009/06/16/first-look-at-debugging-net-4-0-dumps-in-visual-studio-2010.aspx">First look at debugging .NET 4.0 dumps in Visual Studio 2010</a>. Essentially saying that you can debug .Net 4 dumps direct in Visual Studio! Amazing!</p>
 <p>There are a couple of caveats:</p>
 <ol>
@@ -115,7 +115,7 @@ namespace WinDbgDumpTest
 <p>.dump /ma c:\WinDbgDump.dmp</p>
 </blockquote>
 <p>which will &quot;dump complete memory image&quot; (according to the very useful <a href="http://geekswithblogs.net/.NETonMyMind/archive/2006/03/14/72262.aspx">WinDbg / SOS Cheat Sheet</a>). If you don't specify &quot;/ma&quot; then only a &quot;small memory image&quot; will be dumped which will mean that Visual Studio tells you &quot;The value of the local or argument {whatever} is unobtainable at this time&quot; when you try to inspect variables. This caught me out for quite a while and started driving me mad until I realised what I'd done!</p>
-<h3>Loading the dump file</h3>
+<h3 id="loading-the-dump-file"><a href="#loading-the-dump-file">Loading the dump file</a></h3>
 <p>As described in that post (<a href="http://blogs.msdn.com/b/tess/archive/2009/06/16/first-look-at-debugging-net-4-0-dumps-in-visual-studio-2010.aspx">First look at debugging .NET 4.0 dumps in Visual Studio 2010</a>), the default symbol server can be enabled by going to Tools / Options / Debgging / Symbols and enabling the microsoft symbol server location.</p>
 <p>Then open the dump file in Visual Studio (nothing more complicated than going to File / Open and selecting the file).</p>
 <p>This should display some summary information but what we want to do from here is click on the &quot;Debug with Mixed&quot; link which will load the state into Visual Studio as if we'd run the code and it had stopped at the point at which the dump was taken. You'll like get a warning at this point such as &quot;Windows has triggered a breakpoint in WinDbgDump.dmp&quot;, just click &quot;Break&quot;.</p>
@@ -127,14 +127,14 @@ namespace WinDbgDumpTest
             </p>
     </div>
     <div class="Content ArchiveByTag">
-        <p class="PostDate">20 November 2012</p><h2><a id="the-windbg-blues" href="/the-windbg-blues">The WinDbg Blues</a></h2>
+        <p class="PostDate">20 November 2012</p><h2 id="the-windbg-blues"><a href="/the-windbg-blues">The WinDbg Blues</a></h2>
 <p>To investigate some cpu-off-the-charts hanging issue that refuses to reproduce itself in a local environment in a project I'm involved with I've had to use WinDbg to interrogate a process dump for clues. On the one hand, that all is information is available can seem amazing at times. Other times it's frustrating how primitive it feels compared to poking around with the Visual Studio debugger!</p>
 <p>One of the problems I have is that I only do this kind of investigation infrequently so I never quite internalise all the tricks that I need from one time to the next. The first that for some minidumps there seems to be a version mismatch problem with I try to &quot;.loadby sos mscorwks&quot;, resulting in the following error:</p>
 <blockquote>
 <p>CLRDLL: c:\WINDOWS\Microsoft.NET\Framework\v2.0.50727\mscordacwks.dll:2.0.50727.5448 f:0 doesn't match desired version 2.0.50727.3625 f:0</p>
 </blockquote>
 <p>The version of the clr on my computer doesn't match that loaded by the process running on the server. One way around this is to copy sos.dll and all msc*.dll files from the server's C:\Windows\Microsoft.Net\Framework64\v2.0.50727 (or equivalent, depending upon windows location and framework version) into a local folder and then load sos with the following: &quot;.load C:\DllsFromServer\SOS.dll&quot;. I must admit, I think I came upon the set of files to load through some trial and error rather than comprehending the full depth of the issue. But it's worked each time I've encountered the issue so far! :)</p>
-<h3>Retrieving C# struct values</h3>
+<h3 id="retrieving-c-struct-values"><a href="#retrieving-c-struct-values">Retrieving C# struct values</a></h3>
 <p>Another problem I run into each time is the manner in which struct values needs to be probed. With other types you can just &quot;!do {addr}&quot; (DumpObject) it and nine times out of ten see the properties and values you want, with the occassional &quot;!da {addr}&quot; (DumpArray) thrown in for good measure. But if you try to do this for a struct value you get the cryptic response:</p>
 <blockquote>
 <p>&lt;Note: this object has an invalid CLASS field&gt; Invalid object</p>
