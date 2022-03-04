@@ -59,7 +59,7 @@
 <p>I wanted to write a type definition to work with the AMD module loading that TypeScript supports. And this is where I came a bit unstuck.</p>
 <p>I must admit that, writing this now, it seems that nothing that I'm about to cover is particularly complicated or confusing - it's just that when I tried to find out how to do it, I found it really difficult! The <a href="https://github.com/borisyankov/DefinitelyTyped">DefinitelyTyped</a> GitHub repo seemed like it should be a good start, since surely it would cover any use case I could thing of.. but it was also difficult to know where to start since I couldn't think of any packages that I knew, that would support AMD and whose type definitions would be small enough that I would be able to understand them by just trying to stare them down.</p>
 <p>There is an official TypeScript article that is commonly linked to by Stack Overflow answers: <a href="https://typescript.codeplex.com/wikipage?title=Writing%20Definition%20%28.d.ts%29%20Files">Writing Definition (<code>.d.ts</code>) Files</a>, but this seems to take quite a high level view and I couldn't work out how to expose my module's functionality in an AMD fashion.</p>
-<h3 id="the-short-answer"><a href="#the-short-answer">The short answer</a></h3>
+<h3 id="the-short-answer"><a href="/simple-typescript-type-definitions-for-amd-modules#the-short-answer">The short answer</a></h3>
 <p>In my case, I basically had a module of code that exposed functions. Nothing needed to be instantiated in order to calls these functions, they were just available.</p>
 <p>To reduce it down to the most simple case, imagine that my module only exposed a single function &quot;GetLength&quot; that took a single parameter of type string and returned a value of type number, the type definition would then be:</p>
 <pre><code>declare module SimpleExample {
@@ -85,7 +85,7 @@ export = simpleExampleInstance;
 <p>It is common for a module to build up an instance to export as the AMD interface and the arrangement above does, in fact, explicitly describe the module as containing an instance that implements a specified interface. This interface is what consuming TypeScript code will work against.</p>
 <p><em>Side note: It doesn't matter what name is given to &quot;simpleExampleInstance&quot; since it is just a variable that is being directly exported.</em></p>
 <p>In this simple case, the TypeScript example still works - the module may be consumed and the &quot;GetLength&quot; method may be called as expected. It is only when things become more complicated (as we shall see below) that this approach becomes troublesome (meaning we will see that the &quot;declare module&quot; approach turns out to be a better way to do things).</p>
-<h3 id="implementation-details"><a href="#implementation-details">Implementation details</a></h3>
+<h3 id="implementation-details"><a href="/simple-typescript-type-definitions-for-amd-modules#implementation-details">Implementation details</a></h3>
 <p>So that's a simple example, now to get back to the case I was actually working on. The first method that I want to expose is &quot;ParseCss&quot;. This takes in a string and returns an array of &quot;categorised character strings&quot; - these are strings of content with a &quot;Value&quot; string, an &quot;IndexInSource&quot; number and a &quot;CharacterCategorisation&quot; number. So the string</p>
 <pre><code>body { color: red; }
 </code></pre>
@@ -271,7 +271,7 @@ catch (e) {
 export = CssParser;
 </code></pre>
 <p>The &quot;ExtendedLessParser.ParseIntoStructuredData&quot; nested method is exposed as a function within a nested module. Similarly, the interface and enum for its return type are both nested in there. The method signature is somewhat interesting in that the library will accept either a string being passed into &quot;ParseIntoStructuredData&quot; or the result of a &quot;ParseLess&quot; call. TypeScript has support for this and the method signature indicates that it will accept either &quot;string&quot; or &quot;CategorisedCharacterString[]&quot; (this relies upon &quot;union type&quot; support that became available in TypeScript 1.4). There is also an optional argument to indicate that comments should be excluded from the return content, this is also easy to express in TypeScript (by including the question mark after the argument name).</p>
-<h3 id="limitations"><a href="#limitations">Limitations</a></h3>
+<h3 id="limitations"><a href="/simple-typescript-type-definitions-for-amd-modules#limitations">Limitations</a></h3>
 <p>For the module at hand, this covers everything that I needed to do!</p>
 <p>However.. while reading up further on type definitions, I did come across one limitation that I think is unfortunate. There is no support for get-only properties on either interfaces or classes. For my CSS Parser, that isn't an issue because I didn't write it in a manner that enforced immutability. But if the <strong>CssFragment</strong> type (for example) <em>was</em> written with properties that only supported &quot;get&quot; then I might have wanted to write the interface as</p>
 <pre><code>interface CssFragment {

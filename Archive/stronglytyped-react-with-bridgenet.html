@@ -75,7 +75,7 @@ public class HTMLAttributes
 }
 </code></pre>
 <p>It's time to revisit this and build up my bindings library!</p>
-<h3 id="a-starting-point"><a href="#a-starting-point">A starting point</a></h3>
+<h3 id="a-starting-point"><a href="/stronglytyped-react-with-bridgenet#a-starting-point">A starting point</a></h3>
 <p>An obvious resource to work from initially is the &quot;<a href="https://github.com/borisyankov/DefinitelyTyped/blob/master/react/react.d.ts">DefinitelyTyped</a>&quot; bindings that allow you to use React from TypeScript. But I'd identified a pattern that I didn't like with them in my earlier post - the type system isn't being used to as full effect as it could be. For example, in the declaration of &quot;input&quot; elements. Let me explain (and please bear with me, I need to go through a few steps to get to the point)..</p>
 <p>The TypeScript bindings describe a function for creating input elements:</p>
 <pre><code>React.DOM.input(props: HTMLAttributes, ...children: ReactNode[]): DOMElement
@@ -157,7 +157,7 @@ public class InputEventTarget : EventTarget
 <p>And I've already mentioned having to define the <strong>FormEvent&lt;T&gt;</strong> and <strong>InputAttributes</strong> classes..</p>
 <p>What I'm saying is that these improvements do not come for free, they required some analysis and some further effort putting into the bindings (which is not to take anything away from DefinitelyTyped, by the way - I'm a big fan of the work in that repository and I'm very glad that it's available, both for TypeScript / React work I've done in the past <em>and</em> to use as a starting point for Bridge bindings).</p>
 <p>Seeing how these more focussed / specific classes can improve things, I come to my second problem with the TypeScript bindings..</p>
-<h3 id="why-must-the-htmlattributes-have-almost-150-properties"><a href="#why-must-the-htmlattributes-have-almost-150-properties">Why must the HTMLAttributes have almost 150 properties??</a></h3>
+<h3 id="why-must-the-htmlattributes-have-almost-150-properties"><a href="/stronglytyped-react-with-bridgenet#why-must-the-htmlattributes-have-almost-150-properties">Why must the HTMLAttributes have almost 150 properties??</a></h3>
 <p>The place that I wanted to start in extending my (very minimal) bindings was in fleshing out the <strong>HTMLAttributes</strong> class. Considering that it had only a single property (&quot;className&quot;) so far, and that it would be used by so many element types, that seemed like a reasonable plan. But looking at the TypeScript binding, I felt like I was drowning in properties.. I realised that I wasn't familiar with <em>everything</em> that appeared in html5, but I was astonished by how many options there were - and convinced that they couldn't <em>all</em> be applicable to <em>all</em> elements types. So I picked one at random, of those that stood out as being completely unfamiliar to me: &quot;download&quot;.</p>
 <p>w3schools has this to say about the <a href="http://www.w3schools.com/tags/att_a_download.asp">HTML &lt;a&gt; download Attribute</a>:</p>
 <blockquote>
@@ -220,7 +220,7 @@ public abstract class HasHrefAttribute : HTMLAttributes
 }
 </code></pre>
 <p>which <strong>AnchorAttributes</strong> and <strong>LinkAttributes</strong> could be derived from. While it might <em>appear</em> initially to make sense, I imagine that it will all come unstuck quite quickly and you'll end up finding yourself wanting to inherit from multiple base classes and all sorts of things that C# doesn't like. I think this is a KISS over DRY scenario (I'd rather repeat &quot;public string href;&quot; in a few distinct places than try to tie the classes together in some convoluted manner).</p>
-<h3 id="more-type-shenanigans"><a href="#more-type-shenanigans">More type shenanigans</a></h3>
+<h3 id="more-type-shenanigans"><a href="/stronglytyped-react-with-bridgenet#more-type-shenanigans">More type shenanigans</a></h3>
 <p>So, with more thought and planning, I think a reduced <strong>HTMLAttributes</strong> class could be written <em>and</em> a range of attribute classes produced that make the type system work for us. I should probably admit that I haven't actually <em>done</em> any of that further thought or planning yet! I feel like I've spent this month coming up with grandiose schemes and then writing about doing them rather than actually getting them done! :D</p>
 <p>Anyway, enough about my shortcomings, there's <em>another</em> issue I found while looking into this &quot;download&quot; attribute. Thankfully, it's a minor problem that can easily be solved with the way that bindings may be written for Bridge..</p>
 <p>There was an issue on React's GitHub repo: &quot;<a href="https://github.com/facebook/react/issues/1337">Improve handling of download attribute</a>&quot; which says the following:</p>
@@ -299,7 +299,7 @@ React.DOM.a(
 React.DOM.a({ name: &quot;/instructions.pdf&quot;, download: true })
 </code></pre>
 <p>Again, this illustrates why the &quot;value&quot; argument was thrown away in the <strong>StringOrBoolean</strong> implicit operator calls - because those calls do not exist in the translated JavaScript.</p>
-<h3 id="a-nice-bonus"><a href="#a-nice-bonus">A nice bonus</a></h3>
+<h3 id="a-nice-bonus"><a href="/stronglytyped-react-with-bridgenet#a-nice-bonus">A nice bonus</a></h3>
 <p>Another thing that I like about the &quot;ObjectLiteral&quot; attribute that I've used on these <strong>{Whatever}Attributes</strong> classes is that the translated code only includes the properties that have been explicitly set.</p>
 <p>This means that, unlike in the TypeScript definitions, we don't have to declare all value types as nullable. If, for example, we have an attributes class for table cells - like:</p>
 <pre><code>[Ignore]
@@ -325,7 +325,7 @@ public class TableCellAttributes : HTMLAttributes
 </code></pre>
 <p>This has <em>two</em> benefits, actually, because not only do we not have to mark all of the properties as nullable (while that wouldn't be the end of the world, it's nicer - I think - to have the attribute classes have properties that match the html values as closely as possible and using simple value types does so) but it also keeps the generated JavaScript succint. Imagine the alternative, where <em>every</em> property was included in the JavaScript.. every time a div element was declared it would have 150 properties listed along with it. The JavaScript code would get huge, very quickly!*</p>
 <p>* <em>(Ok, ok, it shouldn't be 150 properties for every div since half the point of this post is that it will be much better to create attribute classes that are as specific as possible - but there would still be a lot of properties that appear in element initialisations in the JavaScript which were not present in the C# code, it's much better only having the explicitly-specified values wind up in the translated output).</em></p>
-<h4 id="a-change-in-bridge-1.8"><a href="#a-change-in-bridge-1.8">A change in Bridge 1.8</a></h4>
+<h4 id="a-change-in-bridge-1.8"><a href="/stronglytyped-react-with-bridgenet#a-change-in-bridge-1.8">A change in Bridge 1.8</a></h4>
 <p>I was part way through writing about how pleased I was that unspecified properties in an [ObjectLiteral]-decorated class do not appear in the generated JavaScript when I decided to upgrade to Bridge 1.8 (which was just released two days ago).. and things stopped doing what I wanted.</p>
 <p>With version 1.8, it seems like if you have an [ObjectLiteral] class then all of the properties <em>will</em> be included in the JavaScript - with default values if you did not specify them explicitly. So the example above:</p>
 <pre><code>DOM.td(new TableCellAttributes { colSpan = 2 }, &quot;Hello!&quot;)
@@ -346,7 +346,7 @@ public class TableCellAttributes : HTMLAttributes
 <p>I only came across the idea of combining [Ignore] with [ObjectLiteral] when I was looking through their source code on <a href="https://github.com/bridgedotnet/">GitHub</a> (open source software, ftw!) and found a few places where there are checks for one of those attributes or <em>both</em> of them in some places.</p>
 <p><em>(I've updated the code samples in this post to illustrate what I mean - now anywhere that has [ObjectLiteral] also has [Ignore]).</em></p>
 <p>I'm a little bit concerned that this may change again in the future or that I'm not using these options correctly, but I've raised a bug in their forums and they've been very good at responding to these in the past - <a href="http://forums.bridge.net/forum/bridge-net-pro/bugs/495-objectliteral-classes-generate-values-for-all-properties-in-1-8-changed-from-1-7">ObjectLiteral classes generate values for all properties in 1.8 (changed from 1.7)</a>.</p>
-<h3 id="whats-next"><a href="#whats-next">What's next</a></h3>
+<h3 id="whats-next"><a href="/stronglytyped-react-with-bridgenet#whats-next">What's next</a></h3>
 <p>So.. how am I intending to progress this? Or am I going to just leave it as an interesting initial investigation, something that I've looked briefly into and then blogged about??</p>
 <p>Well, no. Because I <em>am</em> actually planning to do some useful work on this! :) I'm a big fan of both React and Bridge and hope to be doing work with both of them, so moving this along is going to be a necessity as much as a nice idea to play around with. It's just a case of <em>how</em> to proceed - as the I-have-never-heard-of-this-new-download-attribute story goes to show, I'm not intimately familiar with every single tag and every single attribute, particular in regards to some of the less well-known html5 combinations.</p>
 <p>Having done some research while writing this post, I think the best resource that I've found has been <a href="https://developer.mozilla.org/en-US/">MDN</a> (the Mozilla Developer Network). It seems like you can look up any tag - eg.</p>

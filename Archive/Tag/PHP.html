@@ -57,7 +57,7 @@
 <p>Last November, I was helping someone consume a WCF Web Service with PHP (in the imaginatively named <a href="/consuming-a-wcf-web-service-from-php">Consuming a WCF Web Service from PHP</a>). After jumping through some hoops (and reading a <em>lot</em> of unhelpful and/or misleading information on the web) it was working; requests that relied on type names being specified were being accepted, gzip support was being enabled, even some useful debug information was being made available for when problems were encountered. All was well. But there was something that was bugging me for a long time that I only quite recently was able to address -</p>
 <p><em>Why does the PHP SoapClient so belligerently throw away the type names of response objects?</em></p>
 <p>It has knowledge of the type name since it must process the response data to populate the associative arrays that represent this data. But the names of the response types are apparently then cast forever into the ether, never to exposed to me. After all, I'm using PHP - I don't want no stinkin' types!</p>
-<h3 id="is-it-just-me"><a href="#is-it-just-me">Is it just me?</a></h3>
+<h3 id="is-it-just-me"><a href="/why-do-you-hate-my-wcf-types-php#is-it-just-me">Is it just me?</a></h3>
 <p>I feel I should probably explain why I care so much. To be fair, I imagine that in a large number of cases the type name of the returned data really isn't important. If, for example, I'm querying the Twitter API for a set of Statuses then I know the form of the returned data (and since it returns JSON, there <em>are</em> no type names in the responses!). And for a lot of services, I imagine the form of the returned data will be identical from one result to another and, in many of the cases where the forms vary, a form of &quot;property sniffing&quot; will deal with it; does this result have this particular property along with all of the common ones? If so, save it or use it or do whatever with it.</p>
 <p>But there are cases where this isn't enough. In that <a href="/consuming-a-wcf-web-service-from-php">earlier post</a>, the example was a web method &quot;GetHotels&quot; which returned hotel data for results that matched a particular set of filters (in that case, the type names were important for the <em>request</em> since an array of filters was specified, each filter was a particular WCF class - without the type names, the service couldn't deserialise the request).</p>
 <p>Each of the returned hotels has data such as Categories, Awards, and Facilities but only the keys of these Categories, Awards and Facilities are returned. There is a separate web method &quot;GetMetaData&quot; that maps these keys onto names. A language can be specified as part of the meta data request so that the names are provided in the correct language.</p>
@@ -159,14 +159,14 @@ $metaDataTypes = $client-&gt;GetMetaData(
 </code></pre>
 <p>we can loop through the returned data and use get_class to find out that.. they are all apparently &quot;<strong>StdObject</strong>&quot;.</p>
 <p>This is what I meant by the type names being &quot;thrown away&quot;.</p>
-<h3 id="duck-typing-doesnt-work-if-everything-quacks-and-waddles"><a href="#duck-typing-doesnt-work-if-everything-quacks-and-waddles">Duck-typing (doesn't work if everything quacks and waddles)</a></h3>
+<h3 id="duck-typing-doesnt-work-if-everything-quacks-and-waddles"><a href="/why-do-you-hate-my-wcf-types-php#duck-typing-doesnt-work-if-everything-quacks-and-waddles">Duck-typing (doesn't work if everything quacks and waddles)</a></h3>
 <p>In some cases we can work around this.</p>
 <p>For example, to guess that a result is an <strong>AwardMetaDataEntry</strong> we could try</p>
 <pre><code>if (property_exists($metaDataValue, &quot;ImageUrl&quot;)) {
 </code></pre>
 <p>and work on the basis that if it exposes an &quot;ImageUrl&quot; property that it is <strong>AwardMetaDataEntry</strong>.</p>
 <p>But this won't work for differentiating between a <strong>CategoryGroupMetaDataEntry</strong> and a <strong>FacilityGroupMetaDataEntry</strong> since those response types have no structural differences.</p>
-<h3 id="class-mappings"><a href="#class-mappings">Class Mappings</a></h3>
+<h3 id="class-mappings"><a href="/why-do-you-hate-my-wcf-types-php#class-mappings">Class Mappings</a></h3>
 <p>It turns out that the SoapClient <em>does</em> offer a way to get what we want, so long as we don't mind declaring PHP classes for every response type that we're interested in.</p>
 <pre><code>class MetaDataEntry
 {
@@ -307,13 +307,13 @@ $data = $client-&gt;GetHotels(
 </code></pre>
 <p>Then we <em>are</em> able to include information about the type. Progress! The namespace string specified references the C# namespace of the CategoryFilter class.</p>
 <p>As with so many things, it looks all so easy. But I didn't know what exactly I should be searching for, getting this far took me quite a while - and the resource out there explaining this are thin on the ground! With the maturity of both PHP and WCF I would have thought that information about calling into WCF Services from PHP in this manner would be much readily available!</p>
-<h3 id="but-wait-theres-more"><a href="#but-wait-theres-more">But wait; there's more</a></h3>
+<h3 id="but-wait-theres-more"><a href="/consuming-a-wcf-web-service-from-php#but-wait-theres-more">But wait; there's more</a></h3>
 <p>While I was at it, I thought I'd dig a little further. When I first communicated with this other Developer, I asked him to send me a trace of the requests that were being generated by his PHP code, using Fiddler or something. This information was not forthcoming and when I was running test PHP scripts on my local machine the requests weren't being captured by Fiddler anyway. But I found these handy methods:</p>
 <pre><code>$client-&gt;__getLastRequest()
 $client-&gt;__getLastRequestHeaders()
 </code></pre>
 <p>which will retrieve the sent content, ideal for looking into exactly what messages were being generated! These only work if the &quot;trace&quot; =&gt; &quot;1&quot; argument is specified when the SoapClient is instantiated. Which explained to me what that was for, which was nice :)</p>
-<h3 id="enabling-gzip-support"><a href="#enabling-gzip-support">Enabling gzip support</a></h3>
+<h3 id="enabling-gzip-support"><a href="/consuming-a-wcf-web-service-from-php#enabling-gzip-support">Enabling gzip support</a></h3>
 <p>The next issue I had was another one that I thought would be beyond easy to solve, with easy-to-follow and accurate information all over the place. I was wrong again! At least, my first searches didn't bring me immediately to the answer :(</p>
 <p>A <em>lot</em> of resources suggest the following:</p>
 <pre><code>$client = new SoapClient(
@@ -345,12 +345,12 @@ $client-&gt;__getLastRequestHeaders()
 );
 </code></pre>
 <p>Again, oh so simple yet so much harder to come to in the end than it should have been.</p>
-<h3 id="one-more-thing"><a href="#one-more-thing">One more thing</a></h3>
+<h3 id="one-more-thing"><a href="/consuming-a-wcf-web-service-from-php#one-more-thing">One more thing</a></h3>
 <p>A final note, that actually <em>was</em> commonly documented and pointed out, was that if you are developing against a service that is still in flux that you should disable wsdl caching in PHP. This will affect performance as the wsdl will be retrieved on each request (I presume), but it may prevent some headaches if the contract changes. I changed a value in the php.ini file but apparently it can also be done in the PHP script with:</p>
 <pre><code>ini_set(&quot;soap.wsdl_cache_enabled&quot;, 0);
 </code></pre>
 <p>(Courtesy of a <a href="http://stackoverflow.com/a/303514">StackOverflow answer</a>).</p>
-<h3 id="conclusion"><a href="#conclusion">Conclusion</a></h3>
+<h3 id="conclusion"><a href="/consuming-a-wcf-web-service-from-php#conclusion">Conclusion</a></h3>
 <p>This may well be simple stuff to the real PHP developers out there but since I struggled, maybe this post will help others in the future with this particular problem!</p>
 <p class="PostTime">Posted at 23:03</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/why-do-you-hate-my-wcf-types-php">Why do you hate my (WCF) types, PHP??</a></li><li><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40">Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0</a></li><li><a href="/dependency-injection-with-a-wcf-service">Dependency Injection with a WCF Service</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li><li><a href="/Archive/Tag/PHP" title="2 Posts">PHP</a></li></ul></div>
             <p class="Comments">

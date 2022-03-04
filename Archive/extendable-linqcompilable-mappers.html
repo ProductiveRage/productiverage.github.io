@@ -96,7 +96,7 @@ public class DestRole
 <p>This was all kicked off initially since I was using <a href="http://automapper.codeplex.com/">AutoMapper</a> for some work and wasn't happy with its approach to mapping to types that have to be initialised with verbose constructors (as opposed to a parameter-less constructor and then the setting of individual properties). This much was achieved and the solution can be found here -</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a>.</p>
 <p>But I wanted to see if I could improve the performance by removing AutoMapper from the equation and using LINQ Expressions.</p>
-<h3 id="a-more-detailed-recap"><a href="#a-more-detailed-recap">A more detailed recap</a></h3>
+<h3 id="a-more-detailed-recap"><a href="/extendable-linqcompilable-mappers#a-more-detailed-recap">A more detailed recap</a></h3>
 <p>Where we left the code as of</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters</a></p>
 <p>we had the class</p>
@@ -298,7 +298,7 @@ public interface IPropertyGetter
 }
 </code></pre>
 <p>and to generate instances of these classes we had some factories (CompilableTypeConverterByConstructorFactory, CompilableAssignableTypesPropertyGetterFactory and CompilableEnumConversionPropertyGetterFactory). These would do the work of examining the properties and constructors of specified source and destination type pairs and determining the best constructor that could be satisfied (if any) with the Compilable Property Getters. The code in these factories is none too exciting.</p>
-<h3 id="the-problem"><a href="#the-problem">The problem</a></h3>
+<h3 id="the-problem"><a href="/extendable-linqcompilable-mappers#the-problem">The problem</a></h3>
 <p>If the mappings we want to generate are for very simple structures (in this case, &quot;simple&quot; means that all property-to-constructor-argument mappings are either directly assignable-to or are enum mappings) then everything's rosy - eg.</p>
 <pre><code>public class SourceEmployee
 {
@@ -332,7 +332,7 @@ public enum DestRole
 </code></pre>
 <p>(The enum mapping in this example would be handled by specifying a CaseInsensitiveSkipUnderscoreNameMatcher for the CompilableEnumConversionPropertyGetterFactory).</p>
 <p>But the problem I opened with does <em>not</em> come under this &quot;simple structure&quot; umbrella as in that case SourceRole and DestRole are types for which we have no Compilable Property Getter! Oh noes!</p>
-<h3 id="the-compilabletypeconverterpropertygetter"><a href="#the-compilabletypeconverterpropertygetter">The CompilableTypeConverterPropertyGetter</a></h3>
+<h3 id="the-compilabletypeconverterpropertygetter"><a href="/extendable-linqcompilable-mappers#the-compilabletypeconverterpropertygetter">The CompilableTypeConverterPropertyGetter</a></h3>
 <p>For inspiration, I go back to AutoMapper since it too can not magically handle nested types -</p>
 <pre><code>class Program
 {
@@ -598,7 +598,7 @@ public Expression GetTypeConverterExpression(Expression param)
 }
 </code></pre>
 <p>The only notable difference is that GetTypeConverterExpression should return an Expression that can deal with null values - we need this so that null properties can be retrieved from source types and passed to destination type constructors. Previously there was a null check against the &quot;src&quot; parameter passed to the Convert method, but this can be relaxed now that nulls have to be supported for this class to work as part of a Property Getter.</p>
-<h3 id="almost-there"><a href="#almost-there">Almost there!</a></h3>
+<h3 id="almost-there"><a href="/extendable-linqcompilable-mappers#almost-there">Almost there!</a></h3>
 <p>With the introduction of a CombinedCompilablePropertyGetterFactory (which will run through a set a Compilable Property Getter Factories for each request until one of the returns a non-null value to the Get request), we end up with this structure:</p>
 <pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
 var converterFactory = new CompilableTypeConverterByConstructorFactory(
@@ -652,7 +652,7 @@ var dest = employeeConverter.Convert(
 </code></pre>
 <p>Hoorah!</p>
 <p>Now, there's a slight refinement that I want to look at <a href="/the-lesseffort-extendable-linqcompilable-mappers">next time</a> but I think this post has gone on more than long enough.</p>
-<h3 id="footnote"><a href="#footnote">Footnote</a></h3>
+<h3 id="footnote"><a href="/extendable-linqcompilable-mappers#footnote">Footnote</a></h3>
 <p>For the super-observant, I mentioned that the use of ITypeConverter (as opposed to necessarily requiring ITypeConverterByConstructor) would be touched on again in this post. Since I've run out of steam that will be covered <a href="/the-lesseffort-extendable-linqcompilable-mappers">next time</a> too.</p>
 <p class="PostTime">Posted at 14:11</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/dynamically-applying-interfaces-to-objects-part-3">Dynamically applying interfaces to objects - Part 3</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-lesseffort-extendable-linqcompilable-mappers">The Less-Effort Extendable LINQ-compilable Mappers</a></div></div><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/reflection-and-c-sharp-optional-constructor-arguments">Reflection and C# optional constructor arguments</a></li><li><a href="/the-lesseffort-extendable-linqcompilable-mappers">The Less-Effort Extendable LINQ-compilable Mappers</a></li><li><a href="/automapperbyconstructor-without-automapper-and-faster">AutoMapper-By-Constructor without AutoMapper.. and faster</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/AutoMapper" title="8 Posts">AutoMapper</a></li><li><a href="/Archive/Tag/LINQ" title="13 Posts">LINQ</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
                 <div id="disqus_thread"></div>

@@ -134,7 +134,7 @@ public class Name
 </code></pre>
 <p>Except - wow! - the amount of code seems to have ballooned and I've not even included the &quot;DefinedStringList&quot; class! (Well, not here at least - it's down the bottom of the post).</p>
 <p>But what we <em>do</em> have now will be instances of Employee that are always in a known good state and we can safely retrieve employee.Name.FirstName without first ensuring that Name is not null. We also know that Employees that have not been assigned roles will have a Roles instance that declares a Count of zero rather than wondering if it will be that or whether there will be a null Roles instance. So the upshot should be that there will actually be <em>less</em> code in places where Employee instances are accessed.</p>
-<h3 id="multithreaded-access"><a href="#multithreaded-access">Multithreaded access</a></h3>
+<h3 id="multithreaded-access"><a href="/i-love-immutable-data#multithreaded-access">Multithreaded access</a></h3>
 <p>Now, to recreate a really trivial version of the multithreaded datastore I mentioned earlier, imagine we have a local store of Employees that is being written to and read from - eg.</p>
 <pre><code>public class EmployeeStore
 {
@@ -186,7 +186,7 @@ public class Name
 </code></pre>
 <p>Easy! Of course this relies upon the Employee class being immutable (which must cover all of its properties' types as well). Now we're not just reaping the benefits in state validity but we've got more performant threaded code (again, my example was heavy on reads and light). In a lot of cases immutability such as this can make areas of multi-threaded code much easier to write and maintain.</p>
 <p>I think in this case I extended the ImmutableList to a NonNullImmutableList which had validation to ensure it would never contain any null references. Similar to how the DefinedStringList will ensure it has no null or empty values. Another layer of comforting behaviour guarantee so that callers don't have to worry about nulls. It makes me feel warm and fuzzy.</p>
-<h3 id="undo"><a href="#undo">Undo!</a></h3>
+<h3 id="undo"><a href="/i-love-immutable-data#undo">Undo!</a></h3>
 <p>In most scenarios it seems I've been working with recently, classes such as Employee <em>would</em> be instantiated just the once and then not changed unless another query was executed that returned a new set of Employee data. But feasibly we may want to alter the Employee class such that it is &quot;editable&quot; in the same way that the DefinedStringList that we're talking about is - you can call methods that return a new instance of the class with the alteration made, leaving the original reference unaltered.</p>
 <pre><code>public class Employee
 {
@@ -230,7 +230,7 @@ public class Name
 }
 </code></pre>
 <p>Here the name can be overwritten and roles can be added or removed. What's interesting about this approach is that returning new instances each time means you could persists a chain of changes - an undo history or sorts! I must admit that I've never taken advantage of this in any way, but it's often struck me that it could be useful in some situations..</p>
-<h3 id="some-more-views"><a href="#some-more-views">Some more views</a></h3>
+<h3 id="some-more-views"><a href="/i-love-immutable-data#some-more-views">Some more views</a></h3>
 <p>While writing this post, I did a bit of research to try and make sure I wasn't say anything either too done-to-death or too stupid and the following links are articles I like, largely because they agree with me! :)</p>
 <blockquote>
 <p>Immutable data structures are the way of the future in C#</p>
@@ -247,7 +247,7 @@ public class Name
 <p><a href="http://blog.dezfowler.com/2009/05/always-valid-entity-anti-pattern.html">http://blog.dezfowler.com/2009/05/always-valid-entity-anti-pattern.html</a></p>
 <p>I've worked with Derek before so although I read that article two or three times and couldn't agree with it, I didn't give up 'cos I know he's a bright guy. And it finally broke for me what I think he meant when I read the comments on that piece - there's only four and it's the last one that made it stick for me. Partly because someone I work with <em>now</em> has a similar view, I think. The way I see things working together is that the validation in these &quot;verbose constructors&quot; is a last line of defense to ensure that the object's state is ensured to be valid and is <em>not</em> business logic where the intention is to throw a load of possibly-valid values at it and see what sticks. There should be a nice validation layer between the UI and these constructors that only allows through allowable state and handles the aggregation of errors where required. The exceptions in the constructor should still be just that; exceptions, not the norm for invalid UI input.</p>
 <p>But in summary, I'm still all for these &quot;verbose constructors&quot; - as this final defense that allows us not to worry about instances of these immutable classes - if they exist, then they're valid. And I like that.</p>
-<h3 id="an-immutable-list-and-the-definedstringlist-class"><a href="#an-immutable-list-and-the-definedstringlist-class">An immutable list (and the DefinedStringList class)</a></h3>
+<h3 id="an-immutable-list-and-the-definedstringlist-class"><a href="/i-love-immutable-data#an-immutable-list-and-the-definedstringlist-class">An immutable list (and the DefinedStringList class)</a></h3>
 <p>Since this code is a bit long to jam in the middle of the article, here it is in all its glory:</p>
 <pre><code>public class ImmutableList&lt;T&gt; : IEnumerable&lt;T&gt;
 {
@@ -403,7 +403,7 @@ public interface IValueValidator&lt;T&gt;
 }
 </code></pre>
 <p>These are actually cut-down versions of classes I've got in one of my projects that also includes AddRange, Insert, RemoveAt, Contains(T value, IEqualityComparer<t> comparer), etc.. but this is more than enough to get the gist. At some point I may look into that GitHub thing..</t></p>
-<h3 id="immutability-purity"><a href="#immutability-purity">Immutability purity</a></h3>
+<h3 id="immutability-purity"><a href="/i-love-immutable-data#immutability-purity">Immutability purity</a></h3>
 <p>A final side note(*) - you might notice that internally the ImmutableList <em>does</em> actually participate in some mutability! When calling the Add method, we validate the new value (if required) and then create a new instance of the class with no data and <em>then</em> assign its internal &quot;values&quot; and &quot;validator&quot; references, meaning we sidestep the looping of all the data in the constructor which is unnecessary since we know the values are all valid, that's part of the point of the class! BTW, it feels like a bit of a trick updating these private references after creating the new instances and it's only possible because we've just created the instance ourself and the new object is an instance of the class that is performing the work. I don't know if there's a phrase to describe this method and I was a bit surprised to discover it could be done since it has a feeling of breaking the &quot;private&quot; member contract!</p>
 <p>* I don't want to go into <em>too</em> much detail since I want to talk about this further another time!</p>
 <p><strong>Update (26th November 2012):</strong> A re-visit of this principle can be seen in the post <a href="/persistent-immutable-lists">Persistent Immutable Lists</a> which has an alternate implementation of the immutable list with improved performance but all of the immutability-based safety!</p>

@@ -62,7 +62,7 @@
 <p>Last November, I was helping someone consume a WCF Web Service with PHP (in the imaginatively named <a href="/consuming-a-wcf-web-service-from-php">Consuming a WCF Web Service from PHP</a>). After jumping through some hoops (and reading a <em>lot</em> of unhelpful and/or misleading information on the web) it was working; requests that relied on type names being specified were being accepted, gzip support was being enabled, even some useful debug information was being made available for when problems were encountered. All was well. But there was something that was bugging me for a long time that I only quite recently was able to address -</p>
 <p><em>Why does the PHP SoapClient so belligerently throw away the type names of response objects?</em></p>
 <p>It has knowledge of the type name since it must process the response data to populate the associative arrays that represent this data. But the names of the response types are apparently then cast forever into the ether, never to exposed to me. After all, I'm using PHP - I don't want no stinkin' types!</p>
-<h3 id="is-it-just-me"><a href="#is-it-just-me">Is it just me?</a></h3>
+<h3 id="is-it-just-me"><a href="/why-do-you-hate-my-wcf-types-php#is-it-just-me">Is it just me?</a></h3>
 <p>I feel I should probably explain why I care so much. To be fair, I imagine that in a large number of cases the type name of the returned data really isn't important. If, for example, I'm querying the Twitter API for a set of Statuses then I know the form of the returned data (and since it returns JSON, there <em>are</em> no type names in the responses!). And for a lot of services, I imagine the form of the returned data will be identical from one result to another and, in many of the cases where the forms vary, a form of &quot;property sniffing&quot; will deal with it; does this result have this particular property along with all of the common ones? If so, save it or use it or do whatever with it.</p>
 <p>But there are cases where this isn't enough. In that <a href="/consuming-a-wcf-web-service-from-php">earlier post</a>, the example was a web method &quot;GetHotels&quot; which returned hotel data for results that matched a particular set of filters (in that case, the type names were important for the <em>request</em> since an array of filters was specified, each filter was a particular WCF class - without the type names, the service couldn't deserialise the request).</p>
 <p>Each of the returned hotels has data such as Categories, Awards, and Facilities but only the keys of these Categories, Awards and Facilities are returned. There is a separate web method &quot;GetMetaData&quot; that maps these keys onto names. A language can be specified as part of the meta data request so that the names are provided in the correct language.</p>
@@ -164,14 +164,14 @@ $metaDataTypes = $client-&gt;GetMetaData(
 </code></pre>
 <p>we can loop through the returned data and use get_class to find out that.. they are all apparently &quot;<strong>StdObject</strong>&quot;.</p>
 <p>This is what I meant by the type names being &quot;thrown away&quot;.</p>
-<h3 id="duck-typing-doesnt-work-if-everything-quacks-and-waddles"><a href="#duck-typing-doesnt-work-if-everything-quacks-and-waddles">Duck-typing (doesn't work if everything quacks and waddles)</a></h3>
+<h3 id="duck-typing-doesnt-work-if-everything-quacks-and-waddles"><a href="/why-do-you-hate-my-wcf-types-php#duck-typing-doesnt-work-if-everything-quacks-and-waddles">Duck-typing (doesn't work if everything quacks and waddles)</a></h3>
 <p>In some cases we can work around this.</p>
 <p>For example, to guess that a result is an <strong>AwardMetaDataEntry</strong> we could try</p>
 <pre><code>if (property_exists($metaDataValue, &quot;ImageUrl&quot;)) {
 </code></pre>
 <p>and work on the basis that if it exposes an &quot;ImageUrl&quot; property that it is <strong>AwardMetaDataEntry</strong>.</p>
 <p>But this won't work for differentiating between a <strong>CategoryGroupMetaDataEntry</strong> and a <strong>FacilityGroupMetaDataEntry</strong> since those response types have no structural differences.</p>
-<h3 id="class-mappings"><a href="#class-mappings">Class Mappings</a></h3>
+<h3 id="class-mappings"><a href="/why-do-you-hate-my-wcf-types-php#class-mappings">Class Mappings</a></h3>
 <p>It turns out that the SoapClient <em>does</em> offer a way to get what we want, so long as we don't mind declaring PHP classes for every response type that we're interested in.</p>
 <pre><code>class MetaDataEntry
 {

@@ -69,9 +69,9 @@
 <p>However..</p>
 <p>You might have some very particular scenario in mind where you really <em>do</em> want to try to write to a readonly auto-property's value for an instance that has already been created. It's possible that you are writing some interesting deserialisation code, I suppose. For something that I was looking at, I was curious to look into how feasible it is (or isn't) and I came up with the following three basic approaches.</p>
 <p>I think that each approach demonstrates something a little off the beaten track of .NET - granted, there's absolutely nothing here that's never been done before.. but sometimes it's fun to be reminded of how flexible .NET <em>can</em> be, if only to appreciate how hard it works to keep everything reliable and consistent.</p>
-<h3 id="tldr"><a href="#tldr">TL;DR</a></h3>
+<h3 id="tldr"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#tldr">TL;DR</a></h3>
 <p>I'll show three approaches, in decreasing order of ease of writing. They all depend upon a particular naming conventions in .NET's internals that is not documented and should not be considered reliable (ie. a future version of C# and/or the compiler could break it). Even if you ignore this potential time bomb, only the first of the three methods will actually work. Like I said at the start, this is something that you almost certainly shouldn't be attempting anyway!</p>
-<h3 id="approach-1-reflection-with-some-guesswork"><a href="#approach-1-reflection-with-some-guesswork">Approach 1: Reflection (with some guesswork)</a></h3>
+<h3 id="approach-1-reflection-with-some-guesswork"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#approach-1-reflection-with-some-guesswork">Approach 1: Reflection (with some guesswork)</a></h3>
 <p>C# 6 introduced read-only auto-properties. Before thoses were available, you had two options to do something similar. You could use a private setter -</p>
 <pre><code>public sealed class Example
 {
@@ -135,7 +135,7 @@ Console.WriteLine(x.Id); // Prints &quot;456&quot;
 <p>We took an instance of a class that has a readonly property (meaning that it should never change after the instance has been constructed) and we <em>changed</em> that property. Evil.</p>
 <p>One more time, though: this relies upon the current convention that the compiler-generated backing fields follow a particular naming convention. If that changes one day then this code will fail.</p>
 <p>Enough with the boring warnings, though - let's get to the real nub of the matter; reflection is slooooooooow, isn't it? Surely we should never resort to such a clunky technology??</p>
-<h3 id="approach-2-using-linq-expressions-to-generate-fast-code-to-set-the-field"><a href="#approach-2-using-linq-expressions-to-generate-fast-code-to-set-the-field">Approach 2: Using LINQ Expressions to generate fast code to set the field</a></h3>
+<h3 id="approach-2-using-linq-expressions-to-generate-fast-code-to-set-the-field"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#approach-2-using-linq-expressions-to-generate-fast-code-to-set-the-field">Approach 2: Using LINQ Expressions to generate fast code to set the field</a></h3>
 <p>If <strong>Example</strong> had a regular private field that we wanted to set - eg.</p>
 <pre><code>public sealed class Example
 {
@@ -179,7 +179,7 @@ var fieldSetter =
 <p>This is quite unfortunate. It had been a little while since I'd played around with LINQ Expressions and I was feeling quite proud of myself getting the code to work.. only to fall at the last hurdle.</p>
 <p>Never mind.</p>
 <p>One bright side is that I also tried out this code in a .NET Core application and it worked to the same extent as the &quot;full fat&quot; .NET Framework - ie. I was able to generate a delegate using LINQ Expressions that would set a non-readonly private field on an instance. Considering that reflection capabilities were limited in the early days of .NET Standard, I found it a nice surprise that support seems so mature now.</p>
-<h3 id="approach-3-emitting-il"><a href="#approach-3-emitting-il">Approach 3: Emitting IL</a></h3>
+<h3 id="approach-3-emitting-il"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#approach-3-emitting-il">Approach 3: Emitting IL</a></h3>
 <p>Time to bring out the big guns!</p>
 <p>If the friendlier way of writing code that dynamically compiles other .NET code (ie. LINQ Expressions) wouldn't cut it, surely the old fashioned (and frankly intimidating) route of writing code to directly emit IL would do the job?</p>
 <p>It's been a long time since I've written any IL-generating code, so let's take it slow. If we're starting with the case that worked with LINQ Expressions then we want to create a method that will take an <strong>Example</strong> instance and an <strong>int</strong> value in order to set the &quot;_somethingElse&quot; field on the <strong>Example</strong> instance to that new number.</p>
@@ -271,7 +271,7 @@ var fieldSetter = (Action&lt;Example, int&gt;)method.CreateDelegate(typeof(Actio
 );
 </code></pre>
 <p>I haven't recreated the benchmarks to try this code, I'm hoping that the performance difference will be minimal between setting a private readonly field via emitted IL and setting a private non-readonly field via emitted IL (which <em>is</em> benchmarked below). I'm using this approach in my <a href="https://github.com/ProductiveRage/DanSerialiser/blob/7dee571d57f13d0f63b6707d8d78d0e83b5f8ee8/DanSerialiser/Reflection/ReflectionTypeAnalyser.cs#L265">DanSerialiser</a> project.</p>
-<h3 id="performance-comparison"><a href="#performance-comparison">Performance comparison</a></h3>
+<h3 id="performance-comparison"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#performance-comparison">Performance comparison</a></h3>
 <p>So we've ascertained that there is only one way* to set a readonly field on an existing instance and, regrettably, it's also the slowest. I guess that a pertinent question to ask, though, is just <em>how much</em> slower is the slowest?</p>
 <p>* <em>(As further evidence that there isn't another way around this, I've found an issue from EntityFramework's GitHub repo: &quot;<a href="https://github.com/aspnet/EntityFramework/issues/6202">Support readonly fields</a>&quot; which says that it's possible to set a readonly property with reflection but that the issue-raiser encountered the same two failures that I've demonstrated above when he tried alternatives and no-one has proposed any other ways to tackle it)</em></p>
 <p>Obviously we can't compare the readonly-field-setting performance of the three approaches above because only one of them is actually capable of doing that. But we <em>can</em> compare the performance of something similar; setting a private (but not readonly) field, since <em>all three</em> are able to achieve that.</p>
@@ -538,9 +538,9 @@ public class SomethingWithPrivateField
 <p>What I've ignored until this point are the &quot;ConstructReflectionSetter&quot; / &quot;ConstructLinqExpressionSetter&quot; / &quot;ConstructEmittedILSetter&quot; methods. If we first look at the generation of the LINQ Expression delegate on .NET 4.6.1, we can see that the mean time to generate that delegate was around 150ms - compared to approx 10ms for the reflection delegate. Each time the LINQ Expressions delegate is used to set the field instead of the reflection delegate we save around 0.16ms. That means that we need to call the delegate around 950 times in order to pay of the cost of constructing it!</p>
 <p>As I suggested earlier, it would only make sense to investigate these sort of optimisations if you expect to execute the code over and over and over again (otherwise, why not just keep it simple and stick to using plain old reflection).. but it's still useful to have the information about just how much &quot;upfront cost&quot; there is to things like this, compared to how much you hope to save in the long run.</p>
 <p>It's also interesting to see the discrepancies between .NET Framework 4.6.1 and .NET Core 1.1 - the times to compile LINQ Expressions and emitted-IL delegates are noticeably shorter and the time to set the private field by reflection noticeably longer. In fact, these differences mean that you only need to set the field 25 times before you start to offset the cost of creating the LINQ Expressions delegate (when you compare it to updating the field using reflection) and only 14 times to offset the cost of creating the emitted-IL delegate!</p>
-<h3 id="benchmarkdotnet-is-fun"><a href="#benchmarkdotnet-is-fun">BenchmarkDotNet is fun</a></h3>
+<h3 id="benchmarkdotnet-is-fun"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#benchmarkdotnet-is-fun">BenchmarkDotNet is fun</a></h3>
 <p>I'm really happy with how easy BenchmarkDotNet makes it to measure these sorts of very short operations. Whenever I've tried to do something similar in the past, I've felt niggling doubts that maybe I'm not running it enough times or maybe there are some factors that I should try to average out. Even when I get a result, I've sometimes just looked at the single average (ie. the mean) time taken, which is a bit sloppy since the spread of results can be of vital importance as well. That BenchmarkDotNet presents the final data in such a useful way and with so few decisions on my part is fantastic.</p>
-<h3 id="benchmarking-across-multiple-frameworks"><a href="#benchmarking-across-multiple-frameworks">Benchmarking across multiple frameworks</a></h3>
+<h3 id="benchmarking-across-multiple-frameworks"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#benchmarking-across-multiple-frameworks">Benchmarking across multiple frameworks</a></h3>
 <p>I forget each time that I start a new project how the running-benchmarks-against-multiple-frameworks functionality works, so I'll add a note here for anyone else that gets confused (and, likely, for me in the future!) - the first thing to do is to manually edit the .csproj file of the benchmark project so that it includes the following:</p>
 <pre><code>&lt;TargetFrameworks&gt;netcoreapp2.0;net461&lt;/TargetFrameworks&gt;
 </code></pre>
@@ -552,7 +552,7 @@ public class SomethingWithPrivateField
 <pre><code>dotnet run --framework netcoreapp2.0 --configuration release
 </code></pre>
 <p>You have to specify a framework to run the project as but (and this is the important part) that does <em>not</em> mean that the benchmarks will only be run against the framework. What happens when you run this command is that multiple executables are built and then executed, which run the tests in each of the frameworks that you specified in the benchmark attributes and in the &quot;TargetFrameworks&quot; node in the .csproj file. The results of these multiple executables are aggregated to give you the final benchmark output.</p>
-<h3 id="net-core-upsets-me-again"><a href="#net-core-upsets-me-again">.NET Core upsets me again</a></h3>
+<h3 id="net-core-upsets-me-again"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#net-core-upsets-me-again">.NET Core upsets me again</a></h3>
 <p>On the other hand, unfortunately .NET Core has been hard work for me again when it came to BenchmarkDotNet. I made it sound very easy earlier to get everything up and running because I didn't want dilute my enthusiasm for the benchmarking. However, I did have a myriad of problems before everything started working properly.</p>
 <p>When I was hand-editing the .csproj file to target multiple frameworks (I still don't know why this isn't possible within VS when editing project properties), Visual Studio would only seem to intermittently acknowledge that I'd changed it and offer to reload. This wasn't super-critical but it also didn't fill me with confidence.</p>
 <p>When it <em>was</em> ready to build and target both .NET Framework 4.6.1 and .NET Core 1.1, I got a cryptic warning:</p>
@@ -587,11 +587,11 @@ CoreExeTest (&gt;= 1.0.0) -&gt; Microsoft.NETCore.App (&gt;= 1.1.1)</p>
 </blockquote>
 <p>This relates to an output folder created by BenchmarkDotNet. Sometimes this folder would be locked and it would not be possible to overwrite the files on the next run. Windows wouldn't let me delete the folder directly but I could trick it by renaming the folder and <em>then</em> deleting it. I didn't encounter this problem if I created an old-style .NET Framework project and used BenchmarkDotNet there - this would prevent me from running tests against multiple frameworks but it might have also prevented me from teetering over the brink of insanity.</p>
 <p>This is not how I would expect mature tooling to behave. For now, I continue to consider .NET Core as the Top Gear boys (when they still <em>were</em> the Top Gear boys) described old Alfa Romeos; &quot;you want to believe that it can be something wonderful but you couldn't, in all good conscience, recommend it to a friend&quot;.</p>
-<h3 id="summary"><a href="#summary">Summary</a></h3>
+<h3 id="summary"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#summary">Summary</a></h3>
 <p>I suspect that, to some, this may seem like one of my more pointless blog posts. I tried to do something that .NET really doesn't want you to do (and that whoever wrote the code containing the readonly auto-properties really doesn't expect you to do) and then tried to optimise that naughty behaviour - then spent a lot more time explaining how it wasn't posible to do so!</p>
 <p>However, along the way I discovered BenchmarkDotNet and I'm counting that as a win - I'll be keeping that in my arsenal for future endeavours. And I also enjoyed revisiting what is and isn't possible with reflection and reminding myself of the ways that .NET allows you to write code that could make <em>my</em> code appear to work in surprising ways.</p>
 <p>Finally, it was interesting to see how the .NET Framework compared to .NET Core in terms of performance for these benchmarks <em>and</em> to see take another look at the question of how mature .NET Core and its tooling is (or isn't). And when you learn a few things, can it ever really count as a waste of time?</p>
-<h3 id="minor-follow-up-8th-august-2017"><a href="#minor-follow-up-8th-august-2017">Minor follow-up (8th August 2017)</a></h3>
+<h3 id="minor-follow-up-8th-august-2017"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#minor-follow-up-8th-august-2017">Minor follow-up (8th August 2017)</a></h3>
 <p>A comment on this post by &quot;ai_enabled&quot; asked about the use of the reflection method &quot;SetValueDirect&quot; instead of &quot;SetValue&quot;. I must admit that I was unaware of this method but it was an interesting question posed about its performance in comparison to &quot;SetValue&quot; <em>and</em> there was a very important point made about the code that I'd presented so far when it comes to structs; in particular, because structs are copied when they're passed around, the property-update mechanisms that I've shown wouldn't have worked. I'll try to demonstrate this with some code:</p>
 <pre><code>public static void Main()
 {
@@ -815,7 +815,7 @@ var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
 <p>It's worth noting that the LINQ Expressions and emitted-IL approaches are slightly slower when working with a &quot;ref&quot; parameter than they were in the original version of the code. I suppose that this makes sense because there is an extra instruction explicitly required in the emitted-IL code and the LINQ-Expression-constructed delegate will have to deal with the added indirection under the hood (though this happens &quot;by magic&quot; and the way that LINQ Expressions code doesn't need to be changed to account for it).</p>
 <p>I guess that it's possible that &quot;SetValueDirect&quot; could be faster if you already have a <strong>TypedReference</strong> (which is what &quot;__makeRef&quot; gives you) and you want to set multiple properties on it.. but that wasn't the use case that I had in mind when I looked into all of this and so I haven't tried to measured that.</p>
 <p>All in all, this was another fun diversion. It's curious that the performance between using &quot;SetValue&quot; and &quot;__makeRef&quot; / &quot;SetValueDirect&quot; is so pronounced in the &quot;classic&quot; .NET Framework but much less so in Core. On the other hand, if the target reference is a struct then the performance discrepancies are moot since trying to use &quot;SetValue&quot; won't work!</p>
-<h4 id="some-more-notes-about.net-core"><a href="#some-more-notes-about.net-core">Some more notes about .NET Core</a></h4>
+<h4 id="some-more-notes-about.net-core"><a href="/trying-to-set-a-readonly-autoproperty-value-externally-plus-a-little-benchmarkdotnet#some-more-notes-about.net-core">Some more notes about .NET Core</a></h4>
 <p>If you want to try to reproduce this for yourself in .NET Core then (accurate as of 8th August 2017) you need to install Visual Studio 2017 15.3 Preview 2 so that you can build .NET Core 2.0 projects and you'll then need to install the NuGet package &quot;System.Runtime.CompilerServices.Unsafe&quot;*. Without both of these, you won't be able to use &quot;__makeRef&quot;, you'll get a slightly cryptic error:</p>
 <blockquote>
 <p>Predefined type 'System.TypedReference' is not defined or imported</p>
@@ -854,7 +854,7 @@ var emittedIlUpdater = (Updater)method.CreateDelegate(typeof(Updater));
 <p>In the past, I've made use of LINQ expressions for writing code that is generated at runtime that will be executed many times and would benefit from being as fast as code written at compile time. I'm by no means an expert, but I've put it to use a few times and feel like I'm slowly getting the hang of it. What struck me, the first few times that I tried to find out <em>how</em> to do things, was how sparse the information seems to be out there. There's reference material from Microsoft - which is helpful if you basically have a good grasp on what you're doing and need to look up some minutiae of the implementation. You can find quite advanced articles, but these also tend to assume deep knowledge and jump right into the deep end. Then there's beginner-oriented overview articles - these can be excellent at giving an introduction into what LINQ expressions can mean and what they can be used for, but they don't tend to go beyond fairly simple examples and don't (I found) help you get into the frame of mind that you need to build up complex expressions.</p>
 <p>I thought it might be helpful for an &quot;intermediary level&quot; article to exist that takes the basic concepts and walks through creating something useful with it.</p>
 <p>Now, I should maybe preface this with an admission that in a subsequent post to the one I quoted above (see &quot;<a href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to &quot;Implementing F#-inspired 'with' updates in C#&quot;</a>), I said that I probably wouldn't end up using this dynamic run-time-compiled code in real world projects - but it still seems like a good sized example of something real-world-<em>ish</em>. So I'm going to walk through recreating it. If you haven't read that post, no worries, I'm going to act like you haven't and explain everything as I go (and after you're finished, if you <em>haven't</em> read that post, you can go do so :)</p>
-<h3 id="the-slightly-contrived-example"><a href="#the-slightly-contrived-example">The (slightly-contrived) example</a></h3>
+<h3 id="the-slightly-contrived-example"><a href="/writing-runtime-compiled-linq-expressions#the-slightly-contrived-example">The (slightly-contrived) example</a></h3>
 <p>Here's the setup, which corresponds roughly to what I was trying to do last month. I've got a class <strong>RoleDetails</strong> -</p>
 <pre><code>public class RoleDetails
 {
@@ -1017,7 +1017,7 @@ var title2 = titleRetriever(role2); // This equals &quot;Dogsbody&quot;
 </code></pre>
 <p>Here, it's clear how to affect the <strong>Func</strong> signature - by changing the type param for &quot;Expression.Lambda&quot; and by specifying the corresponding number of parameters. Instead of the body expression and a single argument, we now specify <em>two</em> arguments. The types of the arguments in the <em>Func</em> are consistent with the types of the &quot;sourceParameter&quot; and &quot;titleParameter&quot;. The third <em>Func</em> type param is also <strong>RoleDetails</strong> since that is what is returned by the <strong>RoleDetails</strong> constructor that &quot;Expression.New&quot; is using.</p>
 <p>It's also clear how expressions can be interchanged - before the &quot;Expression.New&quot; call was taking a constructor reference and then expressions for the constructor arguments that all consisted of type <strong>MemberExpression</strong> (since this the return type of &quot;Expression.Property&quot;). Now we've switched the first <strong>MemberExpression</strong> out for a <strong>ParameterExpression</strong>. &quot;Expression.New&quot; doesn't care if the constructor argument expressions are property retrievals, method arguments, constant values - they can be anything, so long as they can be described by a type of <strong>Expression</strong>.</p>
-<h3 id="introducing-optional-arguments"><a href="#introducing-optional-arguments">Introducing Optional arguments</a></h3>
+<h3 id="introducing-optional-arguments"><a href="/writing-runtime-compiled-linq-expressions#introducing-optional-arguments">Introducing Optional arguments</a></h3>
 <p>Let's address two issue now. Firstly, there should be three arguments passed in - for each of the three constructor arguments - instead of one. And these arguments should be of type <strong>Optional&lt;T&gt;</strong>, so that they can effectively have &quot;no value&quot; and default to the value they have on the &quot;source&quot; reference.</p>
 <pre><code>private delegate RoleDetails RoleDetailsUpdater(
   RoleDetails source,
@@ -1170,11 +1170,11 @@ private RoleDetailsUpdater GetSimpleUpdater()
 }
 </code></pre>
 <p>Note the use of &quot;Expression.OrElse&quot; above. We use this since we're dealing with boolean logic (eg. is the start-date-value new <em>or</em> is the end-date-value new). There is an &quot;Expression.Or&quot; method, but that is for numeric operations (eg. 1 &amp; 4).</p>
-<h3 id="winning"><a href="#winning">Winning!</a></h3>
+<h3 id="winning"><a href="/writing-runtime-compiled-linq-expressions#winning">Winning!</a></h3>
 <p>At this point, we've achieved what I laid out as the original intention.</p>
 <p>I'm not going to pretend that it's particularly beautiful or succinct - especially compared to the code that you would write by hand. But then, if you had a scenario where you <em>could</em> write this by hand then you probably <em>would</em>, rather than having to resort to writing code that generates more code! And when I think about how LINQ expressions compare to the &quot;old school&quot; alternative of directly generating IL then it's a <em>lot</em> more read-and-write-able. Perhaps &quot;maintainable&quot; is a better word for it :)</p>
 <p>IL generation, unfortunately, still has its place - it's been a while since I looked into this, but I <em>think</em> that if you wanted to generate an entire class, rather than a delegate, then you have to resort to emitting IL.</p>
-<h3 id="debugging"><a href="#debugging">Debugging</a></h3>
+<h3 id="debugging"><a href="/writing-runtime-compiled-linq-expressions#debugging">Debugging</a></h3>
 <p>Debugging compiled expressions can be a mixed bag. If you make mistakes that compile but cause errors at runtime then you <em>may</em> get a helpful error or you may get something fairly cryptic.</p>
 <p>The safest approach, I've found, is to construct the code in the smallest functional units you can and to then test it with code that exercises every path in the generated expression. In the example above, this was done by starting with code that simply extracted a single property value from the source argument. Then multiple property values were extracted and passed into a constructor method. Then the delegate signature was changed to take multiple arguments and to use these with the constructor. Then these arguments were changed to the use <strong>Optional</strong> type and use its &quot;GetValue&quot; method to fall back to the source properties if required. Finally a guard clause was added for a null source reference and a condition added to return the source reference straight back if none of the arguments indicate that a new instance is required. If any of these steps introduced a new error, it should have been relatively easy to work out what went wrong.</p>
 <p>To illustrate, if you were adding the code that will &quot;exit early&quot; if no new instance is required, and you forgot to specify a type for the null constant - ie. instead of</p>
@@ -1229,7 +1229,7 @@ return lambda.Compile();
 }
 </code></pre>
 <p>This isn't exactly C# but it <em>does</em> illustrate the code paths in a way that is fairly comprehensible and may highlight any logic errors you've made.</p>
-<h3 id="performing-other-manipulations"><a href="#performing-other-manipulations">Performing other manipulations</a></h3>
+<h3 id="performing-other-manipulations"><a href="/writing-runtime-compiled-linq-expressions#performing-other-manipulations">Performing other manipulations</a></h3>
 <p>At this point, I'd say we've covered a lot of the basic and - hopefully - you're set up to break into the reference material (such as the MSDN docs). Most of the static &quot;Expression&quot; methods are sensibly named and so usually fairly easy to find information for with a little searching (or just relying on intellisense).</p>
 <p>If, for example, you had an <strong>Expression</strong> whose type was an array and you wanted an element from that array, you would use &quot;Expression.ArrayAccess&quot; (whose first parameter is the target <strong>Expression</strong> and the next is a set of index expression - the number of required index expressions will depend upon the number of dimensions the array has).</p>
 <p>Something I particularly remember finding difficult to track an example for was code where you needed local variables within a block. There are examples for accessing arguments and setting lambda return values and altering the values of the arguments, but setting a local variable within a block scope.. not as easy to find.</p>
@@ -1285,7 +1285,7 @@ var role2HashCode = roleDetailsHashCodeGenerator(role2);
 <p>Your code must not depend on the order in which properties are returned, because that order varies.</p>
 </blockquote>
 <p>So if I was just writing a single version of this method then I probably wouldn't bother with the OrderBy call, but since I wanted to write a LINQ-expressions-based version <em>and</em> a non-expressions-based version <em>and I wanted the two versions to return identical results</em> then I <em>do</em> need to be explicit about the property ordering.</p>
-<h3 id="returning-to-the-matter-in-hand"><a href="#returning-to-the-matter-in-hand">Returning to the matter in hand</a></h3>
+<h3 id="returning-to-the-matter-in-hand"><a href="/writing-runtime-compiled-linq-expressions#returning-to-the-matter-in-hand">Returning to the matter in hand</a></h3>
 <p>If you're happy with everything covered so far, then the code coming up won't pose any problem.</p>
 <p>There are some new <strong>Expression</strong> methods calls - &quot;Expression.MultiplyAssign&quot; corresponds to the C# statement &quot;x *= y&quot; or &quot;x = x * y&quot; and &quot;Expression.ExclusiveOrAssign&quot; corresponds to &quot;x ^= y&quot; or &quot;x = x ^ y&quot; (the XOR operation).</p>
 <p>It's worth being aware that LINQ expressions <em>can</em> be used to define looping constructs - such as a for, foreach or do-while loop - using &quot;Expression.Loop&quot; but you'll have to implement some of the logic of yourself. For a &quot;for&quot; loop, for example, you'll need to declare a local variable that is altered each iteration and then checked against a particular condition each time to determine whether the loop should be exited. For a &quot;foreach&quot; loop, you'll need to call the &quot;GetEnumerator&quot; method on the loop target and use the methods on that to proceed through or exit the loop.</p>
@@ -1500,7 +1500,7 @@ let p2 = {p1 with last=&quot;Smith&quot;}
 <pre><code>public record class Cartesian(double x: X, double y: Y);
 </code></pre>
 <p>This will define an immutable class with two read-only properties that are set through a constructor call. This future C# specification is also apparently going to allow read-only auto properties - so in my RoleDetails class above instead of &quot;get; private set;&quot; properties, which are externally unalterable but could actually be changed within the instance, the properties could be truly readonly. This <em>is</em> possible currently but it requires a private readonly field and a property with a getter that returns that field's value, which is even <em>more</em> boring boilerplate.</p>
-<h3 id="the-obvious-verbose-and-potentially-more-gc-churny-way"><a href="#the-obvious-verbose-and-potentially-more-gc-churny-way">The obvious, verbose and potentially more GC-churny way</a></h3>
+<h3 id="the-obvious-verbose-and-potentially-more-gc-churny-way"><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp#the-obvious-verbose-and-potentially-more-gc-churny-way">The obvious, verbose and potentially more GC-churny way</a></h3>
 <p>To prevent callers from having to call the constructor every time a property needs to be altered, update methods for each &quot;mutable&quot; property may be added (they don't really mutate the values since a new instance is returned rather than the value changed on the current instance). This prevents the caller from having to repeat all of the constructor arguments that are <em>not</em> to be changed whenever one property needs altering. Forcing callers to call constructors in this way is particularly annoying if a constructor argument is added, removed or re-ordered at a later date; this can result in a lot of calling code that needs correcting.</p>
 <pre><code>public class RoleDetails
 {
@@ -1542,7 +1542,7 @@ let p2 = {p1 with last=&quot;Smith&quot;}
 </code></pre>
 <p>If either of the new values is the same as the property value that it should be replacing, then no new instance is required for that property update - since the Update*{Whatever}* method will return back the same instance. But if both properties are changed then <em>two</em> new instances are required even though the first, intermediate value is immediately discarded and so is &quot;wasted&quot;.</p>
 <p>There could be an Update method that takes multiple parameters for the different properties but then you're basically just mirroing the constructor. Or there could be various Update methods that took combinations of properties to try to cover either the most common cases or <em>all</em> combinations of cases, but neither of these are particularly elegant and they would all result in quite a lot of code duplication.</p>
-<h3 id="a-better-way"><a href="#a-better-way">A better way</a></h3>
+<h3 id="a-better-way"><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp#a-better-way">A better way</a></h3>
 <p>It struck me that it should be possible to do something with named and optional method arguments (support for which was added to C# when .net 4 came out, if I remember correctly). Something like</p>
 <pre><code>public RoleDetails UpdateWith(
   string title = Title,
@@ -1641,7 +1641,7 @@ return new RoleDetails(title ?? Title, startDate ?? StartDate, endDateIfAny ?? E
   .UpdateWith(startDate = new DateTime(2014, 9, 21));
 </code></pre>
 <p>because the <strong>DateTime</strong> will be implicitly converted into an <strong>Optional&lt;DateTime&gt;</strong>. In fact, I went one step further and made it such that this is the <em>only</em> way to create an <strong>Optional</strong> that wraps a value. There is no constructor that may be used to initialise an <strong>Optional</strong> <em>with</em> a value, you <em>must</em> rely upon the implicit conversion. This means that it's very clear that there's only one way to use this type. It also happens to be very similar to the most common way that the <strong>Nullable</strong> type is used in C# - although that does have a public constructor that accepts the value to wrap, in practice I've only ever seen values cast to <strong>Nullable</strong> (as opposed to the <strong>Nullable</strong> constructor being passed the value).</p>
-<h3 id="turning-it-up-to-eleven"><a href="#turning-it-up-to-eleven">Turning it up to eleven</a></h3>
+<h3 id="turning-it-up-to-eleven"><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp#turning-it-up-to-eleven">Turning it up to eleven</a></h3>
 <p>Now this is all well and good and I think it would be a solid leap forward simply to leave things as they are shown above. Unnecessary GC pressue is avoided since there are no &quot;intermediary&quot; instances when changing properties, while the use of structs means that we're not generating a load of property-update-value references that need to be collected either.</p>
 <p>But I just couldn't resist trying to push it a bit further since there's <em>still</em> quite a lot of boring code that needs to be written for every immutable type - the UpdateWith method needs to check all of the properties to ensure that they haven't changed and then it needs to pass values into a constructor. If a class has quite a lot of properties (which is not especially unusual if the types are representing complex data) then this UpdateWith method could grow quite large. Wouldn't it be nice if we could just write something like:</p>
 <pre><code>public RoleDetails UpdateWith(
@@ -1711,7 +1711,7 @@ public UpdateWithSignature&lt;T&gt; GetGenerator&lt;T&gt;(int numberOfFramesFrom
 }
 </code></pre>
 <p>The analysis detects that the first argument is not an <strong>OptionalType&lt;T&gt;</strong> and asserts that its type is assignable to the type param T and then ignores it when generating the translation expression. The extension method will pass through the &quot;source&quot; reference where &quot;this&quot; was used in the instance method implementation shown earlier.</p>
-<h3 id="further-performance-optimisations"><a href="#further-performance-optimisations">Further performance optimisations</a></h3>
+<h3 id="further-performance-optimisations"><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp#further-performance-optimisations">Further performance optimisations</a></h3>
 <p>Although the compiled &quot;generator&quot; expressions are cached, the cache key is based upon the &quot;UpdateWith&quot; method's metadata. This means that the cost of accessing the <strong>StackFrame</strong> is paid for every &quot;UpdateWith&quot; call, along with the reflection access to get the UpdateWith argument's metadata. If you feel that this might be an unbearable toll, a simple alternative is something like</p>
 <pre><code>private static UpdateWithSignature&lt;RoleDetails&gt; updater
   = DefaultUpdateWithHelper.GetGenerator&lt;RoleDetails&gt;(typeof(RoleDetails).GetMethod(&quot;UpdateWith&quot;));
@@ -1752,7 +1752,7 @@ public RoleDetails UpdateWith(
 </code></pre>
 <p>If I'm being honest, however, if you <em>really</em> think that this optimisation is beneficial (by which, I mean you've done performance analysis and found it to be a bottleneck worth addressing), you're probably better replacing this automated approach with the hand-written code that I showed earlier. It's not all that long and it removes all of this &quot;magic&quot; and also gives the compiler more opportunity to pick up on mistakes. But most importantly (in terms of performance) may be the fact that all update arguments are passed as &quot;object&quot; in these delegates. This means that any value types (ints, structs, etc..) will be boxed when they are passed around and then unboxed when used as constructor arguments. This is explained very clearly in the article <a href="http://www.techgalaxy.net/Docs/Dev/5ways.htm">5 Basic Ways to Improve Performance in C#</a> and more information about the use of the heap and stack can be found at <a href="http://www.codeproject.com/Articles/76153/Six-important-NET-concepts-Stack-heap-value-types">Six important .NET concepts: Stack, heap, value types, reference types, boxing, and unboxing</a> - I'd not seen this article before today but I thought it explained things really clearly.</p>
 <p>Chances are that you won't have to worry about such low level details as whether values are being boxed-unboxed 99% of the time and I think there's a lot of mileage to be had from how convenient this automated approach is. But it's worth bearing in mind the &quot;what ifs&quot; of performance for the times when they <em>do</em> make a difference.</p>
-<h3 id="any-other-downsides-to-the-automagical-way"><a href="#any-other-downsides-to-the-automagical-way">Any other downsides to the automagical way?</a></h3>
+<h3 id="any-other-downsides-to-the-automagical-way"><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp#any-other-downsides-to-the-automagical-way">Any other downsides to the automagical way?</a></h3>
 <p>I can't claim to have this code in production anywhere yet. But I'm comfortable enough with it at this stage that I intend to start introducing it into prototype projects that it will be applicable to - and then look to using it in real-world, scary, production projects before too long! My only concern, really, is about making silly mistakes with typos in update argument names. If I mistyped &quot;tittle&quot; in the <strong>RoleDetails</strong> &quot;UpdateWith&quot; example I've been using, I wouldn't find out until runtime that I'd made the mistaken - at which point, the &quot;GetGenerator&quot; call would throw an exception as it wouldn't be able to match &quot;tittle&quot; to any argument on any accessible constructor. I think the trade-off here would be that every &quot;UpdateWith&quot; method that used this library would need a unit test so that discovering the problem at &quot;runtime&quot; doesn't mean &quot;when I hit code in manual testing that triggers the exception&quot; but rather equates to &quot;whenever the test suite is run - whether locally or when pushed to the build server&quot;. I doubt that Update methods of this type would normally get a unit test since they're so basic (maybe you disagree!) but in this case the convenience of using the automated &quot;GetGenerator&quot; method still wins even with the (simple) unit test recommended for each one.</p>
 <p>Now that I think about it, this is not a dissimilar situation to using a Dependency Injection framework or using AutoMapper in your code - there is a lot of convenience to be had, but at the risk that configuration errors are not exposed until the code is executed.</p>
 <p>In summary, until I find a good reason <em>not</em> to use this library going forward, I intend to do so! To revisit my (F#) inspiration, how can it not be enticing to be able to write</p>
@@ -1792,7 +1792,7 @@ var p2 = p1.UpdateWith(first:&quot;Jim&quot;,last:&quot;Smith&quot;);
   var albums = context.Albums.MapTo&lt;ImmutableAlbum&gt;();
 </code></pre>
 <p>When you've only got a couple of properties (like Key and Name in the earlier code), it's not too bad but it's still the sort of manual work that gets boring (and error prone) very quickly.</p>
-<h3 id="iqueryable-vs-ienumerable"><a href="#iqueryable-vs-ienumerable">IQueryable vs IEnumerable</a></h3>
+<h3 id="iqueryable-vs-ienumerable"><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable#iqueryable-vs-ienumerable">IQueryable vs IEnumerable</a></h3>
 <p>Allow me to briefly go off on a tangent..</p>
 <p>The <strong>IEnumerable</strong> type in .net allows for lazy initialisation such that data is only processed as it is requested. For a really simple example, the following code starts off with a data &quot;source&quot; that will generate up to ten million objects, returned as an enumerable set. On this we call Take(5), which returns another enumerable set that will only enumerate the first five items. Until ToArray is called, none of the data is actually delivered and none of the objects are created. Even when ToArray <em>is</em> called, only five of the source objects are actually initialised as that is how many are actually required - the remaining 9,999,995 objects that <em>could</em> have been created are not since they are not required (this is lazy evaluation in action).</p>
 <pre><code>var fiveItemsFromLargeEnumerableRange =
@@ -1877,7 +1877,7 @@ var p2 = p1.UpdateWith(first:&quot;Jim&quot;,last:&quot;Smith&quot;);
 </code></pre>
 <p>This not only performed an aggregate operation (by considering the number of Tracks per Album) but also incorporated the &quot;Take(5)&quot; into the query. This is an example of how a request may be translated into something handled by the data source that ensures that it can deliver the bare minimum data; if the &quot;Take(5)&quot; call had not been translated into part of the query then more rows might have been returned than we cared about. (If the &quot;Take(5)&quot; call could not have been translated into part of the database query then the first five results could have been isolated by a similar &quot;in-memory&quot; operation to that illustrated by the 1,000,000 item <strong>IEnumerable</strong> example earlier, but it wouldn't be as efficient to do so since the additional rows would have had to have been delivered from the database and then filtered out.. which would have been wasteful).</p>
 <p>These examples demonstrate some of the ways in which use of <strong>IQueryable</strong> can ensure that the minimum amount of data required is transmitted from the data source. None of them even touch the Artists table since none of the requests asked for Artist data! The <strong>IQueryable</strong> implementation is what performs this magic, whether that be provided by Entity Framework, NHibernate, SubSonic or whatever - <em>it</em> is responsible for translating expressions into SQL (or whatever language the backing data source uses; it could be another SQL-like database or it could be a document database such as <a href="http://www.mongodb.org/">MongoDB</a>).</p>
-<h3 id="applying-this-to-mappings"><a href="#applying-this-to-mappings">Applying this to mappings</a></h3>
+<h3 id="applying-this-to-mappings"><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable#applying-this-to-mappings">Applying this to mappings</a></h3>
 <p>In the above examples, ToArray() was used to force the retrieval / evaluation of the information. This could just as easily have been a call to ToList() or been a loop that enumerated through the data.</p>
 <p>With <strong>IEnumerable</strong> sets, the source data is not run through until it is explicitly enumerated. With <strong>IQueryable</strong>, the data is not retrieved from the source until the <strong>IQueryable</strong> reference is treated as an <strong>IEnumerable</strong>. This is possible since <strong>IQueryable</strong> implements <strong>IEnumerable</strong> and so any method that can operate on <strong>IEnumerable</strong> may also operate on <strong>IQueryable</strong>. But what's important here is that as soon as this is done, the <strong>IQueryable</strong> reference will then &quot;become&quot; an <strong>IEnumerable</strong> reference and the underlying data request will have been made in order for this to happen.</p>
 <p>The clever thing above, where the &quot;Take(5)&quot; method resulted in &quot;SELECT TOP (5)&quot; becoming part of the SQL query, comes about as LINQ has a load of extension methods for operating against <strong>IQueryable</strong> as well <strong>IEnumerable</strong> - so as well as</p>
@@ -1979,7 +1979,7 @@ var allAlbumKeyAndNames = context.Albums
 </blockquote>
 <p>Hmm. Bummer.</p>
 <p>But, on the whole, I thought that this general &quot;autoprojecting&quot; thing was an awesome idea! And one that I wanted to steal (er.. I mean incorporate into my own code :)</p>
-<h3 id="auto-projecting-to-immutable-types-with-the-compilable-type-converter"><a href="#auto-projecting-to-immutable-types-with-the-compilable-type-converter">Auto-Projecting to Immutable Types (with the Compilable Type Converter)</a></h3>
+<h3 id="auto-projecting-to-immutable-types-with-the-compilable-type-converter"><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable#auto-projecting-to-immutable-types-with-the-compilable-type-converter">Auto-Projecting to Immutable Types (with the Compilable Type Converter)</a></h3>
 <p>At its core, the problem is that we need to be able to provide <strong>Expression</strong>-based type converters that we can use with the <strong>IQueryable</strong>-based extension methods. Being able to do this will allow the <strong>IQueryable</strong> provider to analyse the <strong>Expressions</strong> and retrieve the bare minimum data required to satisfy the operation. I figured that this would be a walk in the park since the <strong>ICompilableTypeConverter</strong> is all about this - that's what enables its conversions to be compiled and be so fast!</p>
 <p>Unfortunately, the very idea of analysing arbitrary expressions and translating them into SQL (or whatever) is a complex matter and, since this translation is handled by the query provider, it may vary from one provider to another. So far I've only tested this with Entity Framework and it's Entity Framework's limitations that I've encountered and worked with / around.</p>
 <p>The first problem is to do with the handling of null values. If we continue with the album data model and imagine that it's actually optional to assign an artist to an album, then in such a case there would be a null ArtistKey on the Album database record. This would mean that the Artist property on the corresponding instance of the Entity-Framework-generated class would also be null. But if I try to map this onto another type structure such as with</p>
@@ -2091,7 +2091,7 @@ public class ImmutableTrack
 </code></pre>
 <p>The <em>Project</em> and <em>To</em> methods are <strong>IQueryable</strong> extensions in my &quot;<a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">Compilable Type Converter</a>&quot; project, not the ones in AutoMapper. All of the same options that I talked about <a href="/reflection-and-c-sharp-optional-constructor-arguments">last time</a> are available for the projections (so some or all of the target types may be initialised by-property-setter instead of by-constructor), the big difference is that the <strong>ProjectionConverter</strong> must be used instead of the regular <strong>Converter</strong>.</p>
 <p>And with that, I'm done! <strong>IQueryable</strong>-based mappings to immutable types are now possible in a simple and efficient manner!</p>
-<h3 id="bonus-material-dynamic-anonymous-types"><a href="#bonus-material-dynamic-anonymous-types">Bonus material: Dynamic &quot;anonymous&quot; types</a></h3>
+<h3 id="bonus-material-dynamic-anonymous-types"><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable#bonus-material-dynamic-anonymous-types">Bonus material: Dynamic &quot;anonymous&quot; types</a></h3>
 <p>The interim types that are generated by the code are created dynamically. The <strong>ProjectionConverter</strong> maintains a dictionary of generated types so if a mapping is required that requires an iterim type with the exact same set of properties as an interim type that has been used before, then a new instance of that type will be created, rather than having to build an entirely new type and then creating an instance of that. Obviously, the first time that any mapping is generated, some new types will have to be built.</p>
 <p>Since the C# compiler uses anonymous types, I'd wondered if there was some .net mechanism to generate these types on-the-fly. But after doing some testing (by compiling some code and investigating the output using <a href="http://msdn.microsoft.com/en-us/library/f7dy01k1(v=vs.110).aspx">ildasm</a>), it would seem that the compiler analyses the source code at compile time and bakes in classes to the IL that may be used for all of the required anonymous types. So that was a no-go.</p>
 <p>But a few years ago I'd been experimenting with a similar topic, so I was able to dust off and repurpose some old code. Which was convenient! All that I required was for a new type to be created with a particular set of non-indexed read-and-write properties. It doesn't need any methods, fields or events, it doesn't need any static properties, it doesn't need any read-only or write-only fields. It just requires a simple set of gettable/settable instance properties with particular names and types. I used the following to achieve this:</p>
@@ -2226,7 +2226,7 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
     </div>
     <div class="Content ArchiveByTag">
         <p class="PostDate">22 January 2014</p><h2 id="reflection-and-c-optional-constructor-arguments"><a href="/reflection-and-c-sharp-optional-constructor-arguments">Reflection and C# optional constructor arguments</a></h2>
-<h3 id="bonus-provocative-headline-like-automapper-but-100x-faster"><a href="#bonus-provocative-headline-like-automapper-but-100x-faster">Bonus provocative headline: Like AutoMapper, but 100x faster!</a></h3>
+<h3 id="bonus-provocative-headline-like-automapper-but-100x-faster"><a href="/reflection-and-c-sharp-optional-constructor-arguments#bonus-provocative-headline-like-automapper-but-100x-faster">Bonus provocative headline: Like AutoMapper, but 100x faster!</a></h3>
 <p>I overheard someone at work bemoaning the fact that StructureMap doesn't seem to support optional constructor arguments (which, having a quick scout around the internet, does indeed seem to be the case, though there are solutions out there such as <a href="http://www.sep.com/sep-blog/2010/06/04/teaching-structuremap-about-c-4-0-optional-parameters-and-default-values">Teaching StructureMap About C# 4.0 Optional Parameters and Default Values</a>).</p>
 <p>This put me in mind of the &quot;<a href="http://bitbucket.org/DanRoberts/compilabletypeconverter">Compilable Type Converter</a>&quot; project I wrote a couple of years ago. It started off life as a way to try to easily extend AutoMapper to apply all of its cleverness to constructor arguments as well as properties. So instead of using the properties on one object to populate the properties of another object, it would call a constructor on the destination class and pass in values taken from properties on the source object. (AutoMapper allows constructors to be used for creating new instances, using the &quot;ConvertUsing&quot; method, but it doesn't do its magic with name mappings and type conversions*).</p>
 <p>* <em>Note from the future: There was a time when AutoMapper didn't have good support for mapping to immutable types, it wouldn't apply automatic its name / type matching logic to the case where property values are read from the source type and used to provide constructor arguments on the destination type (and it was to fill that feature gap that I started writing the <a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">Compilable Type Converter</a>). However, that situation changed at some point and now AutoMapper does have good support for mapping to immutable types - though I wasn't able to track down from the release notes when precisely that was.</em></p>
@@ -2234,7 +2234,7 @@ namespace CompilableTypeConverter.QueryableExtensions.ProjectionConverterHelpers
 <p>The last thing I had done to it was add in support so that it could generate compiled converters that would populate the desination object using property setters (like AutoMapper does) instead of by-constructor.</p>
 <p>I wrote a couple of posts about this a long time ago, but they were early posts and they weren't written all that well, so I'm embarassed to link to them here. :)</p>
 <p>Anyway.. the point is, I was fairly confident that the Compilable Type Converter also did not support optional constructor arguments. And I didn't actually know how optional constructor arguments would look in the reflected information (the converter uses reflection to analyses the source and destination types and decide how to perform the conversion, but then generates a LINQ Expression to do the work which should have performance comparable to custom hand-written conversion code) so it seemed like a good opportunity to brush off an old project and have a bit of fun with it!</p>
-<h3 id="nets-representation-of-optional-constructor-arguments"><a href="#nets-representation-of-optional-constructor-arguments">.net's representation of optional constructor arguments</a></h3>
+<h3 id="nets-representation-of-optional-constructor-arguments"><a href="/reflection-and-c-sharp-optional-constructor-arguments#nets-representation-of-optional-constructor-arguments">.net's representation of optional constructor arguments</a></h3>
 <p>This is the easy bit. I hadn't known how easy until I looked into it, but very easy.</p>
 <p>Say there is a class</p>
 <pre><code>public class TypeWithOptionalConstructorArguments
@@ -2258,7 +2258,7 @@ var isNumberParameterOptional = numberParameter.IsOptional;
 var numberParameterDefaultValue = numberParameter.DefaultValue;
 </code></pre>
 <p>Here we find that <em>numberParameterType</em> is int, <em>isNumberParameterOptional</em> is true and <em>numberParameterDefaultValue</em> is 1. If we considered the first parameter then IsOptional would be false.</p>
-<h3 id="incorporating-this-into-the-compilable-type-converter"><a href="#incorporating-this-into-the-compilable-type-converter">Incorporating this into the Compilable Type Converter</a></h3>
+<h3 id="incorporating-this-into-the-compilable-type-converter"><a href="/reflection-and-c-sharp-optional-constructor-arguments#incorporating-this-into-the-compilable-type-converter">Incorporating this into the Compilable Type Converter</a></h3>
 <p>Before I give a quick run-down of how I made my code &quot;optional-constructor-argument aware&quot;, I'll go quickly through the core concepts it uses when trying to generate a conversion.</p>
 <p>There are Property Getters which will take a value from a property on the source type in order to satisfy a value required to generate the destination type (this value may be a constructor argument or a property, depending upon whether a by-constructor or by-property-setter conversion is desired). Property Getters come in several varieties; there is one that will map a source value if the source value's type may be assigned directly to the destination type (ie. the source value matches the destination value or inherits from it / implements it). There is one that will map enum values - from one enum to another, according to a naming convention (this convention is determined by a Name Matcher, see below). There is another one that will perform one specific type translation, so if a converter is generated for mapping between <strong>SNested</strong> and <strong>DNested</strong> then a new Property Getter may be created that will help convert type <strong>SParent</strong> to <strong>DParent</strong> if <strong>SParent</strong> has a property with type <strong>SNested</strong> that needs to be mapped to a property on <strong>DParent</strong> with type <strong>DNested</strong>. There's another that's very similar but for enumerable types, so given an <strong>SNested</strong> -&gt; <strong>DNested</strong> converter it can help map <strong>SParent</strong> to <strong>DParent</strong> if <strong>SParent</strong> has a property of type <strong>IEnumerable&lt;SNested&gt;</strong> and <strong>DParent</strong> has a property of type <strong>IEnumerable&lt;DNested&gt;</strong>.</p>
 <p>Property Getters are created by Property Getter Factories. When a conversion request is being analysed, the Property Getter Factories will be asked &quot;can you perform a mapping from Src to Dest for the property on Dest named Prop?&quot; (the property on Dest may be an actual property or it may be a constructor argument). The factory will look at all of the properties on the Src type and see which, if any, it would map onto Prop based upon the source property's name and type. The type matching depends upon what sort of Property Getter the factory can create (whether that be an assignable-to getter, an enum-translating getter, etc.. all of the options I just described above) and what name matching approach it will use. The name matching depends upon the Name Matcher that was provided to the factory at instantiation.</p>
@@ -2266,14 +2266,14 @@ var numberParameterDefaultValue = numberParameter.DefaultValue;
 <p>Finally, when a by-constructor conversion is being generated, there may be multiple constructors which may be satisfied (ie. all of their constructor arguments may be provided with values from the source object's properties). In this case, a decision will need to be made as to which constructor to use. For this, there is a Constructor Prioritiser. Each may-be-satisifed-constructor is represented by the fully-generated converter that would use that constructor. The prioritiser must then pick one to be used as the converter that should be used for that translation.</p>
 <p>The only Constructor Prioritiser implementation that I currently have is an <strong>ArgsLengthTypeConverterPrioritiser</strong>. This simply picks the constructor which has the most arguments, the thinking being that this must be the constructor that uses the most data from the source type and so will result in the best-populated destination instance possible.</p>
 <p>However, if there are two constructors, one with four compulsory arguments and one with five arguments total, but two of them optional, then the five-argument constructor may no longer be the best bet. If a conversion is available that explicitly populates those five values with data from the source object, then this is probably still the best match. But if the only conversion that uses that five-argument constructor is actually relying on the default values for those two optional arguments then it's only actually populating <em>three</em> constructor arguments from the source data, so surely the four-argument constructor is better!</p>
-<h3 id="a-quickish-explanation-of-how-i-introduced-optional-constructor-arguments"><a href="#a-quickish-explanation-of-how-i-introduced-optional-constructor-arguments">A quick(ish) explanation of how I introduced optional constructor arguments</a></h3>
+<h3 id="a-quickish-explanation-of-how-i-introduced-optional-constructor-arguments"><a href="/reflection-and-c-sharp-optional-constructor-arguments#a-quickish-explanation-of-how-i-introduced-optional-constructor-arguments">A quick(ish) explanation of how I introduced optional constructor arguments</a></h3>
 <p>So I have a <strong>CompilableTypeConverterByConstructorFactory</strong>. This has a method Get&lt;TSource, TDest&gt;() which will try return an <strong>ICompilableTypeConverter&lt;TSource, TDest&gt;</strong> that maps from <strong>TSource</strong> to <strong>TDest</strong>. If it can't create such a type converter then it will throw an exception.</p>
 <p>The particular implementation of <strong>ICompilableTypeConverter&lt;TSource, TDest&gt;</strong> returned from this class will be a <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong>.</p>
 <p>This class previously required a <strong>ConstructorInfo</strong> and a set of Property Getters for each argument in that constructor. The factory's job was to select the best <strong>ConstructorInfo</strong> and provide those Property Getters from the Property Getter Factories that it had access to. The constructor of the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> class would do some validation to ensure that the number of Property Getters matched the number of constructor arguments for the specified constructor, and that the types returned by the Property Getters matched the constructor's arguments types.</p>
 <p>The change I made was for the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> to also take a <strong>ICompilableConstructorDefaultValuePropertyGetter</strong> set - Property Getters which are associated with a particular constructor argument which has a default value, and which just return this default value when a value is requested.</p>
 <p>These Default Value Property Getters would only be specified by the Type Converter Factory if there was no Property Getter that could otherwise provide that constructor argument with a value - if it's possible to get data from the source object for a constructor argument then there's no point using the argument's default value!</p>
 <p>The benefit of providing two distinct sets of Property Getters (those relying upon default values and those not) to the <strong>CompilableTypeConverterByConstructor&lt;TSource, TDest&gt;</strong> is that it was possible to add another public property to it; the <em>NumberOfConstructorArgumentsMatchedWithNonDefaultValues</em> (this is the total number of arguments that the target constructor has minus the number of Default Value Property Getters). And the benefit of <em>this</em> is that it allows for a Constructor Prioritiser to consider the number of constructor arguments that were populated with data from the source object, as opposed to the <em>total</em> number of constructor arguments fulfilled, regardless of how many actually had to fall back on to using default values. Which addresses the problem I outlined in the section above.</p>
-<h3 id="code-updates"><a href="#code-updates">Code updates</a></h3>
+<h3 id="code-updates"><a href="/reflection-and-c-sharp-optional-constructor-arguments#code-updates">Code updates</a></h3>
 <p>While I was making these changes and experimenting with various scenarios (trying to re-familiarise myself with exactly how everything worked) I found it interesting to note how some I've changed some coding conventions over the years. Particularly, I disliked a method on the <strong>ITypeConverterFactory</strong> interface -</p>
 <pre><code>/// &lt;summary&gt;
 /// This will return null if unable to generate the specified converter
@@ -2299,7 +2299,7 @@ ITypeConverter&lt;TSource, TDest&gt; TryToGet&lt;TSource, TDest&gt;();
 ITypeConverter&lt;TSource, TDest&gt; Get&lt;TSource, TDest&gt;();
 </code></pre>
 <p>I then changed the Type Converter Factories to throw custom exceptions indicating what property could not be set on the target type or what constructor arguments could not be mappped. Changing the contract so that it is considered an error condition when a mapping could not be created resulted in more information being availble to the caller, more <em>useful and important</em> information.</p>
-<h3 id="static-convenience-wrapper"><a href="#static-convenience-wrapper">Static convenience wrapper</a></h3>
+<h3 id="static-convenience-wrapper"><a href="/reflection-and-c-sharp-optional-constructor-arguments#static-convenience-wrapper">Static convenience wrapper</a></h3>
 <p>Since I felt like I was cooking on gas at this point, I thought I'd address another problem with this project; trying to use this code for the first time (if you'd just cloned the project, for example) is difficult! I've got a ReadMe file in the project that tells you how to initialise a converter factory and then generate types but it's quite a lot of work to do so!</p>
 <p>In some of my other projects I've included &quot;convenience wrappers&quot; to do the fiddly work of initialising everything for the most common case so that the code is as easy as possible to get working with. For example, the <a href="https://bitbucket.org/DanRoberts/cssparser">CSSParser</a> has the static <strong>Parser</strong> class, with its method &quot;ParseCSS&quot; and &quot;ParseLESS&quot; (with method signatures that will read from strings or from <strong>TextReader</strong>s). The <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> has the <strong>DefaultNonCachedLessCssLoaderFactory</strong> and <strong>EnhancedNonCachedLessCssLoaderFactory</strong> which can be initialised with only an ASP.Net &quot;Server&quot; reference. And, of course, AutoMapper is phenonemally easy to get going with since there is a static <strong>Mapper</strong> class with CreateMap and Map methods (amongst many others). So I thought that <em>my</em> Type Converter library would benefit from something similar!</p>
 <p>It can't get much simpler than this:</p>
@@ -2384,7 +2384,7 @@ public enum ClearanceLevelOptions
   Maximum
 }
 </code></pre>
-<h3 id="ignoring-properties-using-default-constructor-arguments"><a href="#ignoring-properties-using-default-constructor-arguments">Ignoring properties / using default constructor arguments</a></h3>
+<h3 id="ignoring-properties-using-default-constructor-arguments"><a href="/reflection-and-c-sharp-optional-constructor-arguments#ignoring-properties-using-default-constructor-arguments">Ignoring properties / using default constructor arguments</a></h3>
 <p>If the above classes were changed such that <strong>MutablePersonDetails.RoleDetails</strong> no longer has a <em>ClearanceLevel</em> property and the <strong>ImmutablePersonDetails.RoleDetails</strong> constructor's <em>clearanceLevel</em> argument is assigned a default value..</p>
 <pre><code>// Nested type of MutablePersonDetails
 public class RoleDetails
@@ -2437,7 +2437,7 @@ Mapper.CreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.Rol
 <p>AutoMapper doesn't mind the mappings for the nested type appearing after the mapping for the &quot;containing type&quot; since it won't try to use this information until it actually performs a conversion.</p>
 <p>My <strong>Converter</strong> class, however, generates the converters when <em>CreateMap</em> (or <em>Convert</em> is called). So a mapping for the nested types must be specified before the containing type as a converter for the containing type can't be generated without knowing how to convert the nested types! While I think there are advantages to the flexibility of AutoMapper's approach (not having to worry about converter dependencies; not having to worry about the order in which mappings are specified) I also think there are advantages to my approach since an exception will be raised as soon as a mapping is requested that can not be created (along with information about what properties or constructor arguments could not be satisfied).</p>
 <p>Another advantage of the converters being generated as the mappings are specified is that the <strong>Converter</strong> is keeping track of them and can provide a reference to any of them through a call to <em>GetConverter</em>. The converters are all immutable and if a converter is returned from the <em>GetConverter</em> method then no further changes to the <strong>Converter</strong> class may affect it. This is reassuring in that the converter may be used elsewhere without having to worry about the mutability of the static <strong>Converter</strong> class but it also has performance benefits; calls to the <strong>Converter</strong>'s <em>Convert</em> method (and <em>CreateMap</em> and <em>GetConverter</em> methods) require cache lookups and locks. If you use a converter reference delivered by the <em>GetConverter</em> method then you don't need to worry about these lookups and locks. Which brings me neatly to..</p>
-<h3 id="the-compilable-type-converters-performance"><a href="#the-compilable-type-converters-performance">The Compilable Type Converter's Performance</a></h3>
+<h3 id="the-compilable-type-converters-performance"><a href="/reflection-and-c-sharp-optional-constructor-arguments#the-compilable-type-converters-performance">The Compilable Type Converter's Performance</a></h3>
 <p>First off, the Compilable Type Converter isn't intended to compete feature-for-feature with AutoMapper. AutoMapper is a well-rounded library with all sorts of functionality that address all sorts of edge cases. For example, I only encountered the <em>BeforeMap</em> and <em>AfterMap</em> calls when looking into it more deeply to write this article! It also offers <a href="https://automapper.codeplex.com/wikipage?title=Flattening">object model flattening</a> and retrieval of data through Get methods rather than properties. I don't have any intention of supporting any of these, though I <em>do</em> intend to add some custom property mappings at some point. Something like</p>
 <pre><code>Converter.BeginCreateMap&lt;ImmutablePersonDetails.RoleDetails, MutablePersonDetails.RoleDetails&gt;()
   .Custom(
@@ -2530,7 +2530,7 @@ namespace DemoApp
 <p>I wrote about the development of this across a few posts: <a href="/dynamically-applying-interfaces-to-objects">Dynamically applying interfaces to objects</a>, <a href="/dynamically-applying-interfaces-to-objects-part-2">Part 2</a> and <a href="/dynamically-applying-interfaces-to-objects-part-3">Part 3</a> (with the code available at the <a href="https://bitbucket.org/DanRoberts/cominteraction">COMInteraction project on Bitbucket</a>).</p>
 <p>And this worked fine for the purpose at hand. To be completely frank, I'm not entirely sure <em>how</em> it worked when calling into the WSC components that expose a COM interface since I'm surprised the reflection calls are able to hook into the methods! It felt a bit hacky..</p>
 <p>But just recently I've gotten into some of the nitty gritty of IDispatch (see <a href="/idispatch-iwastedtimeonthis-but-ilearntlots">IDispatch (IWastedTimeOnThis but ILearntLots)</a>) and thought maybe I could bring this information to bear on this project.</p>
-<h3 id="supporting-reflection-and-idispatch"><a href="#supporting-reflection-and-idispatch">Supporting Reflection <em>and</em> IDispatch</a></h3>
+<h3 id="supporting-reflection-and-idispatch"><a href="/supporting-idispatch-through-the-cominteraction-wrapper#supporting-reflection-and-idispatch">Supporting Reflection <em>and</em> IDispatch</a></h3>
 <p>The existing InterfaceApplierFactory class has been renamed to the <strong>ReflectionInterfaceApplierFactory</strong> and a new implementation of <strong>IInterfaceApplierFactory</strong> has been added: the <strong>IDispatchInterfaceApplierFactory</strong>. (Where do I come up with these catchy names?! :).</p>
 <p>Where the existing (and now renamed) class generated IL to access the methods and properties through reflection, the new class generates IL to access the methods and properties using the code from my previous IDispatch post, handily wrapped up into a static <strong>IDispatchAccess</strong> class.</p>
 <p>The code to do this wasn't too difficult to write, starting with the reflection-approach code as a template and writing the odd bit of test code to disassemble with ildasm if I found myself getting a bit lost.</p>
@@ -2540,9 +2540,9 @@ namespace DemoApp
 </blockquote>
 <p>I'm not 100% confident at this point that what I've done here is correct and whether or not I'm relying on some conventions that may not be guaranteed in the future. But I've just received a copy of &quot;CLR via C#&quot; in the post so maybe I'll get a better idea of what's going on and amend this in the future if required!</p>
 <p>The types generated by the <strong>IDispatchInterfaceApplierFactory</strong> will <em>not</em> work if properties are not explicitly defined (and so IL is emitted to do this properly in this case).</p>
-<h3 id="choosing-reflection-idispatch-or-neither"><a href="#choosing-reflection-idispatch-or-neither">Choosing Reflection, IDispatch (or neither)</a></h3>
+<h3 id="choosing-reflection-idispatch-or-neither"><a href="/supporting-idispatch-through-the-cominteraction-wrapper#choosing-reflection-idispatch-or-neither">Choosing Reflection, IDispatch (or neither)</a></h3>
 <p>Another new class is the <strong>CombinedInterfaceApplierFactory</strong> which is intended to take the decision-making out of the use of reflection / IDispatch. It will generate an <strong>IInterfaceApplier</strong> whose Apply method will apply an IDispatch wrapper if the object-to-wrap's type's IsCOMObject property is true. Otherwise it will use reflection. Actually, it performs a check before this to ensure that the specified object-to-wrap doesn't already implement the required interface - in which case it returns it straight back! (This was useful in some scenarios I was testing out and also makes sense; if the type doesn't require any manipulation then don't perform any).</p>
-<h3 id="not-being-lazy"><a href="#not-being-lazy">Not being Lazy</a></h3>
+<h3 id="not-being-lazy"><a href="/supporting-idispatch-through-the-cominteraction-wrapper#not-being-lazy">Not being Lazy</a></h3>
 <p>I realised, going back to this project, that I'd got over-excited when I discovered the Lazy&lt;T&gt; class in .Net 4 and used it when there was some work in the code that I wanted to defer until it was definitely required. But this, of course, meant that the code had a dependency on .Net 4! Since I imagine that this could be useful in place of the &quot;dynamic&quot; keyword in some cases, I figured it would make sense to try to remove this dependency. (My over-excitement is probably visible when I wrote about it at <a href="/check-check-it-out">Check, check it out</a>).</p>
 <p>I was using it with the &quot;threadSafe&quot; option set to true so that the work would only be executed once (at most). This is a fairly straight forward implemenation of the double-checked locking pattern (if there <em>is</em> such a thing! :) with a twist that if the work threw an exception then that exception should be thrown for not only the call on the thread that actually performed the work but also subsequent calls:</p>
 <pre><code>using System;
@@ -2619,7 +2619,7 @@ namespace COMInteraction.Misc
   }
 }
 </code></pre>
-<h3 id="conclusion"><a href="#conclusion">Conclusion</a></h3>
+<h3 id="conclusion"><a href="/supporting-idispatch-through-the-cominteraction-wrapper#conclusion">Conclusion</a></h3>
 <p>So finally, the project works with .Net 3.5 and can be used with only the following lines:</p>
 <pre><code>var interfaceApplierFactory = new CombinedInterfaceApplierFactory(
   new ReflectionInterfaceApplierFactory(&quot;DynamicAssembly&quot;, ComVisibilityOptions.Visible),
@@ -2666,7 +2666,7 @@ public class Comment
 var results = index.GetMatches(&quot;potato&quot;);
 </code></pre>
 <p><em>(Note: Ignore the fact that I'm using mutable types for the source data here when I'm always banging on about immutability - it's just for brevity of example source code :)</em></p>
-<h3 id="tweaking-the-defaults"><a href="#tweaking-the-defaults">Tweaking the defaults</a></h3>
+<h3 id="tweaking-the-defaults"><a href="/the-full-text-indexer-automating-index-generation#tweaking-the-defaults">Tweaking the defaults</a></h3>
 <p>This may be enough to get going - because once you have an IIndexGenerator you can start call GetMatches and retrieving search results straight away, and if your data changes then you can update the index reference with another call to</p>
 <pre><code>indexGenerator.Generate(posts.ToNonNullImmutableList());
 </code></pre>
@@ -2691,7 +2691,7 @@ var results = index.GetMatches(&quot;potato&quot;);
   .Get();
 </code></pre>
 <p>(There are overloads for SetWeightMultiplier and Ignore that take a PropertyInfo argument instead of the strings if that's more appropriate for the case in hand).</p>
-<h3 id="explaining-the-defaults"><a href="#explaining-the-defaults">Explaining the defaults</a></h3>
+<h3 id="explaining-the-defaults"><a href="/the-full-text-indexer-automating-index-generation#explaining-the-defaults">Explaining the defaults</a></h3>
 <p>The types that the <strong>AutomatedIndexGeneratorFactory</strong> requires are a <strong>Key Retriever</strong>, a <strong>Key Comparer</strong>, a <strong>String Normaliser</strong>, a <strong>Token Breaker</strong>, a <strong>Weighted Entry Combiner</strong> and a <strong>Token Weight Determiner</strong>.</p>
 <p>The first is the most simple - it needs a way to extract a Key for each source data instance. In this example, that's the int &quot;Id&quot; field. We have to specify the type of the source data (Post) and type of Key (int) in the generic type parameters when instantiating the <strong>AutomatedIndexGeneratorFactoryBuilder</strong>. The default behaviour is to look for properties named &quot;Key&quot; or &quot;Id&quot; on the data type, whose property type is assignable to the type of the key. So in this example, it just grabs the &quot;Id&quot; field from each Post. If alternate behaviour was required then the <strong>SetKeyRetriever</strong> method may be called on the factory builder to explicitly define a Func&lt;TSource, TKey&gt; to do the job.</p>
 <p>The default <strong>Key Comparer</strong> uses the <strong>DefaultEqualityComparer&lt;TKey&gt;</strong> class, which just checks for equality using the Equals class of TKey. If this needs overriding for any reason, then the <strong>SetKeyComparer</strong> method will take an IEqualityComparer&lt;TKey&gt; to do the job.</p>
@@ -2699,7 +2699,7 @@ var results = index.GetMatches(&quot;potato&quot;);
 <p>The <strong>Token Breaker</strong> dissects text content into individual tokens (normally individual words). The default will break on any whitespace, brackets (round, triangular, square or curly) and other punctuation that tends to define word breaks such as commas, colons, full stops, exclamation marks, etc.. (but not apostrophes, for example, which mightn't mark word breaks). There's a <strong>SetTokenBreaker</strong> which takes an ITokenBreak reference if you want it.</p>
 <p>The <strong>Weighted Entry Combiner</strong> describes the calculation for combining match weight when multiple tokens for the same Key are found. If, for example, I have the word &quot;article&quot; once in the Title of a Post (with weight multiplier 5 for Title, as in the examples above) and the same word twice in the Content, then how should these be combined into the final match weight for that Post when &quot;article&quot; is searched for? Should it be the greatest value (5)? Should it be the sum of all of the weights (5 + 1 + 1 = 7)? The <strong>Weighted Entry Combiner</strong> takes a set of match weights and must return the final combined value. The default is to sum them together, but there's always the <strong>SetWeightedEntryCombiner</strong> method if you disagree!</p>
 <p>Nearly there.. the <strong>Token Weight Determiner</strong> specifies what weight each token that is extracted from the text content should be given. By default, tokens are given a weight of 1 for each match unless they are from a property to ignore (in which they are skipped) or they are from a property that was specified by the <strong>SetWeightCombiner</strong> method, in which case they will take the value provided there. Any English stop words (common and generally irrelevant words such as &quot;a&quot;, &quot;an&quot; and &quot;the&quot;) have their weights divided by 100 (so they're not removed entirely, but matches against them count much less than matches for anything else). This entire process can be replaced by calling <strong>SetTokenWeightDeterminer</strong> with an alternate implementation (the property that the data has been extracted from will be provided so different behaviour per-source-property can be supported, if required).</p>
-<h3 id="phew"><a href="#phew">Phew!</a></h3>
+<h3 id="phew"><a href="/the-full-text-indexer-automating-index-generation#phew">Phew!</a></h3>
 <p>Well done if you got drawn in with the introductory this-will-make-it-really-easy promise and then actually got through the detail as well! :)</p>
 <p>I probably went deeper off into a tangent on the details than I really needed to for this post. But if you're somehow desperate for more then I compiled my previous posts on this topic into a <a href="/the-full-text-indexer-post-roundup">Full Text Indexer Round-up</a> where there's plenty more to be found!</p>
 <p class="PostTime">Posted at 00:01</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/the-full-text-indexer-source-locations">The Full Text Indexer: Source Locations</a></li><li><a href="/the-full-text-indexer-token-breaker-and-string-normaliser-variations">The Full Text Indexer - Token Breaker and String Normaliser variations</a></li><li><a href="/the-full-text-indexer-going-international">The Full Text Indexer - Going International!</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
@@ -2719,7 +2719,7 @@ var results = index.GetMatches(&quot;potato&quot;);
 <p>.. that ended up going on somewhat of a tangent and enabled the generation of compilable converters (using LINQ Expressions) that didn't utilise AutoMapper for the majority of simple cases.</p>
 <p>While the original intention of the project was to handle the conversion to these &quot;verbose constructor&quot;-based types, it struck me a few days ago that it shouldn't be much work to put together a class similar to the CompilableTypeConverterByConstructor that instead instantiates a type with a parameter-less constructor and sets the data through property-setters rather than by converter. The concept that started this all off in my head was a service that exposed xml-serialisable objects at the boundary but used &quot;always-valid&quot; internal representations (ie. immutable data where all values were specified and validated by constructor) - I wanted a way to convert <em>to</em> internal types. But with this property-setting approach the code could transform both ways.</p>
 <p>(Just a quick side-node that for transformations <em>to</em> data-set-by-property types, <a href="http://automapper.org">AutoMapper</a> is actually a much more full-featured package but for what I had in mind the simple name-matching in my project coupled with the significantly improved performance from the compiled converters was a better fit).</p>
-<h3 id="i-still-find-linq-expressions-hard-to-write"><a href="#i-still-find-linq-expressions-hard-to-write">I still find LINQ Expressions hard to write</a></h3>
+<h3 id="i-still-find-linq-expressions-hard-to-write"><a href="/the-artist-previously-known-as-the-automapperbyconstructor#i-still-find-linq-expressions-hard-to-write">I still find LINQ Expressions hard to write</a></h3>
 <p>I envisaged something along the lines of a new class</p>
 <pre><code>public class CompilableTypeConverterByPropertySetting&lt;TSource, TDest&gt;
     : ICompilableTypeConverter&lt;TSource, TDest&gt; where TDest : new()
@@ -2838,19 +2838,19 @@ public interface IPropertyGetter
     ).Compile();
 </code></pre>
 <p>.. so that it will return the default value to TDest (null unless TDest is a ValueType) if the TSource value is null.</p>
-<h3 id="wrapping-in-a-factory"><a href="#wrapping-in-a-factory">Wrapping in a Factory</a></h3>
+<h3 id="wrapping-in-a-factory"><a href="/the-artist-previously-known-as-the-automapperbyconstructor#wrapping-in-a-factory">Wrapping in a Factory</a></h3>
 <p>As with the similar CompilableTypeConverterByConstructor class there's a factory class which will examine given TSource and TDest types and try to generate a CompilableTypeConverterByPropertySetting&lt;TSource, TDest&gt; instance based on the ICompilablePropertyGetter set it has (and the INameMatcher for matching source and destination properties).</p>
 <p>I've also updated the ExtendableCompilableTypeConverterFactory (see <a href="/the-lesseffort-extendable-linqcompilable-mappers">The Less-Effort Extendable LINQ-compilable Mappers</a>) such that it is more generic and doesn't insist on being based around CompilableTypeConverterByConstructorFactory. There is now a static helper class to instantiate an ExtendableCompilableTypeConverterFactory instance based upon whether the target type is to have its data set by-constructor or by-property-setting since the changes to ExtendableCompilableTypeConverterFactory have made it very abstract!</p>
-<h3 id="splitting-the-automapper-dependency"><a href="#splitting-the-automapper-dependency">Splitting the AutoMapper dependency</a></h3>
+<h3 id="splitting-the-automapper-dependency"><a href="/the-artist-previously-known-as-the-automapperbyconstructor#splitting-the-automapper-dependency">Splitting the AutoMapper dependency</a></h3>
 <p>Since the majority of work in this solution no longer requires AutoMapper, I've broken out a separate project &quot;AutoMapperIntegration&quot; which houses the AutoMapperEnabledPropertyGetter and AutoMapperEnabledPropertyGetterFactory classes so now the main project has no AutoMapper reference. My original intention was improve how AutoMapper worked with by-constructor conversions and this functionality is still available - without taking advantage of the compiled converters - by referencing the main project along with AutoMapperIntegration (and so the example in <a href="/teaching-automapper-about-verbose-constructors">Teaching AutoMapper about &quot;verbose constructors&quot;</a> is still applicable).</p>
 <p>And so I've renamed the solution itself to...</p>
-<h3 id="the-compilable-type-converter"><a href="#the-compilable-type-converter">The Compilable Type Converter!</a></h3>
+<h3 id="the-compilable-type-converter"><a href="/the-artist-previously-known-as-the-automapperbyconstructor#the-compilable-type-converter">The Compilable Type Converter!</a></h3>
 <p>Yeah, yeah, not too imaginative a title, I will admit! :)</p>
 <p>I've actually moved my code over to BitBucket (see <a href="/being-a-dirty-githubtobitbucket-turncoat">upcoming post</a>!) from GitHub, so the code that I've been talking about can now be found at:</p>
 <p><a href="https://bitbucket.org/DanRoberts/compilabletypeconverter">https://bitbucket.org/DanRoberts/compilabletypeconverter</a></p>
-<h3 id="an-apology"><a href="#an-apology">An apology</a></h3>
+<h3 id="an-apology"><a href="/the-artist-previously-known-as-the-automapperbyconstructor#an-apology">An apology</a></h3>
 <p>This has been a particularly dry and largely self-involved post but if the Compilable Type Converter sounds like it might be useful to you, check out that BitBucket link and there's an introduction on the Overview page which jumps straight into example code.</p>
-<h3 id="examples"><a href="#examples">Examples</a></h3>
+<h3 id="examples"><a href="/the-artist-previously-known-as-the-automapperbyconstructor#examples">Examples</a></h3>
 <p>To demonstrate the generation of a converter from a generic SourceType class to one that is based upon verbose constructors:</p>
 <pre><code>// Prepare a converter factory using the base types (AssignableType and
 // EnumConversion property getter factories)
@@ -3115,7 +3115,7 @@ var converterFactory = new ExtendableCompilableTypeConverterFactory(
 converterFactory = converterFactory.CreateMap&lt;SourceRole, DestRole&gt;();
 var converter = converterFactory.Get&lt;SourceEmployee, DestEmployee&gt;();
 </code></pre>
-<h3 id="the-extendablecompilabletypeconverterfactory"><a href="#the-extendablecompilabletypeconverterfactory">The ExtendableCompilableTypeConverterFactory</a></h3>
+<h3 id="the-extendablecompilabletypeconverterfactory"><a href="/the-lesseffort-extendable-linqcompilable-mappers#the-extendablecompilabletypeconverterfactory">The ExtendableCompilableTypeConverterFactory</a></h3>
 <p>This class basically wraps up the duplication seen above and returns a new ExtendableCompilableTypeConverterFactory instance each time that CreateMap is successfully called, the new instance having a Compilable Property Getter than can support that mapping. If the CreateMap calls was <em>not</em> successful then an exception will be raised - this will be case if there is no constructor on the destination type whose arguments can all be satisified by properties on the source type (this also covers cases where additional mappings are required for referenced types). This exception is equivalent to the AutoMapperMappingException that AutoMapper throws in similar circumstances.</p>
 <p>I'm just going to jump right in with this - if you've been reading this far then this will hold no challenges or surprises.</p>
 <pre><code>public class ExtendableCompilableTypeConverterFactory : ICompilableTypeConverterFactory
@@ -3248,7 +3248,7 @@ public class DestEmployee
 }
 </code></pre>
 <p>as the CreateMap would return a Converter Factory that could map SourceRole to DestRole <em>and</em> IEnumerable&lt;SourceRole&gt; to IEnumerable&lt;DestRole&gt;.</p>
-<h3 id="createmap-vs-addnewconverter"><a href="#createmap-vs-addnewconverter">CreateMap vs AddNewConverter</a></h3>
+<h3 id="createmap-vs-addnewconverter"><a href="/the-lesseffort-extendable-linqcompilable-mappers#createmap-vs-addnewconverter">CreateMap vs AddNewConverter</a></h3>
 <p>The CreateMap method will try to generate a new Converter and build new Property Getter Factories using that by passing it to AddNewConverter. If you need to add any custom mapping mechanisms then AddNewConverter may be called with an ICompilableTypeConverter.</p>
 <p>For example, if our types now looked like</p>
 <pre><code>public class SourceEmployee
@@ -3307,7 +3307,7 @@ public class CompilableIntToStringTypeConverter : ICompilableTypeConverter&lt;in
 }
 </code></pre>
 <p>See, I promised last time that splitting ICompilableTypeConverter away from ICompilableTypeConverterByConstructor at some point! :)</p>
-<h3 id="signing-off"><a href="#signing-off">Signing off</a></h3>
+<h3 id="signing-off"><a href="/the-lesseffort-extendable-linqcompilable-mappers#signing-off">Signing off</a></h3>
 <p>This has all turned into a bit of a saga! The final code for all this can be found at</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/</a></p>
 <p>I've not done <em>loads</em> of performance testing but the generated Converters have consistently been around 1.1 or 1.2 times as slow as hand-rolled code (ie. approximately the same), not including the work required to generate the Converters. Compared to AutoMapper, this is quite a win (which was what originally inspired me to go on this journey). But out of the box it doesn't support all the many configurations that AutoMapper does! My main use case was to map legacy WebService objects (with parameter-less constructors) onto internal objects (with verbose constructors) which is all done. But there's currently no way to map back.. I think that's something to worry about another day! :)</p>
@@ -3355,7 +3355,7 @@ public class DestRole
 <p>This was all kicked off initially since I was using <a href="http://automapper.codeplex.com/">AutoMapper</a> for some work and wasn't happy with its approach to mapping to types that have to be initialised with verbose constructors (as opposed to a parameter-less constructor and then the setting of individual properties). This much was achieved and the solution can be found here -</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a>.</p>
 <p>But I wanted to see if I could improve the performance by removing AutoMapper from the equation and using LINQ Expressions.</p>
-<h3 id="a-more-detailed-recap"><a href="#a-more-detailed-recap">A more detailed recap</a></h3>
+<h3 id="a-more-detailed-recap"><a href="/extendable-linqcompilable-mappers#a-more-detailed-recap">A more detailed recap</a></h3>
 <p>Where we left the code as of</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters</a></p>
 <p>we had the class</p>
@@ -3557,7 +3557,7 @@ public interface IPropertyGetter
 }
 </code></pre>
 <p>and to generate instances of these classes we had some factories (CompilableTypeConverterByConstructorFactory, CompilableAssignableTypesPropertyGetterFactory and CompilableEnumConversionPropertyGetterFactory). These would do the work of examining the properties and constructors of specified source and destination type pairs and determining the best constructor that could be satisfied (if any) with the Compilable Property Getters. The code in these factories is none too exciting.</p>
-<h3 id="the-problem"><a href="#the-problem">The problem</a></h3>
+<h3 id="the-problem"><a href="/extendable-linqcompilable-mappers#the-problem">The problem</a></h3>
 <p>If the mappings we want to generate are for very simple structures (in this case, &quot;simple&quot; means that all property-to-constructor-argument mappings are either directly assignable-to or are enum mappings) then everything's rosy - eg.</p>
 <pre><code>public class SourceEmployee
 {
@@ -3591,7 +3591,7 @@ public enum DestRole
 </code></pre>
 <p>(The enum mapping in this example would be handled by specifying a CaseInsensitiveSkipUnderscoreNameMatcher for the CompilableEnumConversionPropertyGetterFactory).</p>
 <p>But the problem I opened with does <em>not</em> come under this &quot;simple structure&quot; umbrella as in that case SourceRole and DestRole are types for which we have no Compilable Property Getter! Oh noes!</p>
-<h3 id="the-compilabletypeconverterpropertygetter"><a href="#the-compilabletypeconverterpropertygetter">The CompilableTypeConverterPropertyGetter</a></h3>
+<h3 id="the-compilabletypeconverterpropertygetter"><a href="/extendable-linqcompilable-mappers#the-compilabletypeconverterpropertygetter">The CompilableTypeConverterPropertyGetter</a></h3>
 <p>For inspiration, I go back to AutoMapper since it too can not magically handle nested types -</p>
 <pre><code>class Program
 {
@@ -3857,7 +3857,7 @@ public Expression GetTypeConverterExpression(Expression param)
 }
 </code></pre>
 <p>The only notable difference is that GetTypeConverterExpression should return an Expression that can deal with null values - we need this so that null properties can be retrieved from source types and passed to destination type constructors. Previously there was a null check against the &quot;src&quot; parameter passed to the Convert method, but this can be relaxed now that nulls have to be supported for this class to work as part of a Property Getter.</p>
-<h3 id="almost-there"><a href="#almost-there">Almost there!</a></h3>
+<h3 id="almost-there"><a href="/extendable-linqcompilable-mappers#almost-there">Almost there!</a></h3>
 <p>With the introduction of a CombinedCompilablePropertyGetterFactory (which will run through a set a Compilable Property Getter Factories for each request until one of the returns a non-null value to the Get request), we end up with this structure:</p>
 <pre><code>var nameMatcher = new CaseInsensitiveSkipUnderscoreNameMatcher();
 var converterFactory = new CompilableTypeConverterByConstructorFactory(
@@ -3911,7 +3911,7 @@ var dest = employeeConverter.Convert(
 </code></pre>
 <p>Hoorah!</p>
 <p>Now, there's a slight refinement that I want to look at <a href="/the-lesseffort-extendable-linqcompilable-mappers">next time</a> but I think this post has gone on more than long enough.</p>
-<h3 id="footnote"><a href="#footnote">Footnote</a></h3>
+<h3 id="footnote"><a href="/extendable-linqcompilable-mappers#footnote">Footnote</a></h3>
 <p>For the super-observant, I mentioned that the use of ITypeConverter (as opposed to necessarily requiring ITypeConverterByConstructor) would be touched on again in this post. Since I've run out of steam that will be covered <a href="/the-lesseffort-extendable-linqcompilable-mappers">next time</a> too.</p>
 <p class="PostTime">Posted at 14:11</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/reflection-and-c-sharp-optional-constructor-arguments">Reflection and C# optional constructor arguments</a></li><li><a href="/the-lesseffort-extendable-linqcompilable-mappers">The Less-Effort Extendable LINQ-compilable Mappers</a></li><li><a href="/automapperbyconstructor-without-automapper-and-faster">AutoMapper-By-Constructor without AutoMapper.. and faster</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/AutoMapper" title="8 Posts">AutoMapper</a></li><li><a href="/Archive/Tag/LINQ" title="13 Posts">LINQ</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
             <p class="Comments">
@@ -3960,7 +3960,7 @@ public class ExampleObject
     }
 }
 </code></pre>
-<h3 id="task-1-the-iinterfaceapplier-class"><a href="#task-1-the-iinterfaceapplier-class">Task 1: The IInterfaceApplier class</a></h3>
+<h3 id="task-1-the-iinterfaceapplier-class"><a href="/dynamically-applying-interfaces-to-objects-part-3#task-1-the-iinterfaceapplier-class">Task 1: The IInterfaceApplier class</a></h3>
 <p>The first part is fairly straight-forward so I'll jump straight in -</p>
 <pre><code>public class InterfaceApplierFactory : IInterfaceApplierFactory
 {
@@ -4080,7 +4080,7 @@ public interface IInterfaceApplier
 </code></pre>
 <p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an &quot;IInterfaceApplier&quot; is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
 <p>I've also supported an alternative method signature for GenerateInterfaceApplier such that the target interface can be specified as an argument rather than a typeparam to a generic method - this will become important in the next section and the only interesting things to note are how IInterfaceApplier&lt;T&gt; is returned from the generic method as opposed to the IInterfaceApplier returned from the typeparam-less signature and how the alternate method calls into the typeparam'd version using reflection.</p>
-<h3 id="task-2-recursively-applying-interfaces"><a href="#task-2-recursively-applying-interfaces">Task 2: Recursively applying interfaces</a></h3>
+<h3 id="task-2-recursively-applying-interfaces"><a href="/dynamically-applying-interfaces-to-objects-part-3#task-2-recursively-applying-interfaces">Task 2: Recursively applying interfaces</a></h3>
 <p>The approach I'm going to use here is to introduce a new interface that will be used when generating the interface appliers -</p>
 <pre><code>public interface IReadValueConverter
 {
@@ -4281,7 +4281,7 @@ else
 
 ilFunc.Emit(OpCodes.Ret);
 </code></pre>
-<h3 id="task-2.1-implementing-ireadvalueconverter"><a href="#task-2.1-implementing-ireadvalueconverter">Task 2.1: Implementing IReadValueConverter</a></h3>
+<h3 id="task-2.1-implementing-ireadvalueconverter"><a href="/dynamically-applying-interfaces-to-objects-part-3#task-2.1-implementing-ireadvalueconverter">Task 2.1: Implementing IReadValueConverter</a></h3>
 <p>A naive implementation might be as follows:</p>
 <pre><code>public class SimpleReadValueConverter : IReadValueConverter
 {
@@ -4442,7 +4442,7 @@ namespace Tester
 }
 </code></pre>
 <p>Each unique interface applier has a specific class name (of the form &quot;InterfaceApplier{0}&quot; where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one &quot;wasted&quot; generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
-<h3 id="inaccessible-interface"><a href="#inaccessible-interface">&quot;Inaccessible Interface&quot;</a></h3>
+<h3 id="inaccessible-interface"><a href="/dynamically-applying-interfaces-to-objects-part-3#inaccessible-interface">&quot;Inaccessible Interface&quot;</a></h3>
 <p>In the above example, the INode interface has to be located outside of the Program class since it must be accessible by the InterfaceApplierFactory and the Program class is private. This isn't an issue for the Node class as the InterfaceApplierFactory doesn't need direct access to that, it just returns an IInterfaceApplier that we pass the n2 reference to as an argument. Alternatively, the Program class could be made public. This isn't exactly rocket science but if it slips your mind then you're presented with an error such as -</p>
 <blockquote>
 <p>TypeLoadException: &quot;Type <code>'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8'</code> from assembly <code>'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null'</code> is attempting to implement an inaccessible interface.&quot;</p>
@@ -4470,7 +4470,7 @@ namespace Tester
 <li>Handling interface hierarchies</li>
 <li>Marking the wrapper as being ComVisible</li>
 </ol>
-<h3 id="wrapping-up-in-a-method"><a href="#wrapping-up-in-a-method">Wrapping up in a method</a></h3>
+<h3 id="wrapping-up-in-a-method"><a href="/dynamically-applying-interfaces-to-objects-part-2#wrapping-up-in-a-method">Wrapping up in a method</a></h3>
 <p>Part one is easy. Take the code from the last article and wrap in</p>
 <pre><code>public static T WrapObject&lt;T&gt;(object src)
 {
@@ -4489,7 +4489,7 @@ namespace Tester
 }
 </code></pre>
 <p>Ta-da! Note that we ensure that the typeparam T really <em>is</em> an interface - we made assumptions about this in the last article, so we need to assert this fact here. (It means that we only ever have to deal with properties and methods, and that they will always be public).</p>
-<h3 id="handling-interface-hierarchies"><a href="#handling-interface-hierarchies">Handling interface hierarchies</a></h3>
+<h3 id="handling-interface-hierarchies"><a href="/dynamically-applying-interfaces-to-objects-part-2#handling-interface-hierarchies">Handling interface hierarchies</a></h3>
 <p>This part is not much more difficult. We'll introduce something to recursively trawl through any interfaces that the target interface implements and build a list of them all:</p>
 <pre><code>public class InterfaceHierarchyCombiner
 {
@@ -4554,7 +4554,7 @@ foreach (var property in interfaces.SelectMany(i =&gt; i.GetProperties()))
 </code></pre>
 <p>and likewise for the methods.</p>
 <p>It's worth noting that there may be multiple methods within the interface hierarchy with the same name and signature. It may be worth keeping track of which properties / methods have had corresponding IL generated but - other than generating more instructions in the loop than strictly necessary - it doesn't do any harm generating duplicate properties or methods (so I haven't worried about it for now).</p>
-<h3 id="com-visibility"><a href="#com-visibility">Com Visibility</a></h3>
+<h3 id="com-visibility"><a href="/dynamically-applying-interfaces-to-objects-part-2#com-visibility">Com Visibility</a></h3>
 <p>What I wanted to do for the wrappers I was implementing was to create classes with the <strong>[ComVisible(true)]</strong> and <strong>[ClassInterface(ClassInterface.None)]</strong> attributes. This is achieved by specifying these attributes on the typeBuilder (as seen in the code in the last article):</p>
 <pre><code>typeBuilder.SetCustomAttribute(
     new CustomAttributeBuilder(
@@ -4570,7 +4570,7 @@ typeBuilder.SetCustomAttribute(
 );
 </code></pre>
 <p>Again, easy! Once you know how :)</p>
-<h3 id="example-code-jumping-to-the-end"><a href="#example-code-jumping-to-the-end">Example code / jumping to the end</a></h3>
+<h3 id="example-code-jumping-to-the-end"><a href="/dynamically-applying-interfaces-to-objects-part-2#example-code-jumping-to-the-end">Example code / jumping to the end</a></h3>
 <p>I've not included a complete sample here since it would take up a fairly hefty chunk of space but also because I created a GitHub repository with the final code. This can be found at <a href="https://github.com/ProductiveRage/COMInteraction">https://github.com/ProductiveRage/COMInteraction</a></p>
 <p>This includes the work here but also the work I want to address next time; a way to automagically wrap return values where required and a way to change the WrapObject method so that if the same interface is to be applied to multiple objects, only a single call is required (and an object be returned that can wrap any given reference in that interface). The example I put out for this return-value-wrapping was that we want to wrap an object in ITest and have the return value from its Get method <em>also</em> be wrapped if it did not already implement IEmployee:</p>
 <pre><code>public interface ITest
@@ -4596,7 +4596,7 @@ public interface IEmployee
 <p>Writing the interfaces is valuable since it enables some documentation-through-comments to be generated for each method and property and forces me to look into the idiosyncracies of the various components.</p>
 <p>However, writing endless wrappers for the components to &quot;join&quot; them to the interfaces sounded boring! Even if I used the .Net 4.0 &quot;dynamic&quot; keyword it seemed like there'd be a lot of repitition and opportunity for me to mistype a property name and not realise until debugging / writing tests. (Plus I found a problem that prevented me from using &quot;dynamic&quot; with the WSCs I was wrapping - see the bottom of this post for more details).</p>
 <p>I figured this is the sort of thing that should be dynamically generatable from the interfaces instead of writing them all by hand - something like how Moq can create generate Mock&lt;ITest&gt; implementations. I did most of this investigation back in Summer, not long after the AutoMapper work I was looking into, and had hoped I'd be able to leverage my sharpened Linq Expression dynamic code generation skills. Alas, it seems that new classes can not be defined in this manner so I had to go deeper..</p>
-<h3 id="reflection.emit"><a href="#reflection.emit">Reflection.Emit</a></h3>
+<h3 id="reflection.emit"><a href="/dynamically-applying-interfaces-to-objects#reflection.emit">Reflection.Emit</a></h3>
 <p>I was aware that IL could be generated by code at runtime and executed as any other other loaded assembly might be. I'd read (and chuckled at) this article in the past but never taken it any further: <a href="http://www.codeproject.com/Articles/19513/Dynamic-But-Fast-The-Tale-of-Three-Monkeys-A-Wolf">Dynamic... But Fast: The Tale of Three Monkeys, A Wolf and the DynamicMethod and ILGenerator Classes</a></p>
 <p>As I tried to find out more information, though, it seemed that a lot of articles would make the point that you could find out how to construct IL by using the IL Disassembler that's part of the .Net SDK: ildasm.exe (located in C:\Program Files\Microsoft SDKs\Windows\v7.0A\bin on my computer). This makes sense because once you start constructing simple classes and examining the generated code in ildasm you can start to get a reasonable idea for how to write the generation code yourself. But it <em>still</em> took me quite a while to get to the point where the following worked!</p>
 <p>What I really wanted was something to take, for example:</p>
@@ -4642,7 +4642,7 @@ public interface IEmployee
 }
 </code></pre>
 <p>It may seem like using reflection will result in there being overhead in the calls but the primary objective was to wrap a load of WSCs in C# interfaces so they could be rewritten later while doing the job for now - so performance wasn't really a massive concern at this point.</p>
-<h3 id="somewhere-to-work-in"><a href="#somewhere-to-work-in">Somewhere to work in</a></h3>
+<h3 id="somewhere-to-work-in"><a href="/dynamically-applying-interfaces-to-objects#somewhere-to-work-in">Somewhere to work in</a></h3>
 <p>The first thing to be aware of is that we can't create new classes in the current assembly, we'll have to create them in a new one. So we start off with</p>
 <pre><code>var assemblyBuilder = Thread.GetDomain().DefineDynamicAssembly(
   new AssemblyName(&quot;DynamicAssembly&quot;), // This is not a magic string, it can be called anything
@@ -4669,7 +4669,7 @@ var typeBuilder = moduleBuilder.DefineType(
 </code></pre>
 <p>The TypeAttribute values I copied from the ildasm output I examined.</p>
 <p>Note that we're specifying ITest as the interface we're implementing by passing it as the &quot;interfaces&quot; parameter to the moduleBuilder's DefineType method.</p>
-<h3 id="the-constructor"><a href="#the-constructor">The Constructor</a></h3>
+<h3 id="the-constructor"><a href="/dynamically-applying-interfaces-to-objects#the-constructor">The Constructor</a></h3>
 <p>The constructor is fairly straight forward. The thing that took me longest to wrap my head around was how to form the &quot;if (src == null) throw new ArgumentNullException()&quot; construct. If seems that this is most easily done by declaring a label to jump to if src is <strong>not</strong> null which allows execution to leap over the point at which an ArgumentNullException will be raised.</p>
 <pre><code>// Declare private _src field
 var srcField = typeBuilder.DefineField(&quot;_src&quot;, typeof(object), FieldAttributes.Private);
@@ -4701,7 +4701,7 @@ ilCtor.Emit(OpCodes.Stfld, srcField);
 // All done!
 ilCtor.Emit(OpCodes.Ret);
 </code></pre>
-<h3 id="properties"><a href="#properties">Properties</a></h3>
+<h3 id="properties"><a href="/dynamically-applying-interfaces-to-objects#properties">Properties</a></h3>
 <p>Although there's only a single property in the ITest example we're looking at, we might as look ahead and loop over <em>all</em> properties the interface has so we can apply the same sort of code to other interfaces. Since we <em>are</em> dealing with interfaces, we only need to consider whether a property is gettable, settable or both - there's no public / internal / protected / private / etc.. to worry about. Likewise, we only have to worry about properties and methods - interfaces can't declare fields.</p>
 <pre><code>foreach (var property in typeof(ITest).GetProperties())
 {
@@ -4819,7 +4819,7 @@ ilCtor.Emit(OpCodes.Ret);
 <p>is a bit painful as we have to declare an array with a single element to pass to the method, where that single element is the &quot;value&quot; reference available within the setter.</p>
 <p>Also worthy of note is that when returning a ValueType or setting a ValueType. As we're expecting to either return an object or set an object, the value has to be &quot;boxed&quot; otherwise bad things will happen!</p>
 <p>Like the TypeAttributes in the Constructor, the MethodAttributes I've applied here were gleaned from looking at IL generated by Visual Studio.</p>
-<h3 id="methods"><a href="#methods">Methods</a></h3>
+<h3 id="methods"><a href="/dynamically-applying-interfaces-to-objects#methods">Methods</a></h3>
 <p>We're on the home stretch now! Methods are very similar to the property setters except that we may have zero, one or multiple parameters to handle and we may or may not (if the return type is void) return a value from the method.</p>
 <pre><code>foreach (var method in typeof(ITest).GetMethods())
 {
@@ -4901,7 +4901,7 @@ ilCtor.Emit(OpCodes.Ret);
 </code></pre>
 <p>The boxing of ValueTypes when passed as parameters or returned from the method is required, just like the property accessors.</p>
 <p>The only real point of interest here is the array generation for the parameters - this also took me a little while to wrap my head around! You may note that I've been a bit lazy and not supported optional, out or ref parameters - I didn't need these for anything I was working on and didn't feel like diving into it at this point. I'm fairly sure that if they become important features then whipping out ildasm and looking at the generated code there will reveal the best way to proceed with these.</p>
-<h3 id="the-payoff"><a href="#the-payoff">The payoff!</a></h3>
+<h3 id="the-payoff"><a href="/dynamically-applying-interfaces-to-objects#the-payoff">The payoff!</a></h3>
 <p>Now that we've defined everything about the class, we can instantiate it!</p>
 <pre><code>var wrapper = (ITest)Activator.CreateInstance(
   typeBuilder.CreateType(),
@@ -4910,7 +4910,7 @@ ilCtor.Emit(OpCodes.Ret);
 </code></pre>
 <p>This gives us back an instance of a magic new class that wraps a specified &quot;src&quot; and passes through the ITest properties and methods! If it's applied to an object that doesn't have the required properties and methods then exceptions will be thrown when they are called - the standard exceptions that reflection calls to invalid properties/methods would result in.</p>
 <p>But I think that's pretty much enough for this installment - it's been a bit dry but I think it's been worthwhile!</p>
-<h3 id="and-then"><a href="#and-then">And then..</a></h3>
+<h3 id="and-then"><a href="/dynamically-applying-interfaces-to-objects#and-then">And then..</a></h3>
 <p>There are a lot of extension points that naturally arise from this rough-from-the-edges code - the first things that spring to my mind are a way to wrap this up nicely into a generic class that could create wrappers for any given interface, a way to handle interface inheritance, a way to possibly wrap the returned values - eg. if we have</p>
 <pre><code>public interface ITest
 {
@@ -4926,7 +4926,7 @@ public interface IEmployee
 <p>can the method that applies ITest to an object also apply IEmployee to the value returned from ITest.Get if that value itself doesn't already implement IEmployee??</p>
 <p>Finally, off the top of my head, if I'm using these generated classes to read interact with WSCs / COM components, am I going to need to pass references over <em>to</em> COM components? If so, I'm going to have to find a way to flag them as ComVisible.</p>
 <p>But these are issues to address another time :)</p>
-<h3 id="footnote-wsc-properties-and-dynamic"><a href="#footnote-wsc-properties-and-dynamic">Footnote: WSC properties and &quot;dynamic&quot;</a></h3>
+<h3 id="footnote-wsc-properties-and-dynamic"><a href="/dynamically-applying-interfaces-to-objects#footnote-wsc-properties-and-dynamic">Footnote: WSC properties and &quot;dynamic&quot;</a></h3>
 <p>The code here doesn't use the .Net 4.0 &quot;dynamic&quot; keyword and so will compile under .Net 2.0. I had a bit of a poke around in the IL generated that makes use of dynamic since in some situations it should offer benefits - often performance is one such benefit! However, in the particularly niche scenario I'm working with it refuses to work :( Most of the components I'm wrapping are legacy VBScript WSCs and trying to set properties on these seems to fail when using dynamic.</p>
 <p>I've pulled this example from a test (in xUnit) I wrote to illustrate that there were issues ..</p>
 <pre><code>[Fact]
@@ -5052,7 +5052,7 @@ private class NullCache : ICache
     Expression GetTypeConverterExpression(Expression param);
 }
 </code></pre>
-<h3 id="compilable-property-getter"><a href="#compilable-property-getter">Compilable Property Getter</a></h3>
+<h3 id="compilable-property-getter"><a href="/automapperbyconstructor-without-automapper-and-faster#compilable-property-getter">Compilable Property Getter</a></h3>
 <p>Turns it out this was quite easy to implement if you know how.. but quite difficult to find examples out there if you don't! One of the things I like about LINQ Expressions code is that when you read it back it scans quite well and kinda makes sense. However, I'm still really not that experienced with it and when I want to try something new it takes me quite a while to get to grips with how I need to form the code.</p>
 <p>The first property getter I've got will retrieve the value of a property from a specified source type TSourceObject, where the property value is of type TPropertyAsRetrieved. TPropertyAsRetrieved in this case must be assignable-to from the type of the property on TSourceObject. So TPropertyAsRetrieved could be a string IEnumerable if the property on TSourceObject was a string array, for example (as IEnumerable&lt;string&gt; is assignable-to from string[]).</p>
 <pre><code>public class CompilableAssignableTypesPropertyGetter&lt;TSourceObject, TPropertyAsRetrieved&gt;
@@ -5150,7 +5150,7 @@ private class NullCache : ICache
     }
 }
 </code></pre>
-<h3 id="compilable-type-converter-by-constructor"><a href="#compilable-type-converter-by-constructor">Compilable Type-Converter-By-Constructor</a></h3>
+<h3 id="compilable-type-converter-by-constructor"><a href="/automapperbyconstructor-without-automapper-and-faster#compilable-type-converter-by-constructor">Compilable Type-Converter-By-Constructor</a></h3>
 <p>The general concept for this is straight-forward; a CompilableTypeConverterByConstructor&lt;TSource, TDest&gt; class will take a set of compilable property getters and a ConstructorInfo reference (that is used to instantiates instances of TDest and that takes the same number of parameters are there are property getters specified). The compilable type converter generates a LINQ Expression to perform the translation from TSource to TDest, given a ParameterExpression for the source object -</p>
 <pre><code>public Expression GetTypeConverterExpression(Expression param)
 {
@@ -5186,7 +5186,7 @@ private class NullCache : ICache
 }
 </code></pre>
 <p>There's some handling in there to return default(TDest) if a null source reference is passed in but there are no other particular areas of note.</p>
-<h2 id="limitations"><a href="#limitations">Limitations</a></h2>
+<h2 id="limitations"><a href="/automapperbyconstructor-without-automapper-and-faster#limitations">Limitations</a></h2>
 <p>There's a lot more work to be done down this avenue, since currently there's only Compilable Property Getters for Assignable Types (where no real conversion is happening) and Enums (where lookups from the source values to destination values are attempted by name before falling back to a straight numeric mapping). The code as described here is available in this tagged release:</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/LinqExpressionPropertyGetters</a></p>
 <p>However, there's more on the way! I want to be able to take these simple compilable classes and use them to create more complicated type converters, so that once we have a compilable converter from:</p>
@@ -5264,7 +5264,7 @@ public class DestEmployee
 }
 </code></pre>
 <p>.. something similar to the way in which AutoMapper's CreateMap method works.</p>
-<h3 id="update-2nd-january-2012"><a href="#update-2nd-january-2012">Update (2nd January 2012)</a></h3>
+<h3 id="update-2nd-january-2012"><a href="/automapperbyconstructor-without-automapper-and-faster#update-2nd-january-2012">Update (2nd January 2012)</a></h3>
 <p>I've finally got round to writing up this conclusion; <a href="/extendable-linqcompilable-mappers">here</a>.</p>
 <p class="PostTime">Posted at 20:11</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/the-artist-previously-known-as-the-automapperbyconstructor">The artist previously known as the AutoMapper-By-Constructor</a></li><li><a href="/teaching-automapper-about-verbose-constructors">Teaching AutoMapper about &quot;verbose constructors&quot;</a></li><li><a href="/the-joys-of-automapper">The joys of AutoMapper</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/AutoMapper" title="8 Posts">AutoMapper</a></li><li><a href="/Archive/Tag/LINQ" title="13 Posts">LINQ</a></li><li><a href="/Archive/Tag/Reflection" title="15 Posts">Reflection</a></li></ul></div>
             <p class="Comments">
@@ -5278,7 +5278,7 @@ public class DestEmployee
 <p>There's an example in that download (and at the bottom of this post) if curiousity gets the better of you but I'm going to step through an outline of the solution here.</p>
 <p>Before we get going, it's worth noting that I'm hoping to expand on this solution and improve it in a number of areas - to make life easier if you're starting with this post, I've tagged the repository as &quot;FirstImplementation&quot; in its current state, so for the solution in its current form (as I'm about to describe), it may be best to download it from here:</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a></p>
-<h3 id="the-plan"><a href="#the-plan">The Plan</a></h3>
+<h3 id="the-plan"><a href="/teaching-automapper-about-verbose-constructors#the-plan">The Plan</a></h3>
 <ol>
 <li>Take two Types - srcType and destType - and consider every constructor in destType..</li>
 <li>For each argument in the constructor, try to find a property in srcType that can be used as the value for that argument</li>
@@ -5297,7 +5297,7 @@ public class DestEmployee
 <ol>
 <li>This &quot;Type Converter&quot; will expose a Convert method that accepts a srcType reference and returns a new destType instance - we can pass this as a Func&lt;srcType, destType&gt; to an AutoMapper ConstructUsing method call and we're all done!</li>
 </ol>
-<h3 id="the-players"><a href="#the-players">The Players</a></h3>
+<h3 id="the-players"><a href="/teaching-automapper-about-verbose-constructors#the-players">The Players</a></h3>
 <p>There's a class that tries to locate a property on srcType which can be used as a particular constructor argument:</p>
 <pre><code>public interface IPropertyGetterFactory
 {
@@ -5356,7 +5356,7 @@ public interface ITypeConverterPrioritiser&lt;TSource, TDest&gt;
 }
 </code></pre>
 <p>Some of the key elements - ITypeConverterByConstructor, IConstructorInvoker, ITypeConverterPrioritiser - have generic typeparams specified but the ITypeConverterByConstructorFactory that prepares the ITypeConverterByConstructor does not; I wanted to be able to use one ITypeConverterByConstructorFactory instance to prepare converters for various combinations of srcType, destType. This is why these key elements have factory interfaces to instantiate them - the factory class will have no typeparam specification but will create &quot;worker&quot; classes that do. IPropertyGetter is an exception to this pattern as I was expecting to have to have to maintain a list of them in each ITypeConverterByConstructor and so they would have to at least share a interface without typeparams.</p>
-<h3 id="the-plan-re-written"><a href="#the-plan-re-written">The Plan - Re-written</a></h3>
+<h3 id="the-plan-re-written"><a href="/teaching-automapper-about-verbose-constructors#the-plan-re-written">The Plan - Re-written</a></h3>
 <ol>
 <li>Pass srcType and destType to an ITypeConverterByConstructorFactory and call Get, this will consider each of destType's constructors and determine which can have its arguments specified with data from srcType's properties by..</li>
 <li>Calling Get on an IPropertyGetterFactory for each argument name and type, passing the srcType</li>
@@ -5369,13 +5369,13 @@ public interface ITypeConverterPrioritiser&lt;TSource, TDest&gt;
 <li>The ITypeConverterByConstructorFactory may now have multiple ITypeConverterByConstructor instances (each will represent a ConstructorInfo and contain IPropertyGetters to retrieve data from the srcType to satisfy all of the constructor's arguments), it will use an ITypeConverterPrioritiser to pick the best one</li>
 <li>This ITypeConverterByConstructor&lt;srcType, destType&gt; has a method Convert which returns a new destType instance given a srcType reference - success! This allows us to hook up AutoMapper with CreateMap and ConstructUsing.</li>
 </ol>
-<h3 id="the-implementation"><a href="#the-implementation">The implementation</a></h3>
+<h3 id="the-implementation"><a href="/teaching-automapper-about-verbose-constructors#the-implementation">The implementation</a></h3>
 <p>These interfaces and corresponding classes can all be found in the GitHub repository and hopefully it will make a reasonable amount of sense now that everything's been outlined here. With a basic knowledge of reflection and AutoMapper hopefully the code won't be too difficult to read through and there are examples both in the solution itself and in the Readme.</p>
 <p>Again, there is a repository branch that only covers what's discussed here and not all the following work I'm planning for it:</p>
 <p><a href="https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation">https://github.com/ProductiveRage/AutoMapper-By-Constructor-1/tree/FirstImplementation</a></p>
-<h3 id="and-now"><a href="#and-now">And now?</a></h3>
+<h3 id="and-now"><a href="/teaching-automapper-about-verbose-constructors#and-now">And now?</a></h3>
 <p>I'm happy I've solved the initial case I set out to, but it seems now like AutoMapper needn't be as key as I was first envisaging! For cases where the types don't all match up into nice assignable-to conversions, AutoMapper definitely comes in handy - but one class of cases I'd like to use this for would be converting from (asmx) webservice interface objects (where all properties have loose getters and setters) to a validated-by-constructor class. Most of the time the property types would match and wouldn't need AutoMapper. And then maybe the conversion could be compiled using IL generation or Linq Expressions so that it would be as fast as hand-written code, just without the opportunity for typos.. Intriguing!</p>
-<h3 id="example"><a href="#example">Example</a></h3>
+<h3 id="example"><a href="/teaching-automapper-about-verbose-constructors#example">Example</a></h3>
 <pre><code>// Get a no-frills, run-of-the-mill AutoMapper Configuration reference..
 var mapperConfig = new Configuration(
     new TypeMapFactory(),

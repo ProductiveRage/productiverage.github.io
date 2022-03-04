@@ -180,7 +180,7 @@ var didEmployeeAlreadyHaveAwesomeAttitude = (updatedEmployee == employee);
 </code></pre>
 <p><em>And</em> it would do it with magic, so you wouldn't have to write all of the &quot;return-same-instance-if-no-values-changed&quot; logic and it would.. erm.. well, to be honest, I've forgotten some of the finer details! But I remember that it was fun messing around with, getting my hands dirty with reflection, compiled LINQ expressions, stack-trace-sniffing (and some required JIT-method-inlining-disabling).</p>
 <p>A couple of weeks later I wrote a follow-up, taking on board some of the feedback and criticisms in the comments and doing some performance testing. One of the ways I came up with to create the &quot;magic With method&quot; was only twice as slow as writing it by hand.. which, now, doesn't sound all that <em>awesome</em> - <em>twice</em> as slow is often a bad thing, but I was quite proud of it at the time!</p>
-<h3 id="immutable-classes-in-2015"><a href="#immutable-classes-in-2015">Immutable Classes in 2015</a></h3>
+<h3 id="immutable-classes-in-2015"><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications#immutable-classes-in-2015">Immutable Classes in 2015</a></h3>
 <p>Recently, I've been making <a href="http://bridge.net/">Bridge.NET</a> applications and I've been favouring writing immutable types for the messages passed around the system. And, again, I've gotten a bit bored of writing the same lines of code over and over -</p>
 <pre><code>if (value == null)
   throw new ArgumentNullException(&quot;value&quot;);
@@ -267,7 +267,7 @@ var didEmployeeAlreadyHaveAwesomeAttitude = (updatedEmployee == employee);
 <p>This looks a lot better. Not only is there less to read, there was less repetitive code (and comments) to write but the same information is still available for someone reading / using the code. In fact, I think that it's better on that front now because the constructor signature and the property types themselves communicate this information - which makes it harder to ignore than a comment does. And the type system is the primary reason that I want to write my front-end applications in C# rather than JavaScript!</p>
 <p>However, there are <em>still</em> a couple of things that I'm not happy with. Firstly, in an ideal world, the constructors would magically have if-null-then-throw conditions injected for every argument - there are <em>no</em> arguments that should be null now; <strong>Optional</strong> is a struct and so can never be null, while any references that <em>could</em> be null should be wrapped in an <strong>Optional</strong>. One way to achieve that this in regular C# is with <a href="http://haacked.com/archive/2013/01/05/mitigate-the-billion-dollar-mistake-with-aspects.aspx/">IL rewriting</a> but I'm not a huge fan of that because I have suspicions about PostSharp (that I should probably revisit one day because I'm no longer completely sure what grounds they're based on). But, aside from that, it would be use when writing C# for Bridge, since IL doesn't come into the process - C# source code is translated into JavaScript and IL isn't involved!</p>
 <p>Secondly, I need to tackle the &quot;With&quot; function(s) and I'd like to make that as painless as possible, really. Writing them all by hand is tedious.</p>
-<h3 id="get-to-the-point-already"><a href="#get-to-the-point-already">Get to the point, already!</a></h3>
+<h3 id="get-to-the-point-already"><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications#get-to-the-point-already">Get to the point, already!</a></h3>
 <p>So.. I've been playing around and I've written a Bridge.NET library that allows me to write something like this:</p>
 <pre><code>public class EmployeeDetails : IAmImmutable
 {
@@ -334,7 +334,7 @@ var didEmployeeAlreadyHaveAwesomeAttitude = (updatedEmployee == employee);
 // the same as the StartDate value that the employee reference already had
 var wasAnyChangeMade = (employeeUpdatedAgain != employee);
 </code></pre>
-<h3 id="bonus-features"><a href="#bonus-features">Bonus features</a></h3>
+<h3 id="bonus-features"><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications#bonus-features">Bonus features</a></h3>
 <p>So, in this library, there are the &quot;CtorSet&quot; and &quot;With&quot; extensions methods and there is an <strong>Optional</strong> type -</p>
 <pre><code>public struct Optional&lt;T&gt; : IEquatable&lt;Optional&lt;T&gt;&gt;
 {
@@ -431,7 +431,7 @@ DoSomething(&quot;Hello!&quot;);
 <pre><code>s = s.With(_ =&gt; _.Items, 1, &quot;ONE&quot;);
 </code></pre>
 <p>If you specified an invalid index then it would fail at runtime, as it would if you tried to pass a null value. If you tried to specify a value that was of an incompatible type then you would get a compile error as the method signature ensures that the specified value matches the <strong>NonNullList&lt;T&gt;</strong>'s item type.</p>
-<h3 id="getting-hold-of-the-library"><a href="#getting-hold-of-the-library">Getting hold of the library</a></h3>
+<h3 id="getting-hold-of-the-library"><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications#getting-hold-of-the-library">Getting hold of the library</a></h3>
 <p>If this has piqued your interest then you can get the library from NuGet - it's called &quot;<a href="https://www.nuget.org/packages/ProductiveRage.Immutable">ProductiveRage.Immutable</a>&quot;. It should work fine with Visual Studio 2013 but I would recommend that you use 2015, since then the analysers that are part of the NuGet package will be installed and enabled as well. The analysers confirm that every &quot;property retriever&quot; argument is <em>always</em> a simple lambda, such as</p>
 <pre><code>_ =&gt; _.Name
 </code></pre>
@@ -440,10 +440,10 @@ DoSomething(&quot;Hello!&quot;);
 <p>One think to be aware of with using Visual Studio 2015 with Bridge.Net, though, is that Bridge does not yet support C# 6 syntax. So don't get carried away with the wonderful new capabilities (like my beloved <a href="https://msdn.microsoft.com/en-us/library/dn986596.aspx">nameof</a>). Support for this new syntax is, I believe, coming in Bridge v2..</p>
 <p>If you want to look at the actual code then feel free to check it out at <a href="https://github.com/ProductiveRage/Bridge.Immutable">github.com/ProductiveRage/Bridge.Immutable</a>. That's got the library code itself as well as the analysers and the unit tests <em>for</em> the analysers. It's the first time that I've tried to produce a full, polished analyser and I had fun! As well as a few speed bumps.. (possibly a topic for another day).</p>
 <p>While the library, as delivered through the NuGet package, should work fine for both VS 2013 and VS 2015, building the solution yourself requires VS 2015 <em>Update 1</em>.</p>
-<h3 id="is-this-proven-and-battle-hardened"><a href="#is-this-proven-and-battle-hardened">Is this proven and battle-hardened?</a></h3>
+<h3 id="is-this-proven-and-battle-hardened"><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications#is-this-proven-and-battle-hardened">Is this proven and battle-hardened?</a></h3>
 <p>No.</p>
 <p>At this point in time, this is mostly still a concept that I wanted to try out. I think that what I've got is reliable and quite nicely rounded - I've <em>tried</em> to break it and haven't been able to yet. And I intend to use it in some projects that I'm working on. However, at this moment in time, you might want to consider it somewhat experimental. Or you could just be brave and starting using it all over the place to see if it fits in with your world view regarding how you should write C# :)</p>
-<h3 id="is-iamimmutable-really-necessary"><a href="#is-iamimmutable-really-necessary">Is &quot;IAmImmutable&quot; really necessary?</a></h3>
+<h3 id="is-iamimmutable-really-necessary"><a href="/frictionless-immutable-objects-in-bridge-c-sharp-javascript-applications#is-iamimmutable-really-necessary">Is &quot;IAmImmutable&quot; really necessary?</a></h3>
 <p>If you've <em>really</em> been paying attention to all this, you might have noticed that I said earlier that the <strong>IAmImmutable</strong> interface is used to identify types that have been designed to work with &quot;CtorSet&quot;, to ensure that you can't call &quot;CtorSet&quot; on references that weren't expecting it and whose should-be-private internals you could then meddle with. Well, it would be a reasonable question to ask:</p>
 <blockquote>
 <p>Since there is an analyser to ensure that &quot;CtorSet&quot; is only called from within a constructor, surely <strong>IAmImmutable</strong> is unnecessary because it would not be possible to call &quot;CtorSet&quot; from places where it shouldn't be?</p>

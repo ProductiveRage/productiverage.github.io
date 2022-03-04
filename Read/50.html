@@ -62,13 +62,13 @@
 <p>A week or so ago I wrote about <a href="/extending-the-css-minifier">Extending the CSS Minifier</a> and some new facilities in my project on Bitbucket (the imaginatively-named <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a>). Particularly the <strong>EnhancedNonCachedLessCssLoaderFactory</strong> which you can use to get up and running with all of the fancy new features in no time!</p>
 <p>However, I didn't mention anything about the caching mechanisms, which are important when there's potentially so much processing required.</p>
 <p>This won't take long, but it's worth blasting through. It's also worth noting that the example code in the CSSMinifierDemo is the solution does all of this, so if you want to see it all one place then that's a good place to start (in the CSSController).</p>
-<h3 id="last-modified-dates"><a href="#last-modified-dates">Last-modified-dates</a></h3>
+<h3 id="last-modified-dates"><a href="/css-minifier-caching#last-modified-dates">Last-modified-dates</a></h3>
 <p>The <strong>EnhancedNonCachedLessCssLoaderFactory</strong> utilises the <strong>SameFolderImportFlatteningCssLoader</strong> which will run through the CSS / LESS files and pull in any content from &quot;import&quot; statements inline - effectively flattening them all into one chunk of stylesheet content.</p>
 <p>A built-in (and intentional) limitation of this class is that all imports must come from the same folder as the source file. This means you can't import stylesheets from any other folder or any server (if you were going to load a resets sheet from a CDN, perhaps).</p>
 <p>The benefit of this restriction is that there is a cheap &quot;short cut&quot; that can be taken to determine when any cached representations of the data should be expired; just take the most recent last-modified-date of any file in that folder.</p>
 <p>This has the disadvantage that a file in that folder may be updated that isn't related to the stylesheet being loaded but that a cache expiration will still be performed. The advantage, though, is that we don't have to fully process a file (and all of its imports) in order to determine when any of the files that it imports actually <em>was</em> updated!</p>
 <p>This last-modified-date can be used for returning 304 responses when the Client already has the up-to-date content and may also be used to cache stylesheet processing results on the server for Clients without the content in their browser caches.</p>
-<h3 id="in-memory-caching"><a href="#in-memory-caching">In-memory caching</a></h3>
+<h3 id="in-memory-caching"><a href="/css-minifier-caching#in-memory-caching">In-memory caching</a></h3>
 <p>The simplest caching mechanism uses the <strong>CachingTextFileLoader</strong> which wraps a content loader (that returned by the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>, for example) and takes references to an <strong>ILastModifiedDateRetriever</strong> and <strong>ICanCacheThingsWithModifiedDates&lt;TextFileContents&gt;</strong>.</p>
 <pre><code>public interface ILastModifiedDateRetriever
 {
@@ -168,7 +168,7 @@ public class NonExpiringASPNetCacheCache : ICacheThingsWithModifiedDates&lt;Text
 }
 </code></pre>
 <p>The <strong>CachingTextFileLoader</strong> will look in the cache to see if it has data for the specified relativePath. If so then it will try to get the last-modified-date for any of the source files. If the last-modified-date on the cached entry is current then the cached data is returned. Otherwise, the cached data is removed from the cache, the request is processed as normal, the new content stored in cache and then returned.</p>
-<h3 id="disk-caching"><a href="#disk-caching">Disk caching</a></h3>
+<h3 id="disk-caching"><a href="/css-minifier-caching#disk-caching">Disk caching</a></h3>
 <p>The <strong>DiskCachingTextFileLoader</strong> class is slightly more complicated, but not much. It works on the same principle of storing cache data then retrieving it and returning it for requests if none of the source files have changed since it was cached, and rebuilding and storing new content before returning if the source files <em>have</em> changed.</p>
 <p>Like the <strong>CachingTextFileLoader</strong>, it requires a content loader to wrap and an <strong>ILastModifiedDateRetriever</strong>. It also requires a <strong>CacheFileLocationRetriever</strong> delegate which instructs it where to store cached data on disk. A simple approach is to specify</p>
 <pre><code>relativePath =&gt; new FileInfo(relativePathMapper.MapPath(relativePath) + &quot;.cache&quot;)
@@ -182,7 +182,7 @@ public class NonExpiringASPNetCacheCache : ICacheThingsWithModifiedDates&lt;Text
 </code></pre>
 <p>and then you needn't worry about the cache files interfering.</p>
 <p>There are some additional options that must be specified for the <strong>DiskCachingTextFileLoader</strong>; whether exceptions should be raised or swallowed (after logging) for IO issues and likewise if the cache file has invalid content (the cached content will have a CSS comment injected into the start of the content that records the relative path of the original request and the last-modified-date, without these a TextFileContents instance could not be accurately recreated from the cached stylesheets - the TextFileContents could have been binary-serialised and written out as the cached data but I prefered that the cached data be CSS).</p>
-<h3 id="bringing-it-all-together"><a href="#bringing-it-all-together">Bringing it all together</a></h3>
+<h3 id="bringing-it-all-together"><a href="/css-minifier-caching#bringing-it-all-together">Bringing it all together</a></h3>
 <p>This is the updated version of the CSSController from the post last year: <a href="/onthefly-css-minification">On-the-fly CSS Minification</a>. It incorporates functionality to deal with 304 responses, to cache in-memory and on disk, to flatten imports, compile LESS, minify the output and all of the other advanced features covered in <a href="/extending-the-css-minifier">Extending the CSS Minifier</a>.</p>
 <p>This code is taken from the CSSMinifiedDemo project in the <a href="https://bitbucket.org/DanRoberts/cssminifier">CSSMinifier</a> repository, the only difference being that I've swapped out the <strong>DefaultNonCachedLessCssLoaderFactory</strong> for the <strong>EnhancedNonCachedLessCssLoaderFactory</strong>. If you don't want the source mapping, the media-query grouping and the other features then you might stick with the <strong>DefaultNonCachedLessCssLoaderFactory</strong>. If you wanted something in between then you could just take the code from either factory and tweak to meet your requirements!</p>
 <pre><code>using System;

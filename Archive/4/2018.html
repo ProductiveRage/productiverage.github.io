@@ -54,11 +54,11 @@
 
     <div class="Content ArchiveByMonth">
         <p class="PostDate">4 April 2018</p><h2 id="writing-f-to-implement-the-single-layer-perceptron"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron">Writing F# to implement 'The Single Layer Perceptron'</a></h2>
-<h3 id="tldr"><a href="#tldr">TL;DR</a></h3>
+<h3 id="tldr"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#tldr">TL;DR</a></h3>
 <p>This picks up from my last post <a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton">Learning F# via some Machine Learning: The Single Layer Perceptron</a> where I described a simple neural network (&quot;The Single Layer Perceptron&quot;) and took a C# implementation (from an article on the site <a href="http://www.robosoup.com/2008/09/the-single-layer-perceptron-c.html">Robosoup</a>) and rewrote it into a style of &quot;functional C#&quot; with the intention of then translating it into F#. Trying to do that all in one post would have made for a very <em>very</em> long read and so part two, here, picks things up from that point.</p>
 <p>I'm still an F# beginner and so I'm hoping that having the pain so fresh in my mind of trying to pick it up as a new language will make it easier for me to help others get started. I'm going to assume zero knowledge from the reader.</p>
 <p><em>(I'm also going to try to dive straight right into things, rather than covering loads of theory first - I think that there are a lot of good resources out there that introduce you to F# and functional concepts at a more abstract level but I'm going to take the approach that we want to tackle something specific and we'll discuss new F# concepts only when we encounter them while trying to get this work done!)</em></p>
-<h3 id="translating-the-code-into-f"><a href="#translating-the-code-into-f">Translating the code into F#</a></h3>
+<h3 id="translating-the-code-into-f"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#translating-the-code-into-f">Translating the code into F#</a></h3>
 <p>Visual Studio 2017 includes support for F# without having to install anything extra. To get started, create a new project of type Visual F# / Console Application. This will generate a Program.fs file that will let you build and run (it won't be anything very interesting if you run it but that doesn't matter because we're going rewrite the file from scratch!).</p>
 <p>In the C# code from last time, the core logic was contained within a static method called &quot;Go&quot; within a static class. To set up the scaffolding for something similar in F# we'll use the following code:</p>
 <pre><code>open System;
@@ -161,7 +161,7 @@ let squares = numbers |&gt; List.map (fun x -&gt; x * x)
 var squares = numbers.Select(x =&gt; x * x);
 </code></pre>
 <p>It's not <em>precisely</em> the same since &quot;numbers&quot; in the F# code is an immutable list reference and in C# it's an array but it's close enough. The point is that the &quot;fun&quot; keyword is used to declare an anonymous function and that brackets are required around that function declaration in order to segregate that code and make it clear to the compiler that the function declaration should be considered as a single value that is being passed to the &quot;List.map&quot; function.</p>
-<h3 id="declaring-training-data"><a href="#declaring-training-data">Declaring training data</a></h3>
+<h3 id="declaring-training-data"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#declaring-training-data">Declaring training data</a></h3>
 <p>In the C# perceptron code from <a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton">last week</a>, there was an array of <strong>Tuple</strong> values that contained each pair of inputs and the expected result -</p>
 <pre><code>var trainingData = new[]
 {
@@ -185,10 +185,10 @@ var squares = numbers.Select(x =&gt; x * x);
 <pre><code>let x = { Values = [0.08; 0.94]; Result = true }
 </code></pre>
 <p>The type of &quot;x&quot; is not explicitly specified in the code but the compiler will be able to match it to the <strong>Input</strong> type.</p>
-<h3 id="double-vs-float"><a href="#double-vs-float">double vs float</a></h3>
+<h3 id="double-vs-float"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#double-vs-float">double vs float</a></h3>
 <p>Note that I've defined the &quot;Values&quot; property to be of type &quot;float list&quot; (which is equivalent to &quot;list&lt;float&gt;&quot; - which is also valid syntax in F#) as opposed to &quot;double list&quot;. In C#, <strong>Double</strong> and <strong>double</strong> represent a &quot;double-precision floating point number&quot; while <strong>Single</strong> and <strong>float</strong> represent a &quot;single-precision floating point number&quot;. In F#, <strong>float</strong> is a double-precision floating point number while <strong>float32</strong> is a <em>single</em>-precision floating point number. So &quot;float&quot; in F# is the same as &quot;double&quot; in C#. To make things more confusing, you can also specify the type <strong>double</strong> in F# and it means the same as <strong>float</strong> in F# - however, type signatures in the F# library specify <strong>float</strong> when a double-precision floating point number is returned and so I'm specifying <strong>float</strong> to try to be consistent with other F# code. For example, the library function &quot;Double.Parse&quot; returns <strong>float</strong> according to intellisense.</p>
 <p>This seems quite confusing to me (coming at this from C#) but I decided to try to be as F#-like as possible and so &quot;float list&quot; is what I'm using.</p>
-<h3 id="back-to-declaring-training-data"><a href="#back-to-declaring-training-data">Back to declaring training data..</a></h3>
+<h3 id="back-to-declaring-training-data"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#back-to-declaring-training-data">Back to declaring training data..</a></h3>
 <p>To declare all of the training data in F#, we want a list of patterns -</p>
 <pre><code>let trainingData = [
     { Values = [0.08; 0.94]; Result = true }
@@ -229,7 +229,7 @@ let inputLengths = trainingData
     |&gt; List.length
 </code></pre>
 <p>(I would not have thought that putting &quot;trainingData&quot; on the same line as &quot;let inputLengths =&quot; would introduce any ambiguity but presumably doing similar things must do in some situations).</p>
-<h3 id="translating-the-network-training-code"><a href="#translating-the-network-training-code">Translating the network-training code</a></h3>
+<h3 id="translating-the-network-training-code"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#translating-the-network-training-code">Translating the network-training code</a></h3>
 <p>The c# code that we ended up with <a href="/learning-f-sharp-via-some-machine-learning-the-single-layer-percepton">last time</a> for training a network looked like this:</p>
 <pre><code>const double learningRate = 0.1;
 
@@ -359,7 +359,7 @@ var x = if something then 1 else 2
 
     &quot;TODO: Implement this&quot;
 </code></pre>
-<h3 id="sidebar-the-influence-of-f-on-c"><a href="#sidebar-the-influence-of-f-on-c">Sidebar: The influence of F# on C#</a></h3>
+<h3 id="sidebar-the-influence-of-f-on-c"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#sidebar-the-influence-of-f-on-c">Sidebar: The influence of F# on C#</a></h3>
 <p>It seems that quite a lot of features from F# are coming over to C# from C# 7 onwards. For example, nested functions are already available (they weren't in C# 6 but they <em>are</em> in C# 7) - eg.</p>
 <pre><code>public static void Go()
 {
@@ -400,7 +400,7 @@ Console.WriteLine(p1 == p2); // False
 </code></pre>
 <p>(For more details about C# record types, see the <a href="https://github.com/dotnet/csharplang/blob/master/proposals/records.md">records proposal</a>).</p>
 <p>It's interesting to see these features working their way into C# and hopefully it will make it easier for someone in the future to try F# if they already know C#. (Some may argue that it could make F# less appealing with more of its features being added to C# but I think that it will still have enough differences to stand apart - having immutability and non-nulls <em>by default</em> is not something that is likely to be incorporated into C# because it would require enormous changes).</p>
-<h3 id="back-to-translating-the-network-training-code"><a href="#back-to-translating-the-network-training-code">Back to translating the network-training code..</a></h3>
+<h3 id="back-to-translating-the-network-training-code"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#back-to-translating-the-network-training-code">Back to translating the network-training code..</a></h3>
 <p>Now that the supporting functions (&quot;Output&quot; and &quot;UpdateWeights&quot;) have been translated, we need to look back at the main training code. This time I'm going to go &quot;outside in&quot; and translate this:</p>
 <pre><code>const double learningRate = 0.1;
 
@@ -504,7 +504,7 @@ return resultForIteration;
 </code></pre>
 <p>It's still taking me a little while to get used to there being no &quot;return&quot; keyword and so I sometimes have to remind myself that the anonymous function passed to &quot;List.fold&quot; returns the { Weights, Bias, GlobalError } value and that the &quot;CalculateNextState&quot; function returns the &quot;resultForIteration&quot; that is on its last line.</p>
 <p>Now that the function is fully defined, the type annotations can be removed from the &quot;state&quot; and &quot;iteration&quot; arguments. The &quot;state&quot; type is inferred because &quot;List.fold&quot; takes an initial value that has the properties Weights (float list) / Bias (float) / GlobalError (float) and the anonymous function also returns a value of that type and the only record type that matches those properties is &quot;CalculationState&quot;. The &quot;iteration&quot; argument is inferred because it is used as an argument in the &quot;printfn&quot; call to populate a &quot;%i&quot; placeholder and &quot;%i&quot; placeholder values have to be integers.</p>
-<h3 id="writing-to-console-using-printfn-and-string-interpolation"><a href="#writing-to-console-using-printfn-and-string-interpolation">Writing to console using printfn and &quot;string interpolation&quot;</a></h3>
+<h3 id="writing-to-console-using-printfn-and-string-interpolation"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#writing-to-console-using-printfn-and-string-interpolation">Writing to console using printfn and &quot;string interpolation&quot;</a></h3>
 <p>You might have noticed that in the code above, the C# write-info-to-console line:</p>
 <pre><code>Console.WriteLine(&quot;Iteration {0}\tError {1}&quot;, iteration, resultForIteration.GlobalError);
 </code></pre>
@@ -532,7 +532,7 @@ Console.WriteLine($&quot;Iteration {iteration}\tError {resultForIteration.Global
 </code></pre>
 <p>I would argue that this is even better again than the F# approach and it's unfortunate that F# doesn't currently have anything quite like this. That is one of the downsides to F# pioneering and pushing a lot of useful techniques that were later incorporated in to C#, I suppose!</p>
 <p><em>(There is a proposal to add something similar to F# but it doesn't exist yet and I don't think that there is any suggestions that it will become available any time soon - see <a href="https://github.com/fsharp/fslang-design/blob/master/RFCs/FS-1001-StringInterpolation.md">F# RFC FS-1001 - String Interpolation</a>)</em></p>
-<h3 id="sidebar-selecting-f-bcl-functions"><a href="#sidebar-selecting-f-bcl-functions">Sidebar: Selecting F# BCL functions</a></h3>
+<h3 id="sidebar-selecting-f-bcl-functions"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#sidebar-selecting-f-bcl-functions">Sidebar: Selecting F# BCL functions</a></h3>
 <p>A little earlier, I nonchalantly said that</p>
 <blockquote>
 <p>The C# code used the &quot;Aggregate&quot; function which corresponds to &quot;List.fold&quot; in F#</p>
@@ -547,7 +547,7 @@ Console.WriteLine($&quot;Iteration {iteration}\tError {resultForIteration.Global
 <p>So (for now?) I'll be using a <strong>list</strong> if I have a known set of items and will be performing an operation on every item each iteration and a <strong>seq</strong> otherwise.. unless I encounter a really exciting reason to do otherwise*.</p>
 <p>* <em>(Spoiler alert: in a future post in the series, I will find a case where there is a huge difference in memory usage between <strong>list</strong> and <strong>array</strong> when loading data from disk - brace yourself for that thrill!)</em></p>
 <p>To return to my first point in relation to &quot;Selecting F# BCL functions&quot; - how did I know that &quot;List.fold&quot; is equivalent to &quot;Aggregate&quot;? The simple answer is by looking through the docs.. the MSDN pages are pretty good (here is the one for <a href="https://msdn.microsoft.com/en-us/visualfsharpdocs/conceptual/list.fold%5B%27t,%27state%5D-function-%5Bfsharp%5D">List.fold</a>) and the number of base library functions is not that large. You can often guess what many of them do (such as &quot;List.average&quot; and &quot;List.distinct&quot;) but you might need to read the documentation for others (either on MSDN or just via the intellisense tooltips) for others. If you are familiar with LINQ then it shouldn't take you too long to learn the names of the F# equivalents of many of your old favourites!</p>
-<h3 id="demonstrating-the-networks-abilities"><a href="#demonstrating-the-networks-abilities">Demonstrating the network's abilities</a></h3>
+<h3 id="demonstrating-the-networks-abilities"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#demonstrating-the-networks-abilities">Demonstrating the network's abilities</a></h3>
 <p>Before I went on a couple of tangents about writing to the console and learning the F# BCL, we had actually finished translating the code that trained the network (it may be an <em>extremely</em> simple one but it <em>is</em> still technically a network!). Now the only C# that remains to be translated is the code that passes pairs of inputs through the network to see what output it generates for each pair - just to ensure that it matches our expectations. This is how we left it last time:</p>
 <pre><code>const double startAt = 0;
 const double endAt = 1;
@@ -588,7 +588,7 @@ printfn &quot;X,\tY,\tOutput&quot;
 printfn &quot;%s&quot; (String.concat Environment.NewLine calculatedResults)
 </code></pre>
 <p>Pretty neat and tidy, I think!</p>
-<h3 id="done-whats-next"><a href="#done-whats-next">Done! What's next?</a></h3>
+<h3 id="done-whats-next"><a href="/writing-f-sharp-to-implement-the-single-layer-perceptron#done-whats-next">Done! What's next?</a></h3>
 <p>Phew! Well that felt like quite a lot of work. Getting to grips with a new language can be mentally taxing, particularly when it involves a new paradigm (like making the leap from OOP to functional programming) and I think that that's why it's taken me several attempts at getting started with F# to even get this far.</p>
 <p>And although this is a good start, the &quot;machine learning&quot; aspect of the Single Layer Perceptron is very basic and it should be fun to try to dig a little deeper and attempt something more complicated. To that end, I have a few more posts that I'd like to write that will explain how to train a neural network (that has more layers than just the input and output layers) using the Backpropagation Algorithm and then use this to recognise handwritten digits from the famous <a href="http://yann.lecun.com/exdb/mnist/">MNIST</a> image database.</p>
 <p>As with the code here, I will be starting with C# from the <a href="http://www.robosoup.com/blog">Robosoup blog</a> and translating it into a functional style before rewriting it as F#. I think that it's exciting stuff!</p>

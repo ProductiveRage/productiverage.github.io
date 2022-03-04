@@ -104,7 +104,7 @@ public class Person
 <p>AutoMapper to go from Domain -&gt; ViewModel and Domain -&gt; EditModel.  This is again because the view and controller put constraints on our model that we didn't want in our domain.  AutoMapper flattened our domain into very discrete ViewModel objects, containing only the data for our view, and only in the shape we want.</p>
 </blockquote>
 <p>.. which sounds like a very sensible application for it to me! (The rest of that article's definitely worth a read, btw).</p>
-<h3 id="whoops"><a href="#whoops">Whoops!</a></h3>
+<h3 id="whoops"><a href="/the-joys-of-automapper#whoops">Whoops!</a></h3>
 <p>There <em>was</em> one gotcha using it that caught me out, but it made perfect sense when I reasoned it through afterward.</p>
 <p>I was mapping from one large, most-flat object into another where the first was a subset of the second; it was an old legacy webservice where the interface accepted every property for several types of bookings, where maybe 60% of the properties were shared between types and then the rest were specific to different booking types. So a booking made through the web interface resulted in an HotelBooking being instantiated, for example, and this was mapped onto the &quot;super&quot; booking object of the legacy service interface.</p>
 <pre><code>var source = new Hotel(
@@ -166,7 +166,7 @@ public class Booking
 <p>Well it turns out that AutoMapper finds that there is no NetworkType property to map from Hotel to Booking but sees that there <em>is</em> a &quot;Network&quot; value. It then tries to see if it can perform some object flattening by checking whether the Network value has a Type property which, being a string, it doesn't. But it <em>then</em> consider a property retrieval method rather than a standard property getter so it looks for a GetType() method which, since string inherits from objects, it does! So it takes the .Network.GetType() value and assumes we want this for the Booking.NetworkType value!</p>
 <p>Like I said, it all makes perfect sense but it took me a little while to work out what was happening in this case :)</p>
 <p>Did I mention AutoMapper is open source? This is great cos it let me have a poke around the source code and get a feel for what magic seemed to be going on!</p>
-<h3 id="something-rotten-in-denmark"><a href="#something-rotten-in-denmark">Something rotten in Denmark</a></h3>
+<h3 id="something-rotten-in-denmark"><a href="/the-joys-of-automapper#something-rotten-in-denmark">Something rotten in Denmark</a></h3>
 <p>My biggest problem is with scenarios where I want to do the opposite of the above - instead of translating from an &quot;always-valid&quot; internal object to a webservice class I'd like to be able to instantiate a class through its constructor, using data from a source class.</p>
 <p>Now, AutoMapper <em>does</em> have some sort of support for using constructors for mapping - eg.</p>
 <pre><code>Mapper.CreateMap&lt;Booking, Hotel&gt;()

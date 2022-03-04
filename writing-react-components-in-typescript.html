@@ -64,7 +64,7 @@
 <p>I've been playing around with React recently, putting together some prototypes to try to identify any pitfalls in what I think is an excellent idea and framework, with a view to convincing everyone else at work that we should consider it for new products. I'm no JavaScript hater but I do strongly believe in strongly typed code being easier to maintain in the long run for projects of significant size. Let's not get into an argument about whether strong or &quot;weak&quot; typing is best - before we know it we could end up worrying about what <a href="http://ericlippert.com/2012/10/15/is-c-a-strongly-typed-or-a-weakly-typed-language">strongly typed even means</a>! If you don't agree with me then you probably don't see any merit to TypeScript and you probably already guessed that this post will not be of interest to you! :)</p>
 <p>So I wanted to try bringing together the benefits of React with the benefits of TypeScript.. I'm clearly not the only one since there is already a type definition available in NuGet: <a href="https://www.nuget.org/packages/React.TypeScript.DefinitelyTyped">React.TypeScript.DefinitelyTyped</a>. This seems to be the recommended definition and appears to be in active development. I'd love it even more if there was an official definition from Facebook themselves (they have one for their <a href="https://github.com/facebook/immutable-js">immutable-js</a> library) but having one here is a great start. This allows us to call methods in the React library and know what types the arguments should be and what they will return (and the compiler will tell us if we break these contracts by passing the wrong types or trying to mistreat the return values).</p>
 <p>However, there are a few problems. Allow me to venture briefly back to square one..</p>
-<h3 id="back-to-basics-a-react-component"><a href="#back-to-basics-a-react-component">Back to basics: A React component</a></h3>
+<h3 id="back-to-basics-a-react-component"><a href="/writing-react-components-in-typescript#back-to-basics-a-react-component">Back to basics: A React component</a></h3>
 <p>This is a very simple component in React -</p>
 <pre><code>var MyButton = React.createClass({
   _clickHandler: function() {
@@ -98,7 +98,7 @@
 });
 </code></pre>
 <p>but these days it just works as you would expect (or as you would hope, perhaps). This happened back in July 2013 - see <a href="http://facebook.github.io/react/blog/2013/07/02/react-v0-4-autobind-by-default.html">New in React v0.4: Autobind by Default</a>.</p>
-<h3 id="a-typescript-react-component-take-1"><a href="#a-typescript-react-component-take-1">A TypeScript React component: Take 1</a></h3>
+<h3 id="a-typescript-react-component-take-1"><a href="/writing-react-components-in-typescript#a-typescript-react-component-take-1">A TypeScript React component: Take 1</a></h3>
 <p>If we naively try to write TypeScript code that starts off with the JavaScript above then we find we have no intellisense. The editor has no idea about &quot;this.props&quot; - no idea that it is defined, certainly no idea that it has a property &quot;message&quot; that should be a string. This shouldn't really be a surprise since the &quot;this&quot; in this case is just an anonymous object that we're passing to &quot;React.createClass&quot;; no information about the type has been specified, so it is considered to be of type &quot;any&quot;.</p>
 <img alt="TypeScript React Component 'this' issue" src="/Content/Images/Posts/TypeScriptComponentThisIsAny.png" class="AlwaysFullWidth" title="TypeScript React Component 'this' issue" />
 <p>If we continue like this then we're going to miss out on the prime driver for using TypeScript in the first place - we might as well just write the components in JavaScript or &quot;jsx&quot;! (In fairness, this is something that I considered.. with React, and particularly the recommended Flux architecture, the &quot;view components&quot; are a relatively thin layer over components that could easily be written in TypeScript and so benefit from being strongly typed.. the view components could remain &quot;more dynamic&quot; and be covered by the class of unit tests that are often used to cover cases that are impossible with the guarantees of strong typing).</p>
@@ -120,7 +120,7 @@ var MyButtonReactComponent = React.createClass(new MyButton());
 <p>Error: Invariant Violation: createClass(...): Class specification must implement a <code>render</code> method.</p>
 </blockquote>
 <p>I'm not completely sure, but I suspect that the React framework code is expecting an object with a property that is a function named &quot;render&quot; while the class instance passed to it has a function &quot;render&quot; on its prototype rather than a property on the reference itself.</p>
-<h3 id="looking-for-help-elsewhere"><a href="#looking-for-help-elsewhere">Looking for help elsewhere</a></h3>
+<h3 id="looking-for-help-elsewhere"><a href="/writing-react-components-in-typescript#looking-for-help-elsewhere">Looking for help elsewhere</a></h3>
 <p>When I got to this point, I figured that someone else must have had encountered the same problem - particularly since there exists this TypeScript definition for React in the first place! I came across a GitHub project <a href="https://github.com/fdecampredon/react-typescript">React TypeScript</a> which describes itself as a</p>
 <blockquote>
 <p>React wrapper to make it play nicely with typescript.</p>
@@ -181,7 +181,7 @@ ReactTypeScript.autoBindMethods(MyButton);
 <p>The first approach feels a bit clumsy, that you must always remember to call this method for all component classes. The second approach doesn't feel too bad, it's just a case of being vigilant and always using fat arrows - but if you forget, you won't find out until runtime. Considering that I want to use to TypeScript to catch more errors at compile time, this still doesn't feel ideal.</p>
 <p>The final concern I have is that the library includes a large-ish <a href="https://github.com/fdecampredon/react-typescript/blob/master/third_party/react-internal.js">react-internal.js</a> file. What I'm going to suggest further down does unfortunately dip its toe into React's (undocumented) internals but I've tried to keep it to the bare minimum. This &quot;react-internal.js&quot; worries me as it might be relying on a range of implementation details, any of which (as far as I know) could potentially change and break my code.</p>
 <p>In case I'm sounding down on this library, I don't mean to be - I've tried it out and it does actually work, and there are not a lot of successful alternatives out there. So I've got plenty of respect for this guy, getting his hands dirty and inspiring me to follow in his footsteps!</p>
-<h3 id="stealing-taking-inspiration-a-typescript-react-component-take-2"><a href="#stealing-taking-inspiration-a-typescript-react-component-take-2"><s>Stealing</s> Taking inspiration - A TypeScript React component: Take 2</a></h3>
+<h3 id="stealing-taking-inspiration-a-typescript-react-component-take-2"><a href="/writing-react-components-in-typescript#stealing-taking-inspiration-a-typescript-react-component-take-2"><s>Stealing</s> Taking inspiration - A TypeScript React component: Take 2</a></h3>
 <p>So I want a way to</p>
 <ol>
 <li>Write a TypeScript class that can be used as a React component</li>
@@ -286,7 +286,7 @@ ReactComponentBridge.renderComponent(
 );
 </code></pre>
 <p>Hurrah! Success! All is well with the world! I've got the benefits of TypeScript <em>and</em> the benefits of React and the Flux architecture (ok, the last one doesn't need any of this or even require React - it could really be used with whatever framework you chose). There's just one thing..</p>
-<h3 id="im-out-of-date"><a href="#im-out-of-date">I'm out of date</a></h3>
+<h3 id="im-out-of-date"><a href="/writing-react-components-in-typescript#im-out-of-date">I'm out of date</a></h3>
 <p>Like I said at the start of this post, as I got to rounding it out to publish, I realised that I wasn't on the latest version of React (current 0.11.2, while I was still using 0.10) and that this code didn't actually work on that version. Sigh.</p>
 <p>However, the good news is that it sounds like 0.12 (still in alpha at the moment) is going to make things a lot easier. The changes in 0.11 appear to be paving the way for 0.12 to shakes things up a bit. Changes are documented at <a href="https://gist.github.com/sebmarkbage/d7bce729f38730399d28">New React Descriptor Factories and JSX</a> which talks about how the problem they're trying to solve with the new code is a</p>
 <blockquote>

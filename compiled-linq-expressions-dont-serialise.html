@@ -63,7 +63,7 @@
 <p>There was something in me that thought that since it had been formed through simple LINQ Expressions tied together that it would be easy to serialise and so not be a problem. But I suppose that once it becomes a generic lambda function then all bets are off since they can have references to all sort and so mightn't be easily serialisable anymore.</p>
 <p>As usual there's a Stack Overflow post showing I'm hardly the first person to have encountered this issue, and this particular one even has the authority Eric Lippert getting involved! :) Interesting to see him make the point that this was was work that was required with all of the &quot;LINQ-to-whatever&quot; integrations..</p>
 <p><a href="http://stackoverflow.com/questions/6443433/how-can-i-pass-a-lambda-expression-to-a-wcf-service">Stack Overflow: How can I pass a lambda expression to a WCF Service?</a></p>
-<h3 id="a-solution.for-now"><a href="#a-solution.for-now">A solution.. for now</a></h3>
+<h3 id="a-solution.for-now"><a href="/compiled-linq-expressions-dont-serialise#a-solution.for-now">A solution.. for now</a></h3>
 <p>I essentially just want to write to disk a custom string-keyed dictionary object with a particular key comparer to act as another level of caching when it drops out of memory so I didn't have any issues so complicated as passing expressions to a query service so I went for a relatively simple approach; I record all of the data as class members that are required to generate the LINQ Expressions so that I can implement ISerializable and write away just this data when an instance is serialised. Then when it's de-serialised I use this data to regenerate the lambdas.</p>
 <pre><code>// This de-serialising constructor takes the values that are stored in the GetObjectData
 // method and passes them through to the standard public constructor
@@ -101,7 +101,7 @@ public void GetObjectData(SerializationInfo info, StreamingContext context)
     info.AddValue(&quot;_preNormaliserWork&quot;, _preNormaliserWork);
 }
 </code></pre>
-<h3 id="however"><a href="#however">However..</a></h3>
+<h3 id="however"><a href="/compiled-linq-expressions-dont-serialise#however">However..</a></h3>
 <p>Then I tried integrating the project as a search facility into my blog which is running ASP.Net MVC 3 (.Net 4.0) and ran into another snag; &quot;Inheritance security rules violated while overriding member: MyBusinessException.GetObjectData(System.Runtime.Serialization.SerializationInfo, System.Runtime.Serialization.StreamingContext)'. Security accessibility of the overriding method must match the security accessibility of the method being overridden.&quot;</p>
 <p>Hmmm...</p>
 <p>Stack Overflow to the rescue again! <a href="http://stackoverflow.com/questions/3055792/inheritance-security-rules-violated-while-overriding-member-securityruleset-le">Inheritance security rules violated with overriding member</a>. Reading the post led me to click &quot;Use Definition&quot; on ISerializable and observe that the &quot;SecurityCritical&quot; attribute was marked on the GetObjectData method - and from what I understand from what I read, I should be able to fix this by marking that attribute on my GetObjectData method. Sortio!</p>
@@ -111,7 +111,7 @@ public void GetObjectData(SerializationInfo info, StreamingContext context)
 &lt;system.web&gt;
 </code></pre>
 <p>and now it <em>is</em> working! Still, something to look into further another day I think.</p>
-<h3 id="for-the-curious"><a href="#for-the-curious">For the curious</a></h3>
+<h3 id="for-the-curious"><a href="/compiled-linq-expressions-dont-serialise#for-the-curious">For the curious</a></h3>
 <p>The project I've been talking about is publicly accessible at BitBucket but I'm yet to sort out a decent Readme for it and I'm hoping to write some posts about its development, its use so far and a range of examples - watch this space! <a href="https://bitbucket.org/DanRoberts/full-text-indexer">Full Text Indexer BitBucket repo</a></p>
 <p><strong>Update (17th December 2012):</strong> This has been included as part of a later <a href="/the-full-text-indexer-post-roundup">Full Text Indexer Round-up Post</a> that brings together several Posts into one series, incorporating code and techniques from each of them.</p>
 <p class="PostTime">Posted at 16:01</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/a-pluralityhandling-normaliser-correction">A Plurality-Handling Normaliser Correction</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/the-full-text-indexer">The Full Text Indexer</a></div></div><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a></li><li><a href="/writing-runtime-compiled-linq-expressions">Writing run-time compiled LINQ Expressions</a></li><li><a href="/css-minification-regular-expressions">CSS Minification Regular Expressions</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/FullTextIndexer" title="17 Posts">FullTextIndexer</a></li><li><a href="/Archive/Tag/LINQ" title="13 Posts">LINQ</a></li></ul></div>

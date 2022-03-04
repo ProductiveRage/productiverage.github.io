@@ -99,7 +99,7 @@ public class ExampleObject
     }
 }
 </code></pre>
-<h3 id="task-1-the-iinterfaceapplier-class"><a href="#task-1-the-iinterfaceapplier-class">Task 1: The IInterfaceApplier class</a></h3>
+<h3 id="task-1-the-iinterfaceapplier-class"><a href="/dynamically-applying-interfaces-to-objects-part-3#task-1-the-iinterfaceapplier-class">Task 1: The IInterfaceApplier class</a></h3>
 <p>The first part is fairly straight-forward so I'll jump straight in -</p>
 <pre><code>public class InterfaceApplierFactory : IInterfaceApplierFactory
 {
@@ -219,7 +219,7 @@ public interface IInterfaceApplier
 </code></pre>
 <p>Using this class means that we only need one instance of the ModuleBuilder no matter how many interfaces we're wrapping around objects and an &quot;IInterfaceApplier&quot; is returned instead of a reference to the interface-wrapped object. Note that I've used the .Net 4.0 Lazy class to instantiate the ModuleBuilder only the first time that it's required, but if you're using an earlier version of .Net then this could be replaced with the implementation (see my previous post about this <a href="/check-check-it-out">here</a>) or even by instantiating it directly from within the constructor.</p>
 <p>I've also supported an alternative method signature for GenerateInterfaceApplier such that the target interface can be specified as an argument rather than a typeparam to a generic method - this will become important in the next section and the only interesting things to note are how IInterfaceApplier&lt;T&gt; is returned from the generic method as opposed to the IInterfaceApplier returned from the typeparam-less signature and how the alternate method calls into the typeparam'd version using reflection.</p>
-<h3 id="task-2-recursively-applying-interfaces"><a href="#task-2-recursively-applying-interfaces">Task 2: Recursively applying interfaces</a></h3>
+<h3 id="task-2-recursively-applying-interfaces"><a href="/dynamically-applying-interfaces-to-objects-part-3#task-2-recursively-applying-interfaces">Task 2: Recursively applying interfaces</a></h3>
 <p>The approach I'm going to use here is to introduce a new interface that will be used when generating the interface appliers -</p>
 <pre><code>public interface IReadValueConverter
 {
@@ -420,7 +420,7 @@ else
 
 ilFunc.Emit(OpCodes.Ret);
 </code></pre>
-<h3 id="task-2.1-implementing-ireadvalueconverter"><a href="#task-2.1-implementing-ireadvalueconverter">Task 2.1: Implementing IReadValueConverter</a></h3>
+<h3 id="task-2.1-implementing-ireadvalueconverter"><a href="/dynamically-applying-interfaces-to-objects-part-3#task-2.1-implementing-ireadvalueconverter">Task 2.1: Implementing IReadValueConverter</a></h3>
 <p>A naive implementation might be as follows:</p>
 <pre><code>public class SimpleReadValueConverter : IReadValueConverter
 {
@@ -581,7 +581,7 @@ namespace Tester
 }
 </code></pre>
 <p>Each unique interface applier has a specific class name (of the form &quot;InterfaceApplier{0}&quot; where {0} is a guid). Examining the properties on n2Wrapped you can see that the class for n2Wrapped is different to the class for its Next and Previous properties as the INode interface applier hadn't been completely generated against n2 before an INode interface applier was required for these properties. But after this, <em>all</em> further INode-wrapped instances will share the same interface applier as the Previous and Next properties received - so there will be one &quot;wasted&quot; generated class but that's still a better job than the SimpleReadValueConverter would have managed.</p>
-<h3 id="inaccessible-interface"><a href="#inaccessible-interface">&quot;Inaccessible Interface&quot;</a></h3>
+<h3 id="inaccessible-interface"><a href="/dynamically-applying-interfaces-to-objects-part-3#inaccessible-interface">&quot;Inaccessible Interface&quot;</a></h3>
 <p>In the above example, the INode interface has to be located outside of the Program class since it must be accessible by the InterfaceApplierFactory and the Program class is private. This isn't an issue for the Node class as the InterfaceApplierFactory doesn't need direct access to that, it just returns an IInterfaceApplier that we pass the n2 reference to as an argument. Alternatively, the Program class could be made public. This isn't exactly rocket science but if it slips your mind then you're presented with an error such as -</p>
 <blockquote>
 <p>TypeLoadException: &quot;Type <code>'InterfaceApplierdb2cb792e09d424a8dcecbeca6276dc8'</code> from assembly <code>'DynamicAssembly, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null'</code> is attempting to implement an inaccessible interface.&quot;</p>

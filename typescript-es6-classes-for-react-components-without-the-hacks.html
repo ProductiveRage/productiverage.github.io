@@ -62,7 +62,7 @@
 <p>React 0.13 has just been released into beta, a release I've been eagerly anticipating! This has been the release where finally they will be supporting ES6 classes to create React components. Fully supported, no messing about and jumping through hoops and hoping that breaking API changes don't drop in and catch you off guard.</p>
 <p>Back in September, I wrote about <a href="/writing-react-components-in-typescript">Writing React components in TypeScript</a> and realised that before I had actually posted it that the version of React I was using was out of date and I would have to re-work it all again or wait until ES6 classes were natively supported (which was on the horizon back then, it's just that there were no firm dates). I took the lazy option and have been sticking to React 0.10.. until now!</p>
 <p><strong>Update (16th March 2015):</strong> React 0.13 was officially released last week, it's no longer in beta - this is excellent news! There appear to be very little changed since the beta so everything here is still applicable.</p>
-<h3 id="getting-the-new-code"><a href="#getting-the-new-code">Getting the new code</a></h3>
+<h3 id="getting-the-new-code"><a href="/typescript-es6-classes-for-react-components-without-the-hacks#getting-the-new-code">Getting the new code</a></h3>
 <p>I've got my head around npm, which is the recommended way to get the source. I had a few teething problems a few months ago with first getting going (I need python?? Oh, not that version..) but now everything's rosy. So off I went:</p>
 <blockquote>
 <p>npm install react@0.13.0-beta.1</p>
@@ -115,7 +115,7 @@ React.render(
 };
 </code></pre>
 <p>I tried hacking this in, in place of the inheritance approach from the JSX Compiler and it still worked. I presumed it would, but it's always best to take baby steps if you don't understand it all perfectly - and I must admit that I've been a bit hazy on some of React's terminology around components, classes, elements, factories, whatever.. (despite having read &quot;<a href="http://facebook.github.io/react/blog/2014/10/14/introducing-react-elements.html">Introducing React Elements</a>&quot; what feels like a hundred times).</p>
-<h3 id="another-wrong-turn"><a href="#another-wrong-turn">Another wrong turn</a></h3>
+<h3 id="another-wrong-turn"><a href="/typescript-es6-classes-for-react-components-without-the-hacks#another-wrong-turn">Another wrong turn</a></h3>
 <p>In the code above, the arrangement of the line</p>
 <pre><code>React.render(
   React.createElement(HelloMessage, { name: &quot;Sebastian&quot; }),
@@ -130,7 +130,7 @@ React.render(
 </code></pre>
 <p>It's not.</p>
 <p>It it <em>not</em> a new instance passed to &quot;createElement&quot;; it's a type and a properties object. I'm not sure where I got the idea from that it was the other way around - perhaps because I got all excited about it working with classes and then presumed that you worked directly with instances of those classes. Doh.</p>
-<h3 id="time-for-typescript"><a href="#time-for-typescript">Time for TypeScript!</a></h3>
+<h3 id="time-for-typescript"><a href="/typescript-es6-classes-for-react-components-without-the-hacks#time-for-typescript">Time for TypeScript!</a></h3>
 <p>Like I said, I've been clinging to my hacked-about way to get TypeScript working with React until now (waiting until I could throw it away entirely, rather than replace it for something else.. which I would then have to throw away entirely when this release turned up). I took a lot of inspiration from code in the <a href="https://github.com/fdecampredon/react-typescript">react-typescript</a> repo. But that repo hasn't been kept up to date (for the same reason as I had, I believe, that the author knew that it was only going to be required until ES6 classes were supported). There is a link there to <a href="https://github.com/Asana/typed-react/">typed-react</a>, which seems to have been maintained for 0.12. This seemed like the best place to start.</p>
 <p><strong>Update (16th March 2015):</strong> With React 0.13's official release, the <a href="https://github.com/borisyankov/DefinitelyTyped/tree/master/react">DefinitelyTyped repo</a> has been updated and now <em>does</em> work with 0.13, I'm leaving the below section untouched for posterity but you might want to skip to the next section &quot;Writing a TypeScript React component&quot; if you're using the DefinitelyTyped definition.</p>
 <p>In fact, after some investigation, very little needs changing. Starting with their React type definitions (from the file <a href="https://github.com/Asana/typed-react/blob/master/typings/react/react.d.ts">typings/react/react.d.ts</a>), we need to expose the &quot;React.Component&quot; class but currently that is described by an interface. So the following must be changed -</p>
@@ -167,7 +167,7 @@ React.render(
 }
 </code></pre>
 <p>Quite frankly, I'm not 100% sure why specifying &quot;Component<any>&quot; works as it does, since I would have thought that you could <em>only</em> then inherit from &quot;Component<any>&quot;, rather than being able to specify whatever type param that you want. But it <em>does</em> work, thankfully (my understanding of type definitions is a little shallow at this point, so there's very likely something here that I don't quite understand which allows it work as it does).</any></any></p>
-<h3 id="writing-a-typescript-react-component"><a href="#writing-a-typescript-react-component">Writing a TypeScript React component</a></h3>
+<h3 id="writing-a-typescript-react-component"><a href="/typescript-es6-classes-for-react-components-without-the-hacks#writing-a-typescript-react-component">Writing a TypeScript React component</a></h3>
 <p>So now we can write this:</p>
 <pre><code>import React = require('react');
 
@@ -231,7 +231,7 @@ export = Factory;
 ): Component&lt;P, S&gt;
 </code></pre>
 <p>but the meaning is much the same.</p>
-<h3 id="migration-plan"><a href="#migration-plan">Migration plan</a></h3>
+<h3 id="migration-plan"><a href="/typescript-es6-classes-for-react-components-without-the-hacks#migration-plan">Migration plan</a></h3>
 <p>The hacky way I've been working until now <em>did</em> allow instances of component classes to be used, so migrating over is going to require some boring mechanical work to change them - and to add Factory methods to each component. But, since they all shared a common base class (the &quot;ReactComponentBridge&quot;), it also shouldn't be too much work to change those base classes to &quot;React.Component&quot; in one search-and-replace. And there aren't too many other breaking changes to worry about. I was using &quot;setProps&quot; earlier on in development but I've already gotten rid of all those - so I'm optimistic that moving over to 0.13 isn't going to be too big of a deal.</p>
 <p>It's worth bearing in mind that 0.13 is still in beta at the moment, but it seems like the changes that I'm interested in here are unlikely to vary too much between now and the official release. So if I get cracking, maybe I can finish migrating not long after it's officially here - instead of being stuck a few releases behind!</p>
 <p class="PostTime">Posted at 01:02</p><div class="PreviousAndNext"><div class="Previous"><h3>Last time:</h3><a class="Previous" href="/typescript-classes-for-react-flux-actions">TypeScript classes for (React) Flux actions</a></div><div class="Next"><h3>Next:</h3><a class="Next" href="/simple-typescript-type-definitions-for-amd-modules">Simple TypeScript type definitions for AMD modules</a></div></div><div class="Related"><h3>You may also be interested in:</h3><ul><li><a href="/javascript-dependencies-that-work-with-brackets-node-and-inbrowser">JavaScript dependencies that work with Brackets, Node and in-browser</a></li><li><a href="/typescript-state-machines">TypeScript State Machines</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/JavaScript" title="6 Posts">JavaScript</a></li><li><a href="/Archive/Tag/TypeScript" title="6 Posts">TypeScript</a></li><li><a href="/Archive/Tag/React" title="11 Posts">React</a></li></ul></div>

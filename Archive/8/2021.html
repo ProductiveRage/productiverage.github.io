@@ -54,9 +54,9 @@
 
     <div class="Content ArchiveByMonth">
         <p class="PostDate">10 August 2021</p><h2 id="parallelising-linq-work-in-c"><a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a></h2>
-<h3 id="tldr"><a href="#tldr">TL;DR</a></h3>
+<h3 id="tldr"><a href="/parallelising-linq-work-in-c-sharp#tldr">TL;DR</a></h3>
 <p>For computationally-expensive work that can be split up into tasks for LINQ &quot;Select&quot; calls, .NET provides a convenient way to execute this code on multiple threads. This &quot;parallelism&quot; should not be confused with &quot;concurrency&quot;, which is what async / await is for.</p>
-<h3 id="a-parallelism-vs-concurrency-summary"><a href="#a-parallelism-vs-concurrency-summary">A &quot;parallelism vs concurrency&quot; summary</a></h3>
+<h3 id="a-parallelism-vs-concurrency-summary"><a href="/parallelising-linq-work-in-c-sharp#a-parallelism-vs-concurrency-summary">A &quot;parallelism vs concurrency&quot; summary</a></h3>
 <p>Before getting started, I want to nip in the bud any confusion with the differences between code that runs &quot;in parallel&quot; and code that runs &quot;concurrently&quot;.</p>
 <p>In short, recruiting a parallelisation strategy for code allows you to:</p>
 <ul>
@@ -70,7 +70,7 @@
 <p>Parallelising a calculation is kind of the opposite - instead of one thread for multiple requests it tackles one request using multiple threads. This only makes sense when the work to be done is some sort of computation that consists of crunching away on data and <em>not</em> just waiting for an external resource to reply.</p>
 <p>When talking about concurrency, it's worth noting that in ASP.NET, if there is a lot of load then there might be multiple threads used to process work concurrently - each of the threads will be handling requests that spend most of their time waiting for some async work to complete. This is just like &quot;one thread / multiple requests&quot; but multiplied out to be <strong>&quot;{x} threads / {y} requests&quot; where {x} &lt; {y}</strong>.</p>
 <p>For a web server, it is possible that it never makes sense to do work that benefits from being parallelised because that work, by its very nature, is very computationally-expensive and you wouldn't want multiple requests to get bogged down in repeating the same costly work. You might require complicated synchronisation mechanisms (to avoid multiple requests doing the same work; instead, having one request do the work while other requests queue up and wait for the result to become available) and maybe you would be better moving that computationally-heavy work off into another service entirely (in which case your web server is back to making async requests as it asks a different server to do the work and send back the result).</p>
-<h3 id="a-parallelism-vs-concurrency-example"><a href="#a-parallelism-vs-concurrency-example">A &quot;parallelism vs concurrency&quot; example</a></h3>
+<h3 id="a-parallelism-vs-concurrency-example"><a href="/parallelising-linq-work-in-c-sharp#a-parallelism-vs-concurrency-example">A &quot;parallelism vs concurrency&quot; example</a></h3>
 <p>This is what concurrent (aka &quot;async&quot;) work looks likes - if we use <strong>Task.Delay</strong> to imitate the delay that would be incurred by waiting on an external resource then we can create 50 requests and await the completion of them all like this:</p>
 <pre><code>var items = await Task.WhenAll(
     Enumerable
@@ -313,7 +313,7 @@ static void LogWithTime(string message) =&gt;
 </code></pre>
 <p>Now the work will still be performed on multiple threads at once but enumeration will not be able to start until all of the iterations have completed.</p>
 <p>This means that the console messages will consist entirely of &quot;Starting {i}&quot; and &quot;Finished {i}&quot; messages until <em>all</em> 50 iterations are completed, then all of the &quot;Received item {item}&quot; messages will be written out. This will still have the same running time (eg. 11s on my computer) because the work is being performed in the same way - the only difference is that the results are all buffered up until the work is completed, otherwise the <strong>OrderBy</strong> call wouldn't be able to do its job because it couldn't know all of the values that were going to be produced.</p>
-<h3 id="implementation-details"><a href="#implementation-details">Implementation details</a></h3>
+<h3 id="implementation-details"><a href="/parallelising-linq-work-in-c-sharp#implementation-details">Implementation details</a></h3>
 <p>There are a <em>lot</em> of options and intricacies that you can find if you dig deep enough into how this works in the .NET library. I have no intention of trying to cover all of them but there are a few options and observations that I think are worth including in this post.</p>
 <p>The first thing to be aware of is that parallelisation of the work will not be enabled until after the &quot;AsParallel()&quot; call is made - for example, the following code will <em>not</em> spread the <strong>Thread.Sleep</strong> calls across multiple cores:</p>
 <pre><code>var items = Enumerable
@@ -340,7 +340,7 @@ static void LogWithTime(string message) =&gt;
 </code></pre>
 <p>This may seem counterintuitive as the <strong>IEnumerable</strong> returned from &quot;Select&quot; may be lazily evaluated and so you may expect the runtime to be able to distribute its work over multiple cores due to the &quot;AsParallel()&quot; call after it but this is not the case.</p>
 <p>To get an idea where parallelisation may occur, there are hints in the method return types - eg. where &quot;Enumerable.Range&quot; returns an <strong>IEnumerable&lt;int&gt;</strong> and a &quot;Select&quot; call following it will also return an <strong>IEnumerable&lt;int&gt;</strong>, when there is an &quot;AsParallel&quot; call after &quot;Enumerable.Range&quot; then the type is now a <strong>ParallelQuery&lt;int&gt;int</strong> and there is a &quot;Select&quot; overload on that type that means that when &quot;Select&quot; is called on a <strong>ParallelQuery</strong> then that too returns a <strong>ParallelQuery</strong>.</p>
-<h4 id="limiting-how-many-cores-may-be-used"><a href="#limiting-how-many-cores-may-be-used">Limiting how many cores may be used</a></h4>
+<h4 id="limiting-how-many-cores-may-be-used"><a href="/parallelising-linq-work-in-c-sharp#limiting-how-many-cores-may-be-used">Limiting how many cores may be used</a></h4>
 <p>The default behaviour of &quot;AsParallel()&quot; is to spread the work over as many cores as your computer has available (obviously if there are only 10 work items to distribute and there are 24 cores then it won't be able to use <em>all</em> of your cores but if there are at least as many things to do as there are cores then it will use them all until it starts running out of things).</p>
 <p>Depending upon your scenario, this may or may not be a good thing. For example, in my previous post (<a href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a>), I spoke about how I've started using the C# machine learning library <a href="https://github.com/curiosity-ai/catalyst">Catalyst</a> (produced by a startup that I used to work at) to suggest &quot;you may be also be interested in&quot; links for the bottom of my posts - in this case, it's a one-off task performed before I push an update to my blog live and so I want the computer to spend all of its resources calculating this as fast as possible.</p>
 <p>One of the applicable lines in the library is in the <a href="https://en.wikipedia.org/wiki/Tf%E2%80%93idf">TFIDF</a> implementation and looks like this:</p>
@@ -371,7 +371,7 @@ static void LogWithTime(string message) =&gt;
                       $&quot;(Thread {Thread.CurrentThread.ManagedThreadId})&quot;);
 </code></pre>
 <p>If the value passed to &quot;WithDegreeOfParallelism&quot; exceeds the number of cores then it will have no effect but if it is less then it will constrain that parallelised work such that it will not use more than that number of cores at any time.</p>
-<h4 id="buffering-options"><a href="#buffering-options">Buffering options</a></h4>
+<h4 id="buffering-options"><a href="/parallelising-linq-work-in-c-sharp#buffering-options">Buffering options</a></h4>
 <p>I mentioned earlier that when work is spread over multiple cores using &quot;AsParallel()&quot; and then later enumerated that some buffering of the results occurs. There are three options for the buffering behaviour:</p>
 <ol>
 <li>AutoBuffering</li>
@@ -405,7 +405,7 @@ static void LogWithTime(string message) =&gt;
     Console.WriteLine($&quot;{DateTime.Now:HH:mm:ss.fff} {message} &quot; + 
                       $&quot;(Thread {Thread.CurrentThread.ManagedThreadId})&quot;);
 </code></pre>
-<h4 id="cancellation"><a href="#cancellation">Cancellation</a></h4>
+<h4 id="cancellation"><a href="/parallelising-linq-work-in-c-sharp#cancellation">Cancellation</a></h4>
 <p>Say you have many work items distributed over multiple cores in order to calculate something very expensive and parallelisable. Part way through, you might decide that actually you don't want the result any more - maybe some of the data that it relies on has changed and a &quot;stale&quot; result will not be of any use. In this case, you will want to cancel the parallised work.</p>
 <p>To enable this, there is a &quot;WithCancellation&quot; method that takes a <strong>CancellationToken</strong> and will stop allocating work items to threads if the token is marked as cancelled - instead, it will throw an <strong>OperationCanceledException</strong>. To imitate this, the code below has a token that will be set to be cancelled after 3s and the exception will be thrown during the enumeration:</p>
 <pre><code>var cts = new CancellationTokenSource();
@@ -462,7 +462,7 @@ static void LogWithTime(string message) =&gt;
 </code></pre>
 <p><em>(Granted, using &quot;cts.Token.ThrowIfCancellationRequested&quot; alongside &quot;Thread.Sleep&quot; isn't a perfect example of how to deal with cancellation because you can't cancel the &quot;Thread.Sleep&quot; call itself - but hopefully it demonstrates that if you want immediate cancellation of every work item then you need to incorporate cancellation support into each work item as well as calling &quot;WithCancellation&quot; on the <strong>ParallelQuery</strong>)</em></p>
 <p>For more detailed information on &quot;PLINQ (parallel LINQ) cancellation&quot;, there is a great article by Reed Copsey Jr entitled <a href="http://reedcopsey.com/2010/02/17/parallelism-in-net-part-10-cancellation-in-plinq-and-the-parallel-class/">Parallelism in .NET – Part 10, Cancellation in PLINQ and the Parallel class</a>.</p>
-<h4 id="partitionertsource"><a href="#partitionertsource">Partitioner&lt;TSource&gt;</a></h4>
+<h4 id="partitionertsource"><a href="/parallelising-linq-work-in-c-sharp#partitionertsource">Partitioner&lt;TSource&gt;</a></h4>
 <p>When an &quot;AsParallel&quot; call decides how to split up the work, it uses something called a &quot;Partitioner&quot;. This determines how big the buffer will be when &quot;AutoBuffering&quot; is used and it may even perform other optimisations (up to this point, I've said that &quot;AsParallel&quot; will <em>always</em> spread the work over multiple cores - so long as you have multiple cores at your disposal and &quot;WithDegreeOfParallelism&quot; doesn't specify a value of 1) but, actually, the partitioner could look at the work load and decide that parallelising the work would probably incur more overhead than performing it one step at a time on a single thread and so it <em>won't</em> actually use multiple cores.</p>
 <p>The .NET library will use its own default Partitioner unless it is told to use a custom one. This is a complex subject matter that:</p>
 <ol>
@@ -470,7 +470,7 @@ static void LogWithTime(string message) =&gt;
 <li>I don't want to try to add to this article, lest it end up ginormous!</li>
 </ol>
 <p>If you want to find out more, I recommend starting at the Microsoft documentation about it here: <a href="https://docs.microsoft.com/en-us/dotnet/standard/parallel-programming/custom-partitioners-for-plinq-and-tpl">Custom Partitioners for PLINQ and TPL</a> and also checking out <a href="https://weblogs.asp.net/dixin/parallel-linq-2-partitioning">Parallel LINQ in Depth (2) Partitioning</a> from Dixin's Blog (whose blog I also referenced under the &quot;Further reading&quot; section of my <a href="/i-didnt-understand-why-people-struggled-with-nets-async">I didn't understand why people struggled with (.NET's) async</a> post).</p>
-<h3 id="when-to-parallelise-work-and-when-to-not"><a href="#when-to-parallelise-work-and-when-to-not">When to parallelise work (and when to not)</a></h3>
+<h3 id="when-to-parallelise-work-and-when-to-not"><a href="/parallelising-linq-work-in-c-sharp#when-to-parallelise-work-and-when-to-not">When to parallelise work (and when to not)</a></h3>
 <p>Much of the time, there is no need for you to try to spread individual tasks over multiple threads. A very common model in this day and age for processing is a web server that is dealing with requests from many Users and most of the time is spent waiting for external caches, file system accesses, database retrievals, etc.. This is not the sort of heavy computation that would lead you to want to try to utilise multiple cores on that web server for any single request.</p>
 <p>Also, some computational work, even if it's expensive, doesn't lend itself to parallelisation - if you can't split the work into clearly delineated and independent work items then it's going to be awkward (if not impossible) to make the work parallelisable. For example, the <a href="https://en.wikipedia.org/wiki/Fibonacci_number">Fibonacci Sequence</a> starts with the numbers 0 and 1 and each subsequent number is the sum of the previous two; so the third number is (0 + 1) = 1, the fourth number is (1 + 1) = 2, the fifth number is (1 + 2) = 3, etc.. In case you're not familiar with it and that description is a little confusing, maybe it will help to know that the first ten numbers in the sequence are:</p>
 <p><strong>0</strong>, <strong>1</strong>, <strong>1</strong> (=0+1), <strong>2</strong> (=1+1), <strong>3</strong> (=1+2), <strong>5</strong> (=2+3), <strong>8</strong> (=3+5), <strong>13</strong> (=5+8), <strong>21</strong> (=8+13), <strong>34</strong> (=13+21)</p>

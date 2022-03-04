@@ -63,7 +63,7 @@ Access-Control-Allow-Headers: X-Requested-With,Content-Type
 <p>My friend had found this information and struggled to make it work. It looked like it should be simple enough to me, so I thought I'd give it a go.</p>
 <p>I did not find it simple.</p>
 <p>But I cracked it in the end! So I'm recording the necessary steps here for posterity.. or for when I might need it in the future. Truth be told, there's no <em>one</em> thing that's mind-blowingly difficult, it's just a case of trying to remember how WCF ties things together when you've not dealt with it for a little while.</p>
-<h3 id="modern-wcf-configuration-so-easy-to-get-started"><a href="#modern-wcf-configuration-so-easy-to-get-started">Modern WCF configuration - so easy to get started!</a></h3>
+<h3 id="modern-wcf-configuration-so-easy-to-get-started"><a href="/wcf-cors-plus-json-rest-complete-example#modern-wcf-configuration-so-easy-to-get-started">Modern WCF configuration - so easy to get started!</a></h3>
 <p>When Visual Studio 2010 and .net 4 were released, one of the things they introduced was cleaner web.config files that used nice defaults to prevent the bloat that had been added over time. (ScottGu talked about it at <a href="http://weblogs.asp.net/scottgu/clean-web-config-files-vs-2010-and-net-4-0-series">Clean Web.Config Files</a> - there he uses a web application rather than a WCF service as an example, but works was done on the WCF side too).</p>
 <p>The initial web.config you get when you go to New Project / WCF / WCF Service Application in VS 2013 is:</p>
 <pre><code>&lt;?xml version=&quot;1.0&quot;?&gt;
@@ -155,7 +155,7 @@ namespace CORSExample
 }
 </code></pre>
 <p>This gives us the outline of a very basic service. You could start this project up and then create a WCF client to communicate with it. It's the most basic example you can likely imagine that takes any form of input and returns a non-primitive-type response. I wanted a &quot;complex response type&quot; to show how responses may be JSON-serialised very easily.. but that comes later, we're not returning JSON at the moment!</p>
-<h3 id="laying-the-groundwork"><a href="#laying-the-groundwork">Laying the groundwork</a></h3>
+<h3 id="laying-the-groundwork"><a href="/wcf-cors-plus-json-rest-complete-example#laying-the-groundwork">Laying the groundwork</a></h3>
 <p>Starting with the code on the <a href="http://enable-cors.org/server_wcf.html">CORS on WCF</a> page, I took the two classes and combined them into one, removing some potentially-customisable code and replacing it with something that does just the job at hand. This results in a smaller surface area of exposed &quot;new code&quot; and means that I have less to confuse myself with!</p>
 <pre><code>using System;
 using System.Collections.Generic;
@@ -277,7 +277,7 @@ namespace CORSExample
 &lt;/configuration&gt;
 </code></pre>
 <p><em>Note that the 51192 port in the endpoint address may vary for your test project. If you go to the project's properties page you should be able to find the port there.</em></p>
-<h3 id="enables-the-cors"><a href="#enables-the-cors">Enables the CORS!</a></h3>
+<h3 id="enables-the-cors"><a href="/wcf-cors-plus-json-rest-complete-example#enables-the-cors">Enables the CORS!</a></h3>
 <p>Right, we're really getting there now! Now we need to introduce the <strong>CORSEnablingBehavior</strong> class. In the service's web.config we need to add a new section (inside &quot;system.servicemodel&quot;) -</p>
 <pre><code>&lt;extensions&gt;
   &lt;behaviorExtensions&gt;
@@ -351,7 +351,7 @@ namespace CORSExample
 
 &lt;/configuration&gt;
 </code></pre>
-<h3 id="a-json-endpoint"><a href="#a-json-endpoint">A JSON endpoint</a></h3>
+<h3 id="a-json-endpoint"><a href="/wcf-cors-plus-json-rest-complete-example#a-json-endpoint">A JSON endpoint</a></h3>
 <p>As I said at the start, I think that the most common use case for CORS-enabled services such as this is to make AJAX requests from JavaScript on a web page. To this end, it would be great if we didn't have to rely upon XML messages. It would be much better to be able to make the requests in some sort of RESTful manner (where the request is essentially represented by the URL, rather than a POST'd XML-serialised message) and to have the response expressed as JSON.</p>
 <p>I'm going to leave thinking any deeper about the nitty gritty of what it means to be RESTful for another day (it can be a contentious issue!) and just make the current example communicate through a GET request that passes the &quot;value&quot; parameter as part of the URL.</p>
 <p>This is actually extraordinarily easy at this point. The only change required is to the <strong>IService1</strong> interface, it should now read</p>
@@ -392,7 +392,7 @@ namespace CORSExample
 <p>Last November, I was helping someone consume a WCF Web Service with PHP (in the imaginatively named <a href="/consuming-a-wcf-web-service-from-php">Consuming a WCF Web Service from PHP</a>). After jumping through some hoops (and reading a <em>lot</em> of unhelpful and/or misleading information on the web) it was working; requests that relied on type names being specified were being accepted, gzip support was being enabled, even some useful debug information was being made available for when problems were encountered. All was well. But there was something that was bugging me for a long time that I only quite recently was able to address -</p>
 <p><em>Why does the PHP SoapClient so belligerently throw away the type names of response objects?</em></p>
 <p>It has knowledge of the type name since it must process the response data to populate the associative arrays that represent this data. But the names of the response types are apparently then cast forever into the ether, never to exposed to me. After all, I'm using PHP - I don't want no stinkin' types!</p>
-<h3 id="is-it-just-me"><a href="#is-it-just-me">Is it just me?</a></h3>
+<h3 id="is-it-just-me"><a href="/why-do-you-hate-my-wcf-types-php#is-it-just-me">Is it just me?</a></h3>
 <p>I feel I should probably explain why I care so much. To be fair, I imagine that in a large number of cases the type name of the returned data really isn't important. If, for example, I'm querying the Twitter API for a set of Statuses then I know the form of the returned data (and since it returns JSON, there <em>are</em> no type names in the responses!). And for a lot of services, I imagine the form of the returned data will be identical from one result to another and, in many of the cases where the forms vary, a form of &quot;property sniffing&quot; will deal with it; does this result have this particular property along with all of the common ones? If so, save it or use it or do whatever with it.</p>
 <p>But there are cases where this isn't enough. In that <a href="/consuming-a-wcf-web-service-from-php">earlier post</a>, the example was a web method &quot;GetHotels&quot; which returned hotel data for results that matched a particular set of filters (in that case, the type names were important for the <em>request</em> since an array of filters was specified, each filter was a particular WCF class - without the type names, the service couldn't deserialise the request).</p>
 <p>Each of the returned hotels has data such as Categories, Awards, and Facilities but only the keys of these Categories, Awards and Facilities are returned. There is a separate web method &quot;GetMetaData&quot; that maps these keys onto names. A language can be specified as part of the meta data request so that the names are provided in the correct language.</p>
@@ -494,14 +494,14 @@ $metaDataTypes = $client-&gt;GetMetaData(
 </code></pre>
 <p>we can loop through the returned data and use get_class to find out that.. they are all apparently &quot;<strong>StdObject</strong>&quot;.</p>
 <p>This is what I meant by the type names being &quot;thrown away&quot;.</p>
-<h3 id="duck-typing-doesnt-work-if-everything-quacks-and-waddles"><a href="#duck-typing-doesnt-work-if-everything-quacks-and-waddles">Duck-typing (doesn't work if everything quacks and waddles)</a></h3>
+<h3 id="duck-typing-doesnt-work-if-everything-quacks-and-waddles"><a href="/why-do-you-hate-my-wcf-types-php#duck-typing-doesnt-work-if-everything-quacks-and-waddles">Duck-typing (doesn't work if everything quacks and waddles)</a></h3>
 <p>In some cases we can work around this.</p>
 <p>For example, to guess that a result is an <strong>AwardMetaDataEntry</strong> we could try</p>
 <pre><code>if (property_exists($metaDataValue, &quot;ImageUrl&quot;)) {
 </code></pre>
 <p>and work on the basis that if it exposes an &quot;ImageUrl&quot; property that it is <strong>AwardMetaDataEntry</strong>.</p>
 <p>But this won't work for differentiating between a <strong>CategoryGroupMetaDataEntry</strong> and a <strong>FacilityGroupMetaDataEntry</strong> since those response types have no structural differences.</p>
-<h3 id="class-mappings"><a href="#class-mappings">Class Mappings</a></h3>
+<h3 id="class-mappings"><a href="/why-do-you-hate-my-wcf-types-php#class-mappings">Class Mappings</a></h3>
 <p>It turns out that the SoapClient <em>does</em> offer a way to get what we want, so long as we don't mind declaring PHP classes for every response type that we're interested in.</p>
 <pre><code>class MetaDataEntry
 {
@@ -633,7 +633,7 @@ namespace WCFJSONExample
 <p>And that's it! Web Service calls can be made by specifying the method name as part of the url - eg.</p>
 <pre><code>http://localhost:62277/PostService.svc/Search?id=1
 </code></pre>
-<h3 id="well"><a href="#well">Well..</a></h3>
+<h3 id="well"><a href="/wcf-with-json-and-nullable-types#well">Well..</a></h3>
 <p>When making requests, if any of the parameters are not included then they will be given default values - eg.</p>
 <pre><code>http://localhost:62277/PostService.svc/Search?id=1
 </code></pre>
@@ -850,13 +850,13 @@ $data = $client-&gt;GetHotels(
 </code></pre>
 <p>Then we <em>are</em> able to include information about the type. Progress! The namespace string specified references the C# namespace of the CategoryFilter class.</p>
 <p>As with so many things, it looks all so easy. But I didn't know what exactly I should be searching for, getting this far took me quite a while - and the resource out there explaining this are thin on the ground! With the maturity of both PHP and WCF I would have thought that information about calling into WCF Services from PHP in this manner would be much readily available!</p>
-<h3 id="but-wait-theres-more"><a href="#but-wait-theres-more">But wait; there's more</a></h3>
+<h3 id="but-wait-theres-more"><a href="/consuming-a-wcf-web-service-from-php#but-wait-theres-more">But wait; there's more</a></h3>
 <p>While I was at it, I thought I'd dig a little further. When I first communicated with this other Developer, I asked him to send me a trace of the requests that were being generated by his PHP code, using Fiddler or something. This information was not forthcoming and when I was running test PHP scripts on my local machine the requests weren't being captured by Fiddler anyway. But I found these handy methods:</p>
 <pre><code>$client-&gt;__getLastRequest()
 $client-&gt;__getLastRequestHeaders()
 </code></pre>
 <p>which will retrieve the sent content, ideal for looking into exactly what messages were being generated! These only work if the &quot;trace&quot; =&gt; &quot;1&quot; argument is specified when the SoapClient is instantiated. Which explained to me what that was for, which was nice :)</p>
-<h3 id="enabling-gzip-support"><a href="#enabling-gzip-support">Enabling gzip support</a></h3>
+<h3 id="enabling-gzip-support"><a href="/consuming-a-wcf-web-service-from-php#enabling-gzip-support">Enabling gzip support</a></h3>
 <p>The next issue I had was another one that I thought would be beyond easy to solve, with easy-to-follow and accurate information all over the place. I was wrong again! At least, my first searches didn't bring me immediately to the answer :(</p>
 <p>A <em>lot</em> of resources suggest the following:</p>
 <pre><code>$client = new SoapClient(
@@ -888,12 +888,12 @@ $client-&gt;__getLastRequestHeaders()
 );
 </code></pre>
 <p>Again, oh so simple yet so much harder to come to in the end than it should have been.</p>
-<h3 id="one-more-thing"><a href="#one-more-thing">One more thing</a></h3>
+<h3 id="one-more-thing"><a href="/consuming-a-wcf-web-service-from-php#one-more-thing">One more thing</a></h3>
 <p>A final note, that actually <em>was</em> commonly documented and pointed out, was that if you are developing against a service that is still in flux that you should disable wsdl caching in PHP. This will affect performance as the wsdl will be retrieved on each request (I presume), but it may prevent some headaches if the contract changes. I changed a value in the php.ini file but apparently it can also be done in the PHP script with:</p>
 <pre><code>ini_set(&quot;soap.wsdl_cache_enabled&quot;, 0);
 </code></pre>
 <p>(Courtesy of a <a href="http://stackoverflow.com/a/303514">StackOverflow answer</a>).</p>
-<h3 id="conclusion"><a href="#conclusion">Conclusion</a></h3>
+<h3 id="conclusion"><a href="/consuming-a-wcf-web-service-from-php#conclusion">Conclusion</a></h3>
 <p>This may well be simple stuff to the real PHP developers out there but since I struggled, maybe this post will help others in the future with this particular problem!</p>
 <p class="PostTime">Posted at 23:03</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/why-do-you-hate-my-wcf-types-php">Why do you hate my (WCF) types, PHP??</a></li><li><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40">Ramping up WCF Web Service Request Handling.. on IIS 6 with .Net 4.0</a></li><li><a href="/dependency-injection-with-a-wcf-service">Dependency Injection with a WCF Service</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/WCF" title="6 Posts">WCF</a></li><li><a href="/Archive/Tag/PHP" title="2 Posts">PHP</a></li></ul></div>
             <p class="Comments">
@@ -905,7 +905,7 @@ $client-&gt;__getLastRequestHeaders()
 <p>It's got to the point with a Web Service I'm developing at work to run it through some stress tests and try to work out what kind of load we can handle with the hardware we have in mind for its hosting environment. We also have an arbitrary concept of the load we'd <em>like</em> it to be able to handle, so we need to see if the hardware solution we have in mind is even in the right ballpark.</p>
 <p>It's a WCF Web Service running against .Net 4.0 but it's going to be hosted in IIS 6; the Web Servers our Infrastructure Team provide us with are all Server 2003 and although there are mid-term plans to start upgrading to 2008 and IIS 7 this isn't going to happen before this service needs to be live.</p>
 <p>The Web Service effectively backs on to a Data Service we already have for our own private use that handles querying and caching of data and metadata, so this Web Service's primary job is to expose this data in a saner manner than the internal interface (which was built some years back and has a lot of legacy features, exposes too much craziness from the backing database which evolved over the best part of a decade and the internal service is communicates over .Net Remoting as it was originally written against .Net 2.0!). So all we're really doing is translating requests from the Web Service model into the internal format and then performing a similar act on the responses, there won't be too many caching concerns, any direct db access or much file IO; the bulk of its time I expect will be waiting on the internal service.</p>
-<h3 id="gotcha-number-one"><a href="#gotcha-number-one">Gotcha Number One</a></h3>
+<h3 id="gotcha-number-one"><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40#gotcha-number-one">Gotcha Number One</a></h3>
 <p>To kick things off, I wanted to get an idea of how much load the internal service could handle on a single server and then see how things changed when I put a Web Server in front of it, hosting the new Service. To cut a long story short, I was able to reproduce requests to the internal service from the busiest few hours the night before and serialise them all to disk so that they could be replayed at any time against the stress-testing environment. The optimistic plan being to ramp up the speed at which the requests are replayed and see where the bottlenecks start appearing and at what sort of loads!</p>
 <p>The first problem I encountered was when replaying these from a test app on my computer to the data service in the load test environment. As the Web Service requests were ramping up the request times were getting longer and longer. I looked on the Web Server and found that it was doing <em>very</em> little; CPU and memory use was low and looking at the &quot;Web Service&quot;* performance counters it was not only dealing with very few requests but there weren't any queuing up which had been my initial thought.</p>
 <p>* (The &quot;Web Service&quot; in this context relates to the service in IIS, it's not a Web Service in the context of an ASP.Net Web Service, for example).</p>
@@ -918,7 +918,7 @@ $client-&gt;__getLastRequestHeaders()
 &lt;/system.net&gt;
 </code></pre>
 <p>The &quot;*&quot; means that this will be applied to any endpoint. The 65535 was what I found in the example and I've been struggling to find a definitive answer as to whether this is the maximum value that it can be or not! :S</p>
-<h3 id="server-settings-thread-counts"><a href="#server-settings-thread-counts">Server Settings: Thread Counts</a></h3>
+<h3 id="server-settings-thread-counts"><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40#server-settings-thread-counts">Server Settings: Thread Counts</a></h3>
 <p>So now I was able to overload the server with more concurrents requests than it could handle at once and they were getting queued up. The performance counters are just invaluable here; there are some available for the &quot;Web Service&quot; - which tells us about what's happening at the IIS level - and for &quot;ASP.Net&quot; - which tells us about what's getting into .Net framework. So there could theoretically be limits in IIS that need to be overcome and/or limits in ASP.Net, keeping an eye on these counters gives an insight into where the bottlenecks might be.</p>
 <p>I ramped up the request replay rate and it seemed like the maximum concurrent connections that I could achieve was around 250. The CPU load was low, around 15%, and the memory usage was fairly meagre. Most of the time in the requests was waiting for the data service to respond, so threads were just hanging around. Not enough threads for my liking! I wanted to use more of the resources on the box and be able to deal with more requests.</p>
 <p>I spent <em>aaaages</em> trying to find information about whether this 250 was a limit set in IIS somewhere or if it was somehow related to the default maximum of 250 threads per CPU in a .Net ThreadPool or just where to find the knob in IIS that I can turn up to eleven! And my conclusion is that it's <em>very</em> difficult to find a definitive resource; so much of the information is for different versions of IIS (5 or 7, usually) and they usually do <em>not</em> make clear which settings are applicable to which versions and which changes I could expect to help me.</p>
@@ -932,11 +932,11 @@ $client-&gt;__getLastRequestHeaders()
 <p>There are considerations to bear in mind with increasing the number of worker processes; the first that often jumps out in documentation is issues with Session - any Session data must be maintained in a manner such that multiple processes can access it, since requests from the same Client may not always be handled by the same process, and so an in-process Session would be no good. The Service I was working with had no need for maintaining Session data, so I could happily ignore this entirely.</p>
 <p>With these changes, I was able to ramp up the requests until I was max'ing out the CPU in a variety of circumstances; I set up different tests ranging from requests that could be completed very quickly (within, say 20ms) to requests that would artificially delay the response to see how concurrent requests would build up. Without trying too hard I was able to get around 500 requests / second with the quick responses and handle 4000 concurrent requests happily enough with the long-running ones.</p>
 <p>This is hardly crazy internet-scale traffic, but it's well in excess of the targets that I was originally trying to see if I could handle. And since the &quot;hardware&quot; is a virtualised box with two cores I'm fairly happy with how it's working out!</p>
-<h3 id="server-settings-bandwidth-considerations"><a href="#server-settings-bandwidth-considerations">Server Settings: Bandwidth considerations</a></h3>
+<h3 id="server-settings-bandwidth-considerations"><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40#server-settings-bandwidth-considerations">Server Settings: Bandwidth considerations</a></h3>
 <p>Something we have to consider in exposing this data to external Clients is just how <em>much</em> data we may be passing around. The internal Data Service that is essentially be wrapped is just that; internal. This means that not only will all the data be passed around internal network connections to the requesting Web Server (that will use that data in rendering the site) but also that we can format that data however we like (ie. binary rather than xml) and take all sorts of crazy shortcuts and liberties if we need to as we have to understand the data implicitly to work efficiently with it. For the Web Service, the data's going to be broadcast as xml and we want to make the compromise of exposing a consistent and predictable data model with a simple API. This means that we'll be dealing with much larger quantities of data and we have to pass them out of our private network, out into the real world <em>where we have to pay for transfers</em>.</p>
 <p>This really struck home when, during the load tests, I was max'ing out the network utilisation of my connection to the server. My connection to the office network runs at 100Mbps (100 <strong>megabits</strong>, not <strong>megabytes</strong>) - other people get 1Gb but I get 100 meg, cos I'm really lucky :) This was in tests where a large response was being returned with a high rate of handled requests. To try to push these tests closer to the limits I had to borrow some other workstations and run requests through wcat (<a href="http://www.iis.net/downloads/community/2007/05/wcat-63-(x86)">http://www.iis.net/downloads/community/2007/05/wcat-63-(x86)</a>).</p>
 <p>So I figured the obvious first step was to look into whether the response were being compressed and, if not, make them.</p>
-<h3 id="wcf-compression-with-iis-6-and.net-4.0"><a href="#wcf-compression-with-iis-6-and.net-4.0">WCF Compression with IIS 6 and .Net 4.0</a></h3>
+<h3 id="wcf-compression-with-iis-6-and.net-4.0"><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40#wcf-compression-with-iis-6-and.net-4.0">WCF Compression with IIS 6 and .Net 4.0</a></h3>
 <p>I examined a request in Fiddler. No &quot;Accept-Encoding: gzip&quot; to be found. A flash of recollection from the past reminded me of the EnableDecompression property available on the Client proxy generated by Web References. I set it to true before making the request and looked at the request in Fiddler.</p>
 <p>Success! The http header for gzip support was passed.</p>
 <p>But fail! It didn't make the slightest bit of difference to the response content.</p>
@@ -952,7 +952,7 @@ $client-&gt;__getLastRequestHeaders()
 <p>After this, the response were being successfully compressed! As it's xml content it's fairly well compressible and I was getting the data trimmed down to approximately an 8th of the previous size. Another result!</p>
 <p>Of course, there's always a compromise. And here it's the additional load on the CPU. For the sort of traffic we were looking to support, it seemed like it would be a good trade off; this CPU load overhead in exchange for the reduction in the size of the transmitted data.</p>
 <p>Incidentally, Hanselman has a post here <a href="http://www.hanselman.com/blog/EnablingDynamicCompressionGzipDeflateForWCFDataFeedsODataAndOtherCustomServicesInIIS7.aspx">Enabling dynamic compression (gzip, deflate) for WCF Data Feeds, OData and other custom services in IIS7</a> illustrating just how much easier it is in IIS 7. If you've got a server hosted by that, good times! :)</p>
-<h3 id="checking-for-gzip-support"><a href="#checking-for-gzip-support">Checking for gzip support</a></h3>
+<h3 id="checking-for-gzip-support"><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40#checking-for-gzip-support">Checking for gzip support</a></h3>
 <p>I'm actually contemplating <em>requiring</em> gzip support for all requests made to the service to ensure we keep public traffic bandwidth in check. Since it's just an http header that specifies that the Client supports it, we can check for it from the Service code:</p>
 <pre><code>var acceptsGzip =
     (WebOperationContext.Current.IncomingRequest.Headers[&quot;Accept-Encoding&quot;] ?? &quot;&quot;)
@@ -961,7 +961,7 @@ $client-&gt;__getLastRequestHeaders()
         .Contains(&quot;gzip&quot;, StringComparer.InvariantCultureIgnoreCase);
 </code></pre>
 <p>And if we decide that Client gzip support <em>is</em> required then an error response indicating an invalid request can be returned if this header is not present.</p>
-<h3 id="bonus-note-on-handling-concurrent-requests"><a href="#bonus-note-on-handling-concurrent-requests">Bonus note on handling concurrent requests</a></h3>
+<h3 id="bonus-note-on-handling-concurrent-requests"><a href="/ramping-up-wcf-web-service-request-handling-on-iis-6-with-net-40#bonus-note-on-handling-concurrent-requests">Bonus note on handling concurrent requests</a></h3>
 <p>This is probably going to sound really obvious but it caught me out when I did some testing with high numbers of concurrent requests; be careful how you deal with file locking when you have to read anything in!</p>
 <p>I have a config file for the Service which has various settings for different API Keys. The data in this file is cached, the cache entry being invalidated when the file changes. So for the vast majority of requests, the cached data is returned. But when it's contents are changed (or the Service is restarted), the file's contents are read fresh from disk and if there are a multiple requests arriving at the same time there may well be simultaneous requests to that file.</p>
 <p>I had previously been using the following approach to retrieve the file's content:</p>
@@ -1024,7 +1024,7 @@ namepsace Demo
 </code></pre>
 <p>where requestContext exposes an HttpContext property so Cache, Request, Response and Server can be accessed.</p>
 <p>All very straight forward (which made me wish I'd gotten around to looking into this long ago!).</p>
-<h3 id="wcf-services"><a href="#wcf-services">WCF Services</a></h3>
+<h3 id="wcf-services"><a href="/dependency-injection-with-a-wcf-service#wcf-services">WCF Services</a></h3>
 <p>I wasn't as confident that it would be as simple to construct an equivalent for a WCF Web Service as I think there was quite a culture shift from the Microsoft that created WCF for .Net 3.5 and that which wrote the MVC framework, that tried to make use of existing standards, that included jQuery with the framework and that released the framework code under an open source license! But it couldn't hurt to try!</p>
 <p>In the Service's ServiceHost declaration a Factory may be specified which will be used to instantiate the Service type instead of the default being taken, which is to try to find a public parameter-less constructor and to call that.</p>
 <pre><code>&lt;%@ ServiceHost
@@ -1114,11 +1114,11 @@ namespace Demo
 }
 </code></pre>
 <p>Ta-da! The only thing to fill in is the actual instantiation of the service type; this could be handled with a Ninject or other Dependency Injection Framework call or it could be a good old-fashioned factory class which pulls in all the various dependencies and returns a ready-to-rumble Service instance.</p>
-<h3 id="some-workarounds-for-removing-asp.net-dependencies"><a href="#some-workarounds-for-removing-asp.net-dependencies">Some workarounds for removing ASP.Net dependencies</a></h3>
+<h3 id="some-workarounds-for-removing-asp.net-dependencies"><a href="/dependency-injection-with-a-wcf-service#some-workarounds-for-removing-asp.net-dependencies">Some workarounds for removing ASP.Net dependencies</a></h3>
 <p>When I've used WCF to build Web Services in the past, before using this method of dependency inversion, I've been happy enough using the ASP.Net Cache and Request references but now that I'm working with Dependency-Injected classes I've wanted to extract these dependencies so that the Service class can be tested outside of the ASP.Net environment.</p>
-<h4 id="cache"><a href="#cache">Cache</a></h4>
+<h4 id="cache"><a href="/dependency-injection-with-a-wcf-service#cache">Cache</a></h4>
 <p>The first thing to approach was that I wanted to pass a generic cache reference from the factory. The current thinking (for .Net 4.0 onwards at least) seems to favour the use of the MemoryCache found in System.Runtime.Caching (<a href="http://www.codeproject.com/Articles/290935/Using-MemoryCache-in-Net-4-0">this Code Project article</a> is a reasonable introduction). So wrote an implementation of ICache (which is internal to my project) that makes use of the MemoryCache. Job done!</p>
-<h4 id="client-ip-address"><a href="#client-ip-address">Client IP Address</a></h4>
+<h4 id="client-ip-address"><a href="/dependency-injection-with-a-wcf-service#client-ip-address">Client IP Address</a></h4>
 <p>Something else I struggled with initially was getting the IP Address of the client making the request (information that I include in the Request logging). This was easy when accessing the ASP.Net Request directly but proved more challenging without it. As usual, some Googling and experimentation yielded an answer. This method may be added to the ExampleWebServiceProvider from the above example:</p>
 <pre><code>/// &lt;summary&gt;
 /// This may return an IPv4 or IPv6 format address. It will return null if unable to retrieve
