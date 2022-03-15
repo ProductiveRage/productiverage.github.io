@@ -64,6 +64,531 @@
         </script>
 
     <div class="Content ArchiveByTag">
+        <p class="PostDate">15 March 2022</p><h2 id="finding-the-brightest-area-in-an-image-with-c-fixing-a-blurry-presentation-video-part-one"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></h2>
+<h3 id="tldr"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#tldr">TL;DR</a></h3>
+<p>I have a video of a presentation where the camera keeps losing focus such that the slides are unreadable. I have the original slide deck and I want to fix this.</p>
+<p>The first step is analysing the individual frames of the video to find a common &quot;most illuminated area&quot; so that I can work out where the slide content was being projected, and that is what is described in this post.</p>
+<p>(<strong>An experimental TL;DR approach:</strong> See this <a href="https://dotnetfiddle.net/X8IPgQ">small scale .NET Fiddle demonstration</a> of what I'll be discussing)</p>
+<p><img src="/Content/Images/Posts/OutOfFocusFrame.jpg" alt="An out of focus frame from a presentation" title="An out of focus frame from a presentation" /></p>
+<h3 id="the-basic-approach"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#the-basic-approach">The basic approach</a></h3>
+<p>An overview of the processing to do this looks as follows:</p>
+<ol>
+<li>Load the image into a <code>Bitmap</code></li>
+<li>Convert the image to greyscale</li>
+<li>Identify the lightest and darkest values in the greyscale range</li>
+<li>Calculate a 2/3 threshold from that range and create a mask of the image where anything below that value is zero and anything equal to or greater is one
+<ul>
+<li>eg. If the darkest value was 10 and the lightest was 220 then the difference is 220 - 10 = 210 and the cutoff point would be 2/3 of this range on top of the minimum, so the threshold value would equal ((2/3) * range) + minimum = ((2/3) * 210) + 10 = 140 + 10 = 150</li>
+</ul>
+</li>
+<li>Find the largest bounded area within this mask (if there is one) and presume that that's the projection of the slide in the darkened room!</li>
+</ol>
+<p>Before looking at code to do that, I'm going to toss in a few other complications that arise from having to process a <em>lot</em> of frames from throughout the video, rather than just one..</p>
+<p>Firstly, the camera loses focus at different points in the video and to different extents and so some frames are blurrier than others. Following the steps above, the blurrier frames are likely to report a larger projection area for the slides. I would really like to identify a common projection area that is reasonable to use across all frames because this will make later processing (where I try to work out what slide is currently being shown in the frame) easier.</p>
+<p>Secondly, this video has intro and outro animations and it would be nice if I was able to write code that worked out when they stopped and started.</p>
+<h3 id="the-implementation-for-a-single-image"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#the-implementation-for-a-single-image">The implementation for a single image</a></h3>
+<p>To do this work, I'm going to introduce a variation of my old friend the <code>DataRectangle</code> (from &quot;<a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?</a>&quot; and &quot;<a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face</a>&quot;) -</p>
+<pre><code>public static class DataRectangle
+{
+    public static DataRectangle&lt;T&gt; For&lt;T&gt;(T[,] values) =&gt; new DataRectangle&lt;T&gt;(values);
+}
+
+public sealed class DataRectangle&lt;T&gt;
+{
+    private readonly T[,] _protectedValues;
+    public DataRectangle(T[,] values) : this(values, isolationCopyMayBeBypassed: false) { }
+    private DataRectangle(T[,] values, bool isolationCopyMayBeBypassed)
+    {
+        if ((values.GetLowerBound(0) != 0) || (values.GetLowerBound(1) != 0))
+            throw new ArgumentException(&quot;Both dimensions must have lower bound zero&quot;);
+        var arrayWidth = values.GetUpperBound(0) + 1;
+        var arrayHeight = values.GetUpperBound(1) + 1;
+        if ((arrayWidth == 0) || (arrayHeight == 0))
+            throw new ArgumentException(&quot;zero element arrays are not supported&quot;);
+
+        Width = arrayWidth;
+        Height = arrayHeight;
+
+        if (isolationCopyMayBeBypassed)
+            _protectedValues = values;
+        else
+        {
+            _protectedValues = new T[Width, Height];
+            Array.Copy(values, _protectedValues, Width * Height);
+        }
+    }
+
+    public int Width { get; }
+
+    public int Height { get; }
+
+    public T this[int x, int y]
+    {
+        get
+        {
+            if ((x &lt; 0) || (x &gt;= Width))
+                throw new ArgumentOutOfRangeException(nameof(x));
+            if ((y &lt; 0) || (y &gt;= Height))
+                throw new ArgumentOutOfRangeException(nameof(y));
+            return _protectedValues[x, y];
+        }
+    }
+
+    public IEnumerable&lt;(Point Point, T Value)&gt; Enumerate()
+    {
+        for (var x = 0; x &lt; Width; x++)
+        {
+            for (var y = 0; y &lt; Height; y++)
+            {
+                var value = _protectedValues[x, y];
+                var point = new Point(x, y);
+                yield return (point, value);
+            }
+        }
+    }
+
+    public DataRectangle&lt;TResult&gt; Transform&lt;TResult&gt;(Func&lt;T, TResult&gt; transformer)
+    {
+        var transformed = new TResult[Width, Height];
+        for (var x = 0; x &lt; Width; x++)
+        {
+            for (var y = 0; y &lt; Height; y++)
+                transformed[x, y] = transformer(_protectedValues[x, y]);
+        }
+        return new DataRectangle&lt;TResult&gt;(transformed, isolationCopyMayBeBypassed: true);
+    }
+}
+</code></pre>
+<p>For working with <code>DataRectangle</code> instances that contain <code>double</code> values (as we will be here), I've got a couple of convenient extension methods:</p>
+<pre><code>public static class DataRectangleOfDoubleExtensions
+{
+    public static (double Min, double Max) GetMinAndMax(this DataRectangle&lt;double&gt; source) =&gt;
+        source
+            .Enumerate()
+            .Select(pointAndValue =&gt; pointAndValue.Value)
+            .Aggregate(
+                seed: (Min: double.MaxValue, Max: double.MinValue),
+                func: (acc, value) =&gt; (Math.Min(value, acc.Min), Math.Max(value, acc.Max))
+            );
+
+    public static DataRectangle&lt;bool&gt; Mask(this DataRectangle&lt;double&gt; values, double threshold) =&gt;
+        values.Transform(value =&gt; value &gt;= threshold);
+}
+</code></pre>
+<p>And for working with <code>Bitmap</code> instances, I've got some extension methods for those as well:</p>
+<pre><code>public static class BitmapExtensions
+{
+    public static Bitmap CopyAndResize(this Bitmap image, int resizeLargestSideTo)
+    {
+        var (width, height) = (image.Width &gt; image.Height)
+            ? (resizeLargestSideTo, (int)((double)image.Height / image.Width * resizeLargestSideTo))
+            : ((int)((double)image.Width / image.Height * resizeLargestSideTo), resizeLargestSideTo);
+
+        return new Bitmap(image, width, height);
+    }
+
+    /// &lt;summary&gt;
+    /// This will return values in the range 0-255 (inclusive)
+    /// &lt;/summary&gt;
+    // Based on http://stackoverflow.com/a/4748383/3813189
+    public static DataRectangle&lt;double&gt; GetGreyscale(this Bitmap image) =&gt;
+        image
+            .GetAllPixels()
+            .Transform(c =&gt; (0.2989 * c.R) + (0.5870 * c.G) + (0.1140 * c.B));
+
+    public static DataRectangle&lt;Color&gt; GetAllPixels(this Bitmap image)
+    {
+        var values = new Color[image.Width, image.Height];
+        var data = image.LockBits(
+            new Rectangle(0, 0, image.Width, image.Height),
+            ImageLockMode.ReadOnly,
+            PixelFormat.Format24bppRgb
+        );
+        try
+        {
+            var pixelData = new byte[data.Stride];
+            for (var lineIndex = 0; lineIndex &lt; data.Height; lineIndex++)
+            {
+                Marshal.Copy(
+                    source: data.Scan0 + (lineIndex * data.Stride),
+                    destination: pixelData,
+                    startIndex: 0,
+                    length: data.Stride
+                );
+                for (var pixelOffset = 0; pixelOffset &lt; data.Width; pixelOffset++)
+                {
+                    // Note: PixelFormat.Format24bppRgb means the data is stored in memory as BGR
+                    const int PixelWidth = 3;
+                    values[pixelOffset, lineIndex] = Color.FromArgb(
+                        red: pixelData[pixelOffset * PixelWidth + 2],
+                        green: pixelData[pixelOffset * PixelWidth + 1],
+                        blue: pixelData[pixelOffset * PixelWidth]
+                    );
+                }
+            }
+        }
+        finally
+        {
+            image.UnlockBits(data);
+        }
+        return DataRectangle.For(values);
+    }
+}
+</code></pre>
+<p>With this code, we can already perform those first steps that I've described in the find-projection-area-in-image process.</p>
+<p>Note that I'm going to throw in an extra step of shrinking the input images if they're larger than 400px because we don't need pixel-perfect accuracy when the whole point of this process is that a lot of the frames are too blurry to read (as a plus, shrinking the images means that there's less data to process and the whole thing should finish more quickly).</p>
+<pre><code>using var image = new Bitmap(&quot;frame_338.jpg&quot;);
+using var resizedImage = image.CopyAndResize(resizeLargestSideTo: 400);
+var greyScaleImageData = resizedImage.GetGreyscale();
+var (min, max) = greyScaleImageData.GetMinAndMax();
+var range = max - min;
+const double thresholdOfRange = 2 / 3d;
+var thresholdForMasking = min + (range * thresholdOfRange);
+var mask = greyScaleImageData.Mask(thresholdForMasking);
+</code></pre>
+<p>This gives us a <code>DataRectangle</code> of boolean values that represent the brighter points as true and the less bright points as false.</p>
+<p>In the image below, you can see the original frame on the left. In the middle is the content that would be masked out by hiding all but the brightest pixels. On the right is the &quot;binary mask&quot; (where we discard the original colour of the pixel and make them all either black or white) -</p>
+<p><img src="/Content/Images/Posts/VideoFrameWithMask.jpg" alt="A frame from the video with the brightest third of the pixels masked out" title="A frame from the video with the brightest third of the pixels masked out" /></p>
+<p>Now we need to identify the largest &quot;object&quot; within this mask - wherever bright pixels are adjacent to other bright pixels, they will be considered part of the same object and we would expect there to be several such objects within the mask that has been generated.</p>
+<p>To do so, I'll be reusing some more code from &quot;<a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?</a>&quot; -</p>
+<pre><code>private static IEnumerable&lt;IEnumerable&lt;Point&gt;&gt; GetDistinctObjects(DataRectangle&lt;bool&gt; mask)
+{
+    // Flood fill areas in the mask to create distinct areas
+    var allPoints = mask
+        .Enumerate()
+        .Where(pointAndIsMasked =&gt; pointAndIsMasked.Value)
+        .Select(pointAndIsMasked =&gt; pointAndIsMasked.Point).ToHashSet();
+    while (allPoints.Any())
+    {
+        var currentPoint = allPoints.First();
+        var pointsInObject = GetPointsInObject(currentPoint).ToArray();
+        foreach (var point in pointsInObject)
+            allPoints.Remove(point);
+        yield return pointsInObject;
+    }
+
+    // Inspired by code at
+    // https://simpledevcode.wordpress.com/2015/12/29/flood-fill-algorithm-using-c-net/
+    IEnumerable&lt;Point&gt; GetPointsInObject(Point startAt)
+    {
+        var pixels = new Stack&lt;Point&gt;();
+        pixels.Push(startAt);
+
+        var valueAtOriginPoint = mask[startAt.X, startAt.Y];
+        var filledPixels = new HashSet&lt;Point&gt;();
+        while (pixels.Count &gt; 0)
+        {
+            var currentPoint = pixels.Pop();
+            if ((currentPoint.X &lt; 0) || (currentPoint.X &gt;= mask.Width)
+            || (currentPoint.Y &lt; 0) || (currentPoint.Y &gt;= mask.Height))
+                continue;
+
+            if ((mask[currentPoint.X, currentPoint.Y] == valueAtOriginPoint)
+            &amp;&amp; !filledPixels.Contains(currentPoint))
+            {
+                filledPixels.Add(new Point(currentPoint.X, currentPoint.Y));
+                pixels.Push(new Point(currentPoint.X - 1, currentPoint.Y));
+                pixels.Push(new Point(currentPoint.X + 1, currentPoint.Y));
+                pixels.Push(new Point(currentPoint.X, currentPoint.Y - 1));
+                pixels.Push(new Point(currentPoint.X, currentPoint.Y + 1));
+            }
+        }
+        return filledPixels;
+    }
+}
+</code></pre>
+<p>As the code mentions, this is based on an article &quot;<a href="https://simpledevcode.wordpress.com/2015/12/29/flood-fill-algorithm-using-c-net/">Flood Fill algorithm (using C#.NET)</a>&quot; and its output is a list of objects, where each object is a list of points within that object. So the way to determine which object is largest is to take the one that contains the most points!</p>
+<p><img src="/Content/Images/Posts/VideoFrameWithLargestBinaryMaskObject.jpg" alt="A binary mask of a frame in the video with all but the single largest areas hidden" title="A binary mask of a frame in the video with all but the single largest areas hidden" /></p>
+<pre><code>var pointsInLargestHighlightedArea = GetDistinctObjects(mask)
+    .OrderByDescending(points =&gt; points.Count())
+    .FirstOrDefault();
+</code></pre>
+<p><em>(<strong>Note:</strong> If <code>pointsInLargestHighlightedArea</code> is null then we need to escape out of the method that we're in because the source image didn't produce a mask with any highlighted objects - this could happen if the image has every single with the same colour, for example; an edge case, surely, but one that we should handle)</em></p>
+<p>From this largest object, we want to find a bounding quadrilateral, which we do by looking at every point and finding the one closest to the top left of the image (because this will be the top left of the bounding area), the point closest to the top right of the image (for the top right of the bounding area) and the same for the points closest to the bottom left and bottom right.</p>
+<p>This can be achieved by calculating, for each point in the object, the distances from each of the corners to the points and then determining which points have the shortest distances - eg.</p>
+<pre><code>var distancesOfPointsFromImageCorners = pointsInLargeHighlightedArea
+    .Select(p =&gt;
+    {
+        // To work out distance from the top left, you would use Pythagoras to take the
+        // squared horizontal distance of the point from the left of the image and add
+        // that to the squared vertical distance of the point from the top of the image,
+        // then you would square root that sum. In this case, we only want to be able to
+        // compare determine which distances are smaller or larger and we don't actually
+        // care about the precise distances themselves and so we can save ourselves from
+        // performing that final square root calculation.
+        var distanceFromRight = greyScaleImageData.Width - p.X;
+        var distanceFromBottom = greyScaleImageData.Height - p.Y;
+        var fromLeftScore = p.X * p.X;
+        var fromTopScore = p.Y * p.Y;
+        var fromRightScore = distanceFromRight * distanceFromRight;
+        var fromBottomScore = distanceFromBottom * distanceFromBottom;
+        return new
+        {
+            Point = p,
+            FromTopLeft = fromLeftScore + fromTopScore,
+            FromTopRight = fromRightScore + fromTopScore,
+            FromBottomLeft = fromLeftScore + fromBottomScore,
+            FromBottomRight = fromRightScore + fromBottomScore
+        };
+    })
+    .ToArray(); // Call ToArray to avoid repeating this enumeration four times below
+    
+var topLeft = distancesOfPointsFromImageCorners.OrderBy(p =&gt; p.FromTopLeft).First().Point;
+var topRight = distancesOfPointsFromImageCorners.OrderBy(p =&gt; p.FromTopRight).First().Point;
+var bottomLeft = distancesOfPointsFromImageCorners.OrderBy(p =&gt; p.FromBottomLeft).First().Point;
+var bottomRight = distancesOfPointsFromImageCorners.OrderBy(p =&gt; p.FromBottomRight).First().Point;
+</code></pre>
+<p>Finally, because we want to find the bounding area of the largest object in the original image, we may need to multiply up the bounds that we just found because we shrank the image down if either dimension was larger than 400px and we were performing calculations on that smaller version.</p>
+<p>We can tell how much we reduced the data by looking at the width of the original image and comparing it to the width of the greyScaleImageData <code>DataRectangle</code> that was generated from the shrunken version of the image:</p>
+<pre><code>var reducedImageSideBy = (double)image.Width / greyScaleImageData.Width;
+</code></pre>
+<p>Now we only need a function that will multiply the bounding area that we've got according to this value, while ensuring that none of the point values are multiplied such that they exceed the bounds of the original image:</p>
+<pre><code>private static (Point TopLeft, Point TopRight, Point BottomRight, Point BottomLeft) Resize(
+    Point topLeft,
+    Point topRight,
+    Point bottomRight,
+    Point bottomLeft,
+    double resizeBy,
+    int minX,
+    int maxX,
+    int minY,
+    int maxY)
+{
+    if (resizeBy &lt;= 0)
+        throw new ArgumentOutOfRangeException(&quot;must be a positive value&quot;, nameof(resizeBy));
+
+    return (
+        Constrain(Multiply(topLeft)),
+        Constrain(Multiply(topRight)),
+        Constrain(Multiply(bottomRight)),
+        Constrain(Multiply(bottomLeft))
+    );
+
+    Point Multiply(Point p) =&gt;
+        new Point((int)Math.Round(p.X * resizeBy), (int)Math.Round(p.Y * resizeBy));
+
+    Point Constrain(Point p) =&gt;
+        new Point(Math.Min(Math.Max(p.X, minX), maxX), Math.Min(Math.Max(p.Y, minY), maxY));
+}
+</code></pre>
+<p>The final bounding area for the largest bright area of an image is now retrieved like this:</p>
+<pre><code>var bounds = Resize(
+    topLeft,
+    topRight,
+    bottomRight,
+    bottomLeft,
+    reducedImageSideBy,
+    minX: 0,
+    maxX: image.Width - 1,
+    minY: 0,
+    maxY: image.Height - 1
+);
+</code></pre>
+<p>For the example image that we're looking at, this area is outlined liked this:</p>
+<img alt="An outline around the largest object within the binary mask of a frame from the video" src="/Content/Images/Posts/VideoFrameWithLargestBinaryMaskObjectOutlined.jpg" class="AlwaysFullWidth" title="An outline around the largest object within the binary mask of a frame from the video" />
+<h3 id="applying-the-process-to-multiple-images"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#applying-the-process-to-multiple-images">Applying the process to multiple images</a></h3>
+<p>Say that we put all of the above functionality into a method called <code>GetMostHighlightedArea</code> that took a <code>Bitmap</code> to process and returned a tuple of the four points that represented the bounds of the brightest area, we could then easily prepare a LINQ statement that ran that code and found the most common brightest-area-bounds across all of the source images that I have. <em>(As I said before, the largest-bounded-area will vary from image to image in my example as the camera recording the session gained and lost focus)</em></p>
+<pre><code>var files = new DirectoryInfo(&quot;Frames&quot;).EnumerateFiles(&quot;*.jpg&quot;);
+var (topLeft, topRight, bottomRight, bottomLeft) = files
+    .Select(file =&gt;
+    {
+        using var image = new Bitmap(file.FullName);
+        return IlluminatedAreaLocator.GetMostHighlightedArea(image);
+    })
+    .GroupBy(area =&gt; area)
+    .OrderByDescending(group =&gt; group.Count())
+    .Select(group =&gt; group.Key)
+    .FirstOrDefault();
+</code></pre>
+<p>Presuming that there is a folder called &quot;Frames&quot; in the output folder of project*, this will read them all, look for the largest bright area on each of them individually, then return the area that appears most often across all of the images. <em>(Note: If there are no images to read then the <code>FirstOrDefault</code> call at the bottom will return a default tuple-of-four-Points, which will be 4x (0,0) values)</em></p>
+<p>* <em>(Since you probably don't happen to have a bunch of images from a video of my presentation lying around, see the next section for some code that will download some in case you want to try this all out!)</em></p>
+<p>This ties in nicely with my recent post &quot;<a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a>&quot; because the processing required for each image is..</p>
+<ol>
+<li>Completely independent from the processing of the other images (important for parallelising work)</li>
+<li>Expensive enough that the overhead from splitting the work into multiple threads and then combining their results back together would be overshadowed by the work performed (which is also important for parallelising work - if individual tasks are too small and the computer spends more time scheduling the work on threads and then pulling all the results back together than it does on actually performing that work then using multiple threads can be <em>slower</em> than using a single one!)</li>
+</ol>
+<p>All that we would have to change in order to use multiple threads to process multiple images is the addition of a single line:</p>
+<pre><code>var files = new DirectoryInfo(&quot;Frames&quot;).EnumerateFiles(&quot;*.jpg&quot;);
+var (topLeft, topRight, bottomRight, bottomLeft) = files
+    .AsParallel() // &lt;- WOO!! This is all that we needed to add!
+    .Select(file =&gt;
+    {
+        using var image = new Bitmap(file.FullName);
+        return IlluminatedAreaLocator.GetMostHighlightedArea(image);
+    })
+    .GroupBy(area =&gt; area)
+    .OrderByDescending(group =&gt; group.Count())
+    .Select(group =&gt; group.Key)
+    .FirstOrDefault();
+</code></pre>
+<p><em>(<strong>Parallelisation sidebar:</strong> When we split up the work like this, if the processing for each image was solely in memory then it would be a no-brainer that using more threads would make sense - however, the processing for each image involves LOADING the image from disk and THEN processing it in memory and if you had a spinning rust hard disk then you may fear that trying to ask it to read multiple files simultaneously would be slower than asking it to read them one at a time because its poor little read heads have to physically move around the plates.. it turns out that this is not necessarily the case and that you can find more information in this article that I found interesting; &quot;<a href="https://pkolaczk.github.io/disk-parallelism/">Performance Impact of Parallel Disk Access</a>&quot;)</em></p>
+<h3 id="testing-the-code-on-your-own-computer"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#testing-the-code-on-your-own-computer">Testing the code on your own computer</a></h3>
+<p>I haven't quite finished yet but I figured that there may be <em>some</em> wild people out there that would like to try running this code locally themselves - maybe just to see it work or maybe even to get it working and then chop and change it for some new and exciting purpose!</p>
+<p>To this end, I have some sample frames available from this video that I'm trying to fix - with varying levels of fuzziness present. To download them, use the following method:</p>
+<pre><code>private static async Task EnsureSamplesAvailable(DirectoryInfo framesfolder)
+{
+    // Note: The GitHub API is rate limited quite severely for non-authenticated apps, so we just
+    // only call use it if the framesFolder doesn't exist or is empty - if there are already files
+    // in there then we presume that we downloaded them on a previous run (if the API is hit too
+    // often then it will return a 403 &quot;rate limited&quot; response)
+    if (framesfolder.Exists &amp;&amp; framesfolder.EnumerateFiles().Any())
+    {
+        Console.WriteLine(&quot;Sample images have already been downloaded and are ready for use&quot;);
+        return;
+    }
+
+    Console.WriteLine(&quot;Downloading sample images..&quot;);
+    if (!framesfolder.Exists)
+        framesfolder.Create();
+
+    string namesAndUrlsJson;
+    using (var client = new WebClient())
+    {
+        // The API refuses requests without a User Agent, so set one before calling (see
+        // https://docs.github.com/en/rest/overview/resources-in-the-rest-api#user-agent-required)
+        client.Headers.Add(HttpRequestHeader.UserAgent, &quot;ProductiveRage Blog Post Example&quot;);
+        namesAndUrlsJson = await client.DownloadStringTaskAsync(new Uri(
+            &quot;https://api.github.com/repos/&quot; +
+            &quot;ProductiveRage/NaivePerspectiveCorrection/contents/Samples/Frames&quot;
+        ));
+    }
+
+    // Deserialise the response into an array of entries that have Name and Download_Url properties
+    var namesAndUrls = JsonConvert.DeserializeAnonymousType(
+        namesAndUrlsJson,
+        new[] { new { Name = &quot;&quot;, Download_Url = (Uri?)null } }
+    );
+    if (namesAndUrls is null)
+    {
+        Console.WriteLine(&quot;GitHub reported zero sample images to download&quot;);
+        return;
+    }
+
+    await Task.WhenAll(namesAndUrls
+        .Select(async entry =&gt;
+        {
+            using var client = new WebClient();
+            await client.DownloadFileTaskAsync(
+                entry.Download_Url,
+                Path.Combine(framesfolder.FullName, entry.Name)
+            );
+        })
+    );
+
+    Console.WriteLine($&quot;Downloaded {namesAndUrls.Length} sample image(s)&quot;);
+}
+</code></pre>
+<p>.. and call it with the following argument, presuming you're trying to read images from the &quot;Frames&quot; folder as the code earlier illustrated:</p>
+<pre><code>await EnsureSamplesAvailable(new DirectoryInfo(&quot;Frames&quot;));
+</code></pre>
+<h3 id="filtering-out-introoutro-slides"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#filtering-out-introoutro-slides">Filtering out intro/outro slides</a></h3>
+<p>So I said earlier that it would also be nice if I could programmatically identify which frames were part of the intro/outro animations of the video that I'm looking at.</p>
+<p>It feels logical that any frame that is of the actual presentation will have a fairly similarly-sized-and-located bright area (where a slide is being projected onto a wall in a darkened room) while any frame that is part of an intro/outro animation won't. So we should be able to take the <strong>most-common</strong>-largest-brightest-area and then look at every frame and see if <em>its</em> largest bright area is approximately the same - if it's similar enough then it's probably a frame that is part of the projection but if it's too dissimilar then it's probably <em>not</em>.</p>
+<p>Rather than waste time going too far down a rabbit hole that I've found won't immediately result in success, I'm going to use a slightly altered version of that plan (I'll explain why in a moment). I'm still going to take that common largest brightest area and compare the largest bright area on each frame to it but, instead of saying &quot;largest-bright-area-is-close-enough-to-the-most-common = presentation frame / largest-bright-area-<strong>not</strong>-close-enough = intro or outro&quot;, I'm going to find the <em>first</em> frame whose largest bright area is close enough and the <em>last</em> frame that is and declare that that range is probably where the frames for the presentation are.</p>
+<p>The reason that I'm going to do this is that I found that there are some slides with more variance that can skew the results if the first approach was taken - if a frame in the middle of the presentation is so blurry that the range in intensity from darkest pixel to brightest pixel is squashed down too far then it can result in it identifying a largest bright area that isn't an accurate representation of the image. It's quite possible that I could still have made the first approach work by tweaking some other parameters in the image processing - such as considering changing that arbitrary &quot;create a mask where the intensity threshold is 2/3 of the range of the brightness of all pixels&quot; (maybe 3/4 would have worked better?), for example - but I know that this second approach works for my data and so I didn't pursue the first one too hard.</p>
+<p>To do this, though, we are going to need to know what order the frames are supposed to appear in - it's no longer sufficient for there to simply be a list of images that are frames out of the video, we now need to know what were they appeared relative to each other. This is simple enough with my data because they all have names like &quot;frame_1052.jpg&quot; where 1052 is the frame index from the original video.</p>
+<p>So I'm going to change the frame-image-loading code to look like this:</p>
+<pre><code>// Get all filenames, parse the frame index from them and discard any that don't
+// match the filename pattern that is expected (eg. &quot;frame_1052.jpg&quot;)
+var frameIndexMatcher = new Regex(@&quot;frame_(\d+)\.jpg&quot;, RegexOptions.IgnoreCase);
+var files = new DirectoryInfo(&quot;Frames&quot;)
+    .EnumerateFiles()
+    .Select(file =&gt;
+    {
+        var frameIndexMatch = frameIndexMatcher.Match(file.Name);
+        return frameIndexMatch.Success
+            ? (file.FullName, FrameIndex: int.Parse(frameIndexMatch.Groups[1].Value))
+            : default;
+    })
+    .Where(entry =&gt; entry != default);
+
+// Get the largest bright area for each file
+var allFrameHighlightedAreas = files
+    .AsParallel()
+    .Select(file =&gt;
+    {
+        using var image = new Bitmap(file.FullName);
+        return (
+            file.FrameIndex,
+            HighlightedArea: IlluminatedAreaLocator.GetMostHighlightedArea(image)
+        );
+    })
+    .ToArray()
+
+// Get the most common largest bright area across all of the images
+var (topLeft, topRight, bottomRight, bottomLeft) = allFrameHighlightedAreas
+    .GroupBy(entry =&gt; entry.HighlightedArea)
+    .OrderByDescending(group =&gt; group.Count())
+    .Select(group =&gt; group.Key)
+    .FirstOrDefault();
+</code></pre>
+<p><em>(Note that I'm calling <code>ToArray()</code> when declaring <code>allFrameHighlightedAreas</code> - that's to store the results now because I know that I'm going to need every result in the list that is generated and because I'm going to enumerate it twice in the work outlined here, so there's no point leaving <code>allFrameHighlightedAreas</code> to be a lazily-evaluated <code>IEnumerable</code> that would be recalculated each time it was looped over; then it would be doing all of the <code>IlluminatedAreaLocator.GetMostHighlightedArea</code> calculations for each image twice if enumerated the list twice, which would just be wasteful!)</em></p>
+<p>Now to look at the <code>allFrameHighlightedAreas</code> list and try to decide if each <code>HighlightedArea</code> value is close enough to the most common area that we found. I'm going to use a very simple algorithm for this - I'm going to:</p>
+<ol>
+<li>Take all four points from the <code>HighlightedArea</code> on each entry in <code>allFrameHighlightedAreas</code></li>
+<li>Take all four points from the most common area (which are the <code>topLeft</code>, <code>topRight</code>, <code>bottomRight</code>, <code>bottomLeft</code> values that we already have in the code above)</li>
+<li>Take the differences in <code>X</code> value between all four points in these two areas and add them up</li>
+<li>Compare this difference to the width of the most common highlighted area - if it's too big of a proportion (say if the sum of the <code>X</code> differences is greater than 20% of the width of the entire area) then we'll say it's not a match and drop out of this list</li>
+<li>If the <code>X</code> values aren't too bad then we'll take the differences in <code>Y</code> value between all four points in these two areas and add <em>those</em> up</li>
+<li>That total will be compared to the height of the most common highlighted area - if it's more than the 20% threshold then we'll say that it's not a match</li>
+<li>If we got to here then we'll say that the highlighted area in the current frame <em>is</em> close enough to the most common highlighted area and so the current frame probably is part of the presentation - yay!</li>
+</ol>
+<p>In code:</p>
+<pre><code>var highlightedAreaWidth = Math.Max(topRight.X, bottomRight.X) - Math.Min(topLeft.X, bottomLeft.X);
+var highlightedAreaHeight = Math.Max(bottomLeft.Y, bottomRight.Y) - Math.Min(topLeft.Y, topRight.Y);
+const double thresholdForPointVarianceComparedToAreaSize = 0.2;
+var frameIndexesThatHaveTheMostCommonHighlightedArea = allFrameHighlightedAreas
+    .Where(entry =&gt;
+    {
+        var (entryTL, entryTR, entryBR, entryBL) = entry.HighlightedArea;
+        var xVariance =
+            new[]
+            {
+                entryBL.X - bottomLeft.X,
+                entryBR.X - bottomRight.X,
+                entryTL.X - topLeft.X,
+                entryTR.X - topRight.X
+            }
+            .Sum(Math.Abs);
+        var yVariance =
+            new[]
+            {
+                entryBL.Y - bottomLeft.Y,
+                entryBR.Y - bottomRight.Y,
+                entryTL.Y - topLeft.Y,
+                entryTR.Y - topRight.Y
+            }
+            .Sum(Math.Abs);
+        return
+            (xVariance &lt;= highlightedAreaWidth * thresholdForPointVarianceComparedToAreaSize) &amp;&amp;
+            (yVariance &lt;= highlightedAreaHeight * thresholdForPointVarianceComparedToAreaSize);
+    })
+    .Select(entry =&gt; entry.FrameIndex)
+    .ToArray();
+</code></pre>
+<p>This gives us a <code>frameIndexesThatHaveTheMostCommonHighlightedArea</code> array of frame indexes that have a largest brightest area that is fairly close to the most common one. So to decide which frames are probably the start of the presentation and the end, we simply need to say:</p>
+<pre><code>var firstFrameIndex = frameIndexesThatHaveTheMostCommonHighlightedArea.Min();
+var lasttFrameIndex = frameIndexesThatHaveTheMostCommonHighlightedArea.Max();
+</code></pre>
+<p>Any frames whose index is less than <code>firstFrameIndex</code> or greater than <code>lastFrameIndex</code> is probably part of the intro or outro sequence - eg.</p>
+<p><img src="/Content/Images/Posts/VideoFrameWithMask-Intro.jpg" alt="A frame from the intro of the video - the largest bright area is not near the slide projection" title="A frame from the intro of the video - the largest bright area is not near the slide projection" /></p>
+<p>Any frames whose index is within the <code>firstFrameIndex</code> / <code>lastFrameIndex</code> range is probably part of the presentation - eg.</p>
+<p><img src="/Content/Images/Posts/VideoFrameWithMask-Alternate.jpg" alt="A frame from the presentation part of the video - the largest bright area IS the slide projection" title="A frame from the presentation part of the video - the largest bright area IS the slide projection" /></p>
+<h3 id="coming-soon"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#coming-soon">Coming soon</a></h3>
+<p>As the title of this post strongly suggests, this is only the first step in my desire to fix up my blurry presentation video. What I'm going to have to cover in the future is to:</p>
+<ol>
+<li>Extract the content from the most-common-brightest-area in each frame of the video that is part of the presentation and contort it back into a rectangle - undoing the distortion that is introduced by perspective due to the position of the camera and where the slides were projected in the room (I'll be tackling this in a slightly approximate-but-good-enough manner because to do it super accurately requires lots of complicated maths and I've managed to forget nearly all of the maths degree that I got twenty years ago!)</li>
+<li>Find a way to compare the perspective-corrected projections from each frame against a clean image of the original slide deck and work out which slide each frame is most similar to (this should be possible with some surprisingly rudimentary calculations inspired by some of the image preprocessing that I've mentioned in a couple of my <a href="/Archive/Tag/Machine%20Learning">posts that touch on machine learning</a> but without requiring any machine learning itself)</li>
+<li>Some tweaks that were required to get the best results with my particular images (for example, when I described the <code>GetMostHighlightedArea</code> function earlier, I picked 400px as an arbitrary value to resize images to before greyscaling them, masking them and looking for their largest bright area; maybe it will turn out that smaller or larger values for that process result in improved or worsened results - we'll find out!)</li>
+</ol>
+<p>Once this is all done, I will take the original frame images and, for each one, overlay a clean version of the slide that appeared blurrily in the frame (again, I'll have clean versions of each slide from the original slide deck that I produced, so that should be an easy part) - then I'll mash them all back together into a new video, combined with the original audio. To do this (the video work), I'll likely use the same tool that I used to extract the individual frame files from the video in the first place - the famous <a href="https://www.ffmpeg.org/">FFmpeg</a>!</p>
+<p>I doubt that I'll have a post on this last section as it would only be a small amount of C# code that combines two images for each frame, writes the results to disk, followed by me making a command line call to FFmpeg to produce the video - and I don't think that there's anything particularly exciting there! If I get this all completed, though, I will - of course - link to the fixed-up presentation video.. because why not shameless plug myself given any opportunity!</p>
+<p class="PostTime">Posted at 21:06</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="3 Posts">Image Processing</a></li></ul></div>
+            <p class="Comments">
+                <a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#disqus_thread" data-disqus-identifier="124">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
         <p class="PostDate">7 August 2020</p><h2 id="how-are-barcodes-read-library-less-image-processing-in-c"><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></h2>
 <p>I've been using MyFitnessPal and it has the facility to load nutrition information by scanning the barcode on the product. I can guess how the retrieval works once the barcode number is obtained (a big database somewhere) but it struck me that I had no idea how the reading of the barcode <em>itself</em> worked and.. well, I'm curious and enjoy the opportunity to learn something new to me by writing the code to do it. I do enjoy being able to look up (almost) anything on the internet to find out how it works!</p>
 <p><em>(For anyone who wants to either play along but not copy-paste the code themselves or for anyone who wants to jump to the end result, I've put the code - along with the example image I've used in this post - up on a <a href="https://github.com/ProductiveRage/BarcodeReader">GitHub repo</a>)</em></p>
@@ -805,7 +1330,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <p>And with that, we're finally done! I must admit that I started writing this post about three years ago and it's been in my TODO list for a loooooong time now. But I've taken a week off work and been able to catch up with a few things and have finally been able to cross it off the list. And I'm quite relieved that I didn't give up on it entirely because it was a fun little project and coming back to it now allowed me to tidy it up a bit with the newer C# 8 syntax and even enable the nullable reference types option on the project (I sure do hate unintentional nulls being allowed to sneak in!)</p>
 <p>A quick reminder if you want to see it in action or play about it yourself, the <a href="https://github.com/ProductiveRage/BarcodeReader">GitHub repo is here</a>.</p>
 <p>Thanks to anyone that read this far!</p>
-<p class="PostTime">Posted at 23:24</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to &quot;Implementing F#-inspired &#x27;with&#x27; updates in C#&quot;</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="2 Posts">Image Processing</a></li></ul></div>
+<p class="PostTime">Posted at 23:24</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li><li><a href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to &quot;Implementing F#-inspired &#x27;with&#x27; updates in C#&quot;</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="3 Posts">Image Processing</a></li></ul></div>
             <p class="Comments">
                 <a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp#disqus_thread" data-disqus-identifier="117">Comments</a>
             </p>
@@ -1220,7 +1745,7 @@ using (var image = new Bitmap(path))
 <p>An article that <em>did</em> go into the details was the &quot;<a href="http://mccormickml.com/2013/05/09/hog-person-detector-tutorial/">HOG Person Detector Tutorial</a>&quot; (by Chris McCormick). This was also really well written and very approachable. Although it talks about detecting a person in a photo, rather than a face, the principles are the same. The description of the HOG generation and normalisation really helped me clarify in my mind how it should all work. This article links to the original <a href="http://lear.inrialpes.fr/people/triggs/pubs/Dalal-cvpr05.pdf">HOG person detector paper by Dalal and Triggs [PDF]</a>, which is full of research information and graphs and equations - so if you want to dig deep then this is the place to start!</p>
 <p>The Triggs and Dalal paper state in the introduction that &quot;For simplicity and speed, we use linear SVM as a baseline classifier throughout the study&quot;. Later on they mention that they tried a non-linear kernel but that &quot;Replacing the linear SVM with a Gaussian kernel one improves performance by about 3%.. at the cost of much higher run times&quot;. If this &quot;why is a linear SVM classifier appropriate&quot; explanation feels too light for you then it is discussed in greater depth in &quot;<a href="https://arxiv.org/pdf/1406.2419.pdf">Why do linear SVMs trained on HOG features perform so well? [PDF]</a>.</p>
 <p>Finally, I want to mention again the article &quot;<a href="http://crsouza.com/2010/04/27/kernel-support-vector-machines-for-classification-and-regression-in-c/">Kernel Support Vector Machines for Classification and Regression in C#</a>&quot; by Accord.NET's César Souza. Here, he introduces the SVM in a much more formal way than I've done here, he includes a video about &quot;<a href="https://www.youtube.com/watch?v=3liCbRZPrZA">The Kernel Trick</a>&quot; (which is a simple yet mind-blowing way in which the linear kernel can be used to classify data that doesn't immediately look like it would work for), he talks about other kernels (aside from linear he also describes polynomial and gaussian) and he describes how the Sequential Minimal Optimization learning algorithm works. There's a lot of code and there's illustrated examples at the end. When I found this article fairly early on in my research, I recognised how much care had gone into preparing it but also knew that I needed something a little more beginner-level first! So I bookmarked it for future reference and now I think that I understand (almost all of) it. Hopefully, if you started off knowing nothing but have followed all the way through this post, then you will too!</p>
-<p class="PostTime">Posted at 18:39</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/retrieving-performance-counter-from-a-remote-pc-using-c-sharp">Retrieving Performance Counter from a remote PC using C#</a></li><li><a href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to &quot;Implementing F#-inspired &#x27;with&#x27; updates in C#&quot;</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="2 Posts">Image Processing</a></li><li><a href="/Archive/Tag/Machine%20Learning" title="7 Posts">Machine Learning</a></li></ul></div>
+<p class="PostTime">Posted at 18:39</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li><li><a href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to &quot;Implementing F#-inspired &#x27;with&#x27; updates in C#&quot;</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="3 Posts">Image Processing</a></li><li><a href="/Archive/Tag/Machine%20Learning" title="7 Posts">Machine Learning</a></li></ul></div>
             <p class="Comments">
                 <a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet#disqus_thread" data-disqus-identifier="108">Comments</a>
             </p>
@@ -1257,9 +1782,9 @@ using (var image = new Bitmap(path))
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/so-what-is-machine-learning-nocodeintro">So.. what is machine learning? (#NoCodeIntro)</a></li><li><a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a></li><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a></li><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts">Automating &quot;suggested / related posts&quot; links for my blog posts</a></li><li><a href="/language-detection-and-wordsinsentence-classification-in-c-sharp">Language detection and words-in-sentence classification in C#</a></li></ul><div class="RSSFeedLink"><a href="https://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/so-what-is-machine-learning-nocodeintro">So.. what is machine learning? (#NoCodeIntro)</a></li><li><a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a></li><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a></li><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts">Automating &quot;suggested / related posts&quot; links for my blog posts</a></li></ul><div class="RSSFeedLink"><a href="https://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/2/2022">February 2022 (1)</a></li><li><a href="/Archive/8/2021">August 2021 (1)</a></li><li><a href="/Archive/4/2021">April 2021 (2)</a></li><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2022">March 2022 (1)</a></li><li><a href="/Archive/2/2022">February 2022 (1)</a></li><li><a href="/Archive/8/2021">August 2021 (1)</a></li><li><a href="/Archive/4/2021">April 2021 (2)</a></li><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>
