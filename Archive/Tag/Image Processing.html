@@ -64,6 +64,382 @@
         </script>
 
     <div class="Content ArchiveByTag">
+        <p class="PostDate">29 March 2022</p><h2 id="approximately-correcting-perspective-with-c-fixing-a-blurry-presentation-video-part-two"><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two">(Approximately) correcting perspective with C# (fixing a blurry presentation video - part two)</a></h2>
+<h3 id="tldr"><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two#tldr">TL;DR</a></h3>
+<p>I have a video of a presentation where the camera keeps losing focus such that the slides are unreadable. I have the original slide deck and I want to fix this.</p>
+<p>Step one was <a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">identifying the area in each frame that it seemed likely was where the slides were being projected</a>, now step two is to correct the perspective of the projection back into a rectangle to make it easier to perform comparisons against the original slide deck images and try to determine which slide was being projected.</p>
+<p>(<strong>An experimental TL;DR approach:</strong> See this <a href="https://dotnetfiddle.net/pEzbHD">small scale .NET Fiddle demonstration</a> of what I'll be discussing)</p>
+<p><img src="/Content/Images/Posts/PerspectiveCorrectedSlide.jpg" alt="A slide extracted from a frame of a video presentation and 'perspective-corrected' back into a rectangle" title="A slide extracted from a frame of a video presentation and 'perspective-corrected' back into a rectangle" /></p>
+<h3 id="the-basic-approach"><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two#the-basic-approach">The basic approach</a></h3>
+<p>An overview of the processing to do this looks as follows:</p>
+<ol>
+<li>Load the original slide image into a <code>Bitmap</code></li>
+<li>Using the projected-slide-area region calculated in step one..
+<ol>
+<li>Take the line from the top left of the region to the top right</li>
+<li>Take the line from the bottom left of the region to the bottom right (note that this line may be a little longer or shorter than the first line)</li>
+<li>Create vertical slices of the image by stepping through the first line (the one across the top), connecting each pixel to a pixel on the bottom line</li>
+</ol>
+</li>
+<li>These vertical slices will not all be the same height and so they'll need to be adjusted to a consistent size (the further from the camera that a vertical slice of the projection is, the smaller it will be)</li>
+<li>The height-adjusted vertical slices are then combined into a single rectangle, which will result in an approximation of a perspective-corrected version of the projection of the slide</li>
+</ol>
+<p><strong>Note:</strong> The reason that this process is only going to be an approximation is due to the way that the height of the output image will be determined -</p>
+<ol>
+<li>For my purposes, it will be fine to use the largest of the top-left-to-bottom-left length (ie. the left-hand edge of the projection) and the top-right-to-bottom-right length (the right-hand edge of the projected) but this will always result in an output whose aspect ratio is stretched vertically slightly because the largest of those two lengths will be &quot;magnified&quot; somewhat due to the perspective effect</li>
+<li>What might seem like an obvious improvement would be to take an average of the left-hand-edge-height and the right-hand-edge-height but I decided not to do this because I would be losing some fidelity from the vertical slices that would be shrunken down to match this average <em>and</em> because this would <em>still</em> be an approximation as..</li>
+<li>The correct way to determine the appropriate aspect ratio for the perspective-corrected image is to use some clever maths to try to determine that angle of the wall that the projection is on (look up perspective correction and vanishing points if you're really curious!) and to use <em>that</em> to decide what ratio of the left-hand-edge-height and the right-hand-edge-height to use
+<ul>
+<li>(The reason that the take-an-average approach is still an approximation is that perspective makes the larger edge grow more quickly than the smaller edge shrinks, so this calculation would still skew towards a vertically-stretched image)</li>
+</ul>
+</li>
+</ol>
+<h3 id="slice-dice"><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two#slice-dice">Slice &amp; dice!</a></h3>
+<p>So if we follow the plan above then we'll generate a list of vertical slices a bit like this:</p>
+<p><img src="/Content/Images/Posts/PerspectiveCorrectionSlices.jpg" alt="An illustration of how the vertical slices are taken from a projected image" title="An illustration of how the vertical slices are taken from a projected image" /></p>
+<p>.. which, when combined would look like this:</p>
+<img class="AlwaysFullWidth" src="/Content/Images/Posts/PerspectiveCorrectionSlicesOriginalHeights.jpg" alt="The vertical slices of the projected image before their heights are normalised" title="The vertical slices of the projected image before their heights are normalised" />
+<p>This is very similar to the original projection except that:</p>
+<ul>
+<li>The top edge is now across the top of the rectangular area</li>
+<li>The bottom left corner is aligned with the left-hand side of the image</li>
+<li>The bottom right corner is aligned with the right-hand side of the image</li>
+</ul>
+<p>We're not done yet but this has brought things much closer!</p>
+<p>In fact, all that is needed is to stretch those vertical slices so that they are all the same length and; ta-da!</p>
+<img class="AlwaysFullWidth" src="/Content/Images/Posts/PerspectiveCorrectionFinal.jpg" alt="The projected image contorted back into a rectangle" title="The projected image contorted back into a rectangle" />
+<h3 id="implementation-for-slicing-and-stretching"><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two#implementation-for-slicing-and-stretching">Implementation for slicing and stretching</a></h3>
+<p>So, from <a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">previous analysis</a>, I know that the bounding area for the projection of the slide in the frames of my video is:</p>
+<pre><code>topLeft: (1224, 197)
+topRight: (1915, 72)
+
+bottomLeft: (1229, 638)
+bottomRight: (1915, 662)
+</code></pre>
+<p>Since I'm going to walk along the top edge and create vertical slices from that, I'm going to need the length of that edge - which is easy enough with some Pythagoras:</p>
+<pre><code>private static int LengthOfLine((PointF From, PointF To) line)
+{
+    var deltaX = line.To.X - line.From.X;
+    var deltaY = line.To.Y - line.From.Y;
+    return (int)Math.Round(Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY)));
+}
+</code></pre>
+<p>So although it's only 691px horizontally from the top left to the top right (1915 - 1224), the actual length of that edge is 702px (because it's not a line that angles up slightly rather than being a flat horizontal one).</p>
+<p>This edge length determines how many vertical slices that we'll take and we'll get them by looping across this top edge, working out where the corresponding point on the bottom edge should be and joining them together into a line; one vertical slice. Each time that the loop increments, the current point on the top edge is going to move slightly to the right and even more slightly upwards while each corresponding point on the bottom edge will also move slightly to the right but it will move slightly <em>down</em> as the projection on the wall gets closer and closer to the camera.</p>
+<p>One way to get all of these vertical slice lines is a method such as the following:</p>
+<pre><code>private sealed record ProjectionDetails(
+    Size ProjectionSize,
+    IEnumerable&lt;((PointF From, PointF To) Line, int Index)&gt; VerticalSlices
+);
+
+private static ProjectionDetails GetProjectionDetails(
+    Point topLeft,
+    Point topRight,
+    Point bottomRight,
+    Point bottomLeft)
+{
+    var topEdge = (From: topLeft, To: topRight);
+    var bottomEdge = (From: bottomLeft, To: bottomRight);
+    var lengthOfEdgeToStartFrom = LengthOfLine(topEdge);
+    var dimensions = new Size(
+        width: lengthOfEdgeToStartFrom,
+        height: Math.Max(
+            LengthOfLine((topLeft, bottomLeft)),
+            LengthOfLine((topRight, bottomRight))
+        )
+    );
+    return new ProjectionDetails(dimensions, GetVerticalSlices());
+
+    IEnumerable&lt;((PointF From, PointF To) Line, int Index)&gt; GetVerticalSlices() =&gt;
+        Enumerable
+            .Range(0, lengthOfEdgeToStartFrom)
+            .Select(i =&gt;
+            {
+                var fractionOfProgressAlongPrimaryEdge = (float)i / lengthOfEdgeToStartFrom;
+                return (
+                    Line: (
+                        GetPointAlongLine(topEdge, fractionOfProgressAlongPrimaryEdge),
+                        GetPointAlongLine(bottomEdge, fractionOfProgressAlongPrimaryEdge)
+                    ),
+                    Index: i
+                );
+            });
+}
+</code></pre>
+<p>This returns the dimensions of the final perspective-corrected projection (which is as wide as the top edge is long and which is as high as the greater of the left-hand edge's length and the right-hand edge's length) as well as an <code>IEnumerable</code> of the start and end points for each slice that we'll be taking.</p>
+<p>The dimensions are going to allow us to create a bitmap that we'll paste the slices into when we're ready - but, before that, we need to determine pixel values for every point on every vertical slice. As the horizontal distance across the top edge is 691px and the vertical distance is 125px but its actual length is 702px, each time we move one along in that 702px loop the starting point for the vertical slice will move (691 / 702) = 0.98px across and (125 / 702) = 0.18px up. So almost all of these vertical slices are going to have start and end points that are not whole pixel values - and the same applies to each point <em>on</em> that vertical slice. This means that we're going to have to take average colour values for when we're dealing with fractional pixel locations.</p>
+<p>For example, if we're at the point (1309.5, 381.5) and the colours at (1309, 381), (1310, 381), (1309, 382), (1310, 382) are all white then the averaging is really easy - the &quot;averaged&quot; colour is white! If we're at the point (1446.5, 431.5) and the colours at (1446, 431), (1447, 431), (1446, 432), (1447, 432) are #BCA6A9, #B1989C, #BCA6A9, #B1989C then it's also not too complicated - because (1446.5, 431.5) is at the precise midpoint between all four points then we can take a really simple average by adding all four R values together, all four G values together, all four B values together and diving them by 4 to get a combined result. It gets a little more complicated where it's not 0.5 of a pixel and it's slightly more to the left or to the right and/or to the top or to the bottom - eg. (1446.1, 431.9) would get more of its averaged colour from the pixels on the left than on the right (as 1446.1 is only just past 1446) while it would get more of its averaged colour from the pixels on the bottom than the top (as 431.9 is practically ay 432). On the other hand, on the rare occasion where it <em>is</em> a precise location (with no fractional pixel values), such as (1826, 258), then it's the absolute simplest case because no averaging is required!</p>
+<pre><code>private static Color GetAverageColour(Bitmap image, PointF point)
+{
+    var (integralX, fractionalX) = GetIntegralAndFractional(point.X);
+    var x0 = integralX;
+    var x1 = Math.Min(integralX + 1, image.Width);
+
+    var (integralY, fractionalY) = GetIntegralAndFractional(point.Y);
+    var y0 = integralY;
+    var y1 = Math.Min(integralY + 1, image.Height);
+
+    var (topColour0, topColour1) = GetColours(new Point(x0, y0), new Point(x1, y0));
+    var (bottomColour0, bottomColour1) = GetColours(new Point(x0, y1), new Point(x1, y1));
+
+    return CombineColours(
+        CombineColours(topColour0, topColour1, fractionalX),
+        CombineColours(bottomColour0, bottomColour1, fractionalX),
+        fractionalY
+    );
+
+    (Color c0, Color c1) GetColours(Point p0, Point p1)
+    {
+        var c0 = image.GetPixel(p0.X, p0.Y);
+        var c1 = (p0 == p1) ? c0 : image.GetPixel(p1.X, p1.Y);
+        return (c0, c1);
+    }
+
+    static (int Integral, float Fractional) GetIntegralAndFractional(float value)
+    {
+        var integral = (int)Math.Truncate(value);
+        var fractional = value - integral;
+        return (integral, fractional);
+    }
+
+    static Color CombineColours(Color x, Color y, float proportionOfSecondColour)
+    {
+        if ((proportionOfSecondColour == 0) || (x == y))
+            return x;
+
+        if (proportionOfSecondColour == 1)
+            return y;
+
+        return Color.FromArgb(
+            red: CombineComponent(x.R, y.R),
+            green: CombineComponent(x.G, y.G),
+            blue: CombineComponent(x.B, y.B),
+            alpha: CombineComponent(x.A, y.A)
+        );
+
+        int CombineComponent(int x, int y) =&gt;
+            Math.Min(
+                (int)Math.Round((x * (1 - proportionOfSecondColour)) + (y * proportionOfSecondColour)),
+                255
+            );
+    }
+}
+</code></pre>
+<p>This gives us the capability to split the wonky projection into vertical slices, to loop over each slice and to walk <em>down</em> each slice and get a list of pixel values for each point down that slice. The final piece of the puzzle is that we then need to resize each vertical slice so that they all match the projection height returned from the <code>GetProjectionDetails</code> method earlier. Handily, the .NET <code>Bitmap</code> drawing code has <code>DrawImage</code> functionality that can resize content, so we can:</p>
+<ol>
+<li>Create a <code>Bitmap</code> whose dimensions are those returned from <code>GetProjectionDetails</code></li>
+<li>Loop over each vertical slice (which is an <code>IEnumerable</code> also returned from <code>GetProjectionDetails</code>)</li>
+<li>Create a bitmap just for that slice - that is 1px wide and only as tall as the current vertical slice is long</li>
+<li>Use <code>DrawImage</code> to paste that slice's bitmap onto the full-size projection <code>Bitmap</code></li>
+</ol>
+<p>In code:</p>
+<pre><code>private static void RenderSlice(
+    Bitmap projectionBitmap,
+    IEnumerable&lt;Color&gt; pixelsOnLine,
+    int index)
+{
+    var pixelsOnLineArray = pixelsOnLine.ToArray();
+
+    using var slice = new Bitmap(1, pixelsOnLineArray.Length);
+    for (var j = 0; j &lt; pixelsOnLineArray.Length; j++)
+        slice.SetPixel(0, j, pixelsOnLineArray[j]);
+
+    using var g = Graphics.FromImage(projectionBitmap);
+    g.DrawImage(
+        slice,
+        srcRect: new Rectangle(0, 0, slice.Width, slice.Height),
+        destRect: new Rectangle(index, 0, 1, projectionBitmap.Height),
+        srcUnit: GraphicsUnit.Pixel
+    );
+}
+</code></pre>
+<h3 id="pulling-it-all-together"><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two#pulling-it-all-together">Pulling it all together</a></h3>
+<p>If we combine all of this logic together then we end up with a fairly straightforward static class that does all the work - takes a <code>Bitmap</code> that is a frame from a video where there is a section that should be extracted and then &quot;perspective-corrected&quot;, takes the four points that describe that region and then returns a new <code>Bitmap</code> that is the extracted content in a lovely rectangle!</p>
+<pre><code>/// &lt;summary&gt;
+/// This uses a simple algorithm to try to undo the distortion of a rectangle in an image
+/// due to perspective - it takes the content of the rectangle and stretches it into a
+/// rectangle. This is only a simple approximation and does not guarantee accuracy (in
+/// fact, it will result in an image that is slightly vertically stretched such that its
+/// aspect ratio will not match the original content and a more thorough approach would
+/// be necessary if this is too great an approximation)
+/// &lt;/summary&gt;
+internal static class SimplePerspectiveCorrection
+{
+    public static Bitmap ExtractAndPerspectiveCorrect(
+        Bitmap image,
+        Point topLeft,
+        Point topRight,
+        Point bottomRight,
+        Point bottomLeft)
+    {
+        var (projectionSize, verticalSlices) =
+            GetProjectionDetails(topLeft, topRight, bottomRight, bottomLeft);
+
+        var projection = new Bitmap(projectionSize.Width, projectionSize.Height);
+        foreach (var (lineToTrace, index) in verticalSlices)
+        {
+            var lengthOfLineToTrace = LengthOfLine(lineToTrace);
+
+            var pixelsOnLine = Enumerable
+                .Range(0, lengthOfLineToTrace)
+                .Select(j =&gt;
+                {
+                    var fractionOfProgressAlongLineToTrace = (float)j / lengthOfLineToTrace;
+                    var point = GetPointAlongLine(lineToTrace, fractionOfProgressAlongLineToTrace);
+                    return GetAverageColour(image, point);
+                });
+
+            RenderSlice(projection, pixelsOnLine, index);
+        }
+        return projection;
+
+        static Color GetAverageColour(Bitmap image, PointF point)
+        {
+            var (integralX, fractionalX) = GetIntegralAndFractional(point.X);
+            var x0 = integralX;
+            var x1 = Math.Min(integralX + 1, image.Width);
+
+            var (integralY, fractionalY) = GetIntegralAndFractional(point.Y);
+            var y0 = integralY;
+            var y1 = Math.Min(integralY + 1, image.Height);
+
+            var (topColour0, topColour1) = GetColours(new Point(x0, y0), new Point(x1, y0));
+            var (bottomColour0, bottomColour1) = GetColours(new Point(x0, y1), new Point(x1, y1));
+
+            return CombineColours(
+                CombineColours(topColour0, topColour1, fractionalX),
+                CombineColours(bottomColour0, bottomColour1, fractionalX),
+                fractionalY
+            );
+
+            (Color c0, Color c1) GetColours(Point p0, Point p1)
+            {
+                var c0 = image.GetPixel(p0.X, p0.Y);
+                var c1 = (p0 == p1) ? c0 : image.GetPixel(p1.X, p1.Y);
+                return (c0, c1);
+            }
+
+            static (int Integral, float Fractional) GetIntegralAndFractional(float value)
+            {
+                var integral = (int)Math.Truncate(value);
+                var fractional = value - integral;
+                return (integral, fractional);
+            }
+
+            static Color CombineColours(Color x, Color y, float proportionOfSecondColour)
+            {
+                if ((proportionOfSecondColour == 0) || (x == y))
+                    return x;
+
+                if (proportionOfSecondColour == 1)
+                    return y;
+
+                return Color.FromArgb(
+                    red: CombineComponent(x.R, y.R),
+                    green: CombineComponent(x.G, y.G),
+                    blue: CombineComponent(x.B, y.B),
+                    alpha: CombineComponent(x.A, y.A)
+                );
+
+                int CombineComponent(int x, int y) =&gt;
+                    Math.Min(
+                        (int)Math.Round(
+                            (x * (1 - proportionOfSecondColour)) +
+                            (y * proportionOfSecondColour)
+                        ),
+                        255
+                    );
+            }
+        }
+    }
+
+    private sealed record ProjectionDetails(
+        Size ProjectionSize,
+        IEnumerable&lt;((PointF From, PointF To) Line, int Index)&gt; VerticalSlices
+    );
+
+    private static ProjectionDetails GetProjectionDetails(
+        Point topLeft,
+        Point topRight,
+        Point bottomRight,
+        Point bottomLeft)
+    {
+        var topEdge = (From: topLeft, To: topRight);
+        var bottomEdge = (From: bottomLeft, To: bottomRight);
+        var lengthOfEdgeToStartFrom = LengthOfLine(topEdge);
+        var dimensions = new Size(
+            width: lengthOfEdgeToStartFrom,
+            height: Math.Max(
+                LengthOfLine((topLeft, bottomLeft)),
+                LengthOfLine((topRight, bottomRight))
+            )
+        );
+        return new ProjectionDetails(dimensions, GetVerticalSlices());
+
+        IEnumerable&lt;((PointF From, PointF To) Line, int Index)&gt; GetVerticalSlices() =&gt;
+            Enumerable
+                .Range(0, lengthOfEdgeToStartFrom)
+                .Select(i =&gt;
+                {
+                    var fractionOfProgressAlongPrimaryEdge = (float)i / lengthOfEdgeToStartFrom;
+                    return (
+                        Line: (
+                            GetPointAlongLine(topEdge, fractionOfProgressAlongPrimaryEdge),
+                            GetPointAlongLine(bottomEdge, fractionOfProgressAlongPrimaryEdge)
+                        ),
+                        Index: i
+                    );
+                });
+    }
+
+    private static PointF GetPointAlongLine((PointF From, PointF To) line, float fraction)
+    {
+        var deltaX = line.To.X - line.From.X;
+        var deltaY = line.To.Y - line.From.Y;
+        return new PointF(
+            (deltaX * fraction) + line.From.X,
+            (deltaY * fraction) + line.From.Y
+        );
+    }
+
+    private static int LengthOfLine((PointF From, PointF To) line)
+    {
+        var deltaX = line.To.X - line.From.X;
+        var deltaY = line.To.Y - line.From.Y;
+        return (int)Math.Round(Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY)));
+    }
+
+    private static void RenderSlice(
+        Bitmap projectionBitmap,
+        IEnumerable&lt;Color&gt; pixelsOnLine,
+        int index)
+    {
+        var pixelsOnLineArray = pixelsOnLine.ToArray();
+
+        using var slice = new Bitmap(1, pixelsOnLineArray.Length);
+        for (var j = 0; j &lt; pixelsOnLineArray.Length; j++)
+            slice.SetPixel(0, j, pixelsOnLineArray[j]);
+
+        using var g = Graphics.FromImage(projectionBitmap);
+        g.DrawImage(
+            slice,
+            srcRect: new Rectangle(0, 0, slice.Width, slice.Height),
+            destRect: new Rectangle(index, 0, 1, projectionBitmap.Height),
+            srcUnit: GraphicsUnit.Pixel
+        );
+    }
+}
+</code></pre>
+<h3 id="coming-next"><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two#coming-next">Coming next</a></h3>
+<p>So step one was to take frames from a video and to work out what the bounds were of the area where slides were being projected (and to filter out any intro and outro frames), step two has been to be able to take the bounded area from any slide and project it back into a rectangle to make it easier to match against the original slide images.. step three will be to use these projections to try to guess what slide is being displayed on what frame!</p>
+<p>The frame that I've been using as an example throughout this post probably looks like a fairly easy case - big blocks of white or black and not actually <em>too</em> out of focus.. but some of the frames look like this and that's a whole other kettle of fish!</p>
+<p><img src="/Content/Images/Posts/OutOfFocusFrame.jpg" alt="An out of focus frame from a presentation" title="An out of focus frame from a presentation" /></p>
+<p class="PostTime">Posted at 19:02</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="4 Posts">Image Processing</a></li></ul></div>
+            <p class="Comments">
+                <a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two#disqus_thread" data-disqus-identifier="125">Comments</a>
+            </p>
+    </div>
+    <div class="Content ArchiveByTag">
         <p class="PostDate">15 March 2022</p><h2 id="finding-the-brightest-area-in-an-image-with-c-fixing-a-blurry-presentation-video-part-one"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></h2>
 <h3 id="tldr"><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#tldr">TL;DR</a></h3>
 <p>I have a video of a presentation where the camera keeps losing focus such that the slides are unreadable. I have the original slide deck and I want to fix this.</p>
@@ -583,7 +959,7 @@ var lasttFrameIndex = frameIndexesThatHaveTheMostCommonHighlightedArea.Max();
 </ol>
 <p>Once this is all done, I will take the original frame images and, for each one, overlay a clean version of the slide that appeared blurrily in the frame (again, I'll have clean versions of each slide from the original slide deck that I produced, so that should be an easy part) - then I'll mash them all back together into a new video, combined with the original audio. To do this (the video work), I'll likely use the same tool that I used to extract the individual frame files from the video in the first place - the famous <a href="https://www.ffmpeg.org/">FFmpeg</a>!</p>
 <p>I doubt that I'll have a post on this last section as it would only be a small amount of C# code that combines two images for each frame, writes the results to disk, followed by me making a command line call to FFmpeg to produce the video - and I don't think that there's anything particularly exciting there! If I get this all completed, though, I will - of course - link to the fixed-up presentation video.. because why not shameless plug myself given any opportunity!</p>
-<p class="PostTime">Posted at 21:06</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="3 Posts">Image Processing</a></li></ul></div>
+<p class="PostTime">Posted at 21:06</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two">(Approximately) correcting perspective with C# (fixing a blurry presentation video - part two)</a></li><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="4 Posts">Image Processing</a></li></ul></div>
             <p class="Comments">
                 <a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one#disqus_thread" data-disqus-identifier="124">Comments</a>
             </p>
@@ -1066,7 +1442,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
    9        3, 1, 1, 2
 </code></pre>
 <p><em>(Note that every combination of values totals 7 when they added up - this is very helpful later!)</em></p>
-<p>To see what that looks like in the real world, here's a slice of that barcode from the jar of peanut butter with each section and each numberic value identified:</p>
+<p>To see what that looks like in the real world, here's a slice of that barcode from the jar of peanut butter with each section and each numeric value identified:</p>
 <img alt="Barcode numbers interpreted" src="/Content/Images/Posts/PeanutBarcode-AnnotatedValues.png" class="NoBorder AlwaysFullWidth" title="Barcode numbers interpreted" />
 <p><em>(I should point out that the article <a href="https://habr.com/en/post/439768/">How does a barcode work?</a> was extremely helpful in the research I did for this post and I'm very grateful to the author for having written it in such an approachable manner!)</em></p>
 <p>Any combination of bar widths that is not found in the table is considered to be invalid. On the one hand, you might think that this a potential loss; the format could support more combinations of bar widths to encode more values and then more data could be packed into the same space. There is an advantage, however, to having relatively few valid combinations of bar widths - it makes easier to tell whether the information being read appears to be correct. If a combination is encountered that seems incorrect then the read attempt should be aborted and retried. The format has existed for decades and it would make sense, bearing that in mind, to prioritise making it easier for the hardware to read rather prioritising trying to cram as much data in there as possible. There is <em>also</em> a checksum included in the numerical data to try to catch any &quot;misreads&quot; but when working with low resolutions or hardware with little computing power, the easier that it is to bail out of a scan and to retry the better.</p>
@@ -1090,7 +1466,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <li>If the line couldn't be interpreted as a barcode or the checksum calculation fails then take the next line down and go back to step 4</li>
 <li>If there are no more lines to attempt then a barcode could not be identified in the image</li>
 </ol>
-<p>This processing is fairly light computationally and so there is no need to resize the &quot;may be a barcode&quot; image region before attempting the work. In fact, it's benefical to <em>not</em> shrink it as shrinking it will likely make the barcode section fuzzier and that makes the above steps less likely to work - the ideal case for creating a binary mask is where there is no significant &quot;seepage&quot; of pixel intensity between the black bar areas and the white bar areas. That's not to say that the images have to be crystal clear or perfectly aligned with the camera because the redundancy built into the format works in our favour here - if one line across the image can't be read because it's fuzzy then there's a good chance that one of the other lines will be legible.</p>
+<p>This processing is fairly light computationally and so there is no need to resize the &quot;may be a barcode&quot; image region before attempting the work. In fact, it's beneficial to <em>not</em> shrink it as shrinking it will likely make the barcode section fuzzier and that makes the above steps less likely to work - the ideal case for creating a binary mask is where there is no significant &quot;seepage&quot; of pixel intensity between the black bar areas and the white bar areas. That's not to say that the images have to be crystal clear or perfectly aligned with the camera because the redundancy built into the format works in our favour here - if one line across the image can't be read because it's fuzzy then there's a good chance that one of the other lines will be legible.</p>
 <p>60 length values is the precise number that we expect to find - there is expected to be some blank space before the barcode starts (1) and then a guard section of three single-width lines that we use to gauge bar width (3) and then six numbers that are encoded in four bars each (6x4=24) and then a guard section of five single-width lines (5) and then six numbers (6x4=24) and then a final guard region of three single-width bars, giving 1+3+24+5+24+3=60.</p>
 <p>There will likely be another section of blank content after the barcode that we ignore</p>
 <p>If we don't want to validate the final guard region then we can work with a barcode image where some of the end of cut off, so long as the data for the 12 digits is there; in this case, 57 lengths if the minimum number that we can accept</p>
@@ -1170,7 +1546,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
     return string.Join(&quot;&quot;, extractedNumericValues);
 }
 </code></pre>
-<p>With the code below, we find the runs of continous 0 or 1 lengths that will represent bars are return that list (again, for larger images each run will be longer and for smaller images each run will be shorter but this will be taken care of later) -</p>
+<p>With the code below, we find the runs of continuous 0 or 1 lengths that will represent bars are return that list (again, for larger images each run will be longer and for smaller images each run will be shorter but this will be taken care of later) -</p>
 <pre><code>private static IEnumerable&lt;int&gt; GetBarLengthsFromBarcodeSlice(
     DataRectangle&lt;bool&gt; barcodeDetails,
     int sliceY)
@@ -1330,7 +1706,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <p>And with that, we're finally done! I must admit that I started writing this post about three years ago and it's been in my TODO list for a loooooong time now. But I've taken a week off work and been able to catch up with a few things and have finally been able to cross it off the list. And I'm quite relieved that I didn't give up on it entirely because it was a fun little project and coming back to it now allowed me to tidy it up a bit with the newer C# 8 syntax and even enable the nullable reference types option on the project (I sure do hate unintentional nulls being allowed to sneak in!)</p>
 <p>A quick reminder if you want to see it in action or play about it yourself, the <a href="https://github.com/ProductiveRage/BarcodeReader">GitHub repo is here</a>.</p>
 <p>Thanks to anyone that read this far!</p>
-<p class="PostTime">Posted at 23:24</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li><li><a href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to &quot;Implementing F#-inspired &#x27;with&#x27; updates in C#&quot;</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="3 Posts">Image Processing</a></li></ul></div>
+<p class="PostTime">Posted at 23:24</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="4 Posts">Image Processing</a></li></ul></div>
             <p class="Comments">
                 <a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp#disqus_thread" data-disqus-identifier="117">Comments</a>
             </p>
@@ -1349,7 +1725,7 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <p>In a past life, I worked in IT Support and, one day, I was asked by the Head Clinician why I'd been printing out porn. Which confused me considerably since I had most certainly <em>not</em> been printing out explicit material. There had been complaints about the colour tone and contrast of a new colour laser printer and so I'd sent a full-page test image to it that included greyscale content, colour grids and images that contained a lot of skin. Apparently printing out pictures with lots of skin in it raises eyebrows and maybe it's for similar reasons that a research paper entitled &quot;Naked People Skin Filter&quot; amusingly sounds a touch pervy (or maybe that's just a British thing.. we do love to keep most of our naked-skin-unveiling behind closed doors - because it's so cold!).</p>
 <p>This &quot;Naked People Skin Filter&quot; paper was published by Margaret M. Fleck and David A Forsyth and is available at <a href="http://mfleck.cs.illinois.edu/naked-skin.html">http://mfleck.cs.illinois.edu/naked-skin.html</a>. It essentially describes an algorithm to detect regions of skin in an image. In 1997, another paper &quot;<a href="http://web.archive.org/web/20090723024922/http:/geocities.com/jaykapur/face.html">Face Detection in Color Images</a>&quot; described starting with that skin-tone-identifying approach and then using it to try to find solid regions of skin that have a few holes in, on the basis that this is <em>probably</em> a face (where the holes are eyes, nose, mouth).</p>
 <p><img src="/Content/Images/Posts/TigerWoods.gif" alt="Tiger Woods" title="Tiger Woods" /></p>
-<p><em>Note: That &quot;Face Detection in Color Images&quot; link use the <a href="http://archive.org/web/">Wayback Machine</a> to make available a GeoCities page. Maybe it's a sad reminder that there was actually worthwhile content on GeoCities as well as the many harshly-coloured-and-bizarely-animated eye-watering monstrosities. By the way, if you (quite rightly, imho) think that the web has lost something by having less places for people to upload content for free then check out <a href="https://neocities.org/browse">NeoCities</a> - it's awesome because it makes that possible again (and all the good and bad that comes with it)!</em></p>
+<p><em>Note: That &quot;Face Detection in Color Images&quot; link use the <a href="http://archive.org/web/">Wayback Machine</a> to make available a GeoCities page. Maybe it's a sad reminder that there was actually worthwhile content on GeoCities as well as the many harshly-coloured-and-bizarrely-animated eye-watering monstrosities. By the way, if you (quite rightly, imho) think that the web has lost something by having less places for people to upload content for free then check out <a href="https://neocities.org/browse">NeoCities</a> - it's awesome because it makes that possible again (and all the good and bad that comes with it)!</em></p>
 <p>&quot;Face Detection in Color Images&quot; uses an example image of Tiger Woods and so I will use that same image while I discuss what I've done, based upon these articles.</p>
 <p>There are a set of steps that are followed when trying to identify faces in an image:</p>
 <ol>
@@ -1357,9 +1733,9 @@ return GetOverlappingObjectBounds(GetDistinctObjects(mask))
 <li>Avoid desaturation by bring colour down values so that the minimum is true zero</li>
 <li>Transform RGB colours into the RG/BY colour space, alongside an Intensity spectrum</li>
 <li>Calculate &quot;texture amplitude&quot; across the image (how quickly intensity changes - the theory is that areas of skin have a relatively low texture amplitude)</li>
-<li>Calculate hue and sauturation across the image (in order to identify areas that seem to be skin-coloured)</li>
+<li>Calculate hue and saturation across the image (in order to identify areas that seem to be skin-coloured)</li>
 <li>Combine the texture amplitude and hue data to identify areas of skin (the texture amplitude, hue and saturation must be within acceptable &quot;this is probably skin&quot; bounds)</li>
-<li>Expand these areas of skin using a more relaxed texture amplitide / hue / saturation &quot;this is probably skin&quot; filter</li>
+<li>Expand these areas of skin using a more relaxed texture amplitude / hue / saturation &quot;this is probably skin&quot; filter</li>
 <li>Check these areas for holes - no holes (for non-skin facial features, such as eyes) means no face</li>
 </ol>
 <ul>
@@ -1465,7 +1841,7 @@ var textureAmplitude = differenceBetweenOriginalIntensityAndSmoothedIntensity.Me
 <p>In my Pictures folder, some photos from an Easter weekend* night out I went to a couple of years ago jumped out at me. Initially, I only used them because they made me laugh but, on closer inspection, they're actually really useful for illustrating what the skin tone detection process (and the subsequent support vector machine classification) is good at and where their limitations come into play.</p>
 <p>* <em>(which goes some way to explaining the eggs and the costumes.. the photos were put up on Facebook by a professional photographer, I hope he doesn't mind me reproducing them here - I tried getting in touch to ask but he didn't get back to me)</em></p>
 <p><img src="/Content/Images/Posts/EggMan.jpg" alt="Egg Man" title="Egg Man" /></p>
-<p>Firstly, we have this fine gentleman. The skin tone pass has identified his face perfectly but it's also misidentified two regions that contain colours and textureus that the skin filter allows through.</p>
+<p>Firstly, we have this fine gentleman. The skin tone pass has identified his face perfectly but it's also misidentified two regions that contain colours and textures that the skin filter allows through.</p>
 <p><img src="/Content/Images/Posts/EggMan-SkinMask.jpg" alt="Egg Man Skin Mask" title="Egg Man Skin Mask" /></p>
 <p>Looking at the generated skin mask (where each distinct skin object is filled with a different colour), it should be clear why this has happened.</p>
 <p><img src="/Content/Images/Posts/Group1.jpg" alt="Group Photo One" title="Group Photo One" /></p>
@@ -1533,7 +1909,7 @@ var magnitude = Math.Sqrt((dx * dx) + (dy * dy));
 <p><img src="/Content/Images/Posts/HistogramExample.jpg" alt="A Histogram" title="A Histogram" /></p>
 <p>Now for step 5, we want to produce &quot;histograms of oriented gradients&quot; (one for each block that we've split the image into in step 4). I always envisage a histogram like a bar chart - it shows how values are distributed across a range.</p>
 <p><em>(The example on the left is from <a href="https://en.wikipedia.org/wiki/Histogram">wikipedia</a> and reproduced here under the <a href="https://creativecommons.org/licenses/by-sa/3.0/">creative commons</a> license)</em></p>
-<p>To generate our histograns, we want to assign the gradients with the block across nine buckets, spaced twenty-degrees apart. The first will be at 10 degrees, the second at 30 and they'll go all the way up to 170.</p>
+<p>To generate our histograms, we want to assign the gradients with the block across nine buckets, spaced twenty-degrees apart. The first will be at 10 degrees, the second at 30 and they'll go all the way up to 170.</p>
 <p>We're going to use &quot;unsigned gradients&quot;, which means that if we have a gradient where intensity is changing only vertically, we don't really care if it's getting brighter as it goes down or brighter as it goes up, we only care that the line is precisely vertical. Similarly, imagine the intensity increasing up-and-right, at 45 degrees - we're happy to treat this the same as intensity going in precisely the opposite direction; down-and-left and 225 degrees (or -135 degrees since our current angleInDegrees values are in the -180 to +180 range). What this essentially means is that we want to tweak our angles so that they are all within 0-180 (instead of -180 to +180). To do, so we just add 180 degrees to any values less than zero.</p>
 <p>Every gradient needs to be assigned to one or more of these buckets. If a gradient's angle is precisely 10 degrees then the entirety of the gradient's magnitude is added to the 10 bucket. However, if it's between 10 and 30 then its magnitude is split proportionally between 10 and 30 (so a gradient of 20 degrees is split evenly between 10 and 30 while a gradient of 25 degrees will contribute 3/4 of its magnitude to the 30 bucket - which it is 5 degrees away from - and 1/4 of its magnitude to the 10 bucket - which it is 15 degrees away from).</p>
 <p>Performing this transformation on the image is an effective way of reducing the amount of data that we need to deal with. If we decide that the standardised size of the images that we want an SVM to classify is 128x128 then we 128 x 128 x 3 = 49,152 values (since every pixel has three colour values; red, green and blue). If use a block size of 8 when generating the HOG data then the 128 x 128 image will be 16 x 16 blocks and each block has 9 values (since each histogram has values in nine bins), which gives a total of 2,304 values.</p>
@@ -1554,7 +1930,7 @@ var magnitude = Math.Sqrt((dx * dx) + (dy * dy));
     }
 }
 </code></pre>
-<p>.. which brings me neatly on to HOG normalisation (since there's a mysterious reference to a normaliser in the code above). When the gradient magnitudes are calculated, some images may have many pixels that vary wildly in intensity from their neighbours while other images may have smoother, gentler gradients. In both cases, it is the relative flow of intensity that is important, since that helps identify the shapes. If you took an image and produced HOG data for it and then increased the contrast of the image and re-processed it, you would get greater gradient magnitude values in the increased-constrast version of the image, even though they both - so far as we are interested (in the context of trying to detect faces) - contain exactly the same information.</p>
+<p>.. which brings me neatly on to HOG normalisation (since there's a mysterious reference to a normaliser in the code above). When the gradient magnitudes are calculated, some images may have many pixels that vary wildly in intensity from their neighbours while other images may have smoother, gentler gradients. In both cases, it is the relative flow of intensity that is important, since that helps identify the shapes. If you took an image and produced HOG data for it and then increased the contrast of the image and re-processed it, you would get greater gradient magnitude values in the increased-contrast version of the image, even though they both - so far as we are interested (in the context of trying to detect faces) - contain exactly the same information.</p>
 <p>What we want to do is to align all of the magnitudes to a common base line. A simple (and fairly effective) way to do this is to find the largest value of any of the buckets across all of the histograms generated for an image and to then divide <em>every</em> magnitude by this value. In the example above, the 128x128 input image is transformed into 16x16 blocks, each of which is a histogram that contains 9 values. So we get the largest value from each of those 16x16x9 values and then divide all of them by it. This means that the largest value is now precisely 1.0 and every other value is somewhere between zero and one. This is what the &quot;GlobalNormaliser.Normalise&quot; delegate in the code above does. All it essentially has to do is this:</p>
 <pre><code>public static DataRectangle&lt;HistogramOfGradient&gt; Normalise(DataRectangle&lt;HistogramOfGradient&gt; hogs)
 {
@@ -1709,7 +2085,7 @@ var error = new ZeroOneLoss(outputs).Loss(predicted);
 <p>So, initially, I tried specifying 500 training images, which resulted in an SVM that actually did a pretty good job. The group photo shown before had all of the maybe-face regions correctly classified (the faces were all identified as faces and the hands in the photos were all correctly classified as not-faces).</p>
 <p>However, there was a problem with the image shown here (the problem, btw, clearly <em>isn't</em> the moves being thrown on the dancefloor, since they look like the very essence of poetry in motion). The problem is that one of the maybe-face regions identified by the skin tone pass has been mis-classified by the SVM as a face, when it's really an arm.</p>
 <p><em>(Note that there are some faces in the background that were not identified by the skin tone pass, but I'm not worried about that - it is to be expected that they would be ignored because they are small, relative to the size of the image.. though it should be possible to tweak the skin tone filter parameters if you wanted to try to capture background faces).</em></p>
-<p>Increasing the number of training images to 1,000 didn't address the problem with this particular image and, in fact, made another image worse (where a non-face region was correctly classifed as not-a-face before, with 1,000 training images the SVM thought that it <em>was</em> a face). Increasing to 1,500 training images corrected the classification of the dancing image regions but there were still false positives in other images. Such as this one of that same individual who appears to now be wearing a flag (which reminds me of a scene from <em>Fear and Loathing in Las Vegas</em>).</p>
+<p>Increasing the number of training images to 1,000 didn't address the problem with this particular image and, in fact, made another image worse (where a non-face region was correctly classified as not-a-face before, with 1,000 training images the SVM thought that it <em>was</em> a face). Increasing to 1,500 training images corrected the classification of the dancing image regions but there were still false positives in other images. Such as this one of that same individual who appears to now be wearing a flag (which reminds me of a scene from <em>Fear and Loathing in Las Vegas</em>).</p>
 <p><img src="/Content/Images/Posts/FlagWearer.jpg" alt="Another Classification Failure" title="Another Classification Failure" /></p>
 <p>2,000 training images seemed to be the sweet spot. The classifier produced the correct results for every case that I expected it to.</p>
 <p>The quantity of training data is going to vary from application to application and will depend upon what sort of feature extraction logic you are using. I think that it makes sense to start with lower quantities, if only because it's faster to train an SVM with less data and you can experiment more quickly with the other variables. To illustrate, on my computer (with the code as it currently stands, which is in a completely unoptimised state, but running a release build) it takes 17s to load the 2,000 images and extract the features from them, it then takes 27s to train the SVM on them. With 500 images it takes 5s to load the image data and 2s to train the SVM. With 5,000 images it takes 42s and 168s.</p>
@@ -1729,7 +2105,7 @@ using (var image = new Bitmap(path))
 </code></pre>
 <p>However, it gave poor results for my images. It seemed to do well with very small faces but struggled with  larger images (or the images where the faces took up a large proportion of the image). It's very possible that I could improve the accuracy by tweaking the parameters. If my images are too large, maybe they should just be shrunk down further before processing? That might help the false negative rate but I'm also concerned about the false positive rate and I'm not sure that shrinking the image first would help with that.</p>
 <p><img src="/Content/Images/Posts/TigerWoods-SlidingWindow.jpg" alt="TigerWoods - Sliding Window SVM Results" title="TigerWoods - Sliding Window SVM Results" /></p>
-<p>One approach that sounds very promising: if the SVM classifier is so fast and effective then maybe we should get rid of the skin tone processing altogether and just generate segments from all over the image, then filter them with the classifier. This is discussed and recommended by many people and is referred to as the &quot;sliding window&quot; approach (see <a href="http://www.pyimagesearch.com/2015/03/23/sliding-windows-for-object-detection-with-python-and-opencv/">Sliding Windows for Object Detection with Python and OpenCV</a>, for example). The idea is that you pick a window size (eg. 50px if limiting the source image to no more than 400px on a side) and then start at the top left of the image and take that top-left 50x50px as the first sub-image to pass to the classifer. Then you move the window over a bit (say, 10px) and then use that as the second sub-image. Keep going until you can't go any further and then go back to the left but go down 10px - moving across then back-and-down until you have covered the entire image. Then do the same with some other window sizes (maybe 75px and then 100px), since you don't know whether the faces on an image are going to be small (relative to the size of the image) or large. This will give you many, <em>many</em> regions to classify - but that's no problem because linear SVM classification is very fast. Unfortunately, I did try this but I got an enormous false positive rate (as you can see here with Tiger - if you can make him out from behind all the green &quot;this is a face!&quot; boxes). Surely this approach <em>can</em> be made to work since it's so commonly presented as a solution to this problem.. it may just be that I need to tweak how the SVM is trained, maybe it needs more than 2,000 training images (though I did also try it with 10,000 training images and the results were not much better).</p>
+<p>One approach that sounds very promising: if the SVM classifier is so fast and effective then maybe we should get rid of the skin tone processing altogether and just generate segments from all over the image, then filter them with the classifier. This is discussed and recommended by many people and is referred to as the &quot;sliding window&quot; approach (see <a href="http://www.pyimagesearch.com/2015/03/23/sliding-windows-for-object-detection-with-python-and-opencv/">Sliding Windows for Object Detection with Python and OpenCV</a>, for example). The idea is that you pick a window size (eg. 50px if limiting the source image to no more than 400px on a side) and then start at the top left of the image and take that top-left 50x50px as the first sub-image to pass to the classifier. Then you move the window over a bit (say, 10px) and then use that as the second sub-image. Keep going until you can't go any further and then go back to the left but go down 10px - moving across then back-and-down until you have covered the entire image. Then do the same with some other window sizes (maybe 75px and then 100px), since you don't know whether the faces on an image are going to be small (relative to the size of the image) or large. This will give you many, <em>many</em> regions to classify - but that's no problem because linear SVM classification is very fast. Unfortunately, I did try this but I got an enormous false positive rate (as you can see here with Tiger - if you can make him out from behind all the green &quot;this is a face!&quot; boxes). Surely this approach <em>can</em> be made to work since it's so commonly presented as a solution to this problem.. it may just be that I need to tweak how the SVM is trained, maybe it needs more than 2,000 training images (though I did also try it with 10,000 training images and the results were not much better).</p>
 <p><img src="/Content/Images/Posts/BlackAndWhiteFaceFails.jpg" alt="Black and White Face Detection Fail" title="Black and White Face Detection Fail" /></p>
 <p>To return to the performance of the skin-tone-pass-following-by-(2k-image-trained-)SVM-classification model that I've talked about for most of this post; in terms of accuracy I'm very happy with it. In the test images that I've been using, there are zero false positives. There are a couple of false negatives but I think that they are understandable. The first obvious failing that it has is with a black-and-white photo - since the skin tone face detector looks for particular hues and saturations, it's not going to work on if there is no colour in the image. That's just a built-in limitation of the approach.</p>
 <p><img src="/Content/Images/Posts/OccludedFace.jpg" alt="Semi-occluded" title="Semi-occluded" /></p>
@@ -1745,7 +2121,7 @@ using (var image = new Bitmap(path))
 <p>An article that <em>did</em> go into the details was the &quot;<a href="http://mccormickml.com/2013/05/09/hog-person-detector-tutorial/">HOG Person Detector Tutorial</a>&quot; (by Chris McCormick). This was also really well written and very approachable. Although it talks about detecting a person in a photo, rather than a face, the principles are the same. The description of the HOG generation and normalisation really helped me clarify in my mind how it should all work. This article links to the original <a href="http://lear.inrialpes.fr/people/triggs/pubs/Dalal-cvpr05.pdf">HOG person detector paper by Dalal and Triggs [PDF]</a>, which is full of research information and graphs and equations - so if you want to dig deep then this is the place to start!</p>
 <p>The Triggs and Dalal paper state in the introduction that &quot;For simplicity and speed, we use linear SVM as a baseline classifier throughout the study&quot;. Later on they mention that they tried a non-linear kernel but that &quot;Replacing the linear SVM with a Gaussian kernel one improves performance by about 3%.. at the cost of much higher run times&quot;. If this &quot;why is a linear SVM classifier appropriate&quot; explanation feels too light for you then it is discussed in greater depth in &quot;<a href="https://arxiv.org/pdf/1406.2419.pdf">Why do linear SVMs trained on HOG features perform so well? [PDF]</a>.</p>
 <p>Finally, I want to mention again the article &quot;<a href="http://crsouza.com/2010/04/27/kernel-support-vector-machines-for-classification-and-regression-in-c/">Kernel Support Vector Machines for Classification and Regression in C#</a>&quot; by Accord.NET's César Souza. Here, he introduces the SVM in a much more formal way than I've done here, he includes a video about &quot;<a href="https://www.youtube.com/watch?v=3liCbRZPrZA">The Kernel Trick</a>&quot; (which is a simple yet mind-blowing way in which the linear kernel can be used to classify data that doesn't immediately look like it would work for), he talks about other kernels (aside from linear he also describes polynomial and gaussian) and he describes how the Sequential Minimal Optimization learning algorithm works. There's a lot of code and there's illustrated examples at the end. When I found this article fairly early on in my research, I recognised how much care had gone into preparing it but also knew that I needed something a little more beginner-level first! So I bookmarked it for future reference and now I think that I understand (almost all of) it. Hopefully, if you started off knowing nothing but have followed all the way through this post, then you will too!</p>
-<p class="PostTime">Posted at 18:39</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/implementing-f-sharp-inspired-with-updates-for-immutable-classes-in-c-sharp">Implementing F#-inspired &quot;with&quot; updates for immutable classes in C#</a></li><li><a href="/a-followup-to-implementing-f-sharp-inspired-with-updates-in-c-sharp">A follow-up to &quot;Implementing F#-inspired &#x27;with&#x27; updates in C#&quot;</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="3 Posts">Image Processing</a></li><li><a href="/Archive/Tag/Machine%20Learning" title="7 Posts">Machine Learning</a></li></ul></div>
+<p class="PostTime">Posted at 18:39</p><div class="Related"><h3>You may also be interested in (see <a href="/automating-suggested-related-posts-links-for-my-blog-posts">here</a> for information about how these are generated):</h3><ul><li><a href="/how-are-barcodes-read-libraryless-image-processing-in-c-sharp">How are barcodes read?? (Library-less image processing in C#)</a></li><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/retrieving-performance-counter-from-a-remote-pc-using-c-sharp">Retrieving Performance Counter from a remote PC using C#</a></li></ul></div><div class="Tags"><label>Tags:</label><ul><li><a href="/Archive/Tag/Image%20Processing" title="4 Posts">Image Processing</a></li><li><a href="/Archive/Tag/Machine%20Learning" title="7 Posts">Machine Learning</a></li></ul></div>
             <p class="Comments">
                 <a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet#disqus_thread" data-disqus-identifier="108">Comments</a>
             </p>
@@ -1782,9 +2158,9 @@ using (var image = new Bitmap(path))
 							<input type="submit" class="SiteSearchSubmit" value="Search" />
 						</div>
 </form>				</div>
-				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/so-what-is-machine-learning-nocodeintro">So.. what is machine learning? (#NoCodeIntro)</a></li><li><a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a></li><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a></li><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts">Automating &quot;suggested / related posts&quot; links for my blog posts</a></li></ul><div class="RSSFeedLink"><a href="https://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two">(Approximately) correcting perspective with C# (fixing a blurry presentation video - part two)</a></li><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/so-what-is-machine-learning-nocodeintro">So.. what is machine learning? (#NoCodeIntro)</a></li><li><a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a></li><li><a href="/automating-suggested-related-posts-links-for-my-blog-posts-part-2">Automating &quot;suggested / related posts&quot; links for my blog posts - Part 2</a></li></ul><div class="RSSFeedLink"><a href="https://www.productiverage.com/feed">RSS Feed</a></div></div>
 				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
-				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2022">March 2022 (1)</a></li><li><a href="/Archive/2/2022">February 2022 (1)</a></li><li><a href="/Archive/8/2021">August 2021 (1)</a></li><li><a href="/Archive/4/2021">April 2021 (2)</a></li><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/3/2022">March 2022 (2)</a></li><li><a href="/Archive/2/2022">February 2022 (1)</a></li><li><a href="/Archive/8/2021">August 2021 (1)</a></li><li><a href="/Archive/4/2021">April 2021 (2)</a></li><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
 			</div>
 
 		</div>
