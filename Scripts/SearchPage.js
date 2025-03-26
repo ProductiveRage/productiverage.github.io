@@ -293,6 +293,9 @@
 	}
 
 	function Log(strContent) {
+		if (!localStorage.getItem("search-debug")) {
+			return;
+		}
 		try { console.log(strContent); }
 		catch(e) { }
 	}
