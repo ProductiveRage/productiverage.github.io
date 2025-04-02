@@ -41,7 +41,9 @@
 			arrSemanticResults = null;
 			Log("SearchPage.js: Semantic search not supported from this domain");
 		} else {
-			semanticTimeoutInMs = 1500;
+			// 2025-04-02 DWR: The DigitalOcean-hosted container seems to intermittently be slow to respond (usually
+			// less than 0.5s, but sometimes as high as 3s, so let's be more generous with the timeout for now)
+			semanticTimeoutInMs = 5000;
 			arrSemanticResults = null;
 
 			var semanticRequest = new XMLHttpRequest();
