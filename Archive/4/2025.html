@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Productive Rage - April 2025</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<meta name="theme-color" content="#393939" />
+	<link rel="stylesheet" type="text/css" media="all" href="/Content/Styles.css" />
+	<link rel="stylesheet" type="text/css" media="print" href="/Content/PrintOverrides.css" />
+	<meta name="robots" content="noindex, follow" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="https://www.productiverage.com/feed" />
+	<script async="" src="https://www.googletagmanager.com/gtag/js?id=G-WRKSEZTFBP"></script>
+	<script>
+		window.dataLayer = window.dataLayer || [];
+		function gtag(){dataLayer.push(arguments);}
+		gtag("js", new Date());
+		gtag("config", "G-WRKSEZTFBP");
+	</script>
+	<script type="text/javascript">
+		var darkModeEnabledLocalStorageKey = "DarkMode";
+		var darkModeHtmlWrapperClassName = "DarkMode";
+		function IsDarkModeEnabled() {
+			return localStorage.getItem(darkModeEnabledLocalStorageKey) !== null;
+		}
+		if (IsDarkModeEnabled()) {
+			document.querySelector("html").classList.add(darkModeHtmlWrapperClassName);
+		}
+	</script>
+
+    <meta name="description" content="Archive for April 2025" />
+</head>
+
+<body>
+
+	<div class="Header">
+		<div class="HeaderContent">
+			<h1>
+				<a href="/">Productive Rage</a>
+			</h1>
+			<span class="Tagline">Dan's techie ramblings</span>
+		</div>
+	</div>
+
+	<div class="WrapperOuter">
+		<div class="Wrapper">
+			<div class="Main HasSideBar">
+				
+
+        <script type="text/javascript">
+            var disqus_shortname = "productiverage";
+            document.addEventListener(
+                "DOMContentLoaded",
+                function () {
+                    var commentsLinks = document.querySelectorAll("div.Content p.Comments");
+                    for (var i = 0; i < commentsLinks.length; i++) {
+                        commentsLinks[i].style.display = "block";
+                    }
+                }
+            );
+        </script>
+
+    <div class="Content ArchiveByMonth">
+        <p class="PostDate">6 April 2025</p><h2 id="hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors"><a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors">Hosting a DigitalOcean App Platform app on a custom subdomain (with CORS)</a></h2>
+<h3 id="tldr"><a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors#tldr">TL;DR</a></h3>
+<p>I host my blog using GitHub Pages (<a href="https://github.com/ProductiveRage/productiverage.github.io">repo here</a>), and have the domain registered through GoDaddy. I wanted to experiment with adding some additional functionality to my static content, using DigitalOcean App Platform (where I can essentially throw a Docker container and have it appear on the internet).</p>
+<p>I wanted this DigitalOcean-hosted app to be available through a productiverage.com subdomain, and I wanted it to be accessible as an API from JavaScript on the page. SSL* has long been a given, and I hoped that I would hit few (if any) snags with that.</p>
+<p>There <em>are</em> instructions out there for doing what I wanted, but I still encountered so many confusions and gotchas, that I figured I'd try to document the process (along with a few ways to reassure yourself when things look bleak).. even if it's only for future-me!</p>
+<p class="footnote">* <em>(Insert pedantic comment about how TLS has replaced SSL, and so we shouldn't refer to &quot;SSL&quot; or &quot;SSL certificates&quot; - for the rest of the post, I'll be saying &quot;SSL&quot; and hopefully that doesn't upset anyone too much despite it not being technically correct!)</em></p>
+<h3 id="digitalocean-app-platform"><a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors#digitalocean-app-platform">DigitalOcean App Platform</a></h3>
+<p>So you have something deployed using DigitalOcean's App Platform solution. It will have an automatically generated unique url that you can access it on, that is a subdomain of &quot;ondigitalocean.app&quot; (something like. <a href="https://productiverage-search-58yr4.ondigitalocean.app">https://productiverage-search-58yr4.ondigitalocean.app</a>). This will not change (unless you delete your app), and you can always use it to test your application.</p>
+<p>You want to host the application on a subdomain of a domain that you own (hosted by GoDaddy, in my case).</p>
+<p>To start the process, go into the application's details in DigitalOcean (the initial tab you should see if called &quot;Overview&quot;) and click into the &quot;Settings&quot; tab.</p>
+<p><strong>Note: Do <em>not</em> click into the &quot;Networking&quot; section through the link in the left hand navigation bar (under &quot;Manage), and then into &quot;Domains&quot;</strong> (some guides that I found online suggested this, and it only resulted in me getting lost and confused - see the section below as to why).</p>
+<p>This tab has the heading &quot;App Settings&quot; and the second section should be &quot;Domains&quot;, click &quot;Edit&quot; and then the &quot;<strong>+Add Domain</strong>&quot; button.</p>
+<p>Here, enter the subdomain that you want to use for your application. Again, the auto-assigned ondigitalocean.app subdomain will never go away, and you can add <em>multiple</em> custom domains if you want (though I only needed a single one).</p>
+<p>You don't actually have to own the domain at this point; DigitalOcean won't do any checks other than ensuring that you don't enter a domain that is registered by something else within DigitalOcean (either one of your own resources, or a resource owned by another DigitalOcean customer). If you really wanted to, you could enter a subdomain of a domain that you know that you <em>can't</em> own, like &quot;myawesomeexperiment.google.com&quot; - but it wouldn't make a lot of sense to do this, since you would never be able to connect that subdomain to your app!</p>
+<p>In my case, I wanted to use &quot;search.productiverage.com&quot;.</p>
+<p><strong>Note:</strong> It's <em>only</em> the domain or subdomain that you have to enter here, <em>not</em> the protocol (&quot;http&quot; or &quot;https&quot;) because (thankfully) it's not really an option to operate without https these days. Back in the dim and distant past, SSL certificates were frustrating to purchase, and register, and renew - and they weren't free! Today, life is a lot easier, and DigitalOcean handles it for you automatically when you use a custom subdomain on your application; they register the certificate, and automatically renew it. When you have everything working, you can look up the SSL certificate of the subdomain to confirm this - eg. when I use <a href="https://www.sslshopper.com/ssl-checker.html#hostname=productiverage.com">sslshopper.com to look up productiverage.com</a> then I see that the details include &quot;Server Type: GitHub.com&quot; (same if I look up &quot;www.productiverage.com&quot;) because I have my domain configured to point at GitHub Pages, and they look after that SSL certificate. But if I use <a href="https://www.sslshopper.com/ssl-checker.html#hostname=search.productiverage.com">sslshopper.com to look up search.productiverage.com</a> then I see &quot;Server Type: cloudflare&quot; (although it doesn't mention DigitalOcean, it's clearly a different certificate).</p>
+<p>With your sub/domain entered (and with DigitalOcean having checked that it's of a valid form, and not already in use by another resource), you will be asked to select some DNS management options. Click &quot;You manage your domain&quot; and then the &quot;Add Domain&quot; button at the bottom of the page.</p>
+<p>This will redeploy your app. After which, you should see the new domain listed in the table that opened after clicked &quot;Edit&quot; alongside &quot;Domains&quot; in the &quot;Settings&quot; tab of your app. It will <em>probably</em> show the status as &quot;Pending&quot;. It <em>might</em> show the status as &quot;Configuring&quot; at this point - if it doesn't, then refreshing the page and clicking &quot;Edit&quot; again alongside the &quot;Domains&quot; section should result in it now showing &quot;Configuring&quot;.#</p>
+<p>There will be a &quot;?&quot; icon alongside the &quot;Configuring&quot; status - if you hover over it you will see the message &quot;<strong>Your domain is not yet active because the CNAME record was not found</strong>&quot;. Once we do some work on the domain registrar side (eg. GoDaddy), this status will change!</p>
+<h3 id="digitalocean-app-platform-avoiding-networking-domains"><a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors#digitalocean-app-platform-avoiding-networking-domains">DigitalOcean App Platform - Avoiding &quot;Networking&quot; / &quot;Domains&quot;</a></h3>
+<p>I read some explanations of this process that said that you should configure your custom domain <em>not</em> by starting with the app settings, but by clicking the &quot;Networking&quot; link in the left hand nav (under &quot;Manage&quot;) and then clicking into &quot;Domains&quot;. I spent an embarrassing amount of time going down this route, and getting frustrated when I reached a step that would say something like &quot;using the dropdown in the 'Directs to' column, select where the custom domain should be used&quot; - I never had a dropdown, and couldn't find an explanation why!</p>
+<p>When you configure a custom sub/domain this way, it can only be connected to (iirc) Load Balancers (which &quot;let you distribute traffic between multiple Droplets either regionally or globally&quot;) or, <em>I think,</em> Reserved IPs (which you can associate with any individual Droplet, or with a DigitalOcean's managed Kubernetes service - referred to as &quot;DOKS&quot;). <strong>You can not select an App Platform instance in a 'Directs To' dropdown in the &quot;Networking&quot; / &quot;Domains&quot; section</strong>, and that is what was causing me to stumble since I only have my single App Platform instance right now (I don't have a load balancer or any other, more complicated infrastructure).</p>
+<p>Final note on this; if you configure a custom domain as I'm describing, you won't see that custom domain shown in the &quot;Networking&quot; / &quot;Domains&quot; list. That is nothing to worry about - everything will still work!</p>
+<h3 id="my-use-of-godaddy-in-short-i-configure-dns-to-serve-github-pages-content"><a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors#my-use-of-godaddy-in-short-i-configure-dns-to-serve-github-pages-content">My use of GoDaddy (in short; I configure DNS to serve GitHub Pages content)</a></h3>
+<p>Long ago, I registered my domain with GoDaddy and hosted my blog with them as an ASP.NET site. I wasn't happy with the performance of it - it was fast much of the time, but would intermittently serve requests very slowly. I had a friend who had purchased a load of hosting capacity somewhere, so I shifted my site over to that (where it was still hosted as an ASP.NET site) and configured GoDaddy to send requests that way.</p>
+<p>Back in 2016, I shifted over to serving the blog through GitHub Pages as static content. The biggest stumbling block to this would have been the site search functionality, which I had written for my ASP.NET app in C# - but <a href="/the-neocities-challenge-aka-the-full-text-indexer-goes-clientside">I had put together a way to push that all to JS in the client</a> in 2013 when I got excited about <a href="https://neocities.org/">Neocities</a> being released (I'm of an age where I remember the often-hideous, but easy-to-build-and-experiment-with, Geocities pages.. back before the default approaches to publishing content seemed to within walled gardens or on pay-to-access platforms).</p>
+<p>As my blog is on GitHub Page, I have <code>A</code> records configured in the DNS settings for my domain within GoDaddy that point to GitHub servers, and a <code>CNAME</code> record that points &quot;www&quot; to my GitHub subdomain &quot;productiverage.github.io&quot;.</p>
+<p>The GitHub documentation page &quot;<a href="https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site">Managing a custom domain for your GitHub Pages site</a>&quot; describes the steps that I followed to end up in this position - see the section &quot;<strong>Configuring an apex domain and the www subdomain variant</strong>&quot;. The redirect from &quot;productiverage.com&quot; to &quot;www.productiverage.com&quot; is managed by GitHub, as is the SSL certificate, <em>and</em> the redirection from &quot;http&quot; to &quot;https&quot;.</p>
+<p>Until I created my DigitalOcean app, GoDaddy's only role was to ensure that when someone tried to visit my blog that the DNS lookup resulted in them going to GitHub, who would pick up the request and serve my content.</p>
+<h3 id="configuring-the-subdomain-for-digitalocean-in-godaddy"><a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors#configuring-the-subdomain-for-digitalocean-in-godaddy">Configuring the subdomain for DigitalOcean in GoDaddy</a></h3>
+<p>Within the GoDaddy &quot;cPanel&quot; (ie. their control panel), click into your domain, then into the &quot;DNS&quot; tab, and then click the &quot;Add New Record&quot; button. Select <code>CNAME</code> in the &quot;Type&quot; dropdown, type the subdomain segment into the &quot;Name&quot; text (in my case, I want DigitalOcean to use the subdomain &quot;search.productiverage.com&quot; so I entered &quot;search&quot; into that textbox, since I was managing my domain &quot;productiverage.com&quot;), paste the DigitalOcean-generated domain into the &quot;Value&quot; textbox (&quot;productiverage-search-58yr4.ondigitalocean.app&quot; for my app), and click &quot;Save&quot;.</p>
+<p>You should see a message informing you that DNS changes may take up to 48 hours to propagate, but that it usually all happens in less than an hour.</p>
+<p>In my experience, it often only takes a few minutes for everything to work.</p>
+<p>If you want to get an idea about how things are progressing, there are a couple of things you can do -</p>
+<ol>
+<li>If you open a command prompt and ping the DigitalOcean-generated subdomain (eg. &quot;productiverage-search-58yr4.ondigitalocean.app&quot;) and then ping your new subdomain (eg. &quot;search.productiverage.com&quot;) they should resolve to the same IP address</li>
+<li>With the IP address resolving correctly, you can try visiting the subdomain in a browser - if you get an error message like &quot;Can't Establish a Secure Connection&quot; then DigitalOcean hasn't finished configuring the SSL certificate, but this error is still an indicator that the DNS change has been applied (which is good news!)</li>
+<li>If you go back to your app in the DigitalOcean control panel, and refresh the &quot;Settings&quot; tab, and click &quot;Edit&quot; alongside the &quot;Domains&quot; section, the status will have changed from &quot;Configuring&quot; to &quot;Active&quot; when it's ready (you may have to refresh a couple of times, depending upon how patient you're being, how slow the internet is being, and whether DigitalOcean's UI automatically updates itself or not)</li>
+</ol>
+<p>If you don't want to mess about with these steps, you are free to go and make a cup of tea, and everything should sort itself out on its own!</p>
+<p>I had gone round and round so many times trying to make it work that I was desperate to have some additional insight into whether it was working or not, but now that I'm confident in the process I would probably just wait five minutes if I did this again, and jump straight to the final step..</p>
+<p><strong>At this point, you should be able to hit your DigitalOcean app in the browser!</strong> Hurrah!</p>
+<ul>
+<li>If it fails, then it's worth checking that the app is still running and working when you access it via the DigitalOcean-generated address</li>
+<li>If the app works at the DigitalOcean-generated address but <em>still</em> doesn't work on your custom subdomain, hopefully running again through those three steps above will help you identify where the blocker is, or maybe you'll find clues in the app logs in DigitalOcean</li>
+</ul>
+<h3 id="bonus-material-enabling-cors-access-for-the-app-in-digitalocean"><a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors#bonus-material-enabling-cors-access-for-the-app-in-digitalocean"><strong>Bonus material:</strong> Enabling CORS access for the app (in DigitalOcean)</a></h3>
+<p>Depending upon your needs, you may be done by this point.</p>
+<p>After I'd finished whooping triumphantly, however, I realised that <em>I</em> wasn't done..</p>
+<p>My app exposes a html form that will perform a semantic search across my blog content (it's essentially my blog's <a href="https://github.com/ProductiveRage/Blog/tree/master/SemanticSearchDemo">Semantic Search Demo</a> project, except that - depending upon when you read this post and when I update that code - it uses a smaller embedding model and it adds a call to a Cohere Reranker to better remove poor matches from the result set). That html form works fine in isolation.</p>
+<p>However, the app also supports <code>application/json</code> requests, because I wanted to improve my blog's search by incorporating semantic search results into my existing lexical search. This meant that I would be calling the app from JS on my blog. And <em>that</em> would be a problem, because trying to call <a href="https://search.productiverage.com">https://search.productiverage.com</a> from JS code executed within the context of <a href="https://www.productiverage.com">https://www.productiverage.com</a> would be rejected due to the <strong>&quot;Cross-Origin Resource Sharing&quot; (CORS) mechanism, which exists for security purposes - essentially, to ensure that potentially-malicious JS can't send content from a site to another domain</strong> (even if the sites are on subdomains of the same domain).</p>
+<p>To make a request through JS within the context of one domain (eg. &quot;www.productiverage.com&quot;) to another (eg. &quot;search.productiverage.com&quot;), the second domain must be explicitly configured to allow access from the first. This configuration is done against the DigitalOcean app -</p>
+<ol>
+<li>In the DigitalOcean control panel, navigate back to the &quot;Settings&quot; tab for your app</li>
+<li>The first line (under the tab navigation and above the title &quot;App Settings&quot;) should display &quot;App&quot; on the left and &quot;Components&quot; on the right - <strong>you need to click into the component</strong> (I only have a single component in my case)</li>
+</ol>
+<p><img src="/Content/Images/Posts/DigitalOceanComponentSelection.png" alt="DigitalOcean 'component' selection within an app" title="DigitalOcean 'component' selection within an app" /></p>
+<ol start="3">
+<li>Click &quot;Edit&quot; in the &quot;HTTP Request Routes&quot; section and click &quot;Configure CORS&quot; by the route that you will need to request from another domain (again, I only have a single route, which is for the root of my application)</li>
+<li>I want to provide access to my app <em>only</em> from my blog, so I set a value for the <code>Access-Control-Allow-Origins</code> header, that has a &quot;Match Type&quot; of &quot;Exact&quot; and an &quot;Origin&quot; of &quot;https://www.productiverage.com&quot;</li>
+<li>Click &quot;Apply CORS&quot; - and you should be done!</li>
+</ol>
+<p>Now, you should be able to access your DigitalOcean app on the custom subdomain from <em>another</em> domain through JS code, without the browser giving you an error about CORS restrictions denying your attempt!</p>
+<p>To see an example of this in action, you can go to <a href="https://www.productiverage.com/">www.productiverage.com</a>, open the dev tools in your browser, go to the &quot;Network&quot; tab and filter requests to &quot;Fetch/XHR&quot;, type something into the &quot;Site Search&quot; text box on the site and click &quot;Search&quot;, and you <em>should</em> see requests for content <code>SearchIndex-{something}.lz.txt</code> (which is used for lexical searching) <em>and</em> a single request that looks like <code>?q={what you searched for}</code> which (if you view the Headers for) you should see comes from <a href="https://search.productiverage.com/">search.productiverage.com</a>. Woo, success!!</p>
+<p class="PostTime">Posted at 19:27</p>
+            <p class="Comments">
+                <a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors#disqus_thread" data-disqus-identifier="126">Comments</a>
+            </p>
+    </div>
+
+        <script type="text/javascript">
+            (function () {
+                var s = document.createElement("script");
+                s.type = "text/javascript";
+                s.async = true;
+                s.src = "https://" + disqus_shortname + ".disqus.com/count.js";
+                (document.getElementsByTagName("HEAD")[0] || document.getElementsByTagName("BODY")[0]).appendChild(s);
+            }());
+        </script>
+
+				<div class="Footer">
+					© Productive Rage 2011 - 2025
+				</div>
+			</div>
+
+			<div class="SideBar">
+				<div class="About">
+					<h2>About</h2>
+					<p>Dan is a big geek who likes making stuff with computers! He can be quite outspoken so clearly needs a blog :)</p>
+					<p>In the last few minutes he seems to have taken to referring to himself in the third person. He's quite enjoying it.</p>
+					<p><a href="mailto:dangger36@gmail.com" class="Email">dangger36@gmail.com</a></p>
+				</div>
+				<div class="Search">
+<form action="/Search" autocomplete="off" class="Search" method="get">						<div>
+							<label class="SearchField">
+								<span class="text">Site Search</span>
+								<input type="text" class="SiteSearch" name="term" value="" />
+							</label>
+							<input type="submit" class="SiteSearchSubmit" value="Search" />
+						</div>
+</form>				</div>
+				<div class="Recent"><h2>Recent Posts</h2><ul><li><a href="/hosting-a-digitalocean-app-platform-app-on-a-custom-subdomain-with-cors">Hosting a DigitalOcean App Platform app on a custom subdomain (with CORS)</a></li><li><a href="/approximately-correcting-perspective-with-c-sharp-fixing-a-blurry-presentation-video-part-two">(Approximately) correcting perspective with C# (fixing a blurry presentation video - part two)</a></li><li><a href="/finding-the-brightest-area-in-an-image-with-c-sharp-fixing-a-blurry-presentation-video-part-one">Finding the brightest area in an image with C# (fixing a blurry presentation video - part one)</a></li><li><a href="/so-what-is-machine-learning-nocodeintro">So.. what is machine learning? (#NoCodeIntro)</a></li><li><a href="/parallelising-linq-work-in-c-sharp">Parallelising (LINQ) work in C#</a></li></ul><div class="RSSFeedLink"><a href="https://www.productiverage.com/feed">RSS Feed</a></div></div>
+				<div class="Featured"><h2>Highlights</h2><ul><li><a href="/face-or-no-face-finding-faces-in-photos-using-c-sharp-and-accordnet">Face or no face (finding faces in photos using C# and Accord.NET)</a></li><li><a href="/when-a-disk-cache-performs-better-than-an-inmemory-cache-befriending-the-net-gc">When a disk cache performs better than an in-memory cache (befriending the .NET GC)</a></li><li><a href="/performance-tuning-a-bridgenet-react-app">Performance tuning a Bridge.NET / React app</a></li><li><a href="/creating-a-c-sharp-roslyn-analyser-for-beginners-by-a-beginner">Creating a C# (&quot;Roslyn&quot;) Analyser - For beginners by a beginner</a></li><li><a href="/translating-vbscript-into-c-sharp">Translating VBScript into C#</a></li><li><a href="/entity-framework-projections-to-immutable-types-ienumerable-vs-iqueryable">Entity Framework projections to Immutable Types (IEnumerable vs IQueryable)</a></li></ul></div>
+				<div class="History"><h2>Archives</h2><ul><li><a href="/Archive/4/2025">April 2025 (1)</a></li><li><a href="/Archive/3/2022">March 2022 (2)</a></li><li><a href="/Archive/2/2022">February 2022 (1)</a></li><li><a href="/Archive/8/2021">August 2021 (1)</a></li><li><a href="/Archive/4/2021">April 2021 (2)</a></li><li><a href="/Archive/3/2021">March 2021 (1)</a></li><li><a href="/Archive/8/2020">August 2020 (3)</a></li><li><a href="/Archive/7/2019">July 2019 (2)</a></li><li><a href="/Archive/9/2018">September 2018 (1)</a></li><li><a href="/Archive/4/2018">April 2018 (1)</a></li><li><a href="/Archive/3/2018">March 2018 (1)</a></li><li><a href="/Archive/7/2017">July 2017 (1)</a></li><li><a href="/Archive/6/2017">June 2017 (1)</a></li><li><a href="/Archive/2/2017">February 2017 (1)</a></li><li><a href="/Archive/11/2016">November 2016 (1)</a></li><li><a href="/Archive/9/2016">September 2016 (2)</a></li><li><a href="/Archive/8/2016">August 2016 (1)</a></li><li><a href="/Archive/7/2016">July 2016 (1)</a></li><li><a href="/Archive/6/2016">June 2016 (1)</a></li><li><a href="/Archive/5/2016">May 2016 (3)</a></li><li><a href="/Archive/3/2016">March 2016 (3)</a></li><li><a href="/Archive/2/2016">February 2016 (2)</a></li><li><a href="/Archive/12/2015">December 2015 (1)</a></li><li><a href="/Archive/11/2015">November 2015 (2)</a></li><li><a href="/Archive/8/2015">August 2015 (3)</a></li><li><a href="/Archive/7/2015">July 2015 (1)</a></li><li><a href="/Archive/6/2015">June 2015 (1)</a></li><li><a href="/Archive/5/2015">May 2015 (2)</a></li><li><a href="/Archive/4/2015">April 2015 (1)</a></li><li><a href="/Archive/3/2015">March 2015 (1)</a></li><li><a href="/Archive/1/2015">January 2015 (2)</a></li><li><a href="/Archive/12/2014">December 2014 (1)</a></li><li><a href="/Archive/11/2014">November 2014 (1)</a></li><li><a href="/Archive/10/2014">October 2014 (2)</a></li><li><a href="/Archive/9/2014">September 2014 (2)</a></li><li><a href="/Archive/8/2014">August 2014 (1)</a></li><li><a href="/Archive/7/2014">July 2014 (1)</a></li><li><a href="/Archive/6/2014">June 2014 (1)</a></li><li><a href="/Archive/5/2014">May 2014 (2)</a></li><li><a href="/Archive/2/2014">February 2014 (1)</a></li><li><a href="/Archive/1/2014">January 2014 (1)</a></li><li><a href="/Archive/12/2013">December 2013 (1)</a></li><li><a href="/Archive/11/2013">November 2013 (1)</a></li><li><a href="/Archive/10/2013">October 2013 (1)</a></li><li><a href="/Archive/8/2013">August 2013 (3)</a></li><li><a href="/Archive/7/2013">July 2013 (3)</a></li><li><a href="/Archive/6/2013">June 2013 (1)</a></li><li><a href="/Archive/5/2013">May 2013 (2)</a></li><li><a href="/Archive/4/2013">April 2013 (1)</a></li><li><a href="/Archive/3/2013">March 2013 (8)</a></li><li><a href="/Archive/2/2013">February 2013 (2)</a></li><li><a href="/Archive/1/2013">January 2013 (2)</a></li><li><a href="/Archive/12/2012">December 2012 (3)</a></li><li><a href="/Archive/11/2012">November 2012 (4)</a></li><li><a href="/Archive/9/2012">September 2012 (1)</a></li><li><a href="/Archive/8/2012">August 2012 (1)</a></li><li><a href="/Archive/7/2012">July 2012 (3)</a></li><li><a href="/Archive/6/2012">June 2012 (3)</a></li><li><a href="/Archive/5/2012">May 2012 (2)</a></li><li><a href="/Archive/2/2012">February 2012 (3)</a></li><li><a href="/Archive/1/2012">January 2012 (4)</a></li><li><a href="/Archive/12/2011">December 2011 (7)</a></li><li><a href="/Archive/8/2011">August 2011 (2)</a></li><li><a href="/Archive/7/2011">July 2011 (1)</a></li><li><a href="/Archive/5/2011">May 2011 (1)</a></li><li><a href="/Archive/4/2011">April 2011 (2)</a></li><li><a href="/Archive/3/2011">March 2011 (3)</a></li></ul><div class="EveryTitle"><a href="/Archive/All">Every Post Title</a></div></div>
+			</div>
+
+		</div>
+	</div>
+
+	<script type="text/javascript" src="/Scripts/autocomplete.js"></script>
+	<script type="text/javascript" src="/Scripts/prettify.js"></script>
+	<script type="text/javascript" src="/Scripts/Site.js"></script>
+	<script type="text/javascript" src="/Scripts/IndexSearchGenerator.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchTermHighlighter.js"></script>
+	<script type="text/javascript" src="/Scripts/SearchPage.js"></script>
+	<script type="text/javascript" src="/Scripts/LZString.js"></script>
+
+</body>
+</html>
