@@ -168,11 +168,27 @@
 							// and we know that it matches this Post (according to the summary file, at least) - and there shouldn't
 							// be multiple entries for the same Post. However, if we got the match through a semantic search then we
 							// might not be able to match the search terms back to tokens in the detail file, and so there MAY not
-							// be any matches (in which case we'll resort to showing the first chunk of the text content).							
-							var arrMatches = IndexSearchGenerator.Get(objSearchIndexDetailDataForPost).SearchFor(strSearchTerm);
+							// be any matches (in which case we'll resort to showing the first chunk of the text content).
+							// UPDATE [2025-08-04]: In the case that we can't match all of the search terms in the lexical index for
+							// semantic search results, we'll try removing terms from the query that aren't in the index and see if
+							// that allows us to locate a section of content to highlight (if not, we'll resort to the first chunk).
+							var objSearchIndexForPost = IndexSearchGenerator.Get(objSearchIndexDetailDataForPost)
+							var arrMatches = objSearchIndexForPost.SearchFor(strSearchTerm);
+							if (arrMatches.length === 0) {
+								var strRewrittenSearchTerm = strSearchTerm
+									.replace(/[^\w\s\']|_/g, "").replace(/\s+/g, " ") // Courtesy of https://stackoverflow.com/a/4328546
+									.split(" ")
+									.filter(strTerm => objSearchIndexForPost.SearchFor(strTerm).length !== 0)
+									.join(" ");
+									
+								if (strRewrittenSearchTerm) {
+									arrMatches = objSearchIndexForPost.SearchFor(strRewrittenSearchTerm);
+								}
+							}
+
 							strHtmlContent = GetHighlightedPostSummary(
 								strPlainTextContent,
-								arrMatches.length == 0 ? [] : arrMatches[0].SourceLocations
+								arrMatches.length === 0 ? [] : arrMatches[0].SourceLocations
 							);
 						}
 						summary.innerHTML = strHtmlContent + "<span class=\"PostDate\">" + strPostedAt + "</span>";
