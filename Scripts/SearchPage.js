@@ -140,7 +140,7 @@
 					summary.className = "SearchResultContent";
 					summary.innerText = "Retrieving content..";
 					summary.style.opacity = "0.2";
-					LoadSummaryContentFor(summary, intKey);
+					LoadSummaryContentFor(summary, intKey, objTitles[intKey].Posted);
 					
 					elementToReplaceWithResult.parentNode.insertBefore(header, elementToReplaceWithResult);
 					elementToReplaceWithResult.parentNode.insertBefore(summary, elementToReplaceWithResult);
@@ -150,7 +150,7 @@
 		);
 	}
 
-	function LoadSummaryContentFor(summary, intKey) {
+	function LoadSummaryContentFor(summary, intKey, strPostedAt) {
 		LoadCompressedJsonData(
 			"SearchIndex-" + intKey + "-CompleteDictionary.lz.txt",
 			function (objSearchIndexDetailDataForPost) { // TODO: Handle failure
@@ -175,7 +175,7 @@
 								arrMatches.length == 0 ? [] : arrMatches[0].SourceLocations
 							);
 						}
-						summary.innerHTML = strHtmlContent;
+						summary.innerHTML = strHtmlContent + "<span class=\"PostDate\">" + strPostedAt + "</span>";
 						summary.style.transition = "opacity 1s";
 						summary.style.opacity = "1";
 					}
